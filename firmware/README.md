@@ -31,7 +31,9 @@ This project is **not affiliated with Xteink**; it's built as a community projec
 - [x] EPUB parsing and rendering
 - [x] Saved reading position
 - [ ] File explorer with file picker
-  - Currently CrossPoint will just open the first EPUB it finds at the root of the SD card
+  - [x] Basic EPUB picker from root directory
+  - [ ] Support nested folders
+  - [ ] EPUB picker with cover art
 - [ ] Image support within EPUB
 - [ ] Configurable font, layout, and display options
 - [ ] WiFi connectivity
