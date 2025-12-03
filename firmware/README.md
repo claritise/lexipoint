@@ -50,9 +50,21 @@ This project is **not affiliated with Xteink**; it's built as a community projec
 
 #### Command line
 
+Connect your Xteink X4 to your computer via USB-C and run the following command.
+
 ```sh
 pio run --target upload
 ```
+
+#### Web
+
+1. Connect your Xteink X4 to your computer via USB-C
+2. Download the `firmware.bin` file from the latest release via the [releases page](https://github.com/daveallie/crosspoint-reader/releases)
+3. Go to https://xteink.dve.al/ and flash the firmware file using the "OTA fast flash controls" section
+4. Press the reset button on the Xteink X4 to restart the device
+
+To revert back to the official firmware, you can flash the latest official firmware from https://xteink.dve.al/, or swap
+back to the other partition using the "Swap boot partition" button here https://xteink.dve.al/debug. 
 
 ## Internals
 
