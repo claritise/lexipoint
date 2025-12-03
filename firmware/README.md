@@ -1,0 +1,106 @@
+# CrossPoint Reader
+
+Firmware for the **Xteink X4** e-paper display reader (unaffiliated with Xteink).
+Built using **PlatformIO** and targeting the **ESP32-C3** microcontroller.
+
+CrossPoint Reader is a purpose-built firmware designed to be a drop-in, fully open-source replacement for the official 
+Xteink firmware. It aims to match or improve upon the standard EPUB reading experience.
+
+// TODO include some images
+
+I look at the [**diy-esp32-epub-reader** by atomic14](https://github.com/atomic14/diy-esp32-epub-reader) project a lot 
+when making CrossPoint and a handful of lessons and some direct source code comes directly from that repo.
+
+## Motivation
+
+E-paper devices are fantastic for reading, but most commercially available readers are closed systems with limited 
+customisation. The **Xteink X4** is an affordable, e-paper device, however the official firmware remains closed.
+CrossPoint exists partly as a fun side-project and partly to open up the ecosystem and truely unlock the device's
+potential.
+
+CrossPoint Reader aims to:
+* Provide a **fully open-source alternative** to the official firmware.
+* Offer a **document reader** capable of handling EPUB content on constrained hardware.
+* Support **customisable font, layout, and display** options.
+* Run purely on the **Xteink X4 hardware**.
+
+This project is **not affiliated with Xteink**; it's built as a community project.
+
+## Features
+
+- [x] EPUB parsing and rendering
+- [x] Saved reading position
+- [ ] File explorer with file picker
+  - Currently CrossPoint will just open the first EPUB it finds at the root of the SD card
+- [ ] Image support within EPUB
+- [ ] Configurable font, layout, and display options
+- [ ] WiFi connectivity
+- [ ] BLE connectivity
+
+## Getting Started
+
+### Prerequisites
+
+* **PlatformIO Core** (`pio`) or **VS Code + PlatformIO IDE**
+* Python 3.8+
+* USB-C cable for flashing the ESP32-C3
+* Xteink X4
+
+### Flashing your device
+
+#### Command line
+
+```sh
+pio run --target upload
+```
+
+## Internals
+
+CrossPoint Reader is pretty aggressive about caching data down to the SD card to minimise RAM usage. The ESP32-C3 only
+has ~380KB of usable RAM, so we have to be careful. A lot of the decisions made in the design of the firmware were based
+on this constraint.
+
+### EPUB caching
+
+The first time chapters of an EPUB are loaded, they are cached to the SD card. Subsequent loads are served from the 
+cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
+
+
+```
+.crosspoint/
+├── epub_12471232/       # Each EPUB is cached to a subdirectory named `epub_<hash>`
+│   ├── progress.bin     # Stores reading progress (chapter, page, etc.)
+│   ├── 0/               # Each chapter is stored in a subdirectory named by its index (based on the spine order)
+│   │   ├── section.bin  # Section metadata (page count)
+│   │   ├── page_0.bin   # Each page is stored in a separate file, it
+│   │   ├── page_1.bin   #   contains the position (x, y) and text for each word
+│   │   └── ...
+│   ├── 1/
+│   │   ├── section.bin
+│   │   ├── page_0.bin
+│   │   ├── page_1.bin
+│   │   └── ...
+│   └── ...
+│
+└── epub_189013891/
+```
+
+Deleting the `.crosspoint` directory will clear the cache. 
+
+Due the way it's currently implemented, the cache is not automatically cleared when the EPUB is deleted and moving an 
+EPUB file will reset the reading progress.
+
+## Contributing
+
+Contributions are very welcome!
+
+### To submit a contribution:
+
+1. Fork the repo
+2. Create a branch (`feature/dithering-improvement`)
+3. Make changes
+4. Submit a PR
+
+---
+
+CrossPoint Reader is **not affiliated with Xteink or any manufacturer of the X4 hardware**.
