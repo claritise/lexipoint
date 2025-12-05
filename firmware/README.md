@@ -32,7 +32,7 @@ This project is **not affiliated with Xteink**; it's built as a community projec
 - [x] Saved reading position
 - [ ] File explorer with file picker
   - [x] Basic EPUB picker from root directory
-  - [ ] Support nested folders
+  - [x] Support nested folders
   - [ ] EPUB picker with cover art
 - [ ] Image support within EPUB
 - [ ] Configurable font, layout, and display options
@@ -47,6 +47,17 @@ This project is **not affiliated with Xteink**; it's built as a community projec
 * Python 3.8+
 * USB-C cable for flashing the ESP32-C3
 * Xteink X4
+
+### Checking out the code
+
+CrossPoint uses PlatformIO for building and flashing the firmware. To get started, clone the repository:
+
+```
+git clone --recursive https://github.com/daveallie/crosspoint-reader
+
+# Or, if you've already cloned without --recursive:
+git submodule update --init --recursive
+```
 
 ### Flashing your device
 
