@@ -59,6 +59,10 @@ back to the other partition using the "Swap boot partition" button here https://
 
 See [Development](#development) below.
 
+## Usage
+
+See [the user guide](./USER_GUIDE.md) for instructions on operating CrossPoint.
+
 ## Development
 
 ### Prerequisites
