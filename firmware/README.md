@@ -131,6 +131,9 @@ EPUB file will reset the reading progress.
 
 Contributions are very welcome!
 
+If you're looking for a way to help out, take a look at the [ideas discussion board](https://github.com/daveallie/crosspoint-reader/discussions/categories/ideas).
+If there's something there you'd like to work on, leave a comment so that we can avoid duplicated effort.
+
 ### To submit a contribution:
 
 1. Fork the repo
