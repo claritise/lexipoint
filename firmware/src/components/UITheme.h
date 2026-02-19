@@ -1,11 +1,10 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 
 #include "CrossPointSettings.h"
 #include "components/themes/BaseTheme.h"
-
-class MappedInputManager;
 
 class UITheme {
   // Static instance
@@ -26,7 +25,7 @@ class UITheme {
 
  private:
   const ThemeMetrics* currentMetrics;
-  const BaseTheme* currentTheme;
+  std::unique_ptr<BaseTheme> currentTheme;
 };
 
 // Helper macro to access current theme
