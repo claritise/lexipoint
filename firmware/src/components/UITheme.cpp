@@ -5,10 +5,16 @@
 
 #include <memory>
 
+#include "MappedInputManager.h"
 #include "RecentBooksStore.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
+#include "util/StringUtils.h"
+
+namespace {
+constexpr int SKIP_PAGE_MS = 700;
+}  // namespace
 
 UITheme UITheme::instance;
 
@@ -66,4 +72,21 @@ std::string UITheme::getCoverThumbPath(std::string coverBmpPath, int coverHeight
     coverBmpPath.replace(pos, 8, std::to_string(coverHeight));
   }
   return coverBmpPath;
+}
+
+UIIcon UITheme::getFileIcon(std::string filename) {
+  if (filename.back() == '/') {
+    return Folder;
+  }
+  if (StringUtils::checkFileExtension(filename, ".epub") || StringUtils::checkFileExtension(filename, ".xtch") ||
+      StringUtils::checkFileExtension(filename, ".xtc")) {
+    return Book;
+  }
+  if (StringUtils::checkFileExtension(filename, ".txt") || StringUtils::checkFileExtension(filename, ".md")) {
+    return Text;
+  }
+  if (StringUtils::checkFileExtension(filename, ".bmp")) {
+    return Image;
+  }
+  return File;
 }
