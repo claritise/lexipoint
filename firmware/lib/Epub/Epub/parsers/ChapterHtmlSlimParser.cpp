@@ -53,6 +53,10 @@ bool isHeaderOrBlock(const char* name) {
   return matches(name, HEADER_TAGS, NUM_HEADER_TAGS) || matches(name, BLOCK_TAGS, NUM_BLOCK_TAGS);
 }
 
+bool isTableStructuralTag(const char* name) {
+  return strcmp(name, "table") == 0 || strcmp(name, "tr") == 0 || strcmp(name, "td") == 0 || strcmp(name, "th") == 0;
+}
+
 // Update effective bold/italic/underline based on block style and inline style stack
 void ChapterHtmlSlimParser::updateEffectiveInlineStyle() {
   // Start with block-level styles
@@ -145,18 +149,66 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
   centeredBlockStyle.textAlignDefined = true;
   centeredBlockStyle.alignment = CssTextAlign::Center;
 
-  // Special handling for tables - show placeholder text instead of dropping silently
+  // Special handling for tables/cells: flatten into per-cell paragraphs with a prefixed header.
   if (strcmp(name, "table") == 0) {
-    // Add placeholder text
-    self->startNewTextBlock(centeredBlockStyle);
+    // skip nested tables
+    if (self->tableDepth > 0) {
+      self->tableDepth += 1;
+      return;
+    }
 
-    self->italicUntilDepth = min(self->italicUntilDepth, self->depth);
-    // Advance depth before processing character data (like you would for an element with text)
+    if (self->partWordBufferIndex > 0) {
+      self->flushPartWordBuffer();
+    }
+    self->tableDepth += 1;
+    self->tableRowIndex = 0;
+    self->tableColIndex = 0;
     self->depth += 1;
-    self->characterData(userData, "[Table omitted]", strlen("[Table omitted]"));
+    return;
+  }
 
-    // Skip table contents (skip until parent as we pre-advanced depth above)
-    self->skipUntilDepth = self->depth - 1;
+  if (self->tableDepth == 1 && strcmp(name, "tr") == 0) {
+    self->tableRowIndex += 1;
+    self->tableColIndex = 0;
+    self->depth += 1;
+    return;
+  }
+
+  if (self->tableDepth == 1 && (strcmp(name, "td") == 0 || strcmp(name, "th") == 0)) {
+    if (self->partWordBufferIndex > 0) {
+      self->flushPartWordBuffer();
+    }
+    self->tableColIndex += 1;
+
+    auto tableCellBlockStyle = BlockStyle();
+    tableCellBlockStyle.textAlignDefined = true;
+    const auto align = (self->paragraphAlignment == static_cast<uint8_t>(CssTextAlign::None))
+                           ? CssTextAlign::Justify
+                           : static_cast<CssTextAlign>(self->paragraphAlignment);
+    tableCellBlockStyle.alignment = align;
+    self->startNewTextBlock(tableCellBlockStyle);
+
+    const std::string headerText =
+        "Tab Row " + std::to_string(self->tableRowIndex) + ", Cell " + std::to_string(self->tableColIndex) + ":";
+    StyleStackEntry headerStyle;
+    headerStyle.depth = self->depth;
+    headerStyle.hasBold = true;
+    headerStyle.bold = false;
+    headerStyle.hasItalic = true;
+    headerStyle.italic = true;
+    headerStyle.hasUnderline = true;
+    headerStyle.underline = false;
+    self->inlineStyleStack.push_back(headerStyle);
+    self->updateEffectiveInlineStyle();
+    self->characterData(userData, headerText.c_str(), static_cast<int>(headerText.length()));
+    if (self->partWordBufferIndex > 0) {
+      self->flushPartWordBuffer();
+    }
+    self->nextWordContinues = false;
+    self->inlineStyleStack.pop_back();
+    self->updateEffectiveInlineStyle();
+
+    self->depth += 1;
     return;
   }
 
@@ -445,6 +497,11 @@ void XMLCALL ChapterHtmlSlimParser::startElement(void* userData, const XML_Char*
 void XMLCALL ChapterHtmlSlimParser::characterData(void* userData, const XML_Char* s, const int len) {
   auto* self = static_cast<ChapterHtmlSlimParser*>(userData);
 
+  // Skip content of nested table
+  if (self->tableDepth > 1) {
+    return;
+  }
+
   // Middle of skip
   if (self->skipUntilDepth < self->depth) {
     return;
@@ -548,15 +605,24 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
 
   const bool styleWillChange = willPopStyleStack || willClearBold || willClearItalic || willClearUnderline;
   const bool headerOrBlockTag = isHeaderOrBlock(name);
+  const bool tableStructuralTag = isTableStructuralTag(name);
+
+  if (self->tableDepth > 1 && strcmp(name, "table") == 0) {
+    // get rid of all text inside the nested table
+    self->partWordBufferIndex = 0;
+    self->tableDepth -= 1;
+    LOG_DBG("EHP", "nested table detected, get rid of its content");
+    return;
+  }
 
   // Flush buffer with current style BEFORE any style changes
   if (self->partWordBufferIndex > 0) {
     // Flush if style will change OR if we're closing a block/structural element
-    const bool isInlineTag = !headerOrBlockTag && strcmp(name, "table") != 0 &&
-                             !matches(name, IMAGE_TAGS, NUM_IMAGE_TAGS) && self->depth != 1;
+    const bool isInlineTag =
+        !headerOrBlockTag && !tableStructuralTag && !matches(name, IMAGE_TAGS, NUM_IMAGE_TAGS) && self->depth != 1;
     const bool shouldFlush = styleWillChange || headerOrBlockTag || matches(name, BOLD_TAGS, NUM_BOLD_TAGS) ||
                              matches(name, ITALIC_TAGS, NUM_ITALIC_TAGS) ||
-                             matches(name, UNDERLINE_TAGS, NUM_UNDERLINE_TAGS) || strcmp(name, "table") == 0 ||
+                             matches(name, UNDERLINE_TAGS, NUM_UNDERLINE_TAGS) || tableStructuralTag ||
                              matches(name, IMAGE_TAGS, NUM_IMAGE_TAGS) || self->depth == 1;
 
     if (shouldFlush) {
@@ -573,6 +639,21 @@ void XMLCALL ChapterHtmlSlimParser::endElement(void* userData, const XML_Char* n
   // Leaving skip
   if (self->skipUntilDepth == self->depth) {
     self->skipUntilDepth = INT_MAX;
+  }
+
+  if (self->tableDepth == 1 && (strcmp(name, "td") == 0 || strcmp(name, "th") == 0)) {
+    self->nextWordContinues = false;
+  }
+
+  if (self->tableDepth == 1 && (strcmp(name, "tr") == 0)) {
+    self->nextWordContinues = false;
+  }
+
+  if (self->tableDepth == 1 && strcmp(name, "table") == 0) {
+    self->tableDepth -= 1;
+    self->tableRowIndex = 0;
+    self->tableColIndex = 0;
+    self->nextWordContinues = false;
   }
 
   // Leaving bold tag
