@@ -16,7 +16,7 @@ constexpr const char* HOSTNAME = "crosspoint";
 }  // namespace
 
 void CalibreConnectActivity::onEnter() {
-  ActivityWithSubactivity::onEnter();
+  Activity::onEnter();
 
   requestUpdate();
   state = CalibreConnectState::WIFI_SELECTION;
@@ -32,8 +32,15 @@ void CalibreConnectActivity::onEnter() {
   exitRequested = false;
 
   if (WiFi.status() != WL_CONNECTED) {
-    enterNewActivity(new WifiSelectionActivity(renderer, mappedInput,
-                                               [this](const bool connected) { onWifiSelectionComplete(connected); }));
+    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                           [this](const ActivityResult& result) {
+                             if (!result.isCancelled) {
+                               const auto& wifi = std::get<WifiResult>(result.data);
+                               connectedIP = wifi.ip;
+                               connectedSSID = wifi.ssid;
+                             }
+                             onWifiSelectionComplete(!result.isCancelled);
+                           });
   } else {
     connectedIP = WiFi.localIP().toString().c_str();
     connectedSSID = WiFi.SSID().c_str();
@@ -42,7 +49,7 @@ void CalibreConnectActivity::onEnter() {
 }
 
 void CalibreConnectActivity::onExit() {
-  ActivityWithSubactivity::onExit();
+  Activity::onExit();
 
   stopWebServer();
   MDNS.end();
@@ -56,18 +63,10 @@ void CalibreConnectActivity::onExit() {
 
 void CalibreConnectActivity::onWifiSelectionComplete(const bool connected) {
   if (!connected) {
-    exitActivity();
-    onComplete();
+    activityManager.popActivity();
     return;
   }
 
-  if (subActivity) {
-    connectedIP = static_cast<WifiSelectionActivity*>(subActivity.get())->getConnectedIP();
-  } else {
-    connectedIP = WiFi.localIP().toString().c_str();
-  }
-  connectedSSID = WiFi.SSID().c_str();
-  exitActivity();
   startWebServer();
 }
 
@@ -100,11 +99,6 @@ void CalibreConnectActivity::stopWebServer() {
 }
 
 void CalibreConnectActivity::loop() {
-  if (subActivity) {
-    subActivity->loop();
-    return;
-  }
-
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     exitRequested = true;
   }
@@ -168,12 +162,12 @@ void CalibreConnectActivity::loop() {
   }
 
   if (exitRequested) {
-    onComplete();
+    activityManager.popActivity();
     return;
   }
 }
 
-void CalibreConnectActivity::render(Activity::RenderLock&&) {
+void CalibreConnectActivity::render(RenderLock&&) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto pageWidth = renderer.getScreenWidth();
   const auto pageHeight = renderer.getScreenHeight();
