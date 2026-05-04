@@ -82,7 +82,7 @@ void XtcReaderActivity::loop() {
   }
 
   // When long-press chapter skip is disabled, turn pages on press instead of release.
-  const bool usePressForPageTurn = !SETTINGS.longPressChapterSkip;
+  const bool usePressForPageTurn = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
   const bool tiltNext = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedForward();
   const bool tiltPrev = SETTINGS.tiltPageTurn && halTiltSensor.wasTiltedBack();
   const bool prevTriggered =
@@ -114,7 +114,8 @@ void XtcReaderActivity::loop() {
   }
 
   const bool fromTilt = tiltPrev || tiltNext;
-  const bool skipPages = !fromTilt && SETTINGS.longPressChapterSkip && mappedInput.getHeldTime() > skipPageMs;
+  const bool skipPages =
+      !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && mappedInput.getHeldTime() > skipPageMs;
   const int skipAmount = skipPages ? 10 : 1;
 
   if (prevTriggered) {
