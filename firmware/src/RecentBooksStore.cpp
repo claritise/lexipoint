@@ -56,6 +56,21 @@ void RecentBooksStore::updateBook(const std::string& path, const std::string& ti
   }
 }
 
+bool RecentBooksStore::removeByPath(const std::string& path) {
+  auto it =
+      std::find_if(recentBooks.begin(), recentBooks.end(), [&](const RecentBook& book) { return book.path == path; });
+  if (it == recentBooks.end()) {
+    return false;
+  }
+  recentBooks.erase(it);
+  if (!saveToFile()) {
+    // In-memory removal succeeded; persistence is best-effort here (consistent with
+    // addBook/updateBook). Log the failure but still report the entry as removed.
+    LOG_ERR("RBS", "Failed to persist removal of recent book: %s", path.c_str());
+  }
+  return true;
+}
+
 void RecentBooksStore::updatePath(const std::string& oldPath, const std::string& newPath,
                                   const std::string& oldCachePath, const std::string& newCachePath) {
   auto it = std::find_if(recentBooks.begin(), recentBooks.end(),
