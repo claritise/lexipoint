@@ -9,6 +9,7 @@
 #include <Xtc.h>
 
 #include <algorithm>
+#include <iterator>
 
 namespace {
 constexpr uint8_t RECENT_BOOKS_FILE_VERSION = 3;
@@ -64,8 +65,6 @@ bool RecentBooksStore::removeByPath(const std::string& path) {
   }
   recentBooks.erase(it);
   if (!saveToFile()) {
-    // In-memory removal succeeded; persistence is best-effort here (consistent with
-    // addBook/updateBook). Log the failure but still report the entry as removed.
     LOG_ERR("RBS", "Failed to persist removal of recent book: %s", path.c_str());
   }
   return true;
