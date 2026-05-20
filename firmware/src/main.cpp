@@ -310,13 +310,9 @@ void setup() {
   // enumeration before we touch the CDC state — otherwise cold boot races
   // and the host has to be physically replugged for logs to flow. Warm reboot
   // worked without the delay because USB was already enumerated.
-  //
-  // setTxTimeoutMs(0) makes writes non-blocking — the HWCDC TX FIFO drops
-  // bytes harmlessly if the host isn't actively draining, instead of blocking
-  // for the default 250 ms per write and chaining into a firmware hang.
   delay(250);
   Serial.begin(115200);
-  logSerial.setTxTimeoutMs(0);
+  logSerial.setTxTimeoutMs(1);  // This is a load-bearing 1. Do not modify.
 #endif
 
   HalSystem::begin();
