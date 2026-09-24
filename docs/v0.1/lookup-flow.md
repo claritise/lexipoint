@@ -274,7 +274,10 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   left quarter is Back, a down swipe from the top 14 % the frontlight panel, an up swipe from the bottom
   14 % the reader menu or Home). So a "previous tab" swipe must start right of x = 120
   (`swipeClearOfEdges`). Both ends come from `MappedInputManager::peekSwipe` (hook), and the direction is
-  the SDK's dominant-axis rule. `lxctl card-gestures` drives them on the bench card.
+  the SDK's dominant-axis rule. `lxctl card-gestures` drives them on the bench card, including a Back swipe from the left edge
+  (the detail view goes back to the card, not to the previous tab) and a swipe that starts off the card
+  (nothing). Word select's side is pure too: `card::closeStep` (where a close goes), `card::afterNotice`
+  (what follows a notice), `card::longPressReplacesCard`.
 - **Each language's own offline dictionary** (`settings.md` §1b): `lookup::chooseStarDict`. If the
   language's folder can't be opened (removed from the card while its row is hidden, say), CrossPoint's
   own dictionary answers instead. One settings copy serves the whole lookup (gate, sentence, card). The tap is

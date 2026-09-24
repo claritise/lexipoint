@@ -57,7 +57,9 @@ its own group, with the same rows where they apply. Only settings that span lang
 with their values kept (turning a language off never clears its settings). The same applies to the
 master **Lexirise lookups** toggle: when it's Off, everything below the Account group is hidden.
 **"Language when a book doesn't say"** only shows while **two or more** languages are on. With one
-language on, that language is the fallback, and there's nothing to choose.
+language on, that language is the fallback, and there's nothing to choose (as built, P7:
+`Settings::fallbackLanguage()`, which `BookLanguage` uses for Han-only text; the stored choice is kept for
+when both are on again).
 - **Device:** `LexiriseSettingsActivity::buildScreen()` simply skips those rows, and a toggle triggers
   a rebuild, as `KOReaderSettingsActivity` does. There's no upstream change.
 - **Web page:** it's our own page (`LexirisePage.html`), so it applies **the same rules** in its JS.
@@ -126,7 +128,8 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
 - **Every edit is a `SettingsPatch`** through `applyPatch`, the web page's own validation, then
   `SettingsStore::update`. A toggle flips; Readings flips Kana ⇄ Romaji; the language fallback flips
   Japanese ⇄ Chinese; *Keep WiFi on* steps through Off / 1 / 2 / 5 / 10 min; *Offline dictionary* steps
-  through **Same as CrossPoint** (the global dictionary) and then each StarDict folder on the card.
+  through **Same as CrossPoint** (the global dictionary) and then each StarDict folder on the card whose
+  name a setting can hold (`settings_screen::offeredDictionaries`: a plain name of up to 64 bytes).
 - **API key:** the keyboard's password mode, starting empty (the device never shows the stored key; an
   empty entry keeps it). A value that isn't a key shows `Not a Lexirise key` on the key row until the next
   edit. Any other edit that fails shows `Couldn't save` on its own row the same way. A new key is checked at once, from the next loop pass (the keyboard's result runs mid
