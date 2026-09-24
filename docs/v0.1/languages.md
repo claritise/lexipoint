@@ -134,6 +134,36 @@ JIS-based fonts lack common Simplified characters (这, 们, 说, 过 …). A us
 their Japanese font sees replacement boxes in the book itself, which is an upstream setup issue,
 not ours. Note it in the user docs.
 
+### 5.1 Building the CJK font (verified 2026-09-24 on claritise's X4 Pro)
+
+CrossPoint's prebuilt font collection (`crosspoint-reader/crosspoint-fonts`, release
+`sd-fonts-m1-b4-r9`) has **no CJK font**. With no SD font selected, Japanese and Chinese render as
+boxes. What works:
+
+1. Get **`NotoSerifCJKjp-Regular.otf`** (Serif 2.003, 23.4 MB) from `github.com/notofonts/noto-cjk`
+   (`Serif/OTF/Japanese/`). The "jp" region file still carries **every** CJK ideograph; it just uses
+   Japanese letterforms by default, which read fine in Chinese books. For mainland letterforms,
+   convert `NotoSerifCJKsc` the same way and switch fonts per book.
+2. Convert it with the firmware's own script (`pip install freetype-py fonttools`). It takes ~40 s:
+   ```
+   python3 lib/EpdFont/scripts/fontconvert_sdcard.py NotoSerifCJKjp-Regular.otf \
+     --intervals latin-ext,punctuation,cjk --sizes 8,10,12,14,16,18 \
+     --style regular --name NotoSerifCJK --output-dir ./NotoSerifCJK/
+   ```
+   `latin-ext` carries **all pinyin tone marks** (ǎ ǐ ǒ ǔ ǖ ǘ ǚ ǜ), and `punctuation` the curly quotes.
+   **Sizes 8, 10 and 12 matter**: CrossPoint uses them to draw CJK book titles in its menus.
+   The result is 6 files, 25.6 MB, with 22,219 glyphs each.
+3. Copy the folder to `/fonts/NotoSerifCJK/` (or `/.fonts/`) on the SD card. Over **USB Drive** mode, run
+   the copy from the Mac's own Terminal or Finder, **not** a sandboxed shell, which macOS blocks from
+   removable volumes. **Always eject before unplugging.** An unplug mid-copy truncates files.
+4. On the reader: **Settings → Reader → Font Family → NotoSerifCJK**. The boot log confirms it with
+   `[SDREG] Found family: NotoSerifCJK (6 files)`.
+
+Not covered: CJK Extension A (U+3400–4DBF) and non-BMP characters (e.g. 𠮟). The `cjk` preset stops at
+the main block. That's rare in fiction, and they fall back to boxes.
+
+This goes into the P8 user guide as is.
+
 ## 6. Rank labels
 
 Frequency distributions differ by language. The labels in `popup-ui.md` §1 (`very common` < 1k …)

@@ -17,3 +17,6 @@ level-check/
 .pio/
 .cache/
 build/
+
+# Staging area for files to copy onto the reader SD card (fonts, test books). Never committed.
+sd-card/
