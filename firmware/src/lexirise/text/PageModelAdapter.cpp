@@ -15,7 +15,7 @@ constexpr const char* kIdeographicSpace = "\xE3\x80\x80";  // U+3000
 
 }  // namespace
 
-PageModel buildPageModel(const Page& page, const MeasureText& measure, const int em) {
+PageModel buildPageModel(const Page& page, const MeasureText& measure, const int em, const int ascender) {
   PageModel model;
   std::vector<LineShape> shapes;
   for (const auto& element : page.elements) {
@@ -30,6 +30,7 @@ PageModel buildPageModel(const Page& page, const MeasureText& measure, const int
     shape.top = line->yPos;
     shape.blockInset = block->getBlockStyle().leftInset();
     shape.alignment = static_cast<int>(block->getBlockStyle().alignment);
+    shape.rubyShift = block->getRubyShift(ascender);
     const uint16_t count = block->wordCount();
     out.tokens.reserve(count);
     for (uint16_t i = 0; i < count; i++) out.tokens.emplace_back(block->wordText(i));

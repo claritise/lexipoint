@@ -19,7 +19,8 @@ namespace lexipoint::text {
 // Width of a token in pixels, as the page was laid out (GfxRenderer::getTextAdvanceX on the device).
 using MeasureText = std::function<int(const char* text, EpdFontFamily::Style style)>;
 
-// `em`: the width of one full-width character in the page's font (for the paragraph heuristic).
-PageModel buildPageModel(const Page& page, const MeasureText& measure, int em);
+// `em`: the width of one full-width character in the page's font, and `ascender` its ascender (for the
+// furigana height): both feed the paragraph heuristic.
+PageModel buildPageModel(const Page& page, const MeasureText& measure, int em, int ascender);
 
 }  // namespace lexipoint::text

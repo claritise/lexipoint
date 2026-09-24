@@ -24,7 +24,9 @@ TaggedLanguage parseLanguageTag(std::string_view dcLanguage);
 enum class LanguageSource { Override, Metadata, Kana, DefaultForHan, None };
 
 struct LanguageDecision {
-  std::optional<Language> language;  // nullopt: Lexirise isn't used, StarDict answers
+  std::optional<Language> language;  // what to send Lexirise; nullopt: StarDict answers
+  std::optional<Language> detected;  // what the text is, even when that language is switched off
+                                     // (it still picks the punctuation rules)
   LanguageSource source = LanguageSource::None;
 };
 
@@ -36,7 +38,9 @@ class BookLanguage {
 
   // Precedence: the per-book override (set from the card), then the metadata, then the sentence
   // itself: any kana → Japanese; Han without kana → settings.defaultLanguage; no CJK → none. A
-  // language that is switched off in settings (or Lexirise itself) gives none.
+  // language that is switched off in settings (or Lexirise itself) isn't sent, but is still `detected`.
+  // Kana means real hiragana/katakana: the middle dot ・ and the long-vowel mark ー also appear in
+  // Chinese transliterated names (哈利・波特), so they don't count.
   LanguageDecision decide(std::string_view sentence, const Settings& settings) const;
   // Whether decide() looks at the sentence at all (no override, and the metadata doesn't say).
   bool dependsOnSentence() const { return !override_ && tagged_ == TaggedLanguage::Unknown; }

@@ -1,8 +1,9 @@
 #pragma once
 
 // From a laid-out page and a tapped token to the sentence around it, plus the tap's offset in the
-// server's unit (sentence-extraction.md). Pure: the page arrives as a PageModel (PageModelHal builds
-// one from CrossPoint's Page on the device). Tests: test/lexirise_sentence.
+// server's unit (sentence-extraction.md). Pure: the page arrives as a PageModel (PageModelAdapter builds
+// one from CrossPoint's Page). Tests: test/lexirise_sentence, and end to end through CrossPoint's real
+// layout in test/lexirise_pagemodel.
 
 #include <cstddef>
 #include <cstdint>
@@ -32,9 +33,12 @@ struct TokenRef {
 };
 
 struct BuiltSentence {
-  std::string text;             // UTF-8
-  uint32_t tapOffset = 0;       // the tapped token's start in `text`, in UTF-16 code units (Lexirise's charStart)
-  uint32_t tapLength = 0;       // its length, same unit
+  std::string text;  // UTF-8
+  // The tapped text's start in `text`, in UTF-16 code units (Lexirise's charStart), and its length. A
+  // laid-out token can hold more than one sentence (Chinese “好。”“走 is one token): the tap is its first
+  // piece with a letter in it.
+  uint32_t tapOffset = 0;
+  uint32_t tapLength = 0;
   bool truncatedLeft = false;   // cut by the page top or the cap, not by a sentence start
   bool truncatedRight = false;  // cut by the page bottom or the cap, not by a sentence end
 };

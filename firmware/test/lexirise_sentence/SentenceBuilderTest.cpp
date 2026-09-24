@@ -19,61 +19,54 @@ using lexipoint::text::utf16Length;
 
 namespace {
 
-bool isCjkish(const uint32_t cp) {
-  return utf8IsCjkCodepoint(cp) || cp == 0x201C || cp == 0x201D || cp == 0x2018 || cp == 0x2019 || cp == 0x2026;
-}
-// Glued to the token before (CrossPoint's no-break-before punctuation) / to the token after.
-bool gluesLeft(const uint32_t cp) {
-  for (const uint32_t c : {0x3002u, 0x3001u, 0xFF0Cu, 0xFF0Eu, 0xFF01u, 0xFF1Fu, 0x300Du, 0x300Fu, 0xFF09u, 0x3011u,
-                           0x300Bu, 0x201Du, 0x2019u, 0x2026u, 0xFF1Au, 0xFF1Bu}) {
+// Reference copy of CrossPoint's CJK line-break rules (ParsedText.cpp: isNoBreakBefore/AfterCjkPunctuation,
+// hasCjkBreakOpportunityBetween), so the tokens here are the tokens the reader lays out. The end-to-end
+// suite (test/lexirise_pagemodel) runs the real parser and catches any drift.
+bool noBreakBefore(const uint32_t cp) {
+  for (const uint32_t c :
+       {0x2Eu,   0x2Cu,   0x3Au,   0x3Bu,   0x21u,   0x3Fu,   0x29u,   0x5Du,   0x7Du,   0xBBu,   0x2019u,
+        0x201Du, 0x3001u, 0x3002u, 0x3009u, 0x300Bu, 0x300Du, 0x300Fu, 0x3011u, 0x3015u, 0x3017u, 0x3019u,
+        0x301Bu, 0xFF01u, 0xFF09u, 0xFF0Cu, 0xFF0Eu, 0xFF1Au, 0xFF1Bu, 0xFF1Fu, 0xFF3Du, 0xFF5Du}) {
     if (cp == c) return true;
   }
   return false;
 }
-bool gluesRight(const uint32_t cp) {
-  for (const uint32_t c : {0x300Cu, 0x300Eu, 0xFF08u, 0x3010u, 0x300Au, 0x201Cu, 0x2018u}) {
+bool noBreakAfter(const uint32_t cp) {
+  for (const uint32_t c : {0x28u, 0x5Bu, 0x7Bu, 0xABu, 0x2018u, 0x201Cu, 0x3008u, 0x300Au, 0x300Cu, 0x300Eu, 0x3010u,
+                           0x3014u, 0x3016u, 0x3018u, 0x301Au, 0xFF08u, 0xFF3Bu, 0xFF5Bu}) {
     if (cp == c) return true;
   }
   return false;
+}
+bool breakBetween(const uint32_t left, const uint32_t right) {
+  if (!utf8IsCjkBreakable(left) && !utf8IsCjkBreakable(right)) return false;
+  if (noBreakAfter(left) || noBreakBefore(right)) return false;
+  return !utf8IsCombiningMark(right);
 }
 
-// Splits one line the way CrossPoint lays it out: one CJK character per token (with the punctuation
-// that can't start or end a line glued on), Latin words whole, spaces dropped.
+// Splits one line the way CrossPoint lays it out: words at spaces, then CJK break opportunities
+// within each word.
 TextLine layout(const std::string& text, const bool startsParagraph = false) {
   TextLine line;
   line.startsParagraph = startsParagraph;
-  std::string latin;
-  bool glueNext = false;
-  const auto flushLatin = [&] {
-    if (!latin.empty()) line.tokens.push_back(latin);
-    latin.clear();
+  std::string word;
+  uint32_t prev = 0;
+  const auto flush = [&] {
+    if (!word.empty()) line.tokens.push_back(word);
+    word.clear();
+    prev = 0;
   };
   const auto* p = reinterpret_cast<const unsigned char*>(text.c_str());
   while (const uint32_t cp = utf8NextCodepoint(&p)) {
-    std::string ch;
-    utf8AppendCodepoint(cp, ch);
     if (cp == ' ') {
-      flushLatin();
+      flush();
       continue;
     }
-    if (!isCjkish(cp)) {
-      if (glueNext && !line.tokens.empty() && latin.empty()) {
-        latin = line.tokens.back();  // an opener glues onto the next word
-        line.tokens.pop_back();
-      }
-      glueNext = false;
-      latin += ch;
-      continue;
-    }
-    flushLatin();
-    if ((gluesLeft(cp) && !line.tokens.empty() && !glueNext) || (glueNext && !line.tokens.empty())) {
-      line.tokens.back() += ch;
-    } else {
-      line.tokens.push_back(ch);
-    }
-    glueNext = gluesRight(cp);
+    if (prev != 0 && breakBetween(prev, cp)) flush();
+    utf8AppendCodepoint(cp, word);
+    prev = cp;
   }
-  flushLatin();
+  flush();
   return line;
 }
 
@@ -224,6 +217,17 @@ TEST(SentenceJa, InvisibleCharactersAreDropped) {
   EXPECT_FALSE(buildSentence(page, {0, 9}, Script::Japanese).has_value());
 }
 
+TEST(SentenceZh, OneTokenHoldingTwoSentences) {
+  // CrossPoint never splits two non-CJK characters, so “好。”“走 is one laid-out token.
+  const TextLine line = layout("“好。”“走吧。”", true);
+  ASSERT_EQ(line.tokens.front(), "“好。”“走");
+  const PageModel page{{line}};
+  const auto s = build(page, "好", Script::Chinese);  // the tap lands on its first piece with a letter
+  EXPECT_EQ(s.text, "“好。”");
+  EXPECT_EQ(tapped(s), "“好。”");
+  EXPECT_EQ(build(page, "吧", Script::Chinese).text, "“走吧。”");
+}
+
 TEST(SentenceZh, DialogueTitlesEllipsisAndMixedText) {
   const PageModel dialogue{{layout("他说：", true), layout("“明天再来吧。”", true), layout("她点了点头。", true)}};
   EXPECT_EQ(build(dialogue, "明", Script::Chinese).text, "“明天再来吧。”");
@@ -256,6 +260,12 @@ TEST(SentenceZh, CurlyQuotesAreClosersOnlyInChinese) {
   // English keeps treating ” as an ordinary closer, but never as a dialogue break.
   const PageModel en{{layout("He said “no” “yes” and left.", true)}};
   EXPECT_EQ(build(en, "yes", Script::Latin).text, "He said “no” “yes” and left.");
+}
+
+TEST(SentenceEn, NonBreakingSpaceTokensAreOneSpace) {
+  PageModel page{{{{"Mr", "\xC2\xA0", "Smith", "left."}, true}}};
+  EXPECT_EQ(build(page, "Smith", Script::Latin).text, "Mr Smith left.");
+  EXPECT_FALSE(buildSentence(page, {0, 1}, Script::Latin).has_value());  // nothing to look up in a space
 }
 
 TEST(SentenceEn, WordsJoinWithSpacesAndStopAtPunctuation) {

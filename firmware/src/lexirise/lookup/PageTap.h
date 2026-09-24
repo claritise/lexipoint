@@ -1,8 +1,10 @@
 #pragma once
 
-// The device side of a tap: CrossPoint's Page, measured with the renderer, turned into a TapContext
-// (the sentence and the language, text/TapContext.h). Used by the word-select hook (P2's debug log)
-// and the Lexirise provider (P3).
+// The device side of a tap. The page model is built when word select opens (extractWords, after the SD
+// font has the page's glyphs), since measuring text on a tap would race the render task over the glyph
+// cache; a tap is then pure work (text/TapContext.h). Reused by the Lexirise provider (P3).
+
+#include <string>
 
 #include "lexirise/text/TapContext.h"
 
@@ -11,11 +13,14 @@ class Page;
 
 namespace lexipoint::lookup {
 
-// `fontId`: the font the page was laid out with (DictionaryWordSelectActivity::fontId).
-text::TapContext describePageTap(GfxRenderer& renderer, int fontId, const Page& page, text::TokenRef tap,
-                                 const text::BookLanguage& book);
+// Text to add to the page's glyph warm-up before pageModelFor() measures: the em probe.
+constexpr const char* kEmProbe = "\xE5\x9B\xBD";  // 国: one full-width character
 
-// One debug line for the P2 gate: language, source, offsets, truncation, sentence.
-void logTapContext(const text::TapContext& context);
+// Measures the page (line ends, the em, furigana heights) with the font it was laid out in. Call where
+// DictionaryWordSelectActivity measures its words: after ensureSdCardFontReady() on the page's text.
+text::PageModel pageModelFor(GfxRenderer& renderer, int fontId, const Page& page);
+
+// P2's debug line for a tap: language, source, offsets, truncation, sentence (debug builds only).
+void logTap(const text::PageModel& page, text::TokenRef tap, const text::BookLanguage& book);
 
 }  // namespace lexipoint::lookup

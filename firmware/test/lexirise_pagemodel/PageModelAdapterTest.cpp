@@ -22,6 +22,7 @@ namespace {
 
 constexpr int kEm = 20;
 constexpr int kAdvance = 30;
+constexpr int kAscender = 16;
 
 // Every token is kEm wide per codepoint-ish (bytes / 3 for CJK is close enough here).
 int measure(const char* text, EpdFontFamily::Style) {
@@ -57,7 +58,7 @@ TEST(PageModelAdapter, LinesTokensAndOrder) {
   Page page;
   page.elements.push_back(line({"彼", "は", "来", "た。"}, 0));
   page.elements.push_back(line({"猫", "が", "鳴", "い", "た。"}, 1));
-  const PageModel model = buildPageModel(page, measure, kEm);
+  const PageModel model = buildPageModel(page, measure, kEm, kAscender);
   ASSERT_EQ(model.lines.size(), 2u);
   EXPECT_EQ(model.lines[0].tokens, (std::vector<std::string>{"彼", "は", "来", "た。"}));
   EXPECT_EQ(model.lines[1].tokens[2], "鳴");
@@ -66,7 +67,7 @@ TEST(PageModelAdapter, LinesTokensAndOrder) {
 TEST(PageModelAdapter, RubyIsNeverInTheText) {
   Page page;
   page.elements.push_back(line({"漢", "字", "を", "読", "む。"}, 0, 0, {"かん", "じ", "", "よ", ""}));
-  const PageModel model = buildPageModel(page, measure, kEm);
+  const PageModel model = buildPageModel(page, measure, kEm, kAscender);
   const auto s = buildSentence(model, {0, 3}, Script::Japanese);
   ASSERT_TRUE(s);
   EXPECT_EQ(s->text, "漢字を読む。");
@@ -78,7 +79,7 @@ TEST(PageModelAdapter, ImagesAndRulesAreSkippedWithoutBreakingTheSentence) {
   page.elements.push_back(line(fullLine(), 0));
   page.elements.push_back(std::make_unique<PageImage>(std::make_unique<ImageBlock>("a.png", "a.png", 10, 10), 0, 40));
   page.elements.push_back(line({"い", "た。"}, 2));
-  const PageModel model = buildPageModel(page, measure, kEm);
+  const PageModel model = buildPageModel(page, measure, kEm, kAscender);
   ASSERT_EQ(model.lines.size(), 2u);  // line indexes count text lines only, like extractWords()
   EXPECT_EQ(model.lines[1].tokens[0], "い");
 }
@@ -89,7 +90,7 @@ TEST(PageModelAdapter, ParagraphStartsFromGeometry) {
   page.elements.push_back(line({"「", "そ", "う", "」"}, 1));  // short: the paragraph ends here
   page.elements.push_back(line({"「", "行", "こ", "う", "」"}, 2));
   page.elements.push_back(line({"\xE3\x80\x80", "彼", "は"}, 3));  // ideographic-space indent
-  const PageModel model = buildPageModel(page, measure, kEm);
+  const PageModel model = buildPageModel(page, measure, kEm, kAscender);
   ASSERT_EQ(model.lines.size(), 4u);
   EXPECT_FALSE(model.lines[0].startsParagraph);
   EXPECT_FALSE(model.lines[1].startsParagraph);

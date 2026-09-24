@@ -46,6 +46,29 @@ TEST(ParagraphBreaks, GapIndentIdeographicSpaceAndStyle) {
   EXPECT_TRUE(paragraphStarts(center, kEm)[1]);
 }
 
+TEST(ParagraphBreaks, FuriganaLineHeightIsNotAGap) {
+  // Line 1 carries furigana: the next line sits rubyShift lower, which isn't paragraph spacing.
+  std::vector<LineShape> lines = {full(0), full(1), full(2), full(3)};
+  lines[1].rubyShift = 16;
+  lines[2].top += 16;
+  lines[3].top += 16;
+  EXPECT_EQ(paragraphStarts(lines, kEm), (std::vector<bool>{false, false, false, false}));
+}
+
+TEST(ParagraphBreaks, HangingIndentIsNotAParagraphPerLine) {
+  // First line at the column, the rest indented (text-indent < 0): one paragraph.
+  std::vector<LineShape> lines = {full(0), {20, 400, kAdvance}, {20, 400, 2 * kAdvance}, {20, 400, 3 * kAdvance}};
+  EXPECT_EQ(paragraphStarts(lines, kEm), (std::vector<bool>{false, false, false, false}));
+}
+
+TEST(ParagraphBreaks, WithoutAnEmOnlyUnmeasuredSignalsCount) {
+  std::vector<LineShape> lines = {full(0), {0, 100, kAdvance}, full(2)};  // would be "short" with an em
+  lines[2].startsWithIdeographicSpace = false;
+  EXPECT_EQ(paragraphStarts(lines, 0), (std::vector<bool>{false, false, false}));
+  lines[2].startsWithIdeographicSpace = true;
+  EXPECT_TRUE(paragraphStarts(lines, 0)[2]);
+}
+
 TEST(ParagraphBreaks, ThePageTopOnlyByIndent) {
   EXPECT_FALSE(paragraphStarts({full(0), full(1)}, kEm)[0]);
   EXPECT_TRUE(paragraphStarts({{20, 400, 0}, full(1)}, kEm)[0]);
@@ -57,6 +80,7 @@ TEST(TapContext, MetadataPicksThePunctuation) {
   const PageModel page{{{{"他", "说", "“好", "”", "“走", "吧", "”"}, true}}};
   const Settings s;
   const auto zh = describeTap(page, {0, 5}, BookLanguage("zh", std::nullopt), s);
+  EXPECT_EQ(zh.language.detected, Language::Chinese);
   EXPECT_EQ(zh.script, Script::Chinese);
   ASSERT_TRUE(zh.sentence);
   EXPECT_EQ(zh.sentence->text, "“走吧”");
@@ -84,4 +108,16 @@ TEST(TapContext, NoMetadataDecidesFromTheSentenceThenRecuts) {
 
   const PageModel empty{{{{"​"}, true}}};
   EXPECT_FALSE(describeTap(empty, {0, 0}, BookLanguage("", std::nullopt), s).sentence);
+}
+
+TEST(TapContext, ASwitchedOffLanguageStillPicksItsPunctuation) {
+  Settings s;
+  s.japanese.enabled = false;
+  const PageModel page{{{{"「う", "ん」", "「行", "く」"}, true}}};
+  const auto t = describeTap(page, {0, 2}, BookLanguage("ja", std::nullopt), s);
+  EXPECT_FALSE(t.language.language);  // not sent
+  EXPECT_EQ(t.language.detected, Language::Japanese);
+  EXPECT_EQ(t.script, Script::Japanese);  // but cut as Japanese: 」「 splits
+  ASSERT_TRUE(t.sentence);
+  EXPECT_EQ(t.sentence->text, "「行く」");
 }

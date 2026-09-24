@@ -52,6 +52,15 @@ TEST(BookLanguage, SentenceHeuristicWhenMetadataIsMissingOrWrong) {
   EXPECT_FALSE(BookLanguage("en", std::nullopt).decide("An English sentence.", s).language);  // StarDict
 }
 
+TEST(BookLanguage, MiddleDotAndLongVowelMarkAreNotKana) {
+  Settings s;
+  s.defaultLanguage = Language::Chinese;
+  // Chinese transliterated names use ・ and sometimes ー: still Han-only, so the default applies.
+  EXPECT_EQ(BookLanguage("", std::nullopt).decide("哈利・波特来了。", s).language, Language::Chinese);
+  EXPECT_EQ(BookLanguage("", std::nullopt).decide("ー", s).language, std::nullopt);
+  EXPECT_EQ(BookLanguage("", std::nullopt).decide("ハリー・ポッター", s).language, Language::Japanese);
+}
+
 TEST(BookLanguage, OverrideBeatsEverything) {
   const Settings s;
   const auto d = BookLanguage("ja", Language::Chinese).decide("ひらがな", s);
@@ -63,7 +72,9 @@ TEST(BookLanguage, OverrideBeatsEverything) {
 TEST(BookLanguage, SwitchedOffLanguagesGoToStarDict) {
   Settings s;
   s.chinese.enabled = false;
-  EXPECT_FALSE(BookLanguage("zh", std::nullopt).decide("学生", s).language);
+  const auto off = BookLanguage("zh", std::nullopt).decide("学生", s);
+  EXPECT_FALSE(off.language);
+  EXPECT_EQ(off.detected, Language::Chinese);                                  // still known, for the punctuation
   EXPECT_FALSE(BookLanguage("ja", Language::Chinese).decide("", s).language);  // override can't force it on
   EXPECT_EQ(BookLanguage("ja", std::nullopt).decide("", s).language, Language::Japanese);
   s.enabled = false;

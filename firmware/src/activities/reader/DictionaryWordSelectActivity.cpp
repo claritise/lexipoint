@@ -90,7 +90,13 @@ void DictionaryWordSelectActivity::extractWords() {
     const int rubyShift = block->getRubyShift(ascender);
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
-      if (!isSelectableToken(text)) continue;
+      if (!isSelectableToken(text)) {
+#if LEXIRISE
+        pageText.append(text);  // LEXIPOINT: the page model measures every line's last token
+        pageText.push_back(' ');
+#endif
+        continue;
+      }
 
       WordBox box;
       box.x = static_cast<int16_t>(line->xPos + block->wordXpos(i) + marginLeft);
@@ -117,10 +123,17 @@ void DictionaryWordSelectActivity::extractWords() {
   }
 
   if (styleMask == 0) styleMask = 0x01;  // REGULAR
+#if LEXIRISE
+  pageText.append(lexipoint::lookup::kEmProbe);  // LEXIPOINT
+#endif
   renderer.ensureSdCardFontReady(fontId, pageText.c_str(), styleMask);
   for (auto& word : words) {
     word.width = static_cast<int16_t>(renderer.getTextAdvanceX(fontId, word.text, word.style));
   }
+#if LEXIRISE
+  // LEXIPOINT: measured here, with the glyphs ready and before the render task draws this activity.
+  pageModel = lexipoint::lookup::pageModelFor(renderer, fontId, *page);
+#endif
 }
 
 // Index of the word whose box (with finger-sized slop) contains the touch
@@ -166,12 +179,11 @@ void DictionaryWordSelectActivity::moveVertical(const int direction) {
 }
 
 void DictionaryWordSelectActivity::performLookup() {
-#if LEXIRISE
-  // LEXIPOINT (P2): the sentence and language this tap would send to Lexirise, logged for the gate. P3
-  // routes the lookup through the provider chain instead.
+#if LEXIRISE && LOG_LEVEL >= 2
+  // LEXIPOINT (P2): the sentence and language this tap would send to Lexirise, logged for the gate (pure
+  // work on the model built at onEnter). P3 routes the lookup through the provider chain instead.
   if (book && selected >= 0 && selected < static_cast<int>(words.size())) {
-    lexipoint::lookup::logTapContext(lexipoint::lookup::describePageTap(
-        renderer, fontId, *page, {words[selected].line, words[selected].token}, *book));
+    lexipoint::lookup::logTap(pageModel, {words[selected].line, words[selected].token}, *book);
   }
 #endif
   popup = Popup::Busy;

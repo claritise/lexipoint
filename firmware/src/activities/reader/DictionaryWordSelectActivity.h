@@ -12,7 +12,8 @@
 #include <optional>
 #include <string>
 
-#include "lexirise/text/BookLanguage.h"  // LEXIPOINT
+#include "lexirise/text/BookLanguage.h"     // LEXIPOINT
+#include "lexirise/text/SentenceBuilder.h"  // LEXIPOINT
 #endif
 
 // Word selection over the current reader page: Left/Right step through words
@@ -72,6 +73,7 @@ class DictionaryWordSelectActivity final : public Activity {
   std::vector<WordBox> words;
 #if LEXIRISE
   std::optional<lexipoint::text::BookLanguage> book;  // LEXIPOINT
+  lexipoint::text::PageModel pageModel;               // LEXIPOINT: built in extractWords()
 #endif
   int selected = 0;
   uint16_t rowCount = 0;

@@ -12,8 +12,8 @@ namespace lexipoint::text {
 
 struct TapContext {
   std::optional<BuiltSentence> sentence;  // nullopt: nothing to look up at the tap
-  LanguageDecision language;              // nullopt language: Lexirise isn't used for it
-  Script script = Script::Latin;          // the punctuation the sentence was cut with
+  LanguageDecision language;              // .language nullopt: Lexirise isn't used for it
+  Script script = Script::Latin;          // the punctuation the sentence was cut with (from .detected)
 };
 
 // The punctuation follows the language, and without metadata the language follows the sentence: a
