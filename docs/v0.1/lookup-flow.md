@@ -252,7 +252,9 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   (`touchEntry`). Then any close of the card (Back, Home, ✕, a tap or swipe down outside it) goes straight
   back to the reader (`card::AfterCard::BackToReader`), and so does closing StarDict's definition. Opened
   from the menu, the card closes to word select, as before. A long-press on no word still opens word
-  select as usual, and it behaves as menu-opened.
+  select as usual, and it behaves as menu-opened. For a touch-opened word select, a lookup that ends in a
+  notice instead (Not found, No dictionary set, a dictionary error) also goes back to the reader once the
+  notice has been read.
 - **A long-press on another word while the card is open** (`popup-ui.md` §3.2): in card view, a
   long-press on the page outside the card closes it with that point (`Outcome::lookUpAt` →
   `LiveOutcome::lookUpAt` → `AfterCard::LookUpAt`), and word select looks up the word there on its next
@@ -260,7 +262,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   view (which covers the page) a long-press does nothing, and so it does when the reader's page isn't
   drawn under the card (a landscape book, whose page is laid out in other coordinates) and on the bench.
   The card always takes (consumes) a long-press, so the finger's lift is never also a tap on it. A long-press on
-  no word closes the card as a tap outside would. An unsent save is still said first (`UnsentSave`).
+  no word closes the card as a tap outside would. An unsent save is said first (`UnsentSave`), and then
+  the close carries on (`card::afterClosed`: the long-pressed word, or back to the reader).
 - **Swipes** (`popup-ui.md` §3.2, deferred from P4): `CardController::swipe`: up on the card opens the
   detail view, down goes back to the card and from the card closes it, left / right step the detail view's
   tabs (stopping at Meaning and ⋯). A swipe only counts when it starts on the card
@@ -271,7 +274,9 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   14 % the reader menu or Home). So a "previous tab" swipe must start right of x = 120
   (`swipeClearOfEdges`). Both ends come from `MappedInputManager::peekSwipe` (hook), and the direction is
   the SDK's dominant-axis rule. `lxctl card-gestures` drives them on the bench card.
-- **Each language's own offline dictionary** (`settings.md` §1b): `lookup::starDictFolder`. The tap is
+- **Each language's own offline dictionary** (`settings.md` §1b): `lookup::chooseStarDict`. If the
+  language's folder can't be opened (removed from the card while its row is hidden, say), CrossPoint's
+  own dictionary answers instead. One settings copy serves the whole lookup (gate, sentence, card). The tap is
   only described (sentence and language) when Lexirise is asked or a language has its own dictionary, so
   a plain StarDict lookup stays upstream's. A language's own dictionary makes the long-press a lookup
   (`lookup::anyStarDict`) unless the book's override or metadata names the other language; an untagged

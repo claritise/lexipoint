@@ -145,7 +145,8 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
   (`LanguageDecision::detected`), so the choice **still counts while that language's Lexirise lookups are
   off**, which is exactly when StarDict answers every tap in it (the row is hidden then, and the value
   kept). Word select reopens its dictionary when the language changes, and opens without CrossPoint's
-  dictionary when either language has its own.
+  dictionary when either language has its own. If the chosen folder can't be opened (removed from the
+  card), CrossPoint's own dictionary answers instead.
 
 ## 2. The API key
 
