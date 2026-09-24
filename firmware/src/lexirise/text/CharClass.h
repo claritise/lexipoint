@@ -3,6 +3,7 @@
 // Character classes the sentence builder and language detection use, in one place (the per-language
 // punctuation sets are in Punctuation). Pure, header-only; tests: test/lexirise_sentence.
 
+#include <cstddef>
 #include <cstdint>
 
 namespace lexipoint::text::chars {
@@ -36,6 +37,21 @@ inline bool isPunctuationLike(const uint32_t cp) {
          (cp >= 0x3014 && cp <= 0x301F) || cp == 0x30FB || (cp >= 0xFF01 && cp <= 0xFF0F) ||
          (cp >= 0xFF1A && cp <= 0xFF20) || (cp >= 0xFF3B && cp <= 0xFF40) || (cp >= 0xFF5B && cp <= 0xFF65) ||
          cp == 0x00A0 || cp == 0x00AB || cp == 0x00BB;
+}
+
+constexpr uint32_t kRightSingleQuote = 0x2019;  // ’: a closing quote, an apostrophe, or a word's start (’n’)
+
+// "’s" "’t" "’ll" …: an apostrophe suffix that belongs to the word before it (Dickens’s, don’t), even when
+// a style change split it off.
+inline bool isContractionSuffix(const uint32_t* cps, const size_t count) {
+  if (count < 2 || cps[0] != kRightSingleQuote) return false;
+  const auto lower = [](const uint32_t c) { return (c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c; };
+  const uint32_t a = lower(cps[1]);
+  const uint32_t b = count > 2 ? lower(cps[2]) : 0;
+  const size_t letters = (count > 2 && isAlnum(cps[2])) ? 2 : 1;
+  if (count > 1 + letters && isAlnum(cps[1 + letters])) return false;  // a longer word: ’twas, ’tis
+  if (letters == 1) return a == 's' || a == 't' || a == 'd' || a == 'm';
+  return (a == 'l' && b == 'l') || (a == 'r' && b == 'e') || (a == 'v' && b == 'e');
 }
 
 // Latin punctuation that hugs the word before it (no space: "word," "word." "(word)") ...

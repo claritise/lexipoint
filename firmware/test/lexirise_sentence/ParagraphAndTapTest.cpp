@@ -79,6 +79,21 @@ TEST(ParagraphBreaks, ASpaceAfterAPauseIsNotAnIndent) {
   EXPECT_TRUE(paragraphStarts(lines, kEm)[1]);
 }
 
+TEST(ParagraphBreaks, EllipsisIsNotAPause) {
+  // A paragraph ending in a bare …… (nearly full line) then a 　-indented one: still a paragraph start.
+  std::vector<LineShape> lines = {full(0), full(1)};
+  lines[1].startsWithIdeographicSpace = true;
+  EXPECT_TRUE(paragraphStarts(lines, kEm)[1]);
+}
+
+TEST(ParagraphBreaks, UsualAdvanceSurvivesDialoguePages) {
+  // Extra paragraph spacing on a dialogue page: most gaps are paragraph gaps (40), line gaps (30) rarer.
+  std::vector<LineShape> lines = {{0, 400, 0},   {0, 400, 40},  {0, 400, 80}, {0, 400, 110},
+                                  {0, 400, 140}, {0, 400, 180}, {0, 400, 220}};
+  const auto starts = paragraphStarts(lines, 0);  // no em: only the gap signal can fire
+  EXPECT_EQ(starts, (std::vector<bool>{false, true, true, false, false, true, true}));
+}
+
 TEST(ParagraphBreaks, ThePageTopOnlyByIndent) {
   EXPECT_FALSE(paragraphStarts({full(0), full(1)}, kEm)[0]);
   EXPECT_TRUE(paragraphStarts({{20, 400, 0}, full(1)}, kEm)[0]);

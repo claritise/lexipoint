@@ -22,8 +22,9 @@ struct LineShape {
   int blockInset = 0;                       // the block's left margin + padding
   int alignment = 0;                        // the block's text-align
   int rubyShift = 0;                        // extra height a furigana line takes above its text
-  // The line ends in ？！?! or …: the only places Japanese puts a full-width space mid-paragraph, so a
-  // 　 that wraps to the next line after one of these is a pause, not an indent.
+  // The line ends in ？！?!: where Japanese puts a full-width space mid-paragraph, so a 　 that wraps to
+  // the next line after one is a pause, not an indent. (Not …: a paragraph ending in a bare …… is only
+  // ended by the paragraph break itself, so its next line's 　 must still count.)
   bool endsWithPause = false;
 };
 
@@ -41,15 +42,23 @@ inline std::vector<bool> paragraphStarts(const std::vector<LineShape>& lines, co
   }
   // The gap from line i-1 to line i, less the furigana height line i-1 carries.
   const auto gap = [&lines](const size_t i) { return lines[i].top - lines[i - 1].top - lines[i - 1].rubyShift; };
-  // The usual line advance: the median of those gaps.
+  // The usual line advance: the smallest gap that occurs at least twice (with extra paragraph spacing on
+  // a dialogue page, most gaps can be paragraph gaps, so the median would be one of those), else the
+  // median.
   std::vector<int> advances;
   for (size_t i = 1; i < lines.size(); i++) {
     if (gap(i) > 0) advances.push_back(gap(i));
   }
   int advance = 0;
   if (!advances.empty()) {
-    std::nth_element(advances.begin(), advances.begin() + advances.size() / 2, advances.end());
+    std::sort(advances.begin(), advances.end());
     advance = advances[advances.size() / 2];
+    for (size_t i = 1; i < advances.size(); i++) {
+      if (advances[i] == advances[i - 1]) {
+        advance = advances[i];
+        break;
+      }
+    }
   }
 
   const bool useEm = em > 0;

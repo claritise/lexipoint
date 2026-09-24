@@ -278,8 +278,11 @@ class Builder {
     const uint32_t right = next.cps.front();
     if (utf8IsCjkCodepoint(left) || utf8IsCjkCodepoint(right)) return Spacing::None;
     if (next.lineStart && chars::isLatinHyphen(left)) return Spacing::None;
-    // ’ closes a quote ("go’" ) but also starts a word ("’n’", "’tis"): only a bare one attaches.
-    const bool apostropheWord = right == 0x2019 && next.cps.size() > 1 && !chars::isPunctuationLike(next.cps[1]);
+    // ’ closes a quote (go’) and ends a word (Dickens’s, don’t), but also starts one (’n’, ’tis): a piece
+    // starting with ’ attaches unless it is a word of its own.
+    const bool apostropheWord = right == chars::kRightSingleQuote && next.cps.size() > 1 &&
+                                !chars::isPunctuationLike(next.cps[1]) &&
+                                !(chars::isAlnum(left) && chars::isContractionSuffix(next.cps.data(), next.cps.size()));
     if ((chars::attachesLeft(right) && !apostropheWord) || chars::attachesRight(left)) return Spacing::None;
     return Spacing::Latin;
   }

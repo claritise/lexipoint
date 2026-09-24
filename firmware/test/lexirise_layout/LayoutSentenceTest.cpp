@@ -133,6 +133,15 @@ TEST_F(LayoutSentence, PauseSpaceWrappingToALineStartIsNotAParagraph) {
   EXPECT_EQ(sentence("思", Script::Japanese), "本当に何だ？　と思った。");
 }
 
+TEST_F(LayoutSentence, EllipsisParagraphEndThenIndentedParagraph) {
+  // The first paragraph's last line is nearly full and ends in a bare ……: only the next paragraph's 　
+  // tells them apart.
+  layout(
+      "<p style=\"text-indent:0\">彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼彼だった……</p>"
+      "<p style=\"text-indent:0\">　翌朝、彼は起きた。</p>");
+  EXPECT_EQ(sentence("翌", Script::Japanese), "翌朝、彼は起きた。");
+}
+
 TEST_F(LayoutSentence, ChineseDialogueInOneToken) {
   layout("<p>他说：</p><p>“好。”“走吧。”</p>");
   EXPECT_EQ(sentence("吧", Script::Chinese), "“走吧。”");

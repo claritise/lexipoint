@@ -51,7 +51,7 @@ PageModel buildPageModel(const Page& page, const MeasureText& measure, const int
       shape.right = line->xPos + block->wordXpos(last) + measure(block->wordText(last), block->wordStyle(last));
       shape.startsWithIdeographicSpace = firstCodepoint(block->wordText(0)) == chars::kIdeographicSpace;
       const uint32_t end = lastCodepoint(block->wordText(last));
-      shape.endsWithPause = Punctuation::isQuestionOrExclamation(end) || Punctuation::isEllipsis(end);
+      shape.endsWithPause = Punctuation::isQuestionOrExclamation(end);
     } else {
       shape.left = shape.right = line->xPos;
     }

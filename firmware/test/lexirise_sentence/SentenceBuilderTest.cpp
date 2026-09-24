@@ -360,3 +360,8 @@ TEST(SentenceShapes, AbbreviationBeforeASpaceEnds) {
   const PageModel ja{{layout("彼はＵ．Ｓ．Ａ．　次の文だ。", true)}};
   EXPECT_EQ(build(ja, "次").text, "次の文だ。");
 }
+
+TEST(SentenceShapes, ContractionsSplitByStylesRejoin) {
+  PageModel en{{{{"Dickens", "\u2019s", "novel", "and", "Rock", "\u2019n\u2019", "roll", "\u2019twas"}, true}}};
+  EXPECT_EQ(build(en, "novel", Script::Latin).text, "Dickens\u2019s novel and Rock \u2019n\u2019 roll \u2019twas");
+}
