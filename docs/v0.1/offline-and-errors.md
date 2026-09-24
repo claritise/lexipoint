@@ -92,7 +92,7 @@ doesn't have (`ja-card-unanswered`, `ja-expanded-meaning-unanswered`, `ja-card-s
   rejected`, or `Lexirise: not saved`. The level goes back to what
   Lexirise has meanwhile. Any 2xx is the `Saved as <level> · Undo` toast shown at the tap.
 - **Strings:** every word on the card is an I18n key (`STR_LEXI_CARD_*`, plus `STR_LEXI_NO_KEY`,
-  `STR_LEXI_AUTH_FAILED`, `STR_LEXI_RATE_LIMITED`, `STR_LEXI_OFFLINE`); languages without them fall back to
+  `STR_LEXI_AUTH_FAILED`, `STR_LEXI_RATE_LIMITED`, `STR_LEXI_OFFLINE`, `STR_LEXI_SAVE_FAILED`); languages without them fall back to
   English. The P4 bench keeps the reference's English.
 
 ## 4. The offline save queue (stretch, not v0.1)

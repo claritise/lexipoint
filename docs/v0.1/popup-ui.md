@@ -233,8 +233,8 @@ New `STR_LEXI_*` keys in `lib/I18n/translations/english.yaml` (and `japanese.yam
 `NOT_FOUND`, `RATE_LIMITED`, `AUTH_FAILED`, `SAVE_FAILED_RETRY`.
 
 **As built (P6):** every word on the card is a key named after its `CardStrings` field
-(`STR_LEXI_CARD_*`), plus `STR_LEXI_NO_KEY`, `STR_LEXI_AUTH_FAILED`, `STR_LEXI_RATE_LIMITED` and
-`STR_LEXI_OFFLINE` (`offline-and-errors.md` §3a).
+(`STR_LEXI_CARD_*`), plus `STR_LEXI_NO_KEY`, `STR_LEXI_AUTH_FAILED`, `STR_LEXI_RATE_LIMITED`,
+`STR_LEXI_OFFLINE` and `STR_LEXI_SAVE_FAILED` (`offline-and-errors.md` §3a).
 
 ## 5. Bench first
 
