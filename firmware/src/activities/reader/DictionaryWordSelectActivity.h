@@ -12,8 +12,9 @@
 #include <optional>
 #include <string>
 
-#include "lexirise/text/BookLanguage.h"     // LEXIPOINT
-#include "lexirise/text/SentenceBuilder.h"  // LEXIPOINT
+#include "lexirise/lookup/LexiriseLookup.h"  // LEXIPOINT
+#include "lexirise/text/BookLanguage.h"      // LEXIPOINT
+#include "lexirise/text/SentenceBuilder.h"   // LEXIPOINT
 #endif
 
 // Word selection over the current reader page: Left/Right step through words
@@ -36,6 +37,11 @@ class DictionaryWordSelectActivity final : public Activity {
 #if LEXIRISE
   // LEXIPOINT: the book's <dc:language> (and later its override), so a tap can pick its language.
   void setBook(const std::string& dcLanguage) { book.emplace(dcLanguage, std::nullopt); }
+  // LEXIPOINT: opened by a long-press on the page: select the word there and look it up at once.
+  void setInitialTouch(const int x, const int y) {
+    initialTouchX = x;
+    initialTouchY = y;
+  }
 #endif
 
  private:
@@ -74,6 +80,12 @@ class DictionaryWordSelectActivity final : public Activity {
 #if LEXIRISE
   std::optional<lexipoint::text::BookLanguage> book;  // LEXIPOINT
   lexipoint::text::PageModel pageModel;               // LEXIPOINT: built in extractWords()
+  int initialTouchX = -1;                             // LEXIPOINT: setInitialTouch()
+  int initialTouchY = -1;
+  bool lookupPending = false;  // LEXIPOINT: the long-press lookup runs on the first loop()
+  lexipoint::lookup::LookupOutcome lexiriseLookup(lexipoint::lookup::LookupCard& card, bool& busyShown);  // LEXIPOINT
+  void showLookupPopup(Popup kind, StrId message);                                                        // LEXIPOINT
+  bool starDictLookup(std::string& definition, std::string& headword, Dictionary::LookupResult* result);
 #endif
   int selected = 0;
   uint16_t rowCount = 0;

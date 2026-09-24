@@ -68,6 +68,10 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
   return {prev, next, tiltPrev || tiltNext};
 }
 
+// Width of each outer page-turn tap zone (the left and right thirds). LEXIPOINT: shared with the lookup's
+// long-press rule (lexirise/lookup/LongPress.h), so the two can't drift apart.
+inline int pageTurnZoneWidth(const int screenWidth) { return screenWidth / 3; }
+
 struct TouchPageTurn {
   bool prev;
   bool next;
@@ -102,7 +106,7 @@ inline TouchPageTurn detectTouchPageTurn(const GfxRenderer& renderer, const Mapp
   const int16_t height = static_cast<int16_t>(renderer.getScreenHeight());
   // Outer thirds only: the center column contains the reader-menu tap target
   // (isTouchMenuTap below), so it must not double as a page turn.
-  const int16_t zoneWidth = width / 3;
+  const int16_t zoneWidth = static_cast<int16_t>(pageTurnZoneWidth(width));
   const bool inverted = SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_INVERTED_TAP;
   const freeink::ui::TapZone zones[] = {
       {freeink::ui::Rect{0, 0, zoneWidth, height}, inverted ? READER_TOUCH_NEXT : READER_TOUCH_PREV},

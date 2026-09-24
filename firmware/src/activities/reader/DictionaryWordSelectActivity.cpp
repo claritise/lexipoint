@@ -14,7 +14,10 @@
 #include "DictionaryDefinitionActivity.h"
 #include "components/UITheme.h"
 #if LEXIRISE
-#include "lexirise/lookup/PageTap.h"  // LEXIPOINT
+#include "lexirise/LexiriseService.h"            // LEXIPOINT
+#include "lexirise/lookup/LexiriseLookup.h"      // LEXIPOINT
+#include "lexirise/lookup/PageTap.h"             // LEXIPOINT
+#include "lexirise/lookup/StarDictCandidates.h"  // LEXIPOINT
 #endif
 
 namespace {
@@ -59,6 +62,16 @@ void DictionaryWordSelectActivity::onEnter() {
     const int initial = closestInRow(rowCount / 2, renderer.getScreenWidth() / 2);
     if (initial >= 0) selected = initial;
   }
+#if LEXIRISE
+  // LEXIPOINT: a long-press opened this: that word, looked up on the first loop (after this render).
+  if (initialTouchX >= 0) {
+    const int touched = wordAt(initialTouchX, initialTouchY);
+    if (touched >= 0) {
+      selected = touched;
+      lookupPending = true;
+    }
+  }
+#endif
   requestUpdate();
 }
 
@@ -181,12 +194,28 @@ void DictionaryWordSelectActivity::moveVertical(const int direction) {
 }
 
 void DictionaryWordSelectActivity::performLookup() {
-#if LEXIRISE && LOG_LEVEL >= 2
-  // LEXIPOINT (P2): the sentence and language this tap would send to Lexirise, logged for the gate (pure
-  // work on the model built at onEnter). P3 routes the lookup through the provider chain instead.
-  if (book && selected >= 0 && selected < static_cast<int>(words.size())) {
-    lexipoint::lookup::logTap(pageModel, {words[selected].line, words[selected].token}, *book);
+#if LEXIRISE
+  // LEXIPOINT: Lexirise first; StarDict below only when it had no answer (lookup-flow.md §4).
+  lexipoint::lookup::LookupCard card;
+  bool busyShown = false;  // LEXIPOINT: lexiriseLookup() painted the busy popup
+  switch (lexipoint::lookup::chainStep(lexiriseLookup(card, busyShown), SETTINGS.dictionaryName[0] != '\0')) {
+    case lexipoint::lookup::ChainStep::ShowCard:
+      popup = Popup::None;
+      startActivityForResult(std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, card.headword(),
+                                                                            card.plainText(), false),
+                             [this](const ActivityResult&) { requestUpdate(); });
+      return;
+    case lexipoint::lookup::ChainStep::ShowNotFound:
+      showLookupPopup(Popup::NotFound, StrId::STR_DICT_NOT_FOUND);
+      return;
+    case lexipoint::lookup::ChainStep::NoDictionary:  // opened for Lexirise alone, which had no answer
+      showLookupPopup(Popup::Error, StrId::STR_DICT_NO_DICT_SET);
+      return;
+    case lexipoint::lookup::ChainStep::RunStarDict:
+      break;
   }
+#else
+  const bool busyShown = false;
 #endif
   popup = Popup::Busy;
   if (!dictOpenAttempted) {
@@ -198,7 +227,7 @@ void DictionaryWordSelectActivity::performLookup() {
     dictNeedsIndex = dictOpenOk && dict.needsIndex();
   }
   popupMsg = dictNeedsIndex ? StrId::STR_DICT_INDEXING : StrId::STR_DICT_LOOKING_UP;
-  requestUpdateAndWait();  // paint the page + busy popup before blocking on SD
+  if (!busyShown || dictNeedsIndex) requestUpdateAndWait();  // paint the page + busy popup before blocking on SD
 
   bool ok = dictOpenOk;
   Dictionary::IndexResult indexResult = Dictionary::IndexResult::Ok;
@@ -210,7 +239,11 @@ void DictionaryWordSelectActivity::performLookup() {
   std::string definition;
   std::string headword;
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
+#if LEXIRISE
+  const bool found = ok && starDictLookup(definition, headword, &result);  // LEXIPOINT: longest CJK prefix
+#else
   const bool found = ok && dict.lookup(words[selected].text, definition, headword, &result);
+#endif
 
   if (found) {
     popup = Popup::None;
@@ -265,6 +298,13 @@ void DictionaryWordSelectActivity::performLookup() {
 }
 
 void DictionaryWordSelectActivity::loop() {
+#if LEXIRISE
+  if (lookupPending) {  // LEXIPOINT: the long-press lookup (setInitialTouch)
+    lookupPending = false;
+    performLookup();
+    return;
+  }
+#endif
   if (popup == Popup::NotFound || popup == Popup::Error) {
     if (millis() - popupTime >= POPUP_DURATION_MS) {
       popup = Popup::None;
@@ -428,3 +468,57 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
   }
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
+
+#if LEXIRISE
+// LEXIPOINT: asks Lexirise about the selected word (lookup-flow.md §4-5). Unavailable when it isn't asked
+// (no language to send: off, a switched-off language, a non-CJK book) or had no answer (no key, no WiFi,
+// network, bad response). P5 replaces the placeholder the card is shown in.
+lexipoint::lookup::LookupOutcome DictionaryWordSelectActivity::lexiriseLookup(lexipoint::lookup::LookupCard& card,
+                                                                              bool& busyShown) {
+  if (!book || selected < 0 || selected >= static_cast<int>(words.size())) {
+    return lexipoint::lookup::LookupOutcome::Unavailable;
+  }
+  const lexipoint::text::TapContext context =
+      lexipoint::lookup::describeTap(pageModel, {words[selected].line, words[selected].token}, *book);
+#if LOG_LEVEL >= 2
+  lexipoint::lookup::logTap(context);
+#endif
+  if (!context.sentence || !context.language.language) return lexipoint::lookup::LookupOutcome::Unavailable;
+
+  popup = Popup::Busy;
+  popupMsg = StrId::STR_DICT_LOOKING_UP;
+  requestUpdateAndWait();  // the busy popup before the network wait
+  busyShown = true;
+  const lexipoint::lookup::LookupReport report =
+      lexipoint::lookup::lookupWithLexirise(lexipoint::service(), context, card);
+  if (report.outcome == lexipoint::lookup::LookupOutcome::Unavailable) {
+    LOG_INF("LXLOOK", "Lexirise unavailable (%s): StarDict answers", lexipoint::api::apiErrorName(report.error));
+  }
+  return report.outcome;
+}
+
+void DictionaryWordSelectActivity::showLookupPopup(const Popup kind, const StrId message) {
+  popup = kind;
+  popupMsg = message;
+  popupTime = millis();
+  requestUpdate();
+}
+
+// LEXIPOINT: StarDict needs a word, but a CJK token is one character: try the longest CJK run from the
+// tap along the line first (lookup-flow.md §4). A Latin token is looked up as it is.
+bool DictionaryWordSelectActivity::starDictLookup(std::string& definition, std::string& headword,
+                                                  Dictionary::LookupResult* result) {
+  using lexipoint::lookup::ProbeResult;
+  const WordBox& word = words[selected];
+  std::vector<std::string> candidates;
+  if (word.line < pageModel.lines.size()) {
+    candidates = lexipoint::lookup::starDictCandidates(pageModel.lines[word.line], word.token);
+  }
+  if (candidates.empty()) candidates.emplace_back(word.text);
+  const ProbeResult probe = lexipoint::lookup::probeStarDict(candidates, [&](const std::string& candidate) {
+    if (dict.lookup(candidate.c_str(), definition, headword, result)) return ProbeResult::Found;
+    return result && *result != Dictionary::LookupResult::NotFound ? ProbeResult::Error : ProbeResult::NotFound;
+  });
+  return probe == ProbeResult::Found;
+}
+#endif

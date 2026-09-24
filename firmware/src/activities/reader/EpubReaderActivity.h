@@ -154,7 +154,11 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string moreRowName(int row) const;
   std::string moreRowValue(int row) const;
   void activateMoreRow(int row);
-  void openDictionaryWordSelect();
+  // LEXIPOINT: touchX/touchY (from a long-press) select that word and look it up at once.
+  void openDictionaryWordSelect(int touchX = -1, int touchY = -1);
+#if LEXIRISE
+  bool dictionaryLookupsAvailable() const;  // LEXIPOINT: StarDict set, or Lexirise usable
+#endif
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);

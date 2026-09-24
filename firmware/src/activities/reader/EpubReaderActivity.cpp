@@ -24,6 +24,10 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "DictionaryWordSelectActivity.h"
+#if LEXIRISE
+#include "lexirise/lookup/LongPress.h"  // LEXIPOINT
+#include "lexirise/lookup/PageTap.h"    // LEXIPOINT
+#endif
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderFootnotesActivity.h"
@@ -308,8 +312,24 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
-void EpubReaderActivity::openDictionaryWordSelect() {
-  if (SETTINGS.dictionaryName[0] == '\0') {
+#if LEXIRISE
+// LEXIPOINT: with Lexirise usable, word select works without a StarDict dictionary installed.
+bool EpubReaderActivity::dictionaryLookupsAvailable() const {
+  return lexipoint::lookup::lookupsAvailable(
+      SETTINGS.dictionaryName[0] != '\0',
+      lexipoint::lookup::lexiriseUsable(lexipoint::text::BookLanguage(epub->getLanguage(), std::nullopt)));
+}
+#endif
+
+void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int touchY) {
+#if LEXIRISE
+  const bool lookupsAvailable = dictionaryLookupsAvailable();  // LEXIPOINT
+#else
+  (void)touchX;
+  (void)touchY;
+  const bool lookupsAvailable = SETTINGS.dictionaryName[0] != '\0';
+#endif
+  if (!lookupsAvailable) {
     showDictionaryMessage = true;
     dictionaryMessageTime = millis();
     requestUpdate();
@@ -329,6 +349,7 @@ void EpubReaderActivity::openDictionaryWordSelect() {
                                                                    orientedMarginLeft, orientedMarginTop);
 #if LEXIRISE
   wordSelect->setBook(epub->getLanguage());  // LEXIPOINT: the tap's language follows the book
+  if (touchX >= 0) wordSelect->setInitialTouch(touchX, touchY);
 #endif
   startActivityForResult(std::move(wordSelect), [this](const ActivityResult&) { requestUpdate(); });
 }
@@ -549,6 +570,28 @@ void EpubReaderActivity::loop() {
         break;
     }
   }
+
+#if LEXIRISE
+  // LEXIPOINT: a long-press on the page looks the word up (lookup-flow.md §1, D15). It fires while the
+  // finger is still down; with CrossPoint's hold action on, the page-turn thirds stay CrossPoint's.
+  if (!atEndOfBook && section && mappedInput.hasTouch()) {
+    int pressX = 0;
+    int pressY = 0;
+    const int width = renderer.getScreenWidth();
+    const lexipoint::lookup::LongPressRules rules{
+        width, ReaderUtils::pageTurnZoneWidth(width), SETTINGS.longPressButtonBehavior != CrossPointSettings::OFF,
+        SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_ON ||
+            SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_INVERTED_TAP};
+    const bool fired = mappedInput.peekScreenLongPress(pressX, pressY);
+    // Taken (consumed) only when the lookup owns the zone and can answer: otherwise it stays CrossPoint's.
+    if (lexipoint::lookup::takeLongPress(fired ? std::optional<int>(pressX) : std::nullopt, rules,
+                                         [this] { return dictionaryLookupsAvailable(); })) {
+      mappedInput.wasScreenLongPress(pressX, pressY);  // consume: the finger lift mustn't tap word select
+      openDictionaryWordSelect(pressX, pressY);
+      return;
+    }
+  }
+#endif
 
   // Link taps take priority over the reader-menu and page-turn zones.
   if (!atEndOfBook && !currentPageLinks.empty() && SETTINGS.touchReaderControls && mappedInput.hasTouch()) {
