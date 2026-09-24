@@ -27,7 +27,8 @@ and `getRubyTexts()`. Tokens are the layout's units:
   never next to a CJK character, and none after a Latin hyphen at a line break. Paragraph starts come
   from line geometry (`text/ParagraphBreaks.h`: the previous line ended ≥ 2 em short of the column, the
   gap grew ≥ 1.3× the usual advance (less the furigana height a ruby line adds), a first-line indent
-  (not a hanging one), a leading `　`, or a block-style change).
+  (not a hanging one), a leading `　` (unless the line before ended in `？！?!…`: a `？　` pause that
+  wrapped to a line start is not an indent), or a block-style change).
 - **One laid-out token can hold two sentences**: CrossPoint never splits two non-CJK characters, so
   Chinese `“好。”“走吧。”` lays out as `“好。”“走` + `吧。”`. The builder splits tokens at internal breaks
   (after a terminator and its closers, between a closer and an opener) and a tap resolves to the first
