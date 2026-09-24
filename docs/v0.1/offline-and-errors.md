@@ -85,6 +85,9 @@ own spec before it's built.
   next activity's `onEnter`, so KOSync, the web server, OTA, ... start with the radio off and bring WiFi
   up themselves: Lexipoint can never turn WiFi off under another feature. If Lexipoint's own link
   drops, it rejoins (it's still its radio) rather than calling it busy. Before deep sleep upstream
-  already turns WiFi off.
+  already turns WiFi off. **While the card is open the idle time doesn't run** (`holdWifi`, P5): the card
+  makes one call per loop pass, so with `wifi_idle_min=0` ("connect each time") WiFi would otherwise go
+  down between its phase A and B, every step and every save. It's once per card; when the card closes
+  the idle time counts from then.
 - **The TLS session is closed after 30 s idle**, on WiFi teardown, and on leaving reading, so it never
   holds internal heap that upstream TLS users pre-flight for.
