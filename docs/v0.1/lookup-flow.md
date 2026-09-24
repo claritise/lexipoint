@@ -221,9 +221,15 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   resent on a stale one), a saved word's `PATCH {proficiency}`, and a removal (Undo of a new save, ⋯ Undo
   save) as `DELETE` + `PATCH {notes: null, customTranslation: null, tags: []}`. The new item's
   `savedExpressionId` is kept for later changes. A refused or unanswered write puts the level back with
-  "Couldn't reach Lexirise: not saved" and drops the changes queued after it for that word. A tap on the
-  level already set sends nothing (the double-press guard). Writes still queued when the card closes are
-  sent first (the card stays on screen meanwhile). The log never shows a saved-expression id.
+  "Couldn't reach Lexirise: not saved" (even when the card has moved on) and drops the changes queued after
+  it for that word. A tap on the level already set sends nothing (the double-press guard). After a removal,
+  saving the word again is a full POST (tags, notes and translation again); a word that was already at
+  proficiency 0 when the card opened (undone earlier) is changed with a PATCH, so notes and tags the user
+  kept in the app aren't replaced. The same entry twice in a sentence is one word: its level and id are
+  shared. Writes still queued when the card closes (or the device sleeps with it open) are sent first,
+  without looking up anything they don't need; a removal whose clear fails still counts (logged). The log
+  never shows a saved-expression id. The glue between input, card and network is `card::CardSession`
+  (pure, host-tested through laid-out frames and taps).
 - **Not yet:** the Kanji/Chars tab stays empty on a live card (Lexirise's `breakdown` would need a lookup per
   character: v0.2), the Form tab lists only the book's form, "Met before" is never filled, the Context tab
   has no page number, the ⋯ tab's v0.2 actions say "Not in this version yet", and "Saving…" isn't shown
