@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lexipoint card reference</title>
+<!--
+  BINDING DESIGN REFERENCE (approved by claritise, 2026-09-24).
+  This file IS the spec for the dictionary card and its expanded view. The firmware must match it
+  pixel for pixel, scaled to the device (see ../popup-ui.md §1.1 for the measurement table in
+  device pixels). Do not "improve", restyle, add chrome, or drop elements. Any change needs claritise's
+  sign-off first and must update this file and §1.1 in the same commit.
+  The screen area is 340×560 CSS px, representing the X4 Pro's 480×800 panel (scale 480/340 ≈ 1.412).
+  Everything inside .scr is pure black on white, as on the e-ink panel.
+-->
+<style>
+:root{--ink:#000;--paper:#fff;--frame:#e9e7e1;--frame-line:#c9c6bd;--note:#555;--ctl-on:#1f1f1f;--ctl-on-text:#fff;--font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+body{margin:0;padding:24px;background:#faf9f6;font-family:var(--font-sans);color:#1f1f1f}
+.ctl{display:flex;flex-wrap:wrap;gap:10px 16px;margin:0 0 1rem;font-size:13px;color:var(--note);align-items:center}
+.seg{display:inline-flex;border:1px solid var(--frame-line);border-radius:8px;overflow:hidden;vertical-align:middle}
+.seg button{border:0;border-radius:0;padding:4px 10px;font-size:12px;background:transparent;cursor:pointer;font-family:inherit}
+.seg button.on{background:var(--ctl-on);color:var(--ctl-on-text)}
+.dev{position:relative;background:var(--frame);border:1px solid var(--frame-line);border-radius:24px;padding:20px 22px 14px}
+.scr{width:340px;height:560px;background:var(--paper);border:1px solid var(--frame-line);position:relative;color:var(--ink);overflow:hidden;font-family:var(--font-sans);user-select:none}
+.jp{font-family:"Hiragino Mincho ProN","Songti SC","Noto Serif CJK JP","Noto Serif CJK SC",serif}
+.pg{padding:22px 20px;font-size:19px;line-height:1.95;cursor:pointer;white-space:nowrap}
+.strip{position:absolute;left:0;right:0;top:0;height:50px;display:flex;align-items:center;padding:0 20px;font-size:19px;white-space:nowrap;overflow:hidden}
+.ln{position:absolute;right:8px;top:4px;font-size:10px;font-family:var(--font-sans)}
+.cstrip{height:36px;display:flex;align-items:center;padding:0 12px;font-size:17px;white-space:nowrap;overflow:hidden;border-bottom:1px solid var(--ink);position:relative}
+.cstrip .ln{right:6px;top:2px}
+.cstrip .ct,.strip .ct{flex:1;min-width:0;overflow:hidden;white-space:nowrap;margin-right:40px}
+.hl{background:var(--ink);color:var(--paper);padding:0 1px}
+.card{position:absolute;left:10px;right:10px;bottom:10px;background:var(--paper);border:2px solid var(--ink);display:flex;flex-direction:column}
+.row{padding:8px 12px}.sep{border-top:1px solid var(--ink)}
+.lv{display:inline-flex;border:1.5px solid var(--ink)}
+.lv span{width:30px;text-align:center;font-size:13px;padding:5px 0;border-left:1px solid var(--ink);cursor:pointer}
+.lv span:first-child{border-left:0}
+.lv span.cur{background:var(--ink);color:var(--paper)}
+.badge{display:inline-block;border:2px solid var(--ink);font-size:12px;font-weight:500;padding:0 5px;line-height:18px;vertical-align:middle;margin-left:8px;font-family:var(--font-sans)}
+.bars span{display:inline-block;width:4px;margin-right:2px;border:1px solid var(--ink);vertical-align:bottom}
+.bars span.f{background:var(--ink)}
+.pill{border:1px solid var(--ink);border-radius:3px;font-size:11px;padding:0 5px}
+.last{display:flex;border-top:1px solid var(--ink);font-size:12px}
+.last .m{flex:1;display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer}
+.last .x{width:44px;border-left:1px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:15px;cursor:pointer}
+.tabs{display:flex;border-top:1px solid var(--ink);font-size:11px}
+.tabs span{flex:1 1 auto;text-align:center;padding:8px 0;cursor:pointer}
+.tabs span.more{flex:0 0 30px;border-left:1px solid var(--ink);font-size:14px;padding:5px 0}
+.tabs span.on{background:var(--ink);color:var(--paper)}
+.act{display:flex;justify-content:space-between;align-items:center;border:1.5px solid var(--ink);padding:8px 10px;margin-bottom:7px;font-size:13px;cursor:pointer}
+.sbtn{position:absolute;top:240px;width:7px;height:70px;border:1px solid var(--frame-line);background:#fff;cursor:pointer}
+.home{margin:12px auto 0;width:46px;height:10px;border-radius:5px;border:1px solid var(--frame-line);cursor:pointer}
+.lbl{position:absolute;font-size:10px;color:var(--note);white-space:nowrap}
+.toast{position:absolute;left:50%;transform:translateX(-50%);top:60px;border:2px solid var(--ink);background:var(--paper);font-size:12px;padding:4px 10px;white-space:nowrap;z-index:2}
+.muted{color:var(--ink)} /* The one sanctioned deviation from the approved mock: its grey fallback notes are black on the device (no fast grey on e-ink). */
+#note{flex:1;min-width:200px;max-width:420px;font-size:13px;line-height:1.6;color:var(--note)}
+code{font-size:12px}
+</style>
+</head>
+<body>
+<div class="ctl">
+  <span>Book <span class="seg" id="lang"><button data-v="ja" class="on">Japanese</button><button data-v="zh">Chinese</button></span></span>
+  <span>Sentence <span class="seg" id="pos"><button data-v="hi" class="on">High on page</button><button data-v="lo">Low on page</button></span></span>
+  <span>View <span class="seg" id="view"><button data-v="c">Card</button><button data-v="d" class="on">Expanded</button></span></span>
+</div>
+<div style="display:flex;gap:30px;align-items:flex-start;flex-wrap:wrap">
+  <div class="dev">
+    <div class="sbtn" id="sl" style="left:-8px;border-radius:4px 0 0 4px"></div><div class="lbl" style="left:-2px;top:318px">Left</div>
+    <div class="sbtn" id="sr" style="right:-8px;border-radius:0 4px 4px 0"></div><div class="lbl" style="right:-4px;top:318px">Right</div>
+    <div class="scr" id="scr"></div>
+    <div class="home" id="home" title="Home pad"></div>
+  </div>
+  <div id="note"></div>
+</div>
+<script>
+const B={
+ ja:{lines:[[["　駅までの道はいつも混んでいた。"]],[["　"],["毎朝",0],["の"],["満員電車",1],["が"],["煩わしくて",2],["、"]],[["彼",3],["はとうとう"],["会社",4],["を"],["辞める",5],["ことにし"]],[["た。春の風が、少しだけ優しく感じ"]],[["られた。"]]],ctx:[1,4],start:2,
+  W:[{k:"まいあさ",rk:"maiasa",w:"毎朝",b:"N5",p:"adverb · noun",m:["every morning"],r:6864,sc:.298,ch:[["毎","まい","mai","every"],["朝","あさ","asa","morning"]]},
+     {k:"まんいんでんしゃ",rk:"man'indensha",w:"満員電車",b:null,p:"noun",m:["packed train, crowded train, jam-packed train"],r:22811,sc:.202,ch:[["満","まん","man","full"],["員","いん","in","member"],["電","でん","den","electricity"],["車","しゃ","sha","car"]]},
+     {k:"わずらわしい",rk:"wazurawashii",w:"煩わしい",b:"N1",s:"煩わしくて",f:"te-form",p:"adjective",m:["troublesome, annoying, bothersome, cumbersome","complicated, complex, involved"],r:29774,sc:.181,ch:[["煩","はん","han","vexation, trouble"]],met:["ノルウェイの森","人づきあいが<u>煩わしい</u>と思うこともある。"],form:[["煩わしい","dictionary form"],["煩わしく","adverbial stem"],["煩わしくて","te-form: “troublesome, and…”"]]},
+     {k:"かれ",rk:"kare",w:"彼",b:"N4",p:"pronoun · noun",m:["he, him","boyfriend, lover"],r:182,sc:.586,ch:[["彼","かれ","kare","he, that"]]},
+     {k:"かいしゃ",rk:"kaisha",w:"会社",b:"N5",p:"noun",m:["company, corporation, firm, office, business"],r:1238,sc:.434,ch:[["会","かい","kai","meet"],["社","しゃ","sha","company, shrine"]]},
+     {k:"やめる",rk:"yameru",w:"辞める",b:"N2",p:"verb",m:["quit, resign, leave, retire"],r:2874,sc:.367,ch:[["辞","じ","ji","resign, word"]]}],
+  tabs:["Meaning","Examples","Context","Kanji","Form"],save:{2:1}},
+ zh:{lines:[[["　雨下了一整夜，街道很安静。"]],[["　到了"],["最后",0],["，"],["他",1],["只能",2],["做出",3]],[["自己",4],["的"],["选择",5],["。窗外的灯一盏一"]],[["盏地熄灭了。"]]],ctx:[1,3],start:5,
+  W:[{k:"zuì hòu",w:"最后",b:"HSK 1",p:"noun · adjective",m:["end, conclusion","last, final, ultimate"],r:540,sc:.504,ch:[["最","zuì",null,"most"],["后","hòu",null,"after, behind"]]},
+     {k:"tā",w:"他",b:"HSK 1",p:"pronoun",m:["he, him"],r:12,sc:.804,ch:[["他","tā",null,"he"]]},
+     {k:"zhǐ néng",w:"只能",b:"HSK 2",p:"adverb",m:["can only, only able to"],r:918,sc:.462,ch:[["只","zhǐ",null,"only"],["能","néng",null,"can, able"]]},
+     {k:"zuò chū",w:"做出",b:null,p:"verb",m:["make, produce, create, formulate"],r:1862,sc:.407,ch:[["做","zuò",null,"do, make"],["出","chū",null,"go out"]]},
+     {k:"zì jǐ",w:"自己",b:"HSK 2",p:"pronoun",m:["oneself, self"],r:118,sc:.624,ch:[["自","zì",null,"self"],["己","jǐ",null,"oneself"]]},
+     {k:"xuǎn zé",w:"选择",b:"HSK 4",p:"noun · verb",m:["choice, selection, option","choose, select, pick"],r:1113,sc:.447,ch:[["选","xuǎn",null,"choose · 辶 + 先 · 9 strokes"],["择","zé",null,"select · 扌 + 𠬤 · 8 strokes"]],met:["活着","这是他自己的<u>选择</u>，谁也拦不住。"],trad:true}],
+  tabs:["Meaning","Examples","Context","Chars"],save:{5:2}}};
+const LV=["tracked","learning","fresh","known"];
+let s={lang:"ja",view:"d",tab:0,i:B.ja.start,open:true,lv:{ja:{...B.ja.save},zh:{...B.zh.save}},toast:"",rd:"kana",pos:"hi"};
+/* D17 filler: with the sentence low on the page, words fall under the card. */
+const FILL={ja:[[["　同僚の声も、上司の顔も、"]],[["すべてが遠くに感じられた。"]],[["　春が来るころには、心は"]],[["もう決まっていた。"]],[["　窓の外では、桜が散っていた。"]],[["　電車はいつも満員で、"]],[["息をするのも苦しかった。"]],[["　それでも、朝は必ず来た。"]]],zh:[[["　他在这座城市住了十年。"]],[["每天早上，他都走同一条路。"]],[["　朋友们劝他留下来，"]],[["可是他心里早就有了答案。"]],[["　春天来了，风很温柔。"]],[["　他收拾好行李，"]],[["慢慢地走出了家门。"]]]};
+const pageLines=bk=>s.pos==="lo"?FILL[s.lang].concat(bk.lines):bk.lines;
+/* Reading mode is remembered across lookups (device: the `reading` setting in /.lexirise/config.ini, docs/v0.1/settings.md). */
+try{const v=localStorage.getItem("lexipoint.reading");if(v==="romaji"||v==="kana")s.rd=v;}catch(e){}
+function setReading(v){s.rd=v;try{localStorage.setItem("lexipoint.reading",v);}catch(e){}}
+const $=id=>document.getElementById(id);
+function seg(id,f){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{f(b.dataset.v);document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.toggle('on',x===b));draw();});}
+seg('pos',v=>{s.pos=v;});seg('lang',v=>{s.lang=v;s.i=B[v].start;s.tab=0;s.open=true;});seg('view',v=>{s.view=v;s.open=true;});
+const band=r=>r<1000?'very common':r<5000?'common':r<20000?'uncommon':'rare';
+const lineOf=(bk,i)=>pageLines(bk).findIndex(l=>l.some(t=>t[1]===i));
+const renderLine=l=>l.map(t=>t[1]===s.i&&s.open?'<span class="hl">'+t[0]+'</span>':t[0]).join('');
+function toast(t){s.toast=t;draw();clearTimeout(toast.t);toast.t=setTimeout(()=>{s.toast='';draw();},1600);}
+function draw(){
+ const bk=B[s.lang],d=bk.W[s.i],lv=s.lv[s.lang][s.i]??-1,zh=s.lang==='zh',scr=$('scr'),det=s.view==='d'&&s.open;
+ const tabs=bk.tabs.concat(['⋯']),T=tabs[s.tab]||tabs[0];
+ const n=Math.max(1,Math.ceil(d.sc*5));
+ const bars='<span class="bars">'+[6,9,12,15,18].map((x,j)=>'<span class="'+(j<n?'f':'')+'" style="height:'+x+'px"></span>').join('')+'</span>';
+ const head='<div class="row"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div>'+(zh?'<div style="font-size:12px">'+d.k+'</div>':'<div id="rd" class="'+(s.rd==='kana'?'jp':'')+'" style="font-size:12px;cursor:pointer;margin:-6px -8px 0;padding:6px 8px 0">'+(s.rd==='kana'?d.k:d.rk)+'</div>')+'<div><span class="jp" style="font-size:30px;line-height:1.2">'+d.w+'</span>'+(d.b?'<span class="badge">'+d.b+'</span>':'')+'</div></div><div style="text-align:right"><span class="lv">'+["T","L","F","K"].map((x,j)=>'<span data-lv="'+j+'" class="'+(j===lv?'cur':'')+'">'+x+'</span>').join('')+'</span><div style="font-size:11px;margin-top:4px">'+(lv<0?'not saved':LV[lv])+'</div></div></div><div style="font-size:12px;margin-top:2px">'+(d.s?'<span class="jp">'+d.s+'</span> '+d.f+' ':'')+'<span class="pill">'+d.p+'</span></div></div>';
+ const last='<div class="last"><div class="m" id="tg"><span>'+bars+'  #'+d.r.toLocaleString()+' '+band(d.r)+'</span><span>'+(det?'▲':'▼')+'</span></div><div class="x" id="x" aria-label="Close">✕</div></div>';
+ const sentence=bk.lines.slice(bk.ctx[0],bk.ctx[1]).map(renderLine).join('');
+ let h='';
+ if(!det){
+  h='<div class="pg jp" id="pg">'+pageLines(bk).map(renderLine).join('<br>')+'</div>';
+  if(s.open)h+='<div class="card">'+head+'<div class="row sep" style="font-size:14px">'+d.m.join('; ')+'</div>'+last+'</div>';
+ } else {
+  let body='';
+  if(T==='Meaning')body='<div style="font-size:14px;line-height:1.7">'+d.m.map((x,j)=>'<b style="font-weight:500">'+(j+1)+'.</b> '+x).join('<br>')+'</div>';
+  if(T==='Examples')body='<div class="muted" style="font-size:12px;margin-bottom:8px">'+(d.trad?'Lexirise\'s only example is Traditional (選擇), hidden in a Simplified book.':'No Lexirise examples for this word.')+' From your reading:</div><div class="jp" style="font-size:15px;line-height:1.8;margin-bottom:8px">「'+bk.lines.slice(bk.ctx[0],bk.ctx[1]).map(l=>l.map(t=>t[0]).join('')).join('').trim()+'」</div>'+(d.met?'<div class="jp" style="font-size:15px;line-height:1.8">「'+d.met[1]+'」</div>':'');
+  if(T==='Context')body='<div style="font-size:11px;margin-bottom:4px">This book · p. 84</div><div class="jp" style="font-size:15px;line-height:1.8;margin-bottom:10px">'+sentence+'</div>'+(d.met?'<div style="font-size:11px;margin-bottom:4px">Met before · '+d.met[0]+'</div><div class="jp" style="font-size:15px;line-height:1.8">'+d.met[1]+'</div>':'<div class="muted" style="font-size:12px">First time you\'ve met this word.</div>');
+  if(T==='Kanji'||T==='Chars')body=d.ch.map(c=>'<div style="display:flex;gap:14px;margin-bottom:10px"><div style="text-align:center;min-width:34px"><div class="'+(zh||s.rd==='romaji'?'':'jp')+'" style="font-size:11px">'+(zh||s.rd==='kana'?c[1]:c[2])+'</div><div class="jp" style="font-size:28px;line-height:1.1">'+c[0]+'</div></div><div style="font-size:14px;padding-top:14px">'+c[3]+'</div></div>').join('');
+  if(T==='Form')body=d.form?'<div style="font-size:14px;line-height:2">'+d.form.map((f,j)=>'<span class="jp" style="font-size:16px;'+(j===d.form.length-1?'font-weight:500':'')+'">'+f[0]+'</span>  '+f[1]).join('<br>')+'</div>':'<div class="muted" style="font-size:12px">Not inflected here: this is the dictionary form.</div>';
+  if(T==='⋯')body=(lv>=0?[['Undo save','undo']]:[]).concat([['Save the sentence as a card','sentence'],['Ignore this word','ignore'],['Look up later','later']]).map(a=>'<div class="act" data-act="'+a[1]+'"><span>'+a[0]+'</span><span>›</span></div>').join('');
+  h='<div class="strip jp"><span class="ct">'+renderLine(pageLines(bk)[lineOf(bk,s.i)])+'</span><span class="ln">line '+(lineOf(bk,s.i)+1)+'/'+pageLines(bk).length+'</span></div>'
+   +'<div class="card" style="top:50px">'+head+'<div class="row sep" style="flex:1;overflow:hidden;padding-top:12px">'+body+'</div><div class="tabs">'+tabs.map((x,j)=>'<span data-tab="'+j+'" class="'+(x==='⋯'?'more ':'')+(j===s.tab?'on':'')+'"'+(x==='⋯'?' aria-label="Actions"':'')+'>'+x+'</span>').join('')+'</div>'+last+'</div>';
+ }
+ if(s.toast)h+='<div class="toast">'+s.toast+'</div>';
+ scr.innerHTML=h;
+ {const ct=scr.querySelector('.strip .ct');if(ct){const w=ct.querySelector('.hl');if(w&&w.offsetLeft+w.offsetWidth>ct.clientWidth)ct.scrollLeft=w.offsetLeft+w.offsetWidth-ct.clientWidth+8;}}
+ /* D17: if the card covers the active word, the card gains the context strip as its top row. */
+ if(!det&&s.open){const hl=scr.querySelector('.pg .hl'),cd=scr.querySelector('.card');
+  if(hl&&cd&&hl.offsetTop+hl.offsetHeight>cd.offsetTop){const li=lineOf(bk,s.i);
+   cd.insertAdjacentHTML('afterbegin','<div class="cstrip jp"><span class="ct">'+renderLine(pageLines(bk)[li])+'</span><span class="ln">line '+(li+1)+'/'+pageLines(bk).length+'</span></div>');
+   const ct=cd.querySelector('.ct'),w=ct.querySelector('.hl');if(w&&w.offsetLeft+w.offsetWidth>ct.clientWidth)ct.scrollLeft=w.offsetLeft+w.offsetWidth-ct.clientWidth+8;}}
+ scr.querySelectorAll('[data-lv]').forEach(e=>e.onclick=()=>{const j=+e.dataset.lv,was=s.lv[s.lang][s.i];s.lv[s.lang][s.i]=j;toast((was==null?'Saved as ':'Now ')+LV[j]+'  ·  Undo');});
+ scr.querySelectorAll('[data-tab]').forEach(e=>e.onclick=()=>{s.tab=+e.dataset.tab;draw();});
+ scr.querySelectorAll('[data-act]').forEach(e=>e.onclick=()=>{const a=e.dataset.act;if(a==='undo'){delete s.lv[s.lang][s.i];toast('Removed from Lexirise');}else toast({sentence:'Sentence saved as a card',ignore:'Ignored: won\'t be marked again',later:'Flagged for later'}[a]);});
+ const on=(id,f)=>{const e=$(id);if(e)e.onclick=f;};
+ on('rd',()=>{setReading(s.rd==='kana'?'romaji':'kana');toast('Readings: '+s.rd);});
+ on('tg',()=>{s.view=det?'c':'d';syncView();draw();});on('x',()=>{s.open=false;draw();});on('pg',()=>{s.open=!s.open;draw();});
+ $('note').innerHTML='<b>Binding reference.</b> This is the approved design, to be matched pixel for pixel on the device. Measurements in device pixels: <code>docs/v0.1/popup-ui.md</code> §1.1.<br><br>Side buttons step words (the strip follows, the tab stays). Tap T L F K to save, ▼/▲ to expand or collapse, ✕ or Home to close. Japanese: tap the reading line to switch kana ⇄ romaji. The choice is remembered.';
+}
+function syncView(){document.querySelectorAll('#view button').forEach(x=>x.classList.toggle('on',x.dataset.v===s.view));}
+function step(dir){const bk=B[s.lang];if(!s.open)return;s.i=Math.min(bk.W.length-1,Math.max(0,s.i+dir));draw();}
+$('sl').onclick=()=>step(-1);$('sr').onclick=()=>step(1);
+$('home').onclick=()=>{if(s.open&&s.view==='d'){s.view='c';syncView();}else if(s.open){s.open=false;}draw();};
+draw();
+</script>
+</body>
+</html>

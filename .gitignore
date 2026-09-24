@@ -1,0 +1,19 @@
+# This repo is public. Never commit API keys or device state.
+.lexirise_key
+*.lexirise_key
+.lexirise/
+config.ini
+state.ini
+.env
+.env.*
+
+# Raw API responses can hold account data. Only commit fixtures that have been scrubbed
+# (keys, user IDs and saved-expression IDs removed), under test/lexirise_json/fixtures/.
+*.raw.json
+level-check/
+
+# Tooling
+.DS_Store
+.pio/
+.cache/
+build/
