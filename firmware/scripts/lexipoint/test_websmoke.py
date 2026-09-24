@@ -40,6 +40,8 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
 
     def _hidden(self, *paths):
         def hidden(seg):
+            if "spaces" not in self.broken:
+                seg = seg.lstrip(" ")  # SdFat skips leading spaces
             return seg.startswith(".") or ("shortname" not in self.broken and seg.upper() == "LEXIRI~1")
         return "files" not in self.broken and any(hidden(seg) for p in paths for seg in p.split("/") if seg)
 
@@ -81,7 +83,8 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
         return self._send(404)
 
     def do_PROPFIND(self):
-        if "dav" in self.broken or ("shortname" in self.broken and "~" in self.path):
+        if "dav" in self.broken or ("shortname" in self.broken and "~" in self.path) or (
+                "spaces" in self.broken and "%20" in self.path):
             return self._send(207, "<d:href>/.lexirise/config.ini</d:href>")
         return self._send(403)
 
@@ -111,10 +114,14 @@ class WebSmoke(unittest.TestCase):
             "host": {"rebinding Host refused"},
             "files": {"hidden folder not listed", "hidden download refused", "hidden rename refused",
                       "move into hidden folder refused", "hidden delete refused", "short-name download refused",
-                      "short-name folder not listed"},
+                      "short-name folder not listed", "leading-space download refused",
+                      "plus-space download refused"},
             "shortname": {"short-name download refused", "short-name folder not listed",
                           "WebDAV short-name PROPFIND refused"},
-            "dav": {"WebDAV PROPFIND refused", "WebDAV GET refused", "WebDAV short-name PROPFIND refused"},
+            "spaces": {"leading-space download refused", "plus-space download refused",
+                       "leading-space PROPFIND refused"},
+            "dav": {"WebDAV PROPFIND refused", "WebDAV GET refused", "WebDAV short-name PROPFIND refused",
+                    "leading-space PROPFIND refused"},
         }
         for guard, should_fail in expectations.items():
             FakeDevice.broken = {guard}

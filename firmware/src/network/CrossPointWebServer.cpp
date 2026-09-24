@@ -81,7 +81,8 @@ String normalizeWebPath(const String& inputPath) {
 bool isHiddenWebPath(const String& path) { return lexipoint::web::isHiddenOnCard(path.c_str()); }
 
 bool isProtectedItemName(const String& name) {
-  if (name.startsWith(".")) {
+  // LEXIPOINT: as SdFat will store it (" .lexirise" creates ".lexirise"), not just as typed.
+  if (name.startsWith(".") || lexipoint::web::isHiddenPath(name.c_str())) {
     return true;
   }
   for (const auto* item : HIDDEN_ITEMS) {
@@ -714,7 +715,7 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     } else {
       state.path = "/";
     }
-    if (isHiddenWebPath(state.path)) {  // LEXIPOINT
+    if (isHiddenWebPath(state.path + "/" + state.fileName)) {  // LEXIPOINT: the folder and the new name
       state.error = "Cannot access system files";
       return;
     }
@@ -1697,7 +1698,7 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
           }
           wsUploadSize = sizeToken.toInt();
           wsUploadPath = normalizeWebPath(msg.substring(secondColon + 1));
-          if (isHiddenWebPath(wsUploadPath)) {  // LEXIPOINT
+          if (isHiddenWebPath(wsUploadPath + "/" + wsUploadFileName)) {  // LEXIPOINT: folder and new name
             wsServer->sendTXT(num, "ERROR:Cannot access system files");
             wsUploadInProgress = false;
             wsUploadClientNum = 255;

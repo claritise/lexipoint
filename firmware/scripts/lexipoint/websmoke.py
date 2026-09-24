@@ -10,7 +10,7 @@ broken guard shows up as a wrong answer, never as a deleted or overwritten file.
   - the API returns the key masked only;
   - a foreign Origin and a DNS-rebinding Host are refused;
   - the file manager (list, download, rename, move, delete) and WebDAV refuse hidden paths, also by
-    their FAT short name (/LEXIRI~1 is /.lexirise).
+    their FAT short name (/LEXIRI~1 is /.lexirise) and with SdFat-ignored leading spaces.
 """
 
 from __future__ import annotations
@@ -86,6 +86,14 @@ def checks(host: str, port: int = 80):
     status, text = request(host, "POST", "/delete", body=body_, headers=hdrs, port=port)
     yield "hidden delete refused", "system file" in text, f"status {status}: {text[:80]}"
 
+    # SdFat skips leading spaces: "/ .lexirise" is /.lexirise ("+" also decodes to a space).
+    status, _ = request(host, "GET", "/download?path=/%20.lexirise/websmoke-does-not-exist", port=port)
+    yield "leading-space download refused", status == 403, f"status {status}"
+    status, _ = request(host, "GET", "/download?path=/+.lexirise/websmoke-does-not-exist", port=port)
+    yield "plus-space download refused", status == 403, f"status {status}"
+    status, _ = request(host, "PROPFIND", "/%20.lexirise/", headers={"Depth": "1"}, port=port)
+    yield "leading-space PROPFIND refused", status == 403, f"status {status}"
+
     # FAT short name of /.lexirise: must be refused like the long name (a 404 means the alias got in).
     status, _ = request(host, "GET", f"/download?path={urllib.parse.quote(SHORT_PROBE)}", port=port)
     yield "short-name download refused", status == 403, f"status {status}"
@@ -93,11 +101,11 @@ def checks(host: str, port: int = 80):
     yield "short-name folder not listed", status == 403, f"status {status}"
 
     status, text = request(host, "PROPFIND", "/.lexirise/", headers={"Depth": "1"}, port=port)
-    yield "WebDAV PROPFIND refused", status in (403, 404) and "config.ini" not in text, f"status {status}"
+    yield "WebDAV PROPFIND refused", status == 403 and "config.ini" not in text, f"status {status}"
     status, text = request(host, "GET", "/.lexirise/config.ini", port=port)
     yield "WebDAV GET refused", status != 200 and "api_key" not in text, f"status {status}"
     status, text = request(host, "PROPFIND", SHORT_DIR + "/", headers={"Depth": "1"}, port=port)
-    yield "WebDAV short-name PROPFIND refused", status in (403, 404) and "config.ini" not in text, f"status {status}"
+    yield "WebDAV short-name PROPFIND refused", status == 403 and "config.ini" not in text, f"status {status}"
 
 
 def main() -> int:

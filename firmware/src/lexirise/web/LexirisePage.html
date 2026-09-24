@@ -99,6 +99,10 @@
         <button class="btn" id="saveKey">Save</button>
       </span>
     </div>
+    <div class="setting-row hidden" id="serverNote">
+      <span class="setting-name meta">⚠ Your key is sent to <b id="serverHost"></b>, not the Lexirise server.
+        Change it under Advanced if you didn't set this.</span>
+    </div>
     <div class="setting-row">
       <span class="setting-name meta">Current: <span id="currentKey">none</span></span>
       <span class="setting-control">
@@ -212,6 +216,10 @@
       state = s;
       renderStatus(s.status);
       document.getElementById('currentKey').textContent = s.hasKey ? s.key : 'none';
+      // A server other than Lexirise's gets the key: always say so next to it (settings.md §2).
+      const customServer = s.baseUrl !== s.defaultBaseUrl;
+      document.getElementById('serverNote').classList.toggle('hidden', !customServer);
+      document.getElementById('serverHost').textContent = s.baseUrl;
       document.getElementById('removeKey').classList.toggle('hidden', !s.hasKey);
       document.querySelectorAll('[data-toggle]').forEach(el => {
         const input = el.querySelector('input');

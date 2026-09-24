@@ -62,6 +62,8 @@ TEST(WebApiState, CarriesSettingsChoicesAndStatus) {
   offline.error = lexipoint::api::ApiError::NoWifi;
   EXPECT_NE(stateJson(s, offline, {}).find(R"("status":{"state":"offline","error":"no-wifi"})"), std::string::npos);
   EXPECT_NE(json.find(R"("settingsReset":false)"), std::string::npos);
+  EXPECT_NE(json.find(std::string(R"("defaultBaseUrl":")") + lexipoint::config::kDefaultBaseUrl + "\""),
+            std::string::npos);
   EXPECT_NE(stateJson(s, offline, {}, true).find(R"("settingsReset":true)"), std::string::npos);
   EXPECT_NE(json.find(R"("checkTimeoutS":)" + std::to_string((lexipoint::config::kMaxCallMs + 999) / 1000)),
             std::string::npos);

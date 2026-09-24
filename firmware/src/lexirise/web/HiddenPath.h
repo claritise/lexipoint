@@ -4,10 +4,15 @@
 // (host-tested in test/lexirise_net/HiddenPathTest.cpp); HiddenPathHal.cpp supplies the SD card lookup.
 // Not LEXIRISE-gated: upstream code uses it in every build.
 //
-// A path is hidden if any segment is: its name starts with '.'. On FAT the same entry can also be
-// reached by its 8.3 short name, and a dot name's short name never starts with a dot (".lexirise" is
-// also "LEXIRI~1"). Such a name is never valid 8.3, so SdFat (and every other FAT writer) gives it a
-// "~N" tail: only segments containing '~' can be aliases, and only those are looked up on the card.
+// A path is hidden if any segment is: its name starts with '.'. "Its name" is what SdFat opens, not
+// what was typed: SdFat skips a segment's leading spaces and trims trailing dots and spaces (FatFile /
+// ExFatFile::parsePathName), so "/ .lexirise" opens "/.lexirise" and is checked as that.
+//
+// On FAT the same entry can also be reached by its 8.3 short name, and a dot name's short name never
+// starts with a dot (".lexirise" is also "LEXIRI~1"). Such a name isn't valid 8.3, so SdFat (which
+// creates /.lexirise) and Windows give it a "~N" tail: segments containing '~' are looked up on the card
+// and checked by their real name. (A folder recreated on a Linux vfat mount with "nonumtail" could get
+// a tail-less short name; the firmware always creates it with SdFat.)
 
 #include <functional>
 #include <string>
@@ -29,8 +34,16 @@ struct NameLookupResult {
 };
 using NameLookup = std::function<NameLookupResult(std::string_view prefix)>;
 
-// True if a segment of `path` is hidden as typed ("/.lexirise/config.ini", "/a/.x/b", "/.."; not
-// "/a.b/c"), or, given a lookup, is a short-name alias of a hidden entry.
+// A segment as SdFat parses it: leading spaces skipped, trailing dots and spaces trimmed.
+inline std::string_view sdfatSegment(std::string_view segment) {
+  while (!segment.empty() && segment.front() == ' ') segment.remove_prefix(1);
+  while (!segment.empty() && (segment.back() == '.' || segment.back() == ' ')) segment.remove_suffix(1);
+  return segment;
+}
+
+// True if a segment of `path` names a hidden entry ("/.lexirise/config.ini", "/a/.x/b", "/..",
+// "/ .lexirise"; not "/a.b/c"), or, given a lookup, is a short-name alias of one. A segment that is
+// only dots or spaces is refused too (SdFat can't open it, and it's never a real name).
 inline bool isHiddenPath(const std::string_view path, const NameLookup& lookup = nullptr) {
   size_t start = 0;
   while (start < path.size()) {
@@ -40,8 +53,9 @@ inline bool isHiddenPath(const std::string_view path, const NameLookup& lookup =
     }
     const size_t slash = path.find('/', start);
     const size_t end = slash == std::string_view::npos ? path.size() : slash;
-    const std::string_view segment = path.substr(start, end - start);
-    if (segment.front() == '.') return true;
+    // Leading dots survive SdFat's trimming, so a dot name keeps its dot; "." and ".." trim to empty.
+    const std::string_view segment = sdfatSegment(path.substr(start, end - start));
+    if (segment.empty() || segment.front() == '.') return true;
     if (lookup && segment.find('~') != std::string_view::npos) {
       const NameLookupResult entry = lookup(path.substr(0, end));
       if (entry.kind == NameLookupResult::Kind::Unreadable) return true;

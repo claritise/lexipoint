@@ -185,6 +185,7 @@ std::string stateJson(const Settings& s, const api::KeyStatus& status, const std
       .add("tags", s.tags)
       .add("wifiIdleMin", s.wifiIdleMin)
       .add("baseUrl", s.baseUrl)
+      .add("defaultBaseUrl", config::kDefaultBaseUrl)
       .add("choices", net::JsonObject().add("wifiIdleMin", idleChoices).add("dictionaries", dictionaries))
       .add("status", statusJson(status))
       .add("settingsReset", settingsReset)

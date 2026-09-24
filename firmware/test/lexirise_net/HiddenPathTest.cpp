@@ -19,6 +19,16 @@ TEST(HiddenPath, AnyDotSegmentIsHidden) {
   }
 }
 
+TEST(HiddenPath, CheckedAsSdFatOpensThem) {
+  // SdFat skips leading spaces and trims trailing dots/spaces: these all open a dot folder.
+  for (const char* hidden :
+       {"/ .lexirise/config.ini", "/a/  .x", "/.lexirise./x", "/ . ", "/   ", "/a/./b", "/.lexirise /config.ini"}) {
+    EXPECT_TRUE(isHiddenPath(hidden)) << hidden;
+  }
+  EXPECT_FALSE(isHiddenPath("/ books /a.epub"));  // spaces around an ordinary name
+  EXPECT_FALSE(isHiddenPath("/books/a.epub."));
+}
+
 TEST(HiddenPath, OrdinaryPathsAreNot) {
   for (const char* visible : {"/", "", "/books", "/books/a.epub", "/a.b/c", "/x/y.z/", "/日本語/本.epub"}) {
     EXPECT_FALSE(isHiddenPath(visible)) << visible;
@@ -45,8 +55,12 @@ NameLookup card() {
 TEST(HiddenPath, ShortNameAliasesOfDotFoldersAreHidden) {
   const NameLookup lookup = card();
   EXPECT_TRUE(isHiddenPath("/LEXIRI~1/config.ini", lookup));
-  EXPECT_TRUE(isHiddenPath("/lexiri~1", lookup));      // FAT names are case-insensitive
-  EXPECT_TRUE(isHiddenPath("/BROKEN~1/x", lookup));    // exists, name unreadable: refused
+  EXPECT_TRUE(isHiddenPath("/lexiri~1", lookup));    // FAT names are case-insensitive
+  EXPECT_TRUE(isHiddenPath("/BROKEN~1/x", lookup));  // exists, name unreadable: refused
+  EXPECT_TRUE(isHiddenPath("/ LEXIRI~1/config.ini", [](std::string_view prefix) {
+    // SdFat opens "/ LEXIRI~1" as "/LEXIRI~1": the lookup gets the path as typed and resolves it the same way.
+    return prefix == "/ LEXIRI~1" ? NameLookupResult{Kind::Found, ".lexirise"} : NameLookupResult{};
+  }));
   EXPECT_FALSE(isHiddenPath("/LEXIRI~1/config.ini"));  // without a lookup only the typed names count
 }
 
