@@ -18,7 +18,11 @@ For each phase, in order:
 4. **Run the gate** (the uniform gate plus the phase's own list). If it still fails after real fix
    attempts, mark the phase `blocked` in the ledger with a precise diagnosis, commit that, and
    **stop**.
-5. **Land it:** merge to the fork's `lexipoint` branch, and commit the ledger row in this repo (`lexipoint`).
+5. **Land it:** merge `lexi/<phase-id>` **directly** into the fork's `lexipoint` branch (**no pull
+   requests**, claritise 2026-09-24), push, and commit the ledger row in this repo (`lexipoint`). Keep
+   hook edits to upstream files in **their own commits**, separate from new files, so rebases stay
+   readable. Report the result to claritise. Sign-offs she gives in chat (e.g. the design conformance
+   screenshots) are quoted with their date in the ledger note.
 
 One phase = one branch = one gate = one ledger row.
 
@@ -140,7 +144,7 @@ acceptable (claritise signs off).
 3. Compare them side by side (overlay at 50% if needed). **Every box position and size within
    ±1 px of §1.1, and pure black and white only.** List any sanctioned deviation (§1.1) used.
 4. Commit the screenshot pairs to `docs/v0.1/reference/conformance/<phase>/` and link them from
-   the ledger note. **claritise signs off on the pairs.** Without that sign-off, the phase isn't `done`.
+   the ledger note. **claritise signs off on the pairs in chat**, and the sign-off is quoted in the ledger. Without that sign-off, the phase isn't `done`.
 
 ## P5: Card live, and save
 
