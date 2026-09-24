@@ -26,7 +26,17 @@ and `getRubyTexts()`. Tokens are the layout's units:
   and the builder decides spaces by script: **a space only between two non-CJK tokens** (Latin words),
   never next to a CJK character, and none after a Latin hyphen at a line break. Paragraph starts come
   from line geometry (`text/ParagraphBreaks.h`: the previous line ended ≥ 2 em short of the column, the
-  gap grew ≥ 1.3× the usual advance, a new indent, a leading `　`, or a block-style change).
+  gap grew ≥ 1.3× the usual advance (less the furigana height a ruby line adds), a first-line indent
+  (not a hanging one), a leading `　`, or a block-style change).
+- **One laid-out token can hold two sentences**: CrossPoint never splits two non-CJK characters, so
+  Chinese `“好。”“走吧。”` lays out as `“好。”“走` + `吧。”`. The builder splits tokens at internal breaks
+  (after a terminator and its closers, between a closer and an opener) and a tap resolves to the first
+  piece of its token that has a letter in it.
+- **Measured once, at word select's `onEnter`** (`lookup/PageTap`), after the SD font has the page's
+  glyphs: measuring on a tap would race the render task over the glyph cache. A tap is pure work.
+- **Tested end to end** (`test/lexirise_layout`): XHTML through the real `ChapterHtmlSlimParser`, then
+  the adapter and builder (dialogue paragraphs, furigana wraps, one-token Chinese dialogue, extra
+  paragraph spacing). The unit tests' layout helper is a reference copy of CrossPoint's CJK break rules.
 
 ## 1. Output
 

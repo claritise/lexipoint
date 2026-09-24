@@ -51,7 +51,9 @@ sentence heuristic in step 2 runs per lookup only when there's no metadata.
 missing, `und`, or any non-CJK language falls through to the sentence (a converted Japanese novel
 stamped `en` still gets `ja`); a sentence with no CJK at all (a real English book) gets no language,
 so StarDict answers. `zh-TW`/`zh-HK`/`zh-MO`/`zh-Hant` go to StarDict while H8 is parked. A language
-switched off in settings (or Lexirise off) gives none, even with an override.
+switched off in settings (or Lexirise off) isn't sent, even with an override, but stays `detected`, so
+the sentence is still cut with its punctuation. "Kana" means real hiragana/katakana: `・` and `ー` also
+appear in Chinese transliterated names (哈利・波特) and don't count.
 
 Config (superseded by the per-language sections in `settings.md` §3; the flat keys below are still read and migrated):
 
