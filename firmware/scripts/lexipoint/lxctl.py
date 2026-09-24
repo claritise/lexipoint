@@ -45,6 +45,9 @@ SHOT_TIMEOUT_S = 10.0  # > DevConfig kShotWriteDeadlineMs (3 s) plus the render 
 PORT_GLOBS = ("/dev/cu.usbmodem*", "/dev/ttyACM*")
 EDGE_INSET = 2  # px from an edge: satisfies any FreeInkUI edgeSwipe edge fraction
 ACTIVITY_WAIT_S = 10.0  # screen transitions (log line "Entering activity: <Name>")
+# LX:LEXI: one call can take WiFi join (6 s) + NTP (5 s) + handshake and reads (6 s each) on a cold start.
+LEXI_CALL_TIMEOUT_S = 30.0
+LEXI_SOAK_MAX = 50  # DevConfig kLexiSoakMax
 
 
 def find_port() -> str:
@@ -104,6 +107,23 @@ class Harness:
             if line.startswith(expect):
                 return line
             if line.startswith("LX:ERR"):
+                raise RuntimeError(f"{cmd}: {line}")
+
+    def collect(self, cmd: str, prefix: str, timeout: float) -> list[str]:
+        """Send a command and return every line starting with prefix until its LX:OK."""
+        verb = cmd.split()[0]
+        self.send(cmd)
+        deadline = time.time() + timeout
+        lines = []
+        while True:
+            line = self.read_line(deadline)
+            if line is None:
+                raise TimeoutError(f"no reply to {cmd!r}")
+            if line.startswith(prefix):
+                lines.append(line)
+            elif line.startswith(f"LX:OK {verb}"):
+                return lines
+            elif line.startswith("LX:ERR"):
                 raise RuntimeError(f"{cmd}: {line}")
 
     def screenshot(self) -> tuple[int, int, bytes]:
@@ -218,6 +238,44 @@ def smoke(h: Harness, outdir: str) -> None:
     print(f"smoke OK, screenshots in {outdir}")
 
 
+def parse_fields(line: str) -> dict[str, str]:
+    """The key=value fields of an LX:LEXI line."""
+    return dict(tok.split("=", 1) for tok in line.split() if "=" in tok)
+
+
+def heap_leaks(values: list[int]) -> bool:
+    """True for a monotonic loss: free heap never recovers across the run and ends lower (P1 gate)."""
+    if len(values) < 2:
+        return False
+    return all(b <= a for a, b in zip(values, values[1:])) and values[-1] < values[0]
+
+
+def lexi(h: Harness, args: list[str]) -> None:
+    sub = (args[0] if args else "").lower()
+    if sub == "me":
+        print(h.command("LEXI ME", "LX:LEXI me", timeout=LEXI_CALL_TIMEOUT_S))
+    elif sub == "analyze":
+        lang = args[1] if len(args) > 1 else "ja"
+        for line in h.collect(f"LEXI ANALYZE {lang}", "LX:LEXI", LEXI_CALL_TIMEOUT_S):
+            print(line)
+    elif sub == "soak":
+        n = int(args[1]) if len(args) > 1 else 20
+        if not 1 <= n <= LEXI_SOAK_MAX:
+            sys.exit(f"soak count must be 1..{LEXI_SOAK_MAX}")
+        lines = h.collect(f"LEXI SOAK {n}", "LX:LEXI analyze", LEXI_CALL_TIMEOUT_S * n)
+        for line in lines:
+            print(line)
+        fields = [parse_fields(line) for line in lines]
+        failed = [f for f in fields if f.get("parsed") != "1"]
+        heap = [int(f["heap_free"]) for f in fields if "heap_free" in f]
+        print(f"calls={len(fields)} failed={len(failed)} heap_first={heap[0] if heap else '-'} "
+              f"heap_last={heap[-1] if heap else '-'} heap_min={min(heap) if heap else '-'}")
+        if failed or heap_leaks(heap):
+            sys.exit("soak FAILED" + (" (monotonic heap loss)" if heap_leaks(heap) else ""))
+    else:
+        sys.exit("usage: lexi me | analyze ja|zh | soak [n]")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port")
@@ -268,6 +326,8 @@ def main() -> None:
                     print(line)
         elif c == "wait":
             print(h.wait_for(a.args[0], float(a.args[1]) if len(a.args) > 1 else 15))
+        elif c == "lexi":
+            lexi(h, a.args)
         elif c == "smoke":
             try:
                 smoke(h, a.args[0] if a.args else "smoke-shots")

@@ -130,6 +130,44 @@ class HarnessReplies(unittest.TestCase):
             h.screenshot()
 
 
+class LexiCommands(unittest.TestCase):
+    def test_collect_returns_prefixed_lines_until_ok(self):
+        dev = FakeSerial(b"LX:LEXI analyze 0 ok parsed=1\n[INF] noise\nLX:LEXI occ 0-1 word=x\nLX:OK LEXI\n")
+        h = lxctl.Harness(dev)
+        lines = h.collect("LEXI ANALYZE ja", "LX:LEXI", 1.0)
+        self.assertEqual(lines, ["LX:LEXI analyze 0 ok parsed=1", "LX:LEXI occ 0-1 word=x"])
+        self.assertEqual(dev.written, b"LX:LEXI ANALYZE ja\n")
+
+    def test_collect_raises_on_error(self):
+        h = lxctl.Harness(FakeSerial(b"LX:ERR built without LEXIRISE\n"))
+        with self.assertRaises(RuntimeError):
+            h.collect("LEXI ME", "LX:LEXI", 1.0)
+
+    def test_parse_fields(self):
+        f = lxctl.parse_fields("LX:LEXI analyze 3 ok status=200 occ=6 parsed=1 heap_free=51000")
+        self.assertEqual(f["status"], "200")
+        self.assertEqual(f["heap_free"], "51000")
+
+    def test_heap_leaks_only_on_monotonic_net_loss(self):
+        self.assertTrue(lxctl.heap_leaks([100, 99, 99, 98]))
+        self.assertFalse(lxctl.heap_leaks([100, 99, 101, 98]))  # recovers in between
+        self.assertFalse(lxctl.heap_leaks([100, 100, 100]))     # flat
+        self.assertFalse(lxctl.heap_leaks([100]))
+
+
+LEXIRISE_FLAG = re.compile(r"-D\s*LEXIRISE=1\b")
+
+
+class X4ProEnvsBuildLexirise(unittest.TestCase):
+    def test_every_x4pro_env_has_lexirise(self):
+        with open(os.path.join(REPO, "platformio.ini")) as f:
+            cfg = load_ini(f.read())
+        x4pro = [s for s in cfg.sections() if s.startswith("env:x4pro")]
+        self.assertGreaterEqual(len(x4pro), 3)  # dev, release, release candidate
+        for env in x4pro:
+            self.assertRegex(resolved_build_flags(env, cfg), LEXIRISE_FLAG, env)
+
+
 HARNESS_FLAG = re.compile(r"-D\s*LEXIPOINT_DEV_HARNESS\b")
 FLAG_KEYS = ("build_flags", "build_src_flags")
 

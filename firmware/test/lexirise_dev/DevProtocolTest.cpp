@@ -87,6 +87,26 @@ TEST(DevProtocol, Awake) {
   EXPECT_NE(parse("LX:AWAKE").error, nullptr);
 }
 
+TEST(DevProtocol, Lexi) {
+  using lexipoint::dev::LexiAction;
+  EXPECT_EQ(parse("LX:LEXI ME").verb, Verb::Lexi);
+  EXPECT_EQ(parse("LX:LEXI ME").lexi, LexiAction::Me);
+  const auto ja = parse("LX:LEXI ANALYZE ja");
+  EXPECT_EQ(ja.lexi, LexiAction::Analyze);
+  EXPECT_FALSE(ja.chinese);
+  EXPECT_TRUE(parse("LX:LEXI ANALYZE zh").chinese);
+  const auto soak = parse("LX:LEXI SOAK 20");
+  EXPECT_EQ(soak.lexi, LexiAction::Soak);
+  EXPECT_EQ(soak.count, 20);
+  EXPECT_EQ(parse(("LX:LEXI SOAK " + std::to_string(lexipoint::dev::config::kLexiSoakMax)).c_str()).verb, Verb::Lexi);
+  for (const char* bad : {"LX:LEXI", "LX:LEXI ANALYZE", "LX:LEXI ANALYZE ko", "LX:LEXI SOAK 0", "LX:LEXI SOAK 51",
+                          "LX:LEXI SOAK x", "LX:LEXI ME 1", "LX:LEXI KEY lx_abc"}) {
+    EXPECT_NE(parse(bad).error, nullptr) << bad;
+    EXPECT_EQ(parse(bad).verb, Verb::None) << bad;
+  }
+  EXPECT_STREQ(lexipoint::dev::verbName(Verb::Lexi), "LEXI");
+}
+
 TEST(DevProtocol, UnknownAndMalformed) {
   EXPECT_STREQ(parse("LX:FLY").error, "unknown command");
   EXPECT_NE(parse("LX:").error, nullptr);

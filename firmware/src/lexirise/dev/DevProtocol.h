@@ -26,10 +26,12 @@ enum class Verb {
   Sync,
   Awake,
   Reboot,
+  Lexi,              // LX:LEXI ME | ANALYZE ja|zh | SOAK n: drives the Lexirise client (P1 gate)
   LegacyScreenshot,  // upstream "CMD:SCREENSHOT", kept working
 };
 
 enum class ButtonName { Left, Right, Power };
+enum class LexiAction { Me, Analyze, Soak };
 
 struct Command {
   Verb verb = Verb::None;
@@ -37,6 +39,9 @@ struct Command {
   ButtonName button = ButtonName::Left;
   int ms = config::kButtonDefaultMs;  // buttons, clamped to [kButtonMinMs, kButtonMaxMs]
   AwakeMode awake = AwakeMode::Lease;
+  LexiAction lexi = LexiAction::Me;
+  bool chinese = false;         // LEXI ANALYZE language
+  int count = 0;                // LEXI SOAK calls, in [1, config::kLexiSoakMax]
   const char* error = nullptr;  // set when an LX: line is malformed; the verb is None
 };
 

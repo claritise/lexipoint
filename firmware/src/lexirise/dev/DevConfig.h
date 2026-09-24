@@ -48,6 +48,12 @@ constexpr int kSelfTestMaxMisses = 3;  // misses printed before summarising
 // LX:REBOOT: let the reply leave the USB FIFO before restarting.
 constexpr unsigned long kRebootFlushMs = 50;
 
+// LX:LEXI: the P1 gate's client checks. Fixed sample sentences (a command line can't carry much
+// text); the soak runs n analyze calls and reports heap after each (no monotonic loss allowed).
+constexpr int kLexiSoakMax = 50;
+constexpr const char* kLexiSampleJa = "彼は東京へ行った。";
+constexpr const char* kLexiSampleZh = "我们明天去北京看朋友。";
+
 // Gesture queue: a few whole gestures ahead of the device.
 constexpr size_t kQueueCapacity = 24;
 constexpr size_t kMaxGestureFrames = 4;

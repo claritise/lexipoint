@@ -134,6 +134,26 @@ Command parseLine(const char* rawLine) {
     } else {
       return fail("usage: HOME [HOLD]");
     }
+  } else if (!std::strcmp(verb, "LEXI")) {
+    constexpr const char* kUsage = "usage: LEXI ME | ANALYZE ja|zh | SOAK n";
+    if (t.count == 2 && !std::strcmp(t.text[1], "ME")) {
+      c.lexi = LexiAction::Me;
+    } else if (t.count == 3 && !std::strcmp(t.text[1], "ANALYZE")) {
+      if (!std::strcmp(t.text[2], "ja")) {
+        c.chinese = false;
+      } else if (!std::strcmp(t.text[2], "zh")) {
+        c.chinese = true;
+      } else {
+        return fail(kUsage);
+      }
+      c.lexi = LexiAction::Analyze;
+    } else if (t.count == 3 && !std::strcmp(t.text[1], "SOAK")) {
+      if (!parseInt(t.text[2], c.count) || c.count < 1 || c.count > config::kLexiSoakMax) return fail(kUsage);
+      c.lexi = LexiAction::Soak;
+    } else {
+      return fail(kUsage);
+    }
+    c.verb = Verb::Lexi;
   } else if (!std::strcmp(verb, "AWAKE")) {
     int v = -1;
     if (t.count != 2 || !parseInt(t.text[1], v) || v < 0 || v > 2) return fail("usage: AWAKE 0|1|2");
@@ -188,6 +208,8 @@ const char* verbName(const Verb verb) {
       return "AWAKE";
     case Verb::Reboot:
       return "REBOOT";
+    case Verb::Lexi:
+      return "LEXI";
     case Verb::LegacyScreenshot:
       return "SCREENSHOT";
     case Verb::None:
