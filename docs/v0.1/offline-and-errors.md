@@ -77,8 +77,8 @@ doesn't have (`ja-card-unanswered`, `ja-expanded-meaning-unanswered`, `ja-card-s
   reached (the join failed or the radio was busy, a timeout or dropped connection, the clock unset, 5xx).
   **No saved network** isn't offline: StarDict answers unmarked (`ApiError::NoWifiSaved`). Neither are a
   TLS or certificate failure, low memory, or an unreadable response (the log has the heap numbers, the
-  wolfSSL code, or the body's first 128 bytes; a response over a limit or cut short at the HTTP level is
-  logged by its status and error, its body having been dropped). On the card, a phase B that failed says why in the meaning row (and the Meaning
+  wolfSSL code, or the body's first 128 bytes; a response over a limit is logged by its status and error,
+  its body having been dropped). A response cut short mid-body is a dropped connection: offline. On the card, a phase B that failed says why in the meaning row (and the Meaning
   tab): `offline` (couldn't be reached), `Lexirise key rejected`, `Lexirise: rate limited`, or `meaning
   unavailable`; the word, reading and rank stay. The card has no
   separate header label: the meaning row already says it, and the approved card gets no new chrome.
@@ -87,7 +87,9 @@ doesn't have (`ja-card-unanswered`, `ja-expanded-meaning-unanswered`, `ja-card-s
   `Save failed · Retry` (tap it: the level is set again and sent at once, its word looked up again if
   the translation was missing); 401/403 →
   `Lexirise key rejected` (no retry); 429 → `Rate limited: try in N s · Retry` (Retry waits out the back-off: tapped at once, the save goes
-  when Lexirise may be asked again). The level goes back to what
+  when Lexirise may be asked again). A save the card couldn't send as it closed (a Retry still waiting,
+  WiFi gone) is told by word select once the card is gone: `Lexirise: rate limited`, `Lexirise key
+  rejected`, or `Lexirise: not saved`. The level goes back to what
   Lexirise has meanwhile. Any 2xx is the `Saved as <level> · Undo` toast shown at the tap.
 - **Strings:** every word on the card is an I18n key (`STR_LEXI_CARD_*`, plus `STR_LEXI_NO_KEY`,
   `STR_LEXI_AUTH_FAILED`, `STR_LEXI_RATE_LIMITED`, `STR_LEXI_OFFLINE`); languages without them fall back to
