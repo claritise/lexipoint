@@ -214,7 +214,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   where it stands: `BuiltSentence::chars` maps every sentence character back to its page token, so a
   Lexirise range `[charStart, charEnd)` finds its boxes (`card::readerScene`, from `card::readerPageFor`'s
   snapshot). A reader in landscape gets the card in portrait over a blank page (the page was laid out for
-  the other orientation; question 5 in the P4 ledger note).
+  the other orientation; question 5 in the P4 ledger note); the word then counts as covered, so the card
+  view shows its line in the strip.
 - **Saving (§7, popup-ui.md §3.2):** T L F K sets the level on the card at once (with the toast) and queues a
   `LevelChange`. A change with an Undo toast waits out its window (`config::kToastMs`) before anything is
   sent, and a later change to the same entry merges into it: T then Undo sends nothing, K then T is one
