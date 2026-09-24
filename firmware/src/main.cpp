@@ -41,6 +41,9 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#if LEXIPOINT_DEV_HARNESS
+#include "lexirise/dev/DevHarness.h"  // LEXIPOINT: dev-only USB remote control
+#endif
 
 GfxRenderer renderer(display);
 MappedInputManager mappedInputManager(gpio, renderer);
@@ -372,6 +375,9 @@ void setup() {
 
   gpio.begin();
   powerManager.begin();
+#if LEXIPOINT_DEV_HARNESS
+  lexipoint::dev::begin(renderer, display);  // LEXIPOINT
+#endif
 
   const auto wakeupReason = gpio.getWakeupReason();
   // Sample the wake hold now — a click wake is released within milliseconds of
@@ -617,6 +623,11 @@ void loop() {
     lastMemPrint = millis();
   }
 
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: the dev harness owns serial input (it also answers CMD:SCREENSHOT), and feeds
+  // synthetic input for the next frame.
+  lexipoint::dev::poll();
+#else
   // Handle incoming serial commands,
   // nb: we use logSerial from logging to avoid deprecation warnings
   if (logSerial.available() > 0) {
@@ -633,11 +644,16 @@ void loop() {
       }
     }
   }
+#endif
 
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
   if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
-      activityManager.preventAutoSleep()) {
+      activityManager.preventAutoSleep()
+#if LEXIPOINT_DEV_HARNESS
+      || lexipoint::dev::keepAwake()  // LEXIPOINT: stay awake while driven over USB
+#endif
+  ) {
     lastActivityTime = millis();         // Reset inactivity timer
     powerManager.setPowerSaving(false);  // Restore normal CPU frequency on user activity
   }

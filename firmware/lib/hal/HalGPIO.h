@@ -3,6 +3,10 @@
 #include <Arduino.h>
 #include <InputManager.h>
 
+#if LEXIPOINT_DEV_HARNESS
+#include <LexiDevInput.h>  // LEXIPOINT: dev-only synthetic input overlay
+#endif
+
 // Display SPI pins (custom pins for XteinkX4, not hardware SPI defaults)
 #define EPD_SCLK 8   // SPI Clock
 #define EPD_MOSI 10  // SPI MOSI (Master Out Slave In)
@@ -45,6 +49,10 @@ class HalGPIO {
 
   bool lastUsbConnected = false;
   bool usbStateChanged = false;
+
+#if LEXIPOINT_DEV_HARNESS
+  lexipoint::dev::Overlay devOverlay;  // LEXIPOINT: see LexiDevInput.h
+#endif
 
  public:
   enum class DeviceType : uint8_t { X4, X3 };
@@ -107,6 +115,10 @@ class HalGPIO {
   unsigned long lastTouchHeldMs() const;
   bool wasSwipe(float& nxStart, float& nyStart, float& nxEnd, float& nyEnd) const;
   bool wasTouchActivity() const;
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: queue one synthetic input frame for the next update() (USB dev harness only).
+  void devInject(const lexipoint::dev::Frame& frame) { devOverlay.inject(frame); }
+#endif
   void setSharedConfirmPowerShortPressEmitsPower(bool enabled);
 
   // Verify that the physical power button remains held through input debounce.

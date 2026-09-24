@@ -141,6 +141,9 @@ void HalGPIO::begin() {
 
 void HalGPIO::update() {
   inputMgr.update();
+#if LEXIPOINT_DEV_HARNESS
+  devOverlay.promote(inputMgr.wasTouchReleased());  // LEXIPOINT
+#endif
   const bool connected = isUsbConnected();
   usbStateChanged = (connected != lastUsbConnected);
   lastUsbConnected = connected;
@@ -175,33 +178,95 @@ bool HalGPIO::hasTouch() const { return inputMgr.hasTouch(); }
 
 bool HalGPIO::hasHomeKey() const { return BoardConfig::hasHomeKey(); }
 
-bool HalGPIO::wasHomeKeyTapped() const { return inputMgr.wasHomeKeyTapped(); }
+bool HalGPIO::wasHomeKeyTapped() const {
+#if LEXIPOINT_DEV_HARNESS
+  if (devOverlay.homeTap()) return true;  // LEXIPOINT
+#endif
+  return inputMgr.wasHomeKeyTapped();
+}
 
-bool HalGPIO::wasHomeKeyLongPressed() const { return inputMgr.wasHomeKeyLongPressed(); }
+bool HalGPIO::wasHomeKeyLongPressed() const {
+#if LEXIPOINT_DEV_HARNESS
+  if (devOverlay.homeHold()) return true;  // LEXIPOINT
+#endif
+  return inputMgr.wasHomeKeyLongPressed();
+}
 
-bool HalGPIO::wasTouchTap(float& nx, float& ny) const { return inputMgr.wasTouchTap(nx, ny); }
+bool HalGPIO::wasTouchTap(float& nx, float& ny) const {
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: an injected frame with touch answers every touch query alone.
+  if (devOverlay.ownsTouch()) return devOverlay.tap(nx, ny);
+#endif
+  return inputMgr.wasTouchTap(nx, ny);
+}
 
-bool HalGPIO::wasTouchDown(float& nx, float& ny) const { return inputMgr.wasTouchPressedAt(nx, ny); }
+bool HalGPIO::wasTouchDown(float& nx, float& ny) const {
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: an injected frame with touch answers every touch query alone.
+  if (devOverlay.ownsTouch()) return devOverlay.down(nx, ny);
+#endif
+  return inputMgr.wasTouchPressedAt(nx, ny);
+}
 
-bool HalGPIO::wasTouchReleased() const { return inputMgr.wasTouchReleased(); }
+bool HalGPIO::wasTouchReleased() const {
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: an injected frame with touch answers every touch query alone.
+  if (devOverlay.ownsTouch()) return devOverlay.released();
+#endif
+  return inputMgr.wasTouchReleased();
+}
 
 bool HalGPIO::isTouchTapCandidate(float& nx, float& ny, unsigned long& heldMs) const {
+#if LEXIPOINT_DEV_HARNESS
+  if (devOverlay.ownsTouch()) return devOverlay.tapCandidate(nx, ny, heldMs);  // LEXIPOINT
+#endif
   return inputMgr.isTouchTapCandidate(nx, ny, heldMs);
 }
 
-bool HalGPIO::isTouchHeldAt(float& nx, float& ny) const { return inputMgr.isTouchHeldAt(nx, ny); }
+bool HalGPIO::isTouchHeldAt(float& nx, float& ny) const {
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: an injected frame with touch answers every touch query alone.
+  if (devOverlay.ownsTouch()) return devOverlay.heldAt(nx, ny);
+#endif
+  return inputMgr.isTouchHeldAt(nx, ny);
+}
 
-bool HalGPIO::wasTouchLongPress(float& nx, float& ny) const { return inputMgr.wasTouchLongPress(nx, ny); }
+bool HalGPIO::wasTouchLongPress(float& nx, float& ny) const {
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: an injected frame with touch answers every touch query alone.
+  if (devOverlay.ownsTouch()) return devOverlay.longPress(nx, ny);
+#endif
+  return inputMgr.wasTouchLongPress(nx, ny);
+}
 
-void HalGPIO::suppressTouchContact() { inputMgr.suppressTouchContact(); }
+void HalGPIO::suppressTouchContact() {
+#if LEXIPOINT_DEV_HARNESS
+  devOverlay.suppress();  // LEXIPOINT
+#endif
+  inputMgr.suppressTouchContact();
+}
 
-unsigned long HalGPIO::lastTouchHeldMs() const { return inputMgr.lastTouchHeldMs(); }
+unsigned long HalGPIO::lastTouchHeldMs() const {
+#if LEXIPOINT_DEV_HARNESS
+  if (devOverlay.heldLatched()) return devOverlay.lastHeldMs();  // LEXIPOINT
+#endif
+  return inputMgr.lastTouchHeldMs();
+}
 
 bool HalGPIO::wasSwipe(float& nxStart, float& nyStart, float& nxEnd, float& nyEnd) const {
+#if LEXIPOINT_DEV_HARNESS
+  // LEXIPOINT: an injected frame with touch answers every touch query alone.
+  if (devOverlay.ownsTouch()) return devOverlay.swipe(nxStart, nyStart, nxEnd, nyEnd);
+#endif
   return inputMgr.wasSwipe(nxStart, nyStart, nxEnd, nyEnd);
 }
 
-bool HalGPIO::wasTouchActivity() const { return inputMgr.wasTouchActivity(); }
+bool HalGPIO::wasTouchActivity() const {
+#if LEXIPOINT_DEV_HARNESS
+  if (devOverlay.anyActivity()) return true;  // LEXIPOINT
+#endif
+  return inputMgr.wasTouchActivity();
+}
 
 void HalGPIO::setSharedConfirmPowerShortPressEmitsPower(const bool enabled) {
   InputManager::setSharedConfirmPowerShortPressEmitsPower(enabled);
