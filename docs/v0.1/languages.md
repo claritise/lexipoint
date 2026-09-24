@@ -177,9 +177,16 @@ This goes into the P8 user guide as is.
 
 ## 6. Rank labels
 
-Frequency distributions differ by language. The labels in `popup-ui.md` §1 (`very common` < 1k …)
-are Japanese-tuned guesses. Keep the thresholds **per language** in one table, and tune them in P5
-with both languages. Until then they're the same.
+Frequency distributions differ by language, so the thresholds are **per language**
+(`config::kRankBandLimitsJa` / `Zh`, tuned in P5 on sampled ranks, `../reference/lexirise-api-notes.md`):
+
+| | very common | common | uncommon | rare |
+|---|---|---|---|---|
+| Japanese | < 1,000 | < 5,000 | < 20,000 | 20,000 + |
+| Chinese | < 1,000 | < 10,000 | < 30,000 | 30,000 + |
+
+Chinese ranks run higher for words as common (景色: #2,643 in Japanese, #8,123 in Chinese). Its first
+threshold stays at 1,000 because the approved reference shows 选择 (#1,113) as *common*.
 
 ## 7. Tests
 

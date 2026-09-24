@@ -148,8 +148,9 @@ can't render an exact size, use the nearest size and **log it in the P4 ledger n
   doesn't toggle, and a tap there does nothing.
 - In the detail view's Kanji tab, each character also gets its own level (JLPT kanji level, HSK
   character level) where the data has it.
-- **Rank** shows as `#1,846` plus a single word (`very common` < 1k, `common` < 5k, `uncommon` <
-  20k, `rare`). If rank is missing, the row shows only the state.
+- **Rank** shows as `#1,846` plus a single word (`very common`, `common`, `uncommon`, `rare`), with
+  thresholds per language (`languages.md` §6: Japanese < 1k / 5k / 20k, Chinese < 1k / 10k / 30k). If
+  rank is missing, the row shows only the state.
 - **Translation** is the first sense, then the second after `;` if it fits on 2 lines. Longer text
   is cut with an ellipsis. There's no paging in v0.1: this is a glance card, not a dictionary.
 - **Font:** the reader's current font (already loaded, and it has CJK glyphs) at two sizes. No new
