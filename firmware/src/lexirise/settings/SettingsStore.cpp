@@ -2,27 +2,57 @@
 
 #include "SettingsStore.h"
 
+#include <Logging.h>
+
 #include <utility>
 
 namespace lexipoint {
+namespace {
+
+constexpr const char* kLogTag = "LXCFG";
+
+}  // namespace
 
 LoadOutcome SettingsStore::load() {
   std::lock_guard<std::mutex> writeLock(writeMutex_);
+  lastLoad_ = loadLocked();
+  switch (lastLoad_) {
+    case LoadOutcome::Loaded:
+      break;
+    case LoadOutcome::Defaults:
+      LOG_INF(kLogTag, "No settings yet, using defaults");
+      break;
+    case LoadOutcome::RecoveredBackup:
+      LOG_INF(kLogTag, "Settings recovered from the backup of an interrupted save");
+      break;
+    case LoadOutcome::Unreadable:
+    default:
+      LOG_ERR(kLogTag, "Settings unreadable: moved to %s, using defaults", config::kSettingsBadPath);
+      break;
+  }
+  return lastLoad_;
+}
 
+// Moves an unusable file aside (replacing an older one), so a later save can't overwrite what may be
+// the user's only copy of their key and settings.
+void SettingsStore::quarantine(const char* path) {
+  if (files_.exists(config::kSettingsBadPath)) files_.remove(config::kSettingsBadPath);
+  files_.rename(path, config::kSettingsBadPath);
+}
+
+LoadOutcome SettingsStore::loadLocked() {
   // A .tmp is only ever a save that never reached its rename: the real file (or its .bak) is newer.
   if (files_.exists(config::kSettingsTmpPath)) files_.remove(config::kSettingsTmpPath);
 
   LoadOutcome outcome = LoadOutcome::Loaded;
+  const char* readFrom = config::kSettingsPath;
   std::string text;
   auto status = files_.read(config::kSettingsPath, config::kSettingsMaxBytes, text);
   if (status == SettingsFiles::ReadStatus::Missing && files_.exists(config::kSettingsBackupPath)) {
     // Interrupted between "final → .bak" and "tmp → final": the .bak is the last good file.
-    if (files_.rename(config::kSettingsBackupPath, config::kSettingsPath)) {
-      status = files_.read(config::kSettingsPath, config::kSettingsMaxBytes, text);
-    } else {
-      status = files_.read(config::kSettingsBackupPath, config::kSettingsMaxBytes, text);
-    }
-    if (status == SettingsFiles::ReadStatus::Ok) outcome = LoadOutcome::RecoveredBackup;
+    if (!files_.rename(config::kSettingsBackupPath, config::kSettingsPath)) readFrom = config::kSettingsBackupPath;
+    status = files_.read(readFrom, config::kSettingsMaxBytes, text);
+    outcome = LoadOutcome::RecoveredBackup;
   } else if (status == SettingsFiles::ReadStatus::Ok && files_.exists(config::kSettingsBackupPath)) {
     // Interrupted after the new file landed but before the .bak was dropped.
     files_.remove(config::kSettingsBackupPath);
@@ -36,10 +66,7 @@ LoadOutcome SettingsStore::load() {
     case SettingsFiles::ReadStatus::TooLarge:
     case SettingsFiles::ReadStatus::Error:
     default:
-      // Defaults in memory, and the unreadable file moved aside (replacing an older one) so the first
-      // save can't overwrite what may be the user's only copy of their key and settings.
-      if (files_.exists(config::kSettingsBadPath)) files_.remove(config::kSettingsBadPath);
-      files_.rename(config::kSettingsPath, config::kSettingsBadPath);
+      quarantine(readFrom);  // the main file, or a .bak that couldn't be put back
       return LoadOutcome::Unreadable;
   }
 

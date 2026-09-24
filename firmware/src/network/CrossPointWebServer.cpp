@@ -75,9 +75,10 @@ String normalizeWebPath(const String& inputPath) {
 }
 
 // LEXIPOINT: the name checks below only look at the last segment, so without a whole-path check
-// /download?path=/.lexirise/config.ini would serve the Lexirise API key, and delete + upload could
-// replace the file. The file manager never shows dot items, so nothing visible changes.
-bool isHiddenWebPath(const String& path) { return lexipoint::web::isHiddenWebPath(path.c_str()); }
+// /download?path=/.lexirise/config.ini (or its FAT short name /LEXIRI~1/config.ini) would serve the
+// Lexirise API key, and delete + upload could replace the file. The file manager never shows dot
+// items, so nothing visible changes.
+bool isHiddenWebPath(const String& path) { return lexipoint::web::isHiddenOnCard(path.c_str()); }
 
 bool isProtectedItemName(const String& name) {
   if (name.startsWith(".")) {

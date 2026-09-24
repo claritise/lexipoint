@@ -9,7 +9,8 @@ broken guard shows up as a wrong answer, never as a deleted or overwritten file.
   - the page, the nav script and the API answer;
   - the API returns the key masked only;
   - a foreign Origin and a DNS-rebinding Host are refused;
-  - the file manager (list, download, rename, move, delete) and WebDAV refuse hidden paths.
+  - the file manager (list, download, rename, move, delete) and WebDAV refuse hidden paths, also by
+    their FAT short name (/LEXIRI~1 is /.lexirise).
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ TIMEOUT_S = 10.0
 EVIL_ORIGIN = "http://evil.example"
 EVIL_HOST = "evil.example"
 PROBE = "/.lexirise/websmoke-does-not-exist"  # never exists: a failing guard can't touch real files
+SHORT_DIR = "/LEXIRI~1"  # the FAT 8.3 alias of /.lexirise
+SHORT_PROBE = SHORT_DIR + "/websmoke-does-not-exist"
 MASKED_KEY = re.compile(r"^lx_•{8}[A-Za-z0-9_-]{3}$")
 
 
@@ -83,10 +86,18 @@ def checks(host: str, port: int = 80):
     status, text = request(host, "POST", "/delete", body=body_, headers=hdrs, port=port)
     yield "hidden delete refused", "system file" in text, f"status {status}: {text[:80]}"
 
+    # FAT short name of /.lexirise: must be refused like the long name (a 404 means the alias got in).
+    status, _ = request(host, "GET", f"/download?path={urllib.parse.quote(SHORT_PROBE)}", port=port)
+    yield "short-name download refused", status == 403, f"status {status}"
+    status, _ = request(host, "GET", f"/api/files?path={urllib.parse.quote(SHORT_DIR)}", port=port)
+    yield "short-name folder not listed", status == 403, f"status {status}"
+
     status, text = request(host, "PROPFIND", "/.lexirise/", headers={"Depth": "1"}, port=port)
     yield "WebDAV PROPFIND refused", status in (403, 404) and "config.ini" not in text, f"status {status}"
     status, text = request(host, "GET", "/.lexirise/config.ini", port=port)
     yield "WebDAV GET refused", status != 200 and "api_key" not in text, f"status {status}"
+    status, text = request(host, "PROPFIND", SHORT_DIR + "/", headers={"Depth": "1"}, port=port)
+    yield "WebDAV short-name PROPFIND refused", status in (403, 404) and "config.ini" not in text, f"status {status}"
 
 
 def main() -> int:

@@ -178,3 +178,22 @@ TEST(SettingsStore, DeclinedUpdateWritesNothing) {
   EXPECT_EQ(fs.writes, 0);
   EXPECT_EQ(store.revision(), 0u);
 }
+
+TEST(SettingsStore, UnusableBackupIsMovedAsideToo) {
+  FakeFiles fs;  // main file gone, the .bak can't be renamed back and can't be read
+  fs.files[config::kSettingsBackupPath] = fileWithKey(kKey);
+  fs.failRenameTo = config::kSettingsPath;
+  fs.failReads = true;
+  SettingsStore store(fs);
+  EXPECT_EQ(store.load(), LoadOutcome::Unreadable);
+  EXPECT_EQ(store.lastLoad(), LoadOutcome::Unreadable);
+  EXPECT_EQ(fs.files.at(config::kSettingsBadPath), fileWithKey(kKey));
+  EXPECT_EQ(fs.files.count(config::kSettingsBackupPath), 0u);
+  // The next save can't destroy it.
+  fs.failReads = false;
+  store.update([](Settings& s) {
+    s.tags = "x";
+    return true;
+  });
+  EXPECT_EQ(fs.files.at(config::kSettingsBadPath), fileWithKey(kKey));
+}

@@ -8,30 +8,23 @@
 //     radio that's on but not connected (the web server's hotspot, someone else's join in progress)
 //     is somebody else's and is left alone.
 //   - WiFi Lexipoint brought up is its own (the lease) until it idles out, or until the screen
-//     leaves reading: any other activity (KOSync, the web server, OTA, ...) gets a radio that's off
-//     and brings WiFi up itself, so Lexipoint can never turn WiFi off under it.
-
-#include <string_view>
+//     leaves reading (no reader activity on screen or under it). ActivityManager reports that before
+//     the next activity's onEnter, so any other activity (KOSync, the web server, OTA, ...) starts
+//     with the radio off and brings WiFi up itself: Lexipoint never turns WiFi off under it. This
+//     relies on nothing that uses WiFi being pushed over the reader (KOSync replaces it).
 
 #include "lexirise/LexiriseConfig.h"
 
 namespace lexipoint::net {
 
-enum class WifiAction { UseExisting, Busy, Join };
+enum class WifiAction { UseExisting, Busy, Join, Rejoin };
 
-inline WifiAction decideEnsureUp(const bool stationConnected, const bool radioOff) {
+// owned: Lexipoint brought the radio up itself. Its own link dropping (AP restart, out of range) is
+// Lexipoint's to fix: turn the radio off and join again, rather than calling its own radio "busy".
+inline WifiAction decideEnsureUp(const bool stationConnected, const bool radioOff, const bool owned) {
   if (stationConnected) return WifiAction::UseExisting;
-  return radioOff ? WifiAction::Join : WifiAction::Busy;
-}
-
-// The activities that are "reading": Lexipoint keeps its WiFi across them (a lookup card is pushed
-// over the reader, and closing it must not drop WiFi before the next lookup).
-inline bool keepsLookupWifi(const std::string_view activityName, const bool isReaderActivity) {
-  if (isReaderActivity) return true;
-  for (const char* name : config::kLookupActivityNames) {
-    if (activityName == name) return true;
-  }
-  return false;
+  if (radioOff) return WifiAction::Join;
+  return owned ? WifiAction::Rejoin : WifiAction::Busy;
 }
 
 class WifiLease {

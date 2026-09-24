@@ -21,11 +21,13 @@ std::string_view utf8Prefix(const std::string_view text, const size_t maxBytes) 
 net::Request meRequest() { return {net::Method::Get, "/v1/me", ""}; }
 
 net::Request analyzeRequest(const Language language, const std::string_view text) {
-  return {net::Method::Post, "/v1/analyze/text",
-          net::JsonObject()
-              .add("text", utf8Prefix(text, config::kMaxAnalyzeTextBytes))
-              .add("language", languageCode(language))
-              .str()};
+  net::Request request{net::Method::Post, "/v1/analyze/text",
+                       net::JsonObject()
+                           .add("text", utf8Prefix(text, config::kMaxAnalyzeTextBytes))
+                           .add("language", languageCode(language))
+                           .str()};
+  request.idempotent = true;  // read-only analysis: a repeat is harmless
+  return request;
 }
 
 std::string userAgent(const std::string_view crossPointVersion) {

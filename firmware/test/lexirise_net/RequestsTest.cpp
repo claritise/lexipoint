@@ -20,6 +20,7 @@ TEST(Requests, AnalyzeBodyIsEscapedJson) {
   EXPECT_EQ(r.method, Method::Post);
   EXPECT_EQ(r.path, "/v1/analyze/text");
   EXPECT_EQ(r.body, R"({"text":"他说：\"走\"","language":"zh"})");
+  EXPECT_TRUE(r.retryable());
   EXPECT_NE(analyzeRequest(Language::Japanese, "x").body.find(R"("language":"ja")"), std::string::npos);
 }
 

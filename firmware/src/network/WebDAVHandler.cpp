@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
+#include "lexirise/web/HiddenPath.h"  // LEXIPOINT
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -759,6 +760,9 @@ void WebDAVHandler::urlEncodePath(const String& path, String& out) const {
 }
 
 bool WebDAVHandler::isProtectedPath(const String& path) const {
+  // LEXIPOINT: also refuse FAT short-name aliases of dot folders (/LEXIRI~1 is /.lexirise).
+  if (lexipoint::web::isHiddenOnCard(path.c_str())) return true;
+
   // Check every segment of the path, not just the last one.
   // This prevents access to e.g. /.hidden/somefile or /System Volume Information/foo
   int start = 0;

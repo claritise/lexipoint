@@ -164,11 +164,11 @@
   <script>
     const STATUS_TEXT = {
       'unchecked': 'Not checked', 'checking': 'Checking…', 'no-key': 'No key', 'rejected': 'Key rejected',
-      'offline': 'No internet (it is checked again when the reader is online)', 'error': 'Could not connect'
+      'offline': 'No internet (checked again when the device is online)', 'error': 'Could not connect'
     };
-    // The device checks a new key from its main loop, not inside the request, so the page polls.
+    // The device checks a new key from its main loop, not inside the request, so the page polls, for
+    // as long as the device says one call can take (checkTimeoutS).
     const POLL_MS = 1000;
-    const POLL_LIMIT = 60;  // > the device's worst case for one call (WiFi + NTP + TLS + request)
     let state = null;
 
     function get(obj, path) { return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj); }
@@ -238,7 +238,8 @@
     }
 
     async function pollUntilSettled() {
-      for (let i = 0; i < POLL_LIMIT && state && state.status.state === 'checking'; i++) {
+      const limit = state ? state.checkTimeoutS + 5 : 0;
+      for (let i = 0; i < limit && state && state.status.state === 'checking'; i++) {
         await new Promise(r => setTimeout(r, POLL_MS));
         try {
           const res = await fetch('/api/lexirise');
@@ -335,7 +336,14 @@
 
     buildToggles();
     wireFields();
-    fetch('/api/lexirise').then(r => r.json()).then(s => { render(s); pollUntilSettled(); })
+    fetch('/api/lexirise?recheck=1').then(r => r.json()).then(s => {
+      render(s);
+      if (s.settingsReset) {
+        showMessage('The settings file could not be read, so defaults are shown. The old file was kept as ' +
+          '.lexirise/config.ini.bad on the SD card.', false);
+      }
+      pollUntilSettled();
+    })
       .catch(e => showMessage('Could not load settings: ' + e.message, false));
   </script>
 </body>

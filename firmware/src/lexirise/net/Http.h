@@ -31,6 +31,13 @@ struct Request {
   Method method = Method::Get;
   std::string path;  // absolute, e.g. "/v1/me"
   std::string body;  // JSON; sent with Content-Type only when non-empty or the method carries one
+  // Safe to send twice (a repeat changes nothing): only these are resent after a stale keep-alive
+  // session. GET/PUT/DELETE always are; a POST opts in (analyze/text is read-only).
+  bool idempotent = false;
+
+  bool retryable() const {
+    return idempotent || method == Method::Get || method == Method::Put || method == Method::Delete;
+  }
 };
 
 // Serialises the request with Host, Authorization: Bearer, Accept, User-Agent, Content-Type and

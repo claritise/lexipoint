@@ -41,17 +41,11 @@ TEST(WifiLease, SurvivesMillisWrap) {
 TEST(WifiPolicy, OnlyBringsWifiUpFromRadioOff) {
   using lexipoint::net::decideEnsureUp;
   using lexipoint::net::WifiAction;
-  EXPECT_EQ(decideEnsureUp(/*stationConnected=*/true, /*radioOff=*/false), WifiAction::UseExisting);
-  EXPECT_EQ(decideEnsureUp(false, true), WifiAction::Join);
+  EXPECT_EQ(decideEnsureUp(/*stationConnected=*/true, /*radioOff=*/false, /*owned=*/false), WifiAction::UseExisting);
+  EXPECT_EQ(decideEnsureUp(true, false, true), WifiAction::UseExisting);
+  EXPECT_EQ(decideEnsureUp(false, true, false), WifiAction::Join);
   // The web server's hotspot, or someone else's join in progress: never touched.
-  EXPECT_EQ(decideEnsureUp(false, false), WifiAction::Busy);
-}
-
-TEST(WifiPolicy, ReadingActivitiesKeepLookupWifi) {
-  using lexipoint::net::keepsLookupWifi;
-  EXPECT_TRUE(keepsLookupWifi("AnythingReader", true));
-  for (const char* name : lexipoint::config::kLookupActivityNames) EXPECT_TRUE(keepsLookupWifi(name, false)) << name;
-  for (const char* name : {"KOReaderSync", "CrossPointWebServer", "Home", "Settings", "OtaUpdate", ""}) {
-    EXPECT_FALSE(keepsLookupWifi(name, false)) << name;
-  }
+  EXPECT_EQ(decideEnsureUp(false, false, false), WifiAction::Busy);
+  // Lexipoint's own link dropped: its radio, so it rejoins.
+  EXPECT_EQ(decideEnsureUp(false, false, true), WifiAction::Rejoin);
 }

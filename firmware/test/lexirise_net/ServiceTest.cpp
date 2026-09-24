@@ -113,14 +113,12 @@ TEST(Service, LeavingReadingGivesWifiBack) {
   rig.conn.reads = {httpOk(kMe)};
   rig.service.checkKey();
   rig.wifi.owned = true;
-  // Reader, word select and the reader's menus keep it...
-  rig.service.onActivityChanged("Reader", true);
-  rig.service.onActivityChanged("DictionaryWordSelect", false);
-  rig.service.onActivityChanged("EpubReaderMenu", false);
+  // Anything with a reader on screen or under it (menus, word select, the card) keeps it...
+  rig.service.onActivityChanged(/*reading=*/true);
   EXPECT_EQ(rig.wifi.releases, 0);
   EXPECT_TRUE(rig.conn.isOpen());
-  // ...anything else (KOSync here) gets the radio back before it starts.
-  rig.service.onActivityChanged("KOReaderSync", false);
+  // ...anything else (KOSync replacing the reader, here) gets the radio back before it starts.
+  rig.service.onActivityChanged(/*reading=*/false);
   EXPECT_EQ(rig.wifi.releases, 1);
   EXPECT_FALSE(rig.wifi.owned);
   EXPECT_FALSE(rig.conn.isOpen());
@@ -133,4 +131,32 @@ TEST(Service, AnalyzeSendsTheRequest) {
   EXPECT_TRUE(r.ok());
   ASSERT_EQ(rig.conn.written.size(), 1u);
   EXPECT_NE(rig.conn.written[0].find(R"({"text":"東京","language":"ja"})"), std::string::npos);
+}
+
+TEST(Service, OfflineKeyIsRecheckedOnceOnline) {
+  Rig rig;
+  rig.wifi.result = WifiResult::Busy;  // hotspot mode: no internet
+  EXPECT_EQ(rig.service.checkKey().state, KeyState::Offline);
+  // Back online: the next call that gets WiFi queues a check, which the next tick runs.
+  rig.wifi.result = WifiResult::Up;
+  rig.conn.reads = {httpOk(R"({"occurrences":[]})"), httpOk(kMe)};
+  EXPECT_TRUE(rig.service.analyze(lexipoint::Language::Japanese, "x").ok());
+  EXPECT_EQ(rig.service.keyStatus().state, KeyState::Checking);
+  rig.service.tick();
+  EXPECT_EQ(rig.service.keyStatus().state, KeyState::Connected);
+}
+
+TEST(Service, RecheckIfStaleOnlyWhenItHelps) {
+  Rig noKey(false);
+  noKey.service.recheckIfStale();
+  EXPECT_NE(noKey.service.keyStatus().state, KeyState::Checking);  // nothing to check
+
+  Rig rig;
+  rig.service.recheckIfStale();  // unchecked + key: queued
+  EXPECT_EQ(rig.service.keyStatus().state, KeyState::Checking);
+  rig.conn.reads = {httpOk(kMe)};
+  rig.service.tick();
+  ASSERT_EQ(rig.service.keyStatus().state, KeyState::Connected);
+  rig.service.recheckIfStale();  // fresh: nothing queued
+  EXPECT_EQ(rig.service.keyStatus().state, KeyState::Connected);
 }

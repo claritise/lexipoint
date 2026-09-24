@@ -48,6 +48,8 @@ class SettingsStore {
 
   // Boot-time load. Cleans a leftover .tmp, recovers a .bak, and rewrites a legacy-format file.
   LoadOutcome load();
+  // What the last load() found (the web page warns when settings were reset).
+  LoadOutcome lastLoad() const { return lastLoad_; }
 
   // A consistent copy of the current settings. Cheap enough to call per lookup.
   Settings snapshot() const;
@@ -62,6 +64,8 @@ class SettingsStore {
   uint32_t revision() const;
 
  private:
+  LoadOutcome loadLocked();                   // requires writeMutex_
+  void quarantine(const char* path);          // requires writeMutex_
   bool saveLocked(const Settings& settings);  // requires writeMutex_
 
   SettingsFiles& files_;
@@ -69,6 +73,7 @@ class SettingsStore {
   std::mutex writeMutex_;
   Settings current_;
   uint32_t revision_ = 0;
+  LoadOutcome lastLoad_ = LoadOutcome::Defaults;
 };
 
 // The device-wide store over the SD card (SettingsFilesHal.cpp; not linked into host tests).

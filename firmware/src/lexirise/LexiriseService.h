@@ -31,6 +31,9 @@ class LexiriseService {
   // (and so off WebServer::handleClient's stack). keyStatus() reads Checking until it has run.
   void requestKeyCheck();
   api::KeyStatus keyStatus() const { return status_; }
+  // Queues a check if the cached status is stale (never checked, or offline last time) and there is a
+  // key. The web page calls it when it opens; send() does it itself whenever WiFi comes up.
+  void recheckIfStale();
   // The key or server changed: the cached status no longer applies.
   void invalidateKeyStatus() { status_ = api::KeyStatus(); }
 
@@ -40,9 +43,10 @@ class LexiriseService {
   // Main-loop tick: a queued key check, the idle TLS close, and the WiFi idle teardown.
   void tick();
 
-  // The activity on screen changed (ActivityManager hook). Leaving reading gives WiFi back and closes
+  // The activity on screen is about to change (ActivityManager hook, before the next onEnter).
+  // `reading`: a reader activity is on screen or under it. Leaving reading gives WiFi back and closes
   // the TLS session, so the next activity never shares the radio with Lexipoint (net/WifiLease.h).
-  void onActivityChanged(std::string_view activityName, bool isReaderActivity);
+  void onActivityChanged(bool reading);
   // Closes the session and gives WiFi back now if Lexipoint owns it.
   void releaseWifi();
 
@@ -56,6 +60,7 @@ class LexiriseService {
   Clock clock_;
   api::KeyStatus status_;
   bool checkPending_ = false;
+  bool checking_ = false;       // inside checkKey(): its own send() doesn't queue another
   bool sessionActive_ = false;  // a call ran since the last close: the idle close is armed
   unsigned long lastCallMs_ = 0;
   bool wifiIdleKnown_ = false;

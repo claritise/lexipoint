@@ -39,8 +39,9 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
         return True
 
     def _hidden(self, *paths):
-        return "files" not in self.broken and any(
-            seg.startswith(".") for p in paths for seg in p.split("/") if seg)
+        def hidden(seg):
+            return seg.startswith(".") or ("shortname" not in self.broken and seg.upper() == "LEXIRI~1")
+        return "files" not in self.broken and any(hidden(seg) for p in paths for seg in p.split("/") if seg)
 
     def _form(self):
         length = int(self.headers.get("Content-Length", 0))
@@ -60,7 +61,7 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
             return self._send(200, json.dumps({"hasKey": True, "key": key, "status": {"state": "connected"}}))
         if url.path in ("/api/files", "/download"):
             return self._send(403 if self._hidden(q.get("path", [""])[0]) else 404)
-        if url.path.startswith("/."):
+        if url.path.startswith("/.") or url.path.upper().startswith("/LEXIRI~1"):
             return self._send(200 if "dav" in self.broken else 403, "api_key=x" if "dav" in self.broken else "")
         return self._send(404)
 
@@ -80,7 +81,7 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
         return self._send(404)
 
     def do_PROPFIND(self):
-        if "dav" in self.broken:
+        if "dav" in self.broken or ("shortname" in self.broken and "~" in self.path):
             return self._send(207, "<d:href>/.lexirise/config.ini</d:href>")
         return self._send(403)
 
@@ -109,8 +110,11 @@ class WebSmoke(unittest.TestCase):
             "origin": {"foreign Origin refused (GET)", "foreign Origin refused (POST)"},
             "host": {"rebinding Host refused"},
             "files": {"hidden folder not listed", "hidden download refused", "hidden rename refused",
-                      "move into hidden folder refused", "hidden delete refused"},
-            "dav": {"WebDAV PROPFIND refused", "WebDAV GET refused"},
+                      "move into hidden folder refused", "hidden delete refused", "short-name download refused",
+                      "short-name folder not listed"},
+            "shortname": {"short-name download refused", "short-name folder not listed",
+                          "WebDAV short-name PROPFIND refused"},
+            "dav": {"WebDAV PROPFIND refused", "WebDAV GET refused", "WebDAV short-name PROPFIND refused"},
         }
         for guard, should_fail in expectations.items():
             FakeDevice.broken = {guard}

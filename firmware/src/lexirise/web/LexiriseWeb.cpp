@@ -54,7 +54,9 @@ void sendState(WebServer& server) {
   std::vector<std::string> names;
   names.reserve(found.size());
   for (auto& d : found) names.push_back(std::move(d.name));
-  sendJson(server, kHttpOk, stateJson(settingsStore().snapshot(), service().keyStatus(), names));
+  sendJson(server, kHttpOk,
+           stateJson(settingsStore().snapshot(), service().keyStatus(), names,
+                     settingsStore().lastLoad() == LoadOutcome::Unreadable));
 }
 
 // Every /api/lexirise call: writes could replace the key or its server, and reads show the account
@@ -68,7 +70,10 @@ bool allowRequest(WebServer& server) {
 }
 
 void handleGet(WebServer& server) {
-  if (allowRequest(server)) sendState(server);
+  if (!allowRequest(server)) return;
+  // The page opening: a key saved while offline (hotspot) gets checked now the device may be online.
+  if (server.arg("recheck") == "1") service().recheckIfStale();
+  sendState(server);
 }
 
 void handlePost(WebServer& server) {

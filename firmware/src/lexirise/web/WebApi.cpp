@@ -169,7 +169,8 @@ const char* parsePatch(const std::string_view body, SettingsPatch& out) {
   return nullptr;
 }
 
-std::string stateJson(const Settings& s, const api::KeyStatus& status, const std::vector<std::string>& dictionaries) {
+std::string stateJson(const Settings& s, const api::KeyStatus& status, const std::vector<std::string>& dictionaries,
+                      const bool settingsReset) {
   const std::vector<int> idleChoices(std::begin(config::kWifiIdleChoicesMin), std::end(config::kWifiIdleChoicesMin));
   return net::JsonObject()
       .add("enabled", s.enabled)
@@ -186,6 +187,8 @@ std::string stateJson(const Settings& s, const api::KeyStatus& status, const std
       .add("baseUrl", s.baseUrl)
       .add("choices", net::JsonObject().add("wifiIdleMin", idleChoices).add("dictionaries", dictionaries))
       .add("status", statusJson(status))
+      .add("settingsReset", settingsReset)
+      .add("checkTimeoutS", static_cast<int>((config::kMaxCallMs + 999) / 1000))
       .str();
 }
 

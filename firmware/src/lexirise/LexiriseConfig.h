@@ -35,8 +35,7 @@ constexpr uint32_t kRetryAfterDefaultS = 60;  // 429 without a usable Retry-Afte
 constexpr uint32_t kRetryAfterMaxS = 3600;    // cap on a server-sent Retry-After
 constexpr uint16_t kHttpsPort = 443;
 // One whole request (the stale-session retry included) once a connection is open. Opening is bounded
-// separately (NTP kNtpWaitMs + TCP and handshake kHttpTimeoutMs each), so one call ends within
-// kWifiConnectMs + kNtpWaitMs + 2 * kHttpTimeoutMs + kRequestDeadlineMs (lxctl sizes its wait from that).
+// separately (NTP kNtpWaitMs + TCP and handshake kHttpTimeoutMs each): see kMaxCallMs below.
 constexpr uint32_t kRequestDeadlineMs = 15000;
 // An idle TLS session is closed after this, so it never sits on internal heap that upstream TLS users
 // (KOSync, fonts, OTA) pre-flight for. Keep-alive still covers a lookup's back-to-back calls.
@@ -63,14 +62,6 @@ constexpr uint32_t kIoPollMs = 5;  // sleep between non-blocking socket polls
 constexpr uint32_t kWifiConnectMs = 6000;
 constexpr uint32_t kWifiPollMs = 50;
 constexpr unsigned long kMsPerMinute = 60UL * 1000UL;
-// Activities (by Activity name) that count as reading besides reader activities: Lexipoint keeps its
-// WiFi across them. None of them use WiFi (KOSync is its own activity, so it's not here). P3 adds the
-// lookup card.
-constexpr const char* kLookupActivityNames[] = {
-    "DictionaryWordSelect",      "EpubReaderMenu",      "EpubReaderChapterSelection",
-    "EpubReaderFootnotes",       "EpubReaderBookmarks", "EpubReaderPercentSelection",
-    "XtcReaderChapterSelection",
-};
 
 // Response limits (lexirise-client.md §4): past these a response is treated as malformed.
 constexpr size_t kMaxOccurrences = 128;
@@ -86,5 +77,9 @@ constexpr size_t kMaxTagLength = 40;
 constexpr size_t kMaxDictionaryNameLength = 64;
 constexpr size_t kMaxBaseUrlLength = 128;
 constexpr const char* kDefaultTags = "xteink";
+
+// The longest one Lexirise call can block (WiFi join, NTP, TCP + handshake, the request). The web page
+// polls a queued key check for this long, and lxctl's LEXI wait is checked against it (test_lxctl).
+constexpr uint32_t kMaxCallMs = kWifiConnectMs + kNtpWaitMs + 2 * kHttpTimeoutMs + kRequestDeadlineMs;
 
 }  // namespace lexipoint::config

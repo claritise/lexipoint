@@ -18,9 +18,11 @@ namespace lexipoint::web {
 // first field with the wrong type or value. Unknown fields are ignored; absent ones stay unset.
 const char* parsePatch(std::string_view body, SettingsPatch& out);
 
-// Everything the page shows. The key only ever appears masked (settings.md §2).
+// Everything the page shows. The key only ever appears masked (settings.md §2). settingsReset: the
+// file was unreadable at boot and moved aside (the page says so). checkTimeoutS: how long the page
+// polls a queued key check (config::kMaxCallMs).
 std::string stateJson(const Settings& settings, const api::KeyStatus& status,
-                      const std::vector<std::string>& dictionaries);
+                      const std::vector<std::string>& dictionaries, bool settingsReset = false);
 
 // {"error":"<error>"[,"field":"<field>"]}
 std::string errorJson(const char* error, const char* field = nullptr);

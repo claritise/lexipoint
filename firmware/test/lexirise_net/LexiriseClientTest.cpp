@@ -192,3 +192,22 @@ TEST(LexiriseClient, StaleRetryKeepsTheSameDeadline) {
   conn.reads = {FakeConnection::kClose, "HTTP/1.1 200 OK\r\n", "Content-Length: 2\r\n\r\n{}"};
   EXPECT_EQ(client.send(kMe).error, ApiError::Timeout);
 }
+
+TEST(LexiriseClient, NonIdempotentPostIsNeverSentTwice) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  conn.reads = {ok("{}")};
+  ASSERT_TRUE(client.send(kMe).ok());
+  conn.reads = {FakeConnection::kClose, ok("{}")};
+  const Request save{Method::Post, "/v1/vocabulary", "{}"};  // not idempotent
+  EXPECT_EQ(client.send(save).error, ApiError::Network);
+  EXPECT_EQ(conn.opens, 1);  // no second attempt
+  ASSERT_EQ(conn.written.size(), 2u);
+  // An idempotent POST is retried like a GET.
+  Request analyze{Method::Post, "/v1/analyze/text", "{}"};
+  analyze.idempotent = true;
+  conn.reads = {ok("{}"), FakeConnection::kClose, ok("{}")};
+  ASSERT_TRUE(client.send(analyze).ok());  // opens a session
+  EXPECT_TRUE(client.send(analyze).ok());  // stale, retried
+}

@@ -162,6 +162,25 @@ class LexiCommands(unittest.TestCase):
         self.assertFalse(lxctl.heap_leaks([50000, 40000]))  # too few samples to call
 
 
+def header_constants(path: str) -> dict[str, int]:
+    """`constexpr <int type> kName = <integer>;` values from a C++ header (expressions skipped)."""
+    with open(os.path.join(REPO, path)) as f:
+        text = f.read()
+    pattern = r"constexpr\s+(?:unsigned\s+long|u?int\d*_t|int|size_t|long)\s+(k\w+)\s*=\s*([0-9]+)(?:UL|U|L)?\s*;"
+    return {name: int(value) for name, value in re.findall(pattern, text)}
+
+
+class HostConstantsMatchTheFirmware(unittest.TestCase):
+    def test_lexi_wait_outlasts_the_longest_call(self):
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        max_call_ms = c["kWifiConnectMs"] + c["kNtpWaitMs"] + 2 * c["kHttpTimeoutMs"] + c["kRequestDeadlineMs"]
+        self.assertGreater(lxctl.LEXI_CALL_TIMEOUT_S * 1000, max_call_ms)
+
+    def test_soak_limit_matches(self):
+        c = header_constants("src/lexirise/dev/DevConfig.h")
+        self.assertEqual(lxctl.LEXI_SOAK_MAX, c["kLexiSoakMax"])
+
+
 LEXIRISE_FLAG = re.compile(r"-D\s*LEXIRISE=1\b")
 
 

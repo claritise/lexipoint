@@ -32,6 +32,7 @@ api::ApiResponse LexiriseService::send(const net::Request& request) {
     response.error = api::ApiError::NoWifi;
     return response;
   }
+  if (!checking_) recheckIfStale();  // online now: a key saved while offline gets checked next tick
   response = client_.send(request);
   wifi_.touch();
   sessionActive_ = true;
@@ -49,12 +50,19 @@ void LexiriseService::closeSession() {
 
 api::KeyStatus LexiriseService::checkKey() {
   checkPending_ = false;
+  checking_ = true;
   status_ = api::keyStatusFrom(send(api::meRequest()));
+  checking_ = false;
   if (status_.state == api::KeyState::Connected) {
     LOG_INF(kLogTag, "Key OK, rate limit %u per %u s", static_cast<unsigned>(status_.me.rateLimitMax),
             static_cast<unsigned>(status_.me.rateLimitWindowMs / 1000));
   }
   return status_;
+}
+
+void LexiriseService::recheckIfStale() {
+  const bool stale = status_.state == api::KeyState::Unchecked || status_.state == api::KeyState::Offline;
+  if (stale && !checkPending_ && store_.snapshot().hasApiKey()) requestKeyCheck();
 }
 
 void LexiriseService::requestKeyCheck() {
@@ -82,8 +90,8 @@ void LexiriseService::tick() {
   if (wifi_.tick(wifiIdleMin_)) closeSession();
 }
 
-void LexiriseService::onActivityChanged(const std::string_view activityName, const bool isReaderActivity) {
-  if (!net::keepsLookupWifi(activityName, isReaderActivity)) releaseWifi();
+void LexiriseService::onActivityChanged(const bool reading) {
+  if (!reading) releaseWifi();
 }
 
 void LexiriseService::releaseWifi() {

@@ -31,9 +31,6 @@
 #endif
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
-#if LEXIRISE
-static std::string lexipointShownActivity;  // LEXIPOINT: the activity Lexipoint was last told about
-#endif
 
 void ActivityManager::begin() {
 #if defined(configNUM_CORES) && configNUM_CORES > 1
@@ -152,6 +149,14 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
+#if LEXIRISE
+        // LEXIPOINT: popped out of reading: give Lexipoint's WiFi back before the result handler runs
+        // (it may start the next activity). Not under the render lock: that's a WiFi teardown.
+        if (!isReaderActivity()) {
+          lock.unlock();
+          lexipoint::service().onActivityChanged(false);
+        }
+#endif
         // Handle result if necessary
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
@@ -193,20 +198,16 @@ void ActivityManager::loop() {
       currentActivity = std::move(pendingActivity);
 
       lock.unlock();  // onEnter may acquire its own lock
+#if LEXIRISE
+      // LEXIPOINT: before onEnter, so an activity leaving reading starts with Lexipoint's WiFi given back.
+      lexipoint::service().onActivityChanged(isReaderActivity());
+#endif
       currentActivity->onEnter();
 
       // onEnter may request another pending action, we will handle it in the next loop iteration
       continue;
     }
   }
-
-#if LEXIRISE
-  // LEXIPOINT: tell Lexipoint when the activity on screen changes (it gives back WiFi outside reading).
-  if (currentActivity && currentActivity->name != lexipointShownActivity) {
-    lexipointShownActivity = currentActivity->name;
-    lexipoint::service().onActivityChanged(currentActivity->name, currentActivity->isReaderActivity());
-  }
-#endif
 
   if (requestedUpdate.exchange(false)) {
     // Using direct notification to signal the render task to update
@@ -235,6 +236,9 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   } else {
     // No current activity, safe to launch immediately
     currentActivity = std::move(newActivity);
+#if LEXIRISE
+    lexipoint::service().onActivityChanged(isReaderActivity());  // LEXIPOINT: before onEnter, as above
+#endif
     currentActivity->onEnter();
   }
 }

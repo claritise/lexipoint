@@ -17,13 +17,17 @@ constexpr const char* kLogTag = "LXW";
 }  // namespace
 
 WifiResult WifiSession::ensureUp() {
-  switch (decideEnsureUp(WiFi.status() == WL_CONNECTED, WiFi.getMode() == WIFI_MODE_NULL)) {
+  switch (decideEnsureUp(WiFi.status() == WL_CONNECTED, WiFi.getMode() == WIFI_MODE_NULL, lease_.owned())) {
     case WifiAction::UseExisting:
       touch();
       return WifiResult::Up;
     case WifiAction::Busy:
       LOG_INF(kLogTag, "WiFi is in use by something else, not touching it");
       return WifiResult::Busy;
+    case WifiAction::Rejoin:
+      LOG_INF(kLogTag, "Our WiFi link dropped, joining again");
+      tearDown();
+      break;
     case WifiAction::Join:
     default:
       break;

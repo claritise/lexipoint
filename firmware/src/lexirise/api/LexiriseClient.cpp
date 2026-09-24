@@ -92,7 +92,11 @@ ApiResponse LexiriseClient::send(const net::Request& request) {
   const bool reused = connection_.isOpen();
   if (attempt(request, reused, response) == Attempt::StaleSession) {
     response = ApiResponse();
-    attempt(request, false, response);
+    if (request.retryable()) {
+      attempt(request, false, response);
+    } else {
+      response.error = ApiError::Network;  // it may have reached the server: never sent twice
+    }
   }
   return response;
 }

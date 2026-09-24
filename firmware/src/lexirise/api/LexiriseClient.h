@@ -56,7 +56,7 @@ class LexiriseClient {
   bool configured() const { return configured_; }
 
   // Sends one request. A reused keep-alive session that turns out to be stale (it fails before any
-  // response byte) is reopened and the request sent once more; nothing else is retried. Once a
+  // response byte) is reopened and a retryable() request sent once more; nothing else is retried. Once a
   // connection is open the whole request, retry included, gets config::kRequestDeadlineMs.
   ApiResponse send(const net::Request& request);
 
