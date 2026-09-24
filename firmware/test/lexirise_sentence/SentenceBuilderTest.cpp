@@ -85,10 +85,40 @@ TokenRef find(const PageModel& page, const std::string& needle, size_t skip = 0)
   return {};
 }
 
+std::vector<uint32_t> codepoints(const std::string& text) {
+  std::vector<uint32_t> out;
+  const auto* p = reinterpret_cast<const unsigned char*>(text.c_str());
+  while (const uint32_t cp = utf8NextCodepoint(&p)) out.push_back(cp);
+  return out;
+}
+
+// Every sentence character maps back to the same character on the page; only an inserted space has no
+// place there (lookup-flow.md §6: the card's highlight follows these).
+void expectCharsMapToThePage(const PageModel& page, const BuiltSentence& s) {
+  size_t next = 0;
+  uint32_t at = 0;
+  for (const uint32_t cp : codepoints(s.text)) {
+    if (next < s.chars.size() && s.chars[next].start == at) {
+      const auto& c = s.chars[next++];
+      ASSERT_LT(c.token.line, page.lines.size());
+      ASSERT_LT(c.token.token, page.lines[c.token.line].tokens.size());
+      const auto tokenCps = codepoints(page.lines[c.token.line].tokens[c.token.token]);
+      ASSERT_LT(c.codepoint, tokenCps.size());
+      EXPECT_EQ(tokenCps[c.codepoint], cp) << s.text << " at " << at;
+      EXPECT_EQ(c.units, cp > 0xFFFF ? 2 : 1);
+    } else {
+      EXPECT_TRUE(cp == ' ' || cp == lexipoint::text::chars::kIdeographicSpace) << s.text << " at " << at;
+    }
+    at += cp > 0xFFFF ? 2 : 1;
+  }
+  EXPECT_EQ(next, s.chars.size());
+}
+
 BuiltSentence build(const PageModel& page, const std::string& tapped, const Script script = Script::Japanese,
                     const size_t skip = 0) {
   const auto result = buildSentence(page, find(page, tapped, skip), script);
   EXPECT_TRUE(result.has_value());
+  if (result) expectCharsMapToThePage(page, *result);
   return result.value_or(BuiltSentence{});
 }
 
@@ -381,4 +411,23 @@ TEST(CharClass, ContractionSuffixes) {
   for (const char* no : {"\u2019", "\u2019n\u2019", "\u2019twas", "\u2019tis", "\u2019til", "\u2019em", "s", "'s"}) {
     EXPECT_FALSE(suffix(no)) << no;
   }
+}
+
+TEST(SentencePageMap, InvisiblesAndSpacingKeepTheTokensOwnIndices) {
+  PageModel page;
+  // A zero-width space inside a token, an ideographic-space token, and a Latin line with joins.
+  TextLine a;
+  a.tokens = {"\xE5\xBD\xBC\xE2\x80\x8B\xE3\x81\xAF", "\xE3\x80\x80", "\xE8\xB5\xB0\xE3\x82\x8B\xE3\x80\x82"};
+  a.startsParagraph = true;
+  page.lines = {a};
+  const BuiltSentence s = build(page, "\xE8\xB5\xB0");  // 走
+  // 彼 (0) ​ (1, dropped) は (2): は keeps its index 2 in the token
+  ASSERT_GE(s.chars.size(), 2u);
+  EXPECT_EQ(s.chars[1].codepoint, 2u);
+  EXPECT_EQ(s.chars[1].token.token, 0u);
+  PageModel latin;
+  latin.lines = {layout("He came late.", true), layout("Then left.")};
+  const BuiltSentence l = build(latin, "came", Script::Latin);
+  EXPECT_EQ(l.text, "He came late.");
+  EXPECT_EQ(l.chars.size(), 11u);  // 13 characters, two of them inserted spaces
 }

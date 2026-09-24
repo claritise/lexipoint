@@ -22,9 +22,10 @@ Outcome handleInput(CardController& controller, const ShownTargets& targets, con
     } else {
       const ShownFrame* shown = targets.at(e.ms);
       // Nothing on screen yet, or a card for another word (tapped while a step redrew): dropped.
-      if (!shown || shown->word != controller.word()) continue;
+      if (!shown || shown->step != controller.steps()) continue;
       o = controller.tap(hitAt(shown->hits, e.x, e.y), e.ms);
     }
+    outcome.changes.insert(outcome.changes.end(), o.changes.begin(), o.changes.end());
     if (o.effect == Effect::Close) {
       outcome.effect = Effect::Close;
       break;

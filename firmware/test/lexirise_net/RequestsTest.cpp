@@ -55,3 +55,56 @@ TEST(Requests, LookupIsARetryablePostOfTheLemma) {
   EXPECT_LE(kept, lexipoint::config::kMaxTokenBytes);
   EXPECT_EQ(kept % 3, 0u);
 }
+
+TEST(Requests, SaveIsTheD9PayloadAndNeverRetried) {
+  lexipoint::api::SaveWord word;
+  word.language = Language::Japanese;
+  word.text = "煩わしい";
+  word.translation = "troublesome";
+  word.notes = "いつも煩わしくて困る。";
+  word.proficiency = 2;
+  word.tags = {"xteink", "book:x"};
+  const auto r = lexipoint::api::saveRequest(word);
+  EXPECT_EQ(r.method, Method::Post);
+  EXPECT_EQ(r.path, "/v1/vocabulary");
+  EXPECT_EQ(r.body, R"({"language":"ja","text":"煩わしい","mode":"word","translation":"troublesome","proficiency":2,)"
+                    R"("tags":["xteink","book:x"],"notes":"いつも煩わしくて困る。"})");
+  EXPECT_FALSE(r.retryable());  // an upsert that replaces: a stale-session resend could overwrite
+  word.translation = "";
+  word.notes = "";
+  word.tags = {};
+  EXPECT_EQ(lexipoint::api::saveRequest(word).body,
+            R"({"language":"ja","text":"煩わしい","mode":"word","proficiency":2,"tags":[]})");
+}
+
+TEST(Requests, VocabularyItemRequests) {
+  const auto level = lexipoint::api::setProficiencyRequest("901", 3);
+  ASSERT_TRUE(level);
+  EXPECT_EQ(level->method, Method::Patch);
+  EXPECT_EQ(level->path, "/v1/vocabulary/901");
+  EXPECT_EQ(level->body, R"({"proficiency":3})");
+  EXPECT_TRUE(level->retryable());
+  const auto remove = lexipoint::api::removeRequest("se_x-1");
+  ASSERT_TRUE(remove);
+  EXPECT_EQ(remove->method, Method::Delete);
+  EXPECT_EQ(remove->path, "/v1/vocabulary/se_x-1");
+  const auto clear = lexipoint::api::clearRequest("901");
+  ASSERT_TRUE(clear);
+  EXPECT_EQ(clear->method, Method::Patch);
+  EXPECT_EQ(clear->body, R"({"notes":null,"customTranslation":null,"tags":[]})");
+  // The id goes into the path: anything but a plain id is refused.
+  const std::string tooLong(lexipoint::config::kMaxSavedIdBytes + 1, '9');
+  EXPECT_FALSE(lexipoint::api::removeRequest(tooLong));
+  EXPECT_TRUE(lexipoint::api::removeRequest(std::string(lexipoint::config::kMaxSavedIdBytes, '9')));
+  for (const char* bad : {"", "9/../me", "9?x=1", "9 1", "９"}) {
+    EXPECT_FALSE(lexipoint::api::setProficiencyRequest(bad, 1)) << bad;
+    EXPECT_FALSE(lexipoint::api::removeRequest(bad)) << bad;
+    EXPECT_FALSE(lexipoint::api::clearRequest(bad)) << bad;
+  }
+}
+
+TEST(Requests, LoggedPathsLeaveOutTheSavedExpressionId) {
+  EXPECT_EQ(lexipoint::api::loggablePath("/v1/vocabulary/901"), "/v1/vocabulary/{id}");
+  EXPECT_EQ(lexipoint::api::loggablePath("/v1/vocabulary"), "/v1/vocabulary");
+  EXPECT_EQ(lexipoint::api::loggablePath("/v1/dictionary/lookup"), "/v1/dictionary/lookup");
+}

@@ -9,6 +9,7 @@
 #include "FakeMetrics.h"
 #include "RefreshStrength.h"
 #include "lexirise/card/BenchPage.h"
+#include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardController.h"
 #include "lexirise/card/CardFrame.h"
 #include "lexirise/card/CardLayout.h"
@@ -298,10 +299,16 @@ TEST(CardText, RankAndBars) {
   EXPECT_EQ(formatRank(29774), "#29,774");
   EXPECT_EQ(formatRank(182), "#182");
   EXPECT_EQ(formatRank(1234567), "#1,234,567");
-  EXPECT_EQ(rankBand(182), 0);
-  EXPECT_EQ(rankBand(1238), 1);
-  EXPECT_EQ(rankBand(6864), 2);
-  EXPECT_EQ(rankBand(22811), 3);
+  EXPECT_EQ(rankBand(182, Language::Japanese), 0);
+  EXPECT_EQ(rankBand(1238, Language::Japanese), 1);
+  EXPECT_EQ(rankBand(6864, Language::Japanese), 2);
+  EXPECT_EQ(rankBand(22811, Language::Japanese), 3);
+  // Chinese runs higher: 景色 (#8,123) common, 引擎 (#13,961) uncommon; 选择 (#1,113) common, as the reference.
+  EXPECT_EQ(rankBand(334, Language::Chinese), 0);
+  EXPECT_EQ(rankBand(1113, Language::Chinese), 1);
+  EXPECT_EQ(rankBand(8123, Language::Chinese), 1);
+  EXPECT_EQ(rankBand(13961, Language::Chinese), 2);
+  EXPECT_EQ(rankBand(30000, Language::Chinese), 3);
   EXPECT_EQ(filledBars(0.0f), 1);
   EXPECT_EQ(filledBars(0.181f), 1);
   EXPECT_EQ(filledBars(0.586f), 3);
@@ -464,7 +471,8 @@ TEST(CardLayout, MeaningNumbersAreBoldAndWrapToTheEdge) {
 }
 
 TEST(CardFrame, ComposesThePageOnlyInCardView) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.tick(60000);
   Frame f = composeFrame(c, kMetrics);
@@ -642,4 +650,16 @@ TEST(ShownTargets, MillisWrapping) {
   t.shown(0x10UL);  // after the wrap
   EXPECT_EQ(t.at(0x20UL)->hits.at(0).target, Target::Tab);
   EXPECT_EQ(t.at(0xFFFFFFF0UL)->hits.at(0).target, Target::Close);
+}
+
+TEST(CardFrame, WithThePageNotShownTheWordCountsAsCoveredAndGetsItsStrip) {
+  BenchSource source(benchJapanese(), false);  // the sentence high on the page: not covered
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  c.tick(60000);
+  const Frame shown = composeFrame(c, kMetrics);
+  const Frame hidden = composeFrame(c, kMetrics, /*pageVisible=*/false);
+  EXPECT_TRUE(shown.pageShown);
+  EXPECT_FALSE(hidden.pageShown);                    // no page, no highlight
+  EXPECT_LT(hidden.card.card.y, shown.card.card.y);  // the card view's strip, above the card
 }

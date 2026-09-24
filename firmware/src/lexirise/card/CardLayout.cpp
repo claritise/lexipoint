@@ -25,9 +25,9 @@ int tabCount(const Language language) {
 
 bool isActionsTab(const Language language, const int tab) { return tab == tabCount(language) - 1; }
 
-int rankBand(const uint32_t rank) {
+int rankBand(const uint32_t rank, const Language language) {
   int band = 0;
-  for (const uint32_t limit : config::kRankBandLimits) {
+  for (const uint32_t limit : language == Language::Chinese ? config::kRankBandLimitsZh : config::kRankBandLimitsJa) {
     if (rank < limit) return band;
     band++;
   }
@@ -409,7 +409,7 @@ class Layout {
           x += m::kBarWidth + m::kBarGap;
         }
         x += tw(Font::UiSmall, " ");
-        text = formatRank(w_.rank) + " " + str_.bands[rankBand(w_.rank)];
+        text = formatRank(w_.rank) + " " + str_.bands[rankBand(w_.rank, w_.language)];
       } else {  // no rank: the row shows only the state
         text = s_.level == Level::None ? str_.notSaved : str_.levelNames[static_cast<int>(s_.level)];
       }

@@ -33,6 +33,7 @@ class FakeApi final : public lexipoint::api::LexiriseApi {
     looked.emplace_back(lemma);
     return lookupReply;
   }
+  ApiResponse write(const lexipoint::net::Request&) override { return {}; }
 };
 
 ApiResponse body(std::string text) {
@@ -107,10 +108,7 @@ TEST(LexiriseLookup, AFullCard) {
   EXPECT_EQ(card.lemmaEntryId, 32u);
   EXPECT_FALSE(card.saved);
   EXPECT_FALSE(card.translationUnavailable);
-  const std::string text = card.plainText();
-  EXPECT_NE(text.find("食べる  taberu · verb · JLPT-N5"), std::string::npos) << text;
-  EXPECT_NE(text.find("(食べさせられた)"), std::string::npos) << text;
-  EXPECT_NE(text.find("1. to eat"), std::string::npos) << text;
+  EXPECT_TRUE(card.complete);
 }
 
 TEST(LexiriseLookup, AnalyzeFailuresAreUnavailable) {
@@ -151,7 +149,6 @@ TEST(LexiriseLookup, ALookupFailureStillShowsTheWord) {
     EXPECT_TRUE(card.translationUnavailable);
     EXPECT_EQ(card.lemma, "食べる");
     EXPECT_EQ(card.reading, "");  // not the surface's: 食べる must not read "tabesaserareta"
-    EXPECT_NE(card.plainText().find("(meaning unavailable)"), std::string::npos);
   }
 }
 
@@ -163,7 +160,6 @@ TEST(LexiriseLookup, PendingTranslation) {
   ASSERT_EQ(lookupWithLexirise(api, tap(), card).outcome, LookupOutcome::Card);
   EXPECT_TRUE(card.translationPending);
   EXPECT_FALSE(card.translationUnavailable);
-  EXPECT_NE(card.plainText().find("pending"), std::string::npos);
 }
 
 TEST(LexiriseLookup, SavedStatePrefersTheLemma) {
@@ -202,7 +198,7 @@ TEST(LexiriseLookup, MissingLemmaEntryFallsBackToTheSurfaceEntry) {
   EXPECT_EQ(card.language, Language::Chinese);
   EXPECT_EQ(card.lemmaEntryId, 51u);
   EXPECT_EQ(card.headword(), "学习");
-  EXPECT_EQ(card.plainText().find("("), std::string::npos);  // surface == headword: no second line
+  EXPECT_EQ(card.surface, card.headword());  // the dictionary form itself
 }
 
 TEST(LexiriseLookup, ReadingBeforeTheLookup) {
@@ -237,17 +233,13 @@ TEST(LexiriseLookup, AnEmptyLemmaLooksUpTheSurface) {
   EXPECT_EQ(card.headword(), "猫");
 }
 
-TEST(LookupCard, PlainText) {
+TEST(LookupCard, HeadwordIsTheLemmaElseTheSurface) {
   LookupCard card;
   card.surface = "学习";
   EXPECT_EQ(card.headword(), "学习");
-  EXPECT_EQ(card.plainText(), "学习\n\n");  // nothing known: the word alone
-  card.lemma = "学习";
-  card.reading = "xuéxí";
-  card.level = "HSK-1";
-  card.saved = lexipoint::api::EntryState{"9", 1, 2};
-  card.senses = {{"to study", "verb"}, {"learning", "noun"}};
-  EXPECT_EQ(card.plainText(), "学习  xuéxí · HSK-1 · saved\n\n1. to study\n2. learning\n");
+  card.surface = "食べた";
+  card.lemma = "食べる";
+  EXPECT_EQ(card.headword(), "食べる");
 }
 
 TEST(LexiriseLookup, NoLemmaEntryMeansNoLemmaReading) {
@@ -264,13 +256,99 @@ TEST(LexiriseLookup, NoLemmaEntryMeansNoLemmaReading) {
   EXPECT_EQ(card.lemmaEntryId, 81u);  // Save falls back to the surface entry
 }
 
-TEST(LexiriseLookup, ChainStep) {
-  using lexipoint::lookup::chainStep;
-  using lexipoint::lookup::ChainStep;
-  for (const bool starDict : {false, true}) {
-    EXPECT_EQ(chainStep(LookupOutcome::Card, starDict), ChainStep::ShowCard);
-    EXPECT_EQ(chainStep(LookupOutcome::NotFound, starDict), ChainStep::ShowNotFound);  // final: no StarDict
-  }
-  EXPECT_EQ(chainStep(LookupOutcome::Unavailable, true), ChainStep::RunStarDict);
-  EXPECT_EQ(chainStep(LookupOutcome::Unavailable, false), ChainStep::NoDictionary);
+namespace {
+
+// 彼は本を読んだ。: four words and a full stop; 本 is saved (proficiency 3), 読んだ's lemma is 読む.
+constexpr const char* kSentence = "彼は本を読んだ。";
+constexpr const char* kAnalyzeSentence =
+    R"({"occurrences":[)"
+    R"({"word":"彼","isWordLike":true,"transliteration":"kare","charStart":0,"charEnd":1,"entryId":1},)"
+    R"({"word":"は","isWordLike":true,"transliteration":"wa","charStart":1,"charEnd":2,"entryId":2},)"
+    R"({"word":"本","isWordLike":true,"transliteration":"hon","charStart":2,"charEnd":3,"entryId":3},)"
+    R"({"word":"を","isWordLike":true,"transliteration":"wo","charStart":3,"charEnd":4,"entryId":4},)"
+    R"({"word":"読んだ","lemma":"読む","isWordLike":true,"transliteration":"yonda","charStart":4,"charEnd":7,)"
+    R"("entryId":5,"lemmaEntryId":6},)"
+    R"({"word":"。","isWordLike":false,"charStart":7,"charEnd":8}],)"
+    R"("entryMetaById":{"3":{"transliteration":"hon","rank":120,"frequencyScore":0.61,"partOfSpeech":["noun"]},)"
+    R"("5":{"transliteration":"yonda","rank":900},"6":{"transliteration":"yomu","rank":400,"partOfSpeech":["verb"]}},)"
+    R"("stateByEntryId":{"3":{"saved_expression_id":77,"proficiency":3}}})";
+
+TapContext sentenceTap(const uint32_t offset) {
+  TapContext t = tap(offset);
+  t.sentence->text = kSentence;
+  return t;
+}
+
+}  // namespace
+
+TEST(SentenceLookup, AnalyzeOnceThenEveryWordIsACardWithoutAsking) {
+  FakeApi api;
+  api.analyzeReply = body(kAnalyzeSentence);
+  lexipoint::lookup::AnalyzedSentence sentence;
+  size_t word = 99;
+  ASSERT_EQ(lexipoint::lookup::analyzeTap(api, sentenceTap(2), sentence, word).outcome, LookupOutcome::Card);
+  EXPECT_EQ(sentence.words.size(), 5u);  // the full stop isn't a word
+  EXPECT_EQ(word, 2u);                   // 本
+  EXPECT_TRUE(api.looked.empty());       // phase B hasn't run
+
+  const LookupCard hon = lexipoint::lookup::cardFor(sentence, 2);
+  EXPECT_EQ(hon.headword(), "本");
+  EXPECT_EQ(hon.reading, "hon");
+  EXPECT_EQ(hon.rank, 120u);
+  EXPECT_FLOAT_EQ(hon.frequency, 0.61f);  // the bars match the rank before phase B
+  EXPECT_EQ(hon.charStart, 2u);
+  EXPECT_EQ(hon.charEnd, 3u);
+  ASSERT_TRUE(hon.saved);
+  EXPECT_EQ(hon.saved->savedExpressionId, "77");
+  EXPECT_EQ(hon.saved->proficiency, 3);
+  EXPECT_FALSE(hon.complete);
+
+  const LookupCard yomu = lexipoint::lookup::cardFor(sentence, 4);  // a step right, twice
+  EXPECT_EQ(yomu.headword(), "読む");
+  EXPECT_EQ(yomu.reading, "yomu");   // the lemma's entry, not the surface's yonda
+  EXPECT_EQ(yomu.partOfSpeech, "");  // the surface entry has none (inflected forms don't)
+  EXPECT_EQ(yomu.rank, 400u);        // the lemma's rank
+  EXPECT_EQ(yomu.charStart, 4u);
+  EXPECT_EQ(yomu.charEnd, 7u);
+  EXPECT_FALSE(yomu.saved);
+  EXPECT_EQ(api.analyzed.size(), 1u);  // one analyze for the whole sentence
+}
+
+TEST(SentenceLookup, CompleteCardFillsPhaseBOrMarksItUnavailable) {
+  FakeApi api;
+  api.analyzeReply = body(kAnalyzeSentence);
+  api.lookupReply =
+      body(R"({"word":"読む","transliteration":"yomu","rank":350,"frequency_score":0.8,)"
+           R"("system_tags":["JLPT-N5"],"translations":[{"translation":"to read","part_of_speech":["verb"]}]})");
+  lexipoint::lookup::AnalyzedSentence sentence;
+  size_t word = 0;
+  lexipoint::lookup::analyzeTap(api, sentenceTap(5), sentence, word);
+  EXPECT_EQ(word, 4u);
+  LookupCard card = lexipoint::lookup::cardFor(sentence, word);
+  EXPECT_EQ(lexipoint::lookup::completeCard(api, card), ApiError::None);
+  EXPECT_EQ(api.looked, std::vector<std::string>{"読む"});
+  EXPECT_TRUE(card.complete);
+  EXPECT_EQ(card.rank, 350u);
+  EXPECT_FLOAT_EQ(card.frequency, 0.8f);
+  EXPECT_EQ(card.partOfSpeech, "verb");  // from the sense, the surface entry had none
+  ASSERT_EQ(card.senses.size(), 1u);
+
+  api.lookupReply = failure(ApiError::Timeout);
+  LookupCard offline = lexipoint::lookup::cardFor(sentence, 2);
+  EXPECT_EQ(lexipoint::lookup::completeCard(api, offline), ApiError::Timeout);
+  EXPECT_TRUE(offline.complete);
+  EXPECT_TRUE(offline.translationUnavailable);
+  EXPECT_EQ(offline.headword(), "本");  // still a card
+}
+
+TEST(LexiriseLookup, LexiriseIsAskedOnlyWithASentenceALanguageAndAKey) {
+  using lexipoint::lookup::asksLexirise;
+  EXPECT_TRUE(asksLexirise(tap(), true));
+  EXPECT_FALSE(asksLexirise(tap(), false));  // no key, off, or the language switched off: StarDict at once
+  TapContext noSentence = tap();
+  noSentence.sentence.reset();
+  EXPECT_FALSE(asksLexirise(noSentence, true));
+  TapContext noLanguage = tap();
+  noLanguage.language.language.reset();
+  EXPECT_FALSE(asksLexirise(noLanguage, true));
 }

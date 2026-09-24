@@ -366,6 +366,17 @@ std::string normaliseTags(std::string_view tags) {
   return joined;
 }
 
+std::vector<std::string> tagList(std::string_view normalised) {
+  std::vector<std::string> out;
+  while (!normalised.empty()) {
+    const size_t comma = normalised.find(',');
+    if (comma != 0) out.emplace_back(normalised.substr(0, comma));
+    if (comma == std::string_view::npos) break;
+    normalised.remove_prefix(comma + 1);
+  }
+  return out;
+}
+
 }  // namespace lexipoint
 
 #endif  // LEXIRISE

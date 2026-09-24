@@ -1,5 +1,7 @@
 #pragma once
 
+#include <iterator>
+
 // Lexirise feature constants in one place (docs/v0.1 in the lexipoint repo). Tunables of the dev harness
 // live separately in src/lexirise/dev/DevConfig.h.
 
@@ -78,8 +80,12 @@ constexpr size_t kMaxTranslationBytes = 512;   // one sense's text; longer is cu
 constexpr size_t kStarDictMaxPrefixChars = 8;  // CJK longest-prefix probe for StarDict: 8, 7, … 1 characters
 
 // The card's rank words (popup-ui.md §1, languages.md §6): below each threshold, that band; past the
-// last, "rare". One table for both languages until P5 tunes them per language.
-constexpr uint32_t kRankBandLimits[] = {1000, 5000, 20000};
+// last, "rare". Per language: Chinese ranks run higher for words as common (tuned in P5 on sampled ranks,
+// lexirise-api-notes.md: 景色 #2,643 ja / #8,123 zh; HSK 6 words reach ~18k).
+constexpr uint32_t kRankBandLimitsJa[] = {1000, 5000, 20000};
+constexpr uint32_t kRankBandLimitsZh[] = {1000, 10000, 30000};  // 1000: the reference's 选择 #1,113 is common
+static_assert(std::size(kRankBandLimitsJa) == std::size(kRankBandLimitsZh), "one set of band names");
+constexpr size_t kRankBands = std::size(kRankBandLimitsJa) + 1;  // + "rare"
 
 // The card (popup-ui.md §2, §3.2).
 constexpr unsigned long kToastMs = 2000;      // "Saved as learning · Undo"
@@ -98,6 +104,8 @@ constexpr size_t kMaxOccurrences = 128;
 constexpr size_t kMaxEntries = 512;
 constexpr uint32_t kMaxProficiency = 4;       // stateByEntryId proficiency is 0-4
 constexpr size_t kMaxTokenBytes = 256;        // one word / lemma / reading
+constexpr size_t kMaxSavedIdBytes = 64;       // a saved-expression id (it goes into a request path)
+constexpr size_t kMaxScoreChars = 24;         // a frequency_score as JSON text ("0.4861234")
 constexpr size_t kMaxDisplayFieldBytes = 64;  // /v1/me user.name and user.plan
 constexpr size_t kJsonMaxDepth = 12;          // Lexirise responses nest ~5 deep; the reader recurses
 

@@ -3,6 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <utility>
+#include <vector>
+
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/api/Responses.h"
 
@@ -62,6 +65,7 @@ TEST(LookupParse, Lookup) {
   EXPECT_EQ(r.reading, "taberu");
   EXPECT_EQ(r.level, "JLPT-N5");
   EXPECT_EQ(r.rank, 310u);
+  EXPECT_FLOAT_EQ(r.frequency, 0.9f);
   EXPECT_FALSE(r.translationPending);
   // The first kMaxTranslations entries with a translation: the empty one is skipped, not counted.
   static_assert(lexipoint::config::kMaxTranslations == 2);
@@ -176,4 +180,33 @@ TEST(LookupParse, ALeadingNullTranslationDoesNotCostASense) {
   EXPECT_EQ(r.senses[0].translation, "one");
   EXPECT_EQ(r.senses[0].partOfSpeech, "noun");  // part of speech before the translation: same sense
   EXPECT_EQ(r.senses[1].translation, "two");
+}
+
+TEST(LookupParse, FrequencyScoreOnlyInZeroToOne) {
+  for (const auto& [body, expected] :
+       std::vector<std::pair<const char*, float>>{{R"({"word":"x","frequency_score":1})", 1.0f},
+                                                  {R"({"word":"x","frequency_score":0.25})", 0.25f},
+                                                  {R"({"word":"x","frequency_score":1.5})", 0.0f},
+                                                  {R"({"word":"x","frequency_score":-0.5})", 0.0f},
+                                                  {R"({"word":"x","frequency_score":1e-3})", 0.0f},
+                                                  {R"({"word":"x","frequency_score":"0.5"})", 0.0f},
+                                                  {R"({"word":"x","frequency_score":null})", 0.0f}}) {
+    LookupResult r;
+    ASSERT_EQ(parseLookup(body, r), ParseStatus::Ok) << body;
+    EXPECT_FLOAT_EQ(r.frequency, expected) << body;
+  }
+}
+
+TEST(LookupParse, SaveResponse) {
+  using lexipoint::api::parseSave;
+  using lexipoint::api::SaveResult;
+  SaveResult r;
+  ASSERT_EQ(parseSave(R"({"result":{"text":"x","type":"word","status":"added","savedExpressionId":901},"item":{}})", r),
+            ParseStatus::Ok);
+  EXPECT_EQ(r.savedExpressionId, "901");
+  ASSERT_EQ(parseSave(R"({"item":{"id":1},"result":{"savedExpressionId":"se_x"}})", r), ParseStatus::Ok);
+  EXPECT_EQ(r.savedExpressionId, "se_x");
+  for (const char* bad : {R"({"result":{}})", R"({"result":{"savedExpressionId":null}})", "{", ""}) {
+    EXPECT_EQ(parseSave(bad, r), ParseStatus::Malformed) << bad;
+  }
 }

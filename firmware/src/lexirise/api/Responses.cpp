@@ -26,6 +26,30 @@ bool toUint32(const Type type, const std::string_view text, uint32_t& out) {
   return true;
 }
 
+// A JSON number in [0, 1] ("0.83", "1", "0"): a frequency score. Anything else leaves `out` alone.
+bool toUnitFloat(const Type type, const std::string_view text, float& out) {
+  if (type != Type::Number || text.empty() || text.size() > config::kMaxScoreChars) return false;
+  float value = 0;
+  float scale = 0;  // 0 before the point, then 0.1, 0.01 …
+  for (const char c : text) {
+    if (c == '.' && scale == 0) {
+      scale = 0.1f;
+    } else if (c >= '0' && c <= '9') {
+      if (scale == 0) {
+        value = value * 10 + static_cast<float>(c - '0');
+      } else {
+        value += scale * static_cast<float>(c - '0');
+        scale /= 10;
+      }
+    } else {
+      return false;  // a sign or an exponent: not a score
+    }
+  }
+  if (value > 1) return false;
+  out = value;
+  return true;
+}
+
 class MeVisitor final : public json::Visitor {
  public:
   explicit MeVisitor(MeInfo& out) : out_(out) {}
@@ -131,6 +155,8 @@ class AnalyzeVisitor final : public json::Visitor {
         takeString(type, text, meta.reading);
       } else if (path.depth() == 3 && path.keyIs(2, "rank")) {
         toUint32(type, text, meta.rank);
+      } else if (path.depth() == 3 && path.keyIs(2, "frequencyScore")) {
+        toUnitFloat(type, text, meta.frequency);
       } else if (path.depth() == 4 && path.keyIs(2, "partOfSpeech") && path.index(3) == 0) {
         takeString(type, text, meta.partOfSpeech);
       }
@@ -179,6 +205,8 @@ class LookupVisitor final : public json::Visitor {
       if (type == Type::String) out_.reading.assign(utf8Prefix(text, config::kMaxTokenBytes));
     } else if (path.matches({"rank"})) {
       toUint32(type, text, out_.rank);
+    } else if (path.matches({"frequency_score"})) {
+      toUnitFloat(type, text, out_.frequency);
     } else if (path.matches({"translation_status"})) {
       out_.translationPending = type == Type::String && text != "ready";
     } else if (path.matches({"system_tags", "[]"})) {
@@ -228,6 +256,20 @@ class LookupVisitor final : public json::Visitor {
   int pendingIndex_ = -1;
 };
 
+class SaveVisitor final : public json::Visitor {
+ public:
+  explicit SaveVisitor(SaveResult& out) : out_(out) {}
+  void onValue(const Path& path, const Type type, const std::string_view text) override {
+    if (!path.matches({"result", "savedExpressionId"})) return;
+    if ((type == Type::Number || type == Type::String) && !text.empty() && text.size() <= config::kMaxSavedIdBytes) {
+      out_.savedExpressionId.assign(text);
+    }
+  }
+
+ private:
+  SaveResult& out_;
+};
+
 }  // namespace
 
 const EntryMeta* AnalyzeResult::metaFor(const uint32_t entryId) const {
@@ -245,6 +287,14 @@ ParseStatus parseLookup(const std::string_view body, LookupResult& out) {
   LookupVisitor visitor(parsed);
   if (json::read(body, visitor) != json::Result::Ok || !visitor.sawWord()) return ParseStatus::Malformed;
   visitor.finishSense();  // the last element
+  out = std::move(parsed);
+  return ParseStatus::Ok;
+}
+
+ParseStatus parseSave(const std::string_view body, SaveResult& out) {
+  SaveResult parsed;
+  SaveVisitor visitor(parsed);
+  if (json::read(body, visitor) != json::Result::Ok || parsed.savedExpressionId.empty()) return ParseStatus::Malformed;
   out = std::move(parsed);
   return ParseStatus::Ok;
 }

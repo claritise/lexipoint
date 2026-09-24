@@ -65,6 +65,12 @@ int RendererMetrics::single(const Font font, const std::string& text) const {
   return renderer_.getTextAdvanceX(id, text.c_str(), styleOf(font));
 }
 
+int RendererMetrics::pageWidth(const std::string& text, const uint8_t style) const {
+  const int id = fonts_.id(Font::Page);
+  if (renderer_.isSdCardFont(id)) renderer_.ensureSdCardFontReady(id, text.c_str());
+  return renderer_.getTextAdvanceX(id, text.c_str(), static_cast<EpdFontFamily::Style>(style));
+}
+
 int RendererMetrics::width(const Font font, const std::string& text) const {
   return runsWidth(font, text, [this](const Font f, const std::string& t) { return single(f, t); });
 }
@@ -89,7 +95,9 @@ void paint(GfxRenderer& renderer, const DisplayList& list, const CardFonts& font
         for (const PlacedRun& run :
              placeRuns(metrics, c.font, r.x, r.y, c.text,
                        [&](const Font f, const std::string& t) { return metrics.single(f, t); })) {
-          renderer.drawText(fonts.id(run.font), run.x, run.y, run.text.c_str(), c.black, styleOf(run.font));
+          const EpdFontFamily::Style style =
+              run.font == Font::Page ? static_cast<EpdFontFamily::Style>(c.pageStyle) : styleOf(run.font);
+          renderer.drawText(fonts.id(run.font), run.x, run.y, run.text.c_str(), c.black, style);
         }
         break;
       case Command::Kind::Shape: {

@@ -5,54 +5,48 @@
 #include <iterator>
 
 #include "lexirise/LexiriseConfig.h"
-#include "lexirise/text/Utf8Prefix.h"
 #include "lexirise/util/Timing.h"
 
 namespace lexipoint::card {
 
-namespace {
-
-std::string firstCodepoint(const std::string& text) { return std::string(text::utf8FirstChars(text, 1)); }
-
-}  // namespace
-
-CardController::CardController(const BenchBook& book, const ReadingMode reading, const bool low, CardStrings strings)
-    : book_(book), strings_(strings), low_(low), levels_(book.saved) {
+CardController::CardController(CardSource& source, const ReadingMode reading, CardStrings strings)
+    : source_(source), strings_(strings) {
   state_.reading = reading;
 }
 
+const CardWord& CardController::currentWord() const {
+  static const CardWord kNone;  // phase 0: nothing analyzed yet
+  return hasWord() ? source_.word(word_) : kNone;
+}
+
 void CardController::open(const unsigned long nowMs) {
-  word_ = book_.start;
+  source_.open(nowMs);
+  word_ = 0;
+  steps_ = 0;
+  levels_.clear();
   state_.view = View::Card;
   state_.tab = 0;
   clearToast();
   syncWord();
-  startPhases(Phase::Pending, nowMs, config::kBenchPhaseBMs);
 }
 
-void CardController::syncWord() {
-  state_.level = levels_[word_];
-  const CardWord& w = currentWord();
-  state_.pendingText = firstCodepoint(w.surface.empty() ? w.word : w.surface);
-  state_.pageNumber = book_.pageNumber;
-}
-
-void CardController::startPhases(const Phase first, const unsigned long nowMs, const unsigned long toB) {
-  state_.phase = first;
-  phaseADueMs_ = first == Phase::Pending ? nowMs + config::kBenchPhaseAMs : nowMs;
-  phaseBDueMs_ = nowMs + toB;
+bool CardController::syncWord() {
+  // The sentence just arrived (a lookup answers after phase 0): the card is on the tapped word.
+  if (levels_.empty() && source_.wordCount() > 0) word_ = source_.startWord();
+  while (static_cast<int>(levels_.size()) < source_.wordCount()) {
+    levels_.push_back(source_.savedLevel(static_cast<int>(levels_.size())));
+  }
+  const CardState before = state_;
+  state_.phase = hasWord() ? source_.phase(word_) : Phase::Pending;
+  state_.level = hasWord() ? levels_[word_] : Level::None;
+  state_.pendingText = source_.pendingText();
+  state_.pageNumber = source_.pageNumber();
+  return state_.phase != before.phase || state_.level != before.level || state_.pendingText != before.pendingText ||
+         state_.pageNumber != before.pageNumber;
 }
 
 bool CardController::tick(const unsigned long nowMs) {
-  bool changed = false;
-  if (state_.phase == Phase::Pending && timing::reached(nowMs, phaseADueMs_)) {
-    // B close behind A: skip A's refresh (popup-ui.md §2, ~0.5 s per partial refresh).
-    state_.phase = timing::reached(nowMs + config::kPhaseMergeMs, phaseBDueMs_) ? Phase::Complete : Phase::Analyzed;
-    changed = true;
-  } else if (state_.phase == Phase::Analyzed && timing::reached(nowMs, phaseBDueMs_)) {
-    state_.phase = Phase::Complete;
-    changed = true;
-  }
+  bool changed = source_.tick(nowMs) && syncWord();
   if (!state_.toast.empty() && timing::reached(nowMs, toastUntilMs_)) {
     clearToast();
     changed = true;
@@ -60,22 +54,22 @@ bool CardController::tick(const unsigned long nowMs) {
   return changed;
 }
 
+bool CardController::sourceChanged() { return syncWord(); }
+
 std::optional<unsigned long> CardController::nextDueMs() const {
-  std::optional<unsigned long> due;
-  if (state_.phase == Phase::Pending) due = phaseADueMs_;
-  if (state_.phase == Phase::Analyzed) due = phaseBDueMs_;
+  std::optional<unsigned long> due = source_.nextDueMs();
   if (!state_.toast.empty() && (!due || timing::before(toastUntilMs_, *due))) due = toastUntilMs_;
   return due;
 }
 
 bool CardController::step(const int direction, const unsigned long nowMs) {
   const int next = word_ + (direction > 0 ? 1 : -1);
-  if (next < 0 || next >= static_cast<int>(book_.words.size())) return false;  // v0.1: stop at the ends
+  if (!hasWord() || next < 0 || next >= source_.wordCount()) return false;  // v0.1: stop at the ends
   word_ = next;
+  steps_++;
   clearToast();  // a toast (and its Undo) belongs to the word it was about
+  source_.focus(word_, nowMs);
   syncWord();
-  // Stepping re-runs only dictionary/lookup: the word is known at once, the translation follows.
-  startPhases(Phase::Analyzed, nowMs, config::kBenchPhaseBMs - config::kBenchPhaseAMs);
   return true;
 }
 
@@ -98,26 +92,24 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs) {
   }
   switch (hit->target) {
     case Target::Level: {
-      const Level before = levels_[word_];
+      if (!hasWord()) return {};
       const auto level = static_cast<Level>(hit->index);
-      levels_[word_] = level;
-      state_.level = level;
-      showToast(std::string(before == Level::None ? strings_.savedAs : strings_.now) + strings_.levelNames[hit->index] +
-                    strings_.undoSuffix,
-                nowMs, true);
+      const Level before = levels_[word_];
+      if (level == before) return {};  // already there: a double tap sends nothing twice
+      Outcome o = setLevel(level, before == Level::None ? strings_.savedAs : strings_.now, true, nowMs);
       undoWord_ = word_;
       undoLevel_ = before;
-      return {Effect::Redraw, false};
+      return o;
     }
     case Target::ToastUndo: {  // a new save is removed; a level change goes back (popup-ui.md §3.2)
       if (undoWord_ != word_) return {};
       const Level restored = undoLevel_;
-      levels_[word_] = restored;
-      state_.level = restored;
-      showToast(restored == Level::None ? std::string(strings_.removed)
-                                        : std::string(strings_.now) + strings_.levelNames[static_cast<int>(restored)],
-                nowMs);
-      return {Effect::Redraw, false};
+      if (restored == Level::None) {
+        Outcome o = setLevel(restored, "", false, nowMs);
+        showToast(strings_.removed, nowMs);
+        return o;
+      }
+      return setLevel(restored, strings_.now, false, nowMs);
     }
     case Target::RankRow:
       state_.view = state_.view == View::Card ? View::Expanded : View::Card;
@@ -135,18 +127,44 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs) {
       state_.tab = hit->index;
       return {Effect::Redraw, false};
     case Target::Action:
+      if (!hasWord()) return {};
       if (hit->index == 0) {  // Undo save
-        levels_[word_] = Level::None;
-        state_.level = Level::None;
+        if (levels_[word_] == Level::None) return {};
+        Outcome o = setLevel(Level::None, "", false, nowMs);
         showToast(strings_.removed, nowMs);
-      } else if (hit->index >= 1 && hit->index <= static_cast<int>(std::size(strings_.actionDone))) {
-        showToast(strings_.actionDone[hit->index - 1], nowMs);
+        return o;
+      }
+      if (hit->index >= 1 && hit->index <= static_cast<int>(std::size(strings_.actionDone))) {
+        showToast(source_.demoActions() ? strings_.actionDone[hit->index - 1] : strings_.notYet, nowMs);
       }
       return {Effect::Redraw, false};
     case Target::Card:
       return {};
   }
   return {};
+}
+
+// The word at `level` now, with "<prefix><level name>[ · Undo]" (the caller replaces it for a removal).
+Outcome CardController::setLevel(const Level level, const char* toastPrefix, const bool undo,
+                                 const unsigned long nowMs) {
+  const LevelChange change{word_, levels_[word_], level, undo ? nowMs + config::kToastMs : nowMs};
+  for (const int same : source_.sameWord(word_)) levels_[same] = level;  // one entry in Lexirise
+  state_.level = level;
+  if (level != Level::None) {
+    showToast(
+        std::string(toastPrefix) + strings_.levelNames[static_cast<int>(level)] + (undo ? strings_.undoSuffix : ""),
+        nowMs, undo);
+  }
+  Outcome o{Effect::Redraw, false, {}};
+  o.changes.push_back(change);
+  return o;
+}
+
+void CardController::levelFailed(const int word, const Level level, const unsigned long nowMs) {
+  if (word < 0 || word >= static_cast<int>(levels_.size())) return;
+  for (const int same : source_.sameWord(word)) levels_[same] = level;
+  if (hasWord()) state_.level = levels_[word_];
+  showToast(strings_.saveFailed, nowMs);  // even when the card moved on: the user thinks it's saved
 }
 
 Outcome CardController::home() {

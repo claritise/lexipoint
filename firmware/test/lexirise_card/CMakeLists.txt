@@ -2,7 +2,26 @@ add_executable(LexiriseCardTest
   CardLayoutTest.cpp
   CardControllerTest.cpp
   ${REPO_ROOT}/src/lexirise/card/CardController.cpp
+  ${REPO_ROOT}/src/lexirise/card/BenchSource.cpp
   ${REPO_ROOT}/src/lexirise/card/CardInput.cpp
+  ${REPO_ROOT}/src/lexirise/card/LiveWord.cpp
+  ${REPO_ROOT}/src/lexirise/lookup/LookupCard.cpp
+  ${REPO_ROOT}/src/lexirise/text/Kana.cpp
+  LiveWordTest.cpp
+  ReaderSceneTest.cpp
+  LiveSourceTest.cpp
+  ${REPO_ROOT}/src/lexirise/card/LiveSource.cpp
+  ${REPO_ROOT}/src/lexirise/card/CardSession.cpp
+  ${REPO_ROOT}/src/lexirise/lookup/LexiriseLookup.cpp
+  ${REPO_ROOT}/src/lexirise/api/Responses.cpp
+  ${REPO_ROOT}/src/lexirise/net/JsonReader.cpp
+  ${REPO_ROOT}/src/lexirise/net/JsonWriter.cpp
+  ${REPO_ROOT}/src/lexirise/api/Requests.cpp
+  ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
+  ${REPO_ROOT}/src/lexirise/net/Http.cpp
+  ${REPO_ROOT}/src/lexirise/card/ReaderScene.cpp
+  ${REPO_ROOT}/src/lexirise/text/SentenceBuilder.cpp
+  ${REPO_ROOT}/src/lexirise/text/Punctuation.cpp
   ${REPO_ROOT}/src/lexirise/card/CardFrame.cpp
   ${REPO_ROOT}/src/lexirise/card/CardLayout.cpp
   ${REPO_ROOT}/src/lexirise/card/BenchFixtures.cpp
@@ -14,6 +33,7 @@ target_compile_definitions(LexiriseCardTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseCardTest PRIVATE
   ${REPO_ROOT}/src
+  ${REPO_ROOT}/test/lexirise_fakes
   ${REPO_ROOT}/lib/GfxRenderer
   ${REPO_ROOT}/lib/Utf8
 )
@@ -30,6 +50,7 @@ add_executable(LexiriseCardRender
   CardRender.cpp
   ${REPO_ROOT}/src/lexirise/card/CardLayout.cpp
   ${REPO_ROOT}/src/lexirise/card/CardController.cpp
+  ${REPO_ROOT}/src/lexirise/card/BenchSource.cpp
   ${REPO_ROOT}/src/lexirise/card/CardFrame.cpp
   ${REPO_ROOT}/src/lexirise/card/BenchFixtures.cpp
   ${REPO_ROOT}/src/lexirise/card/BenchPage.cpp

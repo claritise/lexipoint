@@ -5,6 +5,7 @@
 #include <Utf8.h>
 
 #include "CharClass.h"
+#include "Utf8Units.h"
 #include "lexirise/LexiriseConfig.h"
 
 namespace lexipoint::text {
@@ -17,8 +18,6 @@ std::vector<uint32_t> decode(const std::string& utf8) {
   return cps;
 }
 
-uint32_t units(const uint32_t cp) { return cp > 0xFFFF ? 2 : 1; }
-
 // What a token was that has no text of its own.
 enum class Spacing { None, Latin, Ideographic };
 
@@ -28,7 +27,9 @@ enum class Spacing { None, Latin, Ideographic };
 // piece that keeps the line/paragraph flags and hands its spacing to the next piece.
 struct Item {
   std::vector<uint32_t> cps;
-  size_t token = 0;  // the laid-out token it came from (flattened index)
+  std::vector<uint32_t> tokenCps;  // each of cps' index among the token's codepoints (invisible ones counted)
+  TokenRef ref;                    // the laid-out token it came from
+  size_t token = 0;                // the same, flattened
   bool lineStart = false;
   bool paragraphStart = false;
   Spacing spacingBefore = Spacing::None;
@@ -39,24 +40,31 @@ class Builder {
   Builder(const PageModel& page, const Script script) : script_(script) {
     size_t token = 0;
     Spacing pending = Spacing::None;
-    for (const TextLine& line : page.lines) {
+    for (size_t l = 0; l < page.lines.size(); l++) {
+      const TextLine& line = page.lines[l];
       bool first = true;
-      for (const std::string& text : line.tokens) {
+      for (size_t t = 0; t < line.tokens.size(); t++) {
         std::vector<uint32_t> cps;
+        std::vector<uint32_t> tokenCps;
         bool latinSpaces = true;
         bool ideographicSpaces = true;
-        for (const uint32_t cp : decode(text)) {
+        uint32_t index = 0;
+        for (const uint32_t cp : decode(line.tokens[t])) {
+          const uint32_t at = index++;
           if (chars::isInvisible(cp)) continue;
           latinSpaces = latinSpaces && chars::isLatinSpace(cp);
           ideographicSpaces = ideographicSpaces && cp == chars::kIdeographicSpace;
           cps.push_back(cp);
+          tokenCps.push_back(at);
         }
         if (!cps.empty() && (latinSpaces || ideographicSpaces)) {
           pending = latinSpaces ? Spacing::Latin : Spacing::Ideographic;
           cps.clear();
+          tokenCps.clear();
         }
         const bool hasText = !cps.empty();
-        addToken(std::move(cps), token, first, first && line.startsParagraph, hasText ? pending : Spacing::None);
+        addToken(std::move(cps), std::move(tokenCps), {l, t}, token, first, first && line.startsParagraph,
+                 hasText ? pending : Spacing::None);
         if (hasText) pending = Spacing::None;
         first = false;
         token++;
@@ -142,8 +150,8 @@ class Builder {
     return cuts;
   }
 
-  void addToken(std::vector<uint32_t> cps, const size_t token, const bool lineStart, const bool paragraphStart,
-                const Spacing spacingBefore) {
+  void addToken(std::vector<uint32_t> cps, std::vector<uint32_t> tokenCps, const TokenRef ref, const size_t token,
+                const bool lineStart, const bool paragraphStart, const Spacing spacingBefore) {
     std::vector<size_t> cuts = internalCuts(cps);
     cuts.push_back(cps.size());
     size_t from = 0;
@@ -151,6 +159,8 @@ class Builder {
     for (const size_t to : cuts) {
       Item item;
       item.cps.assign(cps.begin() + static_cast<long>(from), cps.begin() + static_cast<long>(to));
+      item.tokenCps.assign(tokenCps.begin() + static_cast<long>(from), tokenCps.begin() + static_cast<long>(to));
+      item.ref = ref;
       item.token = token;
       item.lineStart = first && lineStart;
       item.paragraphStart = first && paragraphStart;
@@ -304,7 +314,7 @@ class Builder {
     size_t total = 0;
     forEachJoined(begin, end, [&](const size_t i, const Spacing spacing) {
       total += spacing == Spacing::None ? 0 : 1;
-      for (const uint32_t cp : items_[i].cps) total += units(cp);
+      for (const uint32_t cp : items_[i].cps) total += utf16Units(cp);
     });
     return total;
   }
@@ -363,9 +373,12 @@ class Builder {
         at++;
       }
       if (i == tap) out.tapOffset = at;
-      for (const uint32_t cp : items_[i].cps) {
+      const Item& item = items_[i];
+      for (size_t k = 0; k < item.cps.size(); k++) {
+        const uint32_t cp = item.cps[k];
         utf8AppendCodepoint(cp, out.text);
-        at += units(cp);
+        out.chars.push_back({at, static_cast<uint8_t>(utf16Units(cp)), item.ref, item.tokenCps[k]});
+        at += utf16Units(cp);
       }
       if (i == tap) out.tapLength = at - out.tapOffset;
     });
@@ -380,7 +393,7 @@ class Builder {
 
 uint32_t utf16Length(const std::string& utf8) {
   uint32_t total = 0;
-  for (const uint32_t cp : decode(utf8)) total += units(cp);
+  for (const uint32_t cp : decode(utf8)) total += utf16Units(cp);
   return total;
 }
 

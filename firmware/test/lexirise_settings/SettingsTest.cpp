@@ -152,4 +152,10 @@ TEST(Settings, TagNormalisation) {
   EXPECT_EQ(normaliseTags(std::string(config::kMaxTagLength + 1, 'x')), "");
 }
 
+TEST(Settings, TagListSplitsTheNormalisedForm) {
+  EXPECT_EQ(tagList("xteink,book:x"), (std::vector<std::string>{"xteink", "book:x"}));
+  EXPECT_EQ(tagList(normaliseTags(" a , b,,a ")), (std::vector<std::string>{"a", "b"}));
+  EXPECT_TRUE(tagList("").empty());
+}
+
 }  // namespace

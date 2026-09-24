@@ -13,6 +13,8 @@
 #include "SentenceBuilder.h"
 
 class Page;
+class PageLine;
+class TextBlock;
 
 namespace lexipoint::text {
 
@@ -22,5 +24,10 @@ using MeasureText = std::function<int(const char* text, EpdFontFamily::Style sty
 // `em`: the width of one full-width character in the page's font, and `ascender` its ascender (for the
 // furigana height): both feed the paragraph heuristic.
 PageModel buildPageModel(const Page& page, const MeasureText& measure, int em, int ascender);
+
+// The page's text lines in order: every ::PageLine with a valid block, the one filter the page model,
+// card::readerPageFor and DictionaryWordSelectActivity::extractWords() count lines with (a sentence's
+// line indexes find all three).
+void forEachTextLine(const Page& page, const std::function<void(const PageLine& line, const TextBlock& block)>& fn);
 
 }  // namespace lexipoint::text

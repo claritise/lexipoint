@@ -40,6 +40,7 @@ struct EntryMeta {
   std::string reading;       // transliteration
   std::string partOfSpeech;  // the first one
   uint32_t rank = 0;         // 0: unknown
+  float frequency = 0;       // frequencyScore, 0-1 (the card's bars); 0: unknown
 };
 
 // stateByEntryId[id]: the reader's own state for an entry, present only once it is saved.
@@ -72,8 +73,15 @@ struct LookupResult {
   std::vector<Sense> senses;  // the first config::kMaxTranslations
   std::string level;          // "JLPT-N5" / "HSK-1" … / "HSK-7+" from system_tags; empty when on no list
   uint32_t rank = 0;
+  float frequency = 0;              // frequency_score, 0-1 (the card's bars); 0: unknown
   bool translationPending = false;  // translation_status isn't "ready" (a rare word's first lookup)
 };
 ParseStatus parseLookup(std::string_view body, LookupResult& out);
+
+// POST /v1/vocabulary: result.savedExpressionId (a number or a string), for a later PATCH / DELETE.
+struct SaveResult {
+  std::string savedExpressionId;
+};
+ParseStatus parseSave(std::string_view body, SaveResult& out);
 
 }  // namespace lexipoint::api

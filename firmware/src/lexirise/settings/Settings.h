@@ -78,5 +78,7 @@ std::string canonicalBaseUrl(std::string_view url);  // trailing slashes dropped
 // Normalises a comma-separated tag list: trims, drops empties/duplicates and unsafe characters, caps
 // count and length. Returns the canonical "a,b,c" form.
 std::string normaliseTags(std::string_view tags);
+// The tags of a normalised list, one each (for the save request).
+std::vector<std::string> tagList(std::string_view normalised);
 
 }  // namespace lexipoint

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardController.h"
 #include "lexirise/card/CardInput.h"
 #include "lexirise/card/CardOrientation.h"
@@ -17,7 +18,8 @@ Hit hit(const Target t, const int index = 0) { return {t, index, {}}; }
 }  // namespace
 
 TEST(CardController, PhasesPlayOnTheTimer) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(1000);
   EXPECT_EQ(c.state().phase, Phase::Pending);
   EXPECT_EQ(c.state().pendingText, "煩");  // the surface's first character
@@ -32,7 +34,8 @@ TEST(CardController, PhasesPlayOnTheTimer) {
 }
 
 TEST(CardController, APhaseBCloseBehindAIsMerged) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   // Checked late: B is due within the merge window, so A is skipped.
   EXPECT_TRUE(c.tick(config::kBenchPhaseBMs - config::kPhaseMergeMs));
@@ -40,7 +43,8 @@ TEST(CardController, APhaseBCloseBehindAIsMerged) {
 }
 
 TEST(CardController, SideButtonsStepWordsAndStopAtTheEnds) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.tick(config::kBenchPhaseBMs);
   ASSERT_EQ(c.word(), 2);
@@ -67,7 +71,8 @@ TEST(CardController, SideButtonsStepWordsAndStopAtTheEnds) {
 }
 
 TEST(CardController, SavingShowsTheToastAndItExpires) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.step(+1, 0);  // 彼: not saved
   const Hit level1 = hit(Target::Level, 1);
@@ -92,7 +97,8 @@ TEST(CardController, SavingShowsTheToastAndItExpires) {
 }
 
 TEST(CardController, ReadingToggleAsksToPersist) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   const Hit rd = hit(Target::ReadingLine);
   const Outcome o = c.tap(&rd, 0);
@@ -104,7 +110,8 @@ TEST(CardController, ReadingToggleAsksToPersist) {
 }
 
 TEST(CardController, ClosingAndHome) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   EXPECT_EQ(c.tap(nullptr, 0).effect, Effect::Close);  // the page, in card view
   const Hit close = hit(Target::Close);
@@ -121,7 +128,8 @@ TEST(CardController, ClosingAndHome) {
 }
 
 TEST(CardController, ToastUndoRevertsTheSave) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.step(+1, 0);  // 彼: not saved
   const Hit save = hit(Target::Level, 1);
@@ -142,7 +150,8 @@ TEST(CardController, ToastUndoRevertsTheSave) {
 }
 
 TEST(CardController, StepClearsTheToastAndItsUndo) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   const Hit save = hit(Target::Level, 0);
   c.tap(&save, 0);
@@ -155,7 +164,8 @@ TEST(CardController, StepClearsTheToastAndItsUndo) {
 }
 
 TEST(CardController, NextDueIsThePhaseOrTheToast) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(1000);
   EXPECT_EQ(c.nextDueMs(), 1000 + config::kBenchPhaseAMs);
   c.tick(1000 + config::kBenchPhaseAMs);
@@ -169,7 +179,8 @@ TEST(CardController, NextDueIsThePhaseOrTheToast) {
 
 TEST(CardController, DeadlinesSurviveTheMillisWrap) {
   constexpr unsigned long kJustBeforeWrap = 0xFFFFFFFFUL - config::kBenchPhaseAMs / 2;
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(kJustBeforeWrap);                    // phase A falls due just past the wrap
   EXPECT_FALSE(c.tick(kJustBeforeWrap + 1));  // not taken as long past
   EXPECT_EQ(c.state().phase, Phase::Pending);
@@ -179,7 +190,8 @@ TEST(CardController, DeadlinesSurviveTheMillisWrap) {
 }
 
 TEST(CardController, TabsAndActions) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   const Hit tab = hit(Target::Tab, 2);
   EXPECT_EQ(c.tap(&tab, 0).effect, Effect::Redraw);
@@ -197,7 +209,8 @@ Hit at(const Target t, const Rect r, const int index = 0) { return {t, index, r}
 }  // namespace
 
 TEST(CardInput, ATapBeforeTheFirstFrameIsDroppedNotAClose) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   ShownTargets shown;
   PendingInput in;
@@ -206,12 +219,13 @@ TEST(CardInput, ATapBeforeTheFirstFrameIsDroppedNotAClose) {
 }
 
 TEST(CardInput, ATapDuringARefreshHitsTheFrameTheUserSaw) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   ShownTargets shown;
-  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 1), at(Target::Card, {0, 0, 480, 400})}, c.word());
+  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 1), at(Target::Card, {0, 0, 480, 400})}, c.steps());
   shown.shown(100);
-  shown.drawing({at(Target::Card, {0, 0, 480, 400})}, c.word());  // phase B moved T L F K away
+  shown.drawing({at(Target::Card, {0, 0, 480, 400})}, c.steps());  // phase B moved T L F K away
   shown.shown(600);
   PendingInput in;
   in.tap(10, 10, 400);  // read during B's refresh
@@ -221,11 +235,12 @@ TEST(CardInput, ATapDuringARefreshHitsTheFrameTheUserSaw) {
 }
 
 TEST(CardInput, EventsRunInOrderAtTheirOwnTimesAndStopAtAClose) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   const int start = c.word();
   ShownTargets shown;
-  shown.drawing({at(Target::Close, {0, 0, 50, 50})}, start + 1);  // the next word's card, up at 25
+  shown.drawing({at(Target::Close, {0, 0, 50, 50})}, 1);  // the next word's card (one step on), up at 25
   shown.shown(25);
   PendingInput in;
   in.step(+1, 20);
@@ -236,16 +251,18 @@ TEST(CardInput, EventsRunInOrderAtTheirOwnTimesAndStopAtAClose) {
 }
 
 TEST(CardInput, TwoReadingSwitchesCancelOut) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   ShownTargets shown;
-  shown.drawing({at(Target::ReadingLine, {0, 0, 50, 50})}, c.word());
+  shown.drawing({at(Target::ReadingLine, {0, 0, 50, 50})}, c.steps());
   shown.shown(10);
   PendingInput one;
   one.tap(10, 10, 20);
   EXPECT_TRUE(handleInput(c, shown, one, 20).readingChanged);  // kana → romaji
 
-  CardController fresh(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource freshSource(benchJapanese(), false);
+  CardController fresh(freshSource, ReadingMode::Kana);
   fresh.open(0);
   PendingInput two;  // two taps in one batch: kana → romaji → kana
   two.tap(10, 10, 20);
@@ -255,12 +272,13 @@ TEST(CardInput, TwoReadingSwitchesCancelOut) {
 }
 
 TEST(CardInput, ATapOnTheOldCardDuringAStepIsDropped) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.tick(60000);
   const int a = c.word();
   ShownTargets shown;
-  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 3)}, a);  // word A's card, K at the top left
+  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 3)}, c.steps());  // word A's card, K at the top left
   shown.shown(60000);
   PendingInput in;
   in.step(+1, 60100);     // → word B; its refresh starts
@@ -290,7 +308,8 @@ TEST(CardInput, ABurstPastTheLimitKeepsTheOldest) {
 }
 
 TEST(CardInput, NothingDueMeansNoRedraw) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.tick(60000);
   ShownTargets shown;
@@ -307,11 +326,12 @@ TEST(CardOrientation, PortraitEitherWayUpStaysLandscapeTurnsPortrait) {
 }
 
 TEST(CardInput, HomeQueuedBehindATapRunsAfterIt) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.tick(60000);
   ShownTargets shown;
-  shown.drawing({at(Target::RankRow, {0, 0, 50, 50})}, c.word());
+  shown.drawing({at(Target::RankRow, {0, 0, 50, 50})}, c.steps());
   shown.shown(10);
   const Hit rank = hit(Target::RankRow);
   c.tap(&rank, 60000);  // the expanded view
@@ -325,7 +345,8 @@ TEST(CardInput, HomeQueuedBehindATapRunsAfterIt) {
 }
 
 TEST(CardInput, HomeOnTheCardClosesAndDropsWhatFollows) {
-  CardController c(benchJapanese(), ReadingMode::Kana, false);
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   const int start = c.word();
   ShownTargets shown;
@@ -334,4 +355,80 @@ TEST(CardInput, HomeOnTheCardClosesAndDropsWhatFollows) {
   in.step(+1, 20);
   EXPECT_EQ(handleInput(c, shown, in, 30).effect, Effect::Close);
   EXPECT_EQ(c.word(), start);
+}
+
+namespace {
+
+// A source whose words arrive later, as a lookup's do: none in phase 0, then the analyzed sentence.
+class LateSource final : public CardSource {
+ public:
+  std::vector<CardWord> words;
+  std::vector<Level> levels;
+  std::vector<Phase> phases;
+  int start = 0;
+  std::vector<int> focused;
+
+  int wordCount() const override { return static_cast<int>(words.size()); }
+  int startWord() const override { return start; }
+  const CardWord& word(const int i) const override { return words[i]; }
+  Level savedLevel(const int i) const override { return levels[i]; }
+  Phase phase(const int i) const override { return phases[i]; }
+  std::string pendingText() const override { return "読"; }
+  int pageNumber() const override { return 0; }
+  void open(unsigned long) override {}
+  void focus(const int i, unsigned long) override { focused.push_back(i); }
+  bool tick(unsigned long) override { return false; }
+  std::optional<unsigned long> nextDueMs() const override { return std::nullopt; }
+  PageScene scene(int, bool, const TextMetrics&, int) const override { return {}; }
+
+  void analyzed() {
+    for (const char* w : {"彼", "本", "読む"}) {
+      CardWord cw;
+      cw.word = w;
+      words.push_back(cw);
+    }
+    levels = {Level::None, Level::Fresh, Level::None};
+    phases = {Phase::Analyzed, Phase::Analyzed, Phase::Analyzed};
+    start = 2;
+  }
+};
+
+}  // namespace
+
+TEST(CardController, PhaseZeroHasNoWordUntilTheSourceAnswers) {
+  LateSource source;
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  EXPECT_EQ(c.state().phase, Phase::Pending);
+  EXPECT_EQ(c.state().pendingText, "読");
+  EXPECT_EQ(c.highlightCodepoints(), 1);
+  EXPECT_TRUE(c.currentWord().word.empty());
+  EXPECT_FALSE(c.step(+1, 10));  // nothing to step through yet
+  const Hit level = hit(Target::Level, 1);
+  EXPECT_EQ(c.tap(&level, 10).effect, Effect::None);  // nothing to save yet
+  EXPECT_FALSE(c.nextDueMs());
+  EXPECT_FALSE(c.sourceChanged());
+
+  source.analyzed();  // the lookup answered: the card opens on the tapped word (start 2)
+  EXPECT_TRUE(c.sourceChanged());
+  EXPECT_EQ(c.state().phase, Phase::Analyzed);
+  EXPECT_EQ(c.highlightCodepoints(), 0);
+  // The word index the card opened on stays the source's start, set when the sentence arrived.
+  source.phases[2] = Phase::Complete;
+  EXPECT_TRUE(c.sourceChanged());
+  EXPECT_EQ(c.state().phase, Phase::Complete);
+  EXPECT_FALSE(c.sourceChanged());  // nothing new
+}
+
+TEST(CardController, StepsFocusTheSourceAndLevelsComeFromIt) {
+  LateSource source;
+  source.analyzed();
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  EXPECT_EQ(c.word(), 2);
+  EXPECT_EQ(c.currentWord().word, "読む");
+  EXPECT_FALSE(c.step(+1, 10));  // the end
+  EXPECT_TRUE(c.step(-1, 10));
+  EXPECT_EQ(source.focused, std::vector<int>{1});
+  EXPECT_EQ(c.state().level, Level::Fresh);  // 本 was saved as fresh
 }

@@ -38,8 +38,8 @@ api::ApiResponse LexiriseService::send(const net::Request& request) {
   sessionActive_ = true;
   lastCallMs_ = clock_();
   // Never log the body or the key: the status and error name are enough to diagnose.
-  LOG_INF(kLogTag, "%s %s -> %d (%s)", net::methodName(request.method), request.path.c_str(), response.status,
-          api::apiErrorName(response.error));
+  LOG_INF(kLogTag, "%s %s -> %d (%s)", net::methodName(request.method), api::loggablePath(request.path).c_str(),
+          response.status, api::apiErrorName(response.error));
   return response;
 }
 
@@ -79,6 +79,11 @@ api::ApiResponse LexiriseService::lookup(const Language language, const std::str
   return send(api::lookupRequest(language, lemma));
 }
 
+api::ApiResponse LexiriseService::write(const net::Request& request) {
+  if (!request.retryable()) closeSession();
+  return send(request);
+}
+
 void LexiriseService::tick() {
   if (checkPending_) checkKey();
 
@@ -91,7 +96,12 @@ void LexiriseService::tick() {
     wifiIdleRevision_ = revision;
     wifiIdleKnown_ = true;
   }
-  if (wifi_.tick(wifiIdleMin_)) closeSession();
+  if (!wifiHeld_ && wifi_.tick(wifiIdleMin_)) closeSession();
+}
+
+void LexiriseService::holdWifi(const bool hold) {
+  if (wifiHeld_ && !hold) wifi_.touch();  // idle from now, not from the card's last call
+  wifiHeld_ = hold;
 }
 
 void LexiriseService::onActivityChanged(const bool reading) {

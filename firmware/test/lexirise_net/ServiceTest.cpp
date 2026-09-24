@@ -5,6 +5,7 @@
 
 #include "Fakes.h"
 #include "lexirise/LexiriseService.h"
+#include "lexirise/api/Requests.h"
 
 using lexipoint::LexiriseService;
 using lexipoint::Settings;
@@ -159,4 +160,32 @@ TEST(Service, RecheckIfStaleOnlyWhenItHelps) {
   ASSERT_EQ(rig.service.keyStatus().state, KeyState::Connected);
   rig.service.recheckIfStale();  // fresh: nothing queued
   EXPECT_EQ(rig.service.keyStatus().state, KeyState::Connected);
+}
+
+TEST(Service, ASaveStartsOnAFreshSessionALevelChangeReusesIt) {
+  Rig rig;
+  rig.conn.reads = {httpOk(R"({"word":"x"})"), httpOk(R"({"result":{"savedExpressionId":9}})"),
+                    httpOk(R"({"ok":true})")};
+  EXPECT_TRUE(rig.service.lookup(lexipoint::Language::Japanese, "x").ok());
+  EXPECT_EQ(rig.conn.opens, 1);
+  lexipoint::api::SaveWord word;
+  word.text = "x";
+  EXPECT_TRUE(rig.service.write(lexipoint::api::saveRequest(word)).ok());
+  EXPECT_EQ(rig.conn.opens, 2);  // the POST can't be resent on a stale session: a new one
+  EXPECT_TRUE(rig.service.write(*lexipoint::api::setProficiencyRequest("9", 2)).ok());
+  EXPECT_EQ(rig.conn.opens, 2);  // a PATCH is safe to resend: the session is reused
+}
+
+TEST(Service, AHeldWifiOutlastsTheIdleRuleUntilReleased) {
+  Rig rig;
+  rig.wifi.owned = true;
+  rig.service.holdWifi(true);  // the card is open: "Off" means once per card
+  rig.wifi.expireOnNextTick = true;
+  rig.service.tick();
+  EXPECT_TRUE(rig.wifi.owned);  // not torn down between the card's calls
+  const int touches = rig.wifi.touches;
+  rig.service.holdWifi(false);  // the card closed: idle from now
+  EXPECT_EQ(rig.wifi.touches, touches + 1);
+  rig.service.tick();
+  EXPECT_FALSE(rig.wifi.owned);  // the idle rule applies again
 }

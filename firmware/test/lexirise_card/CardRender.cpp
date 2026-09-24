@@ -23,6 +23,7 @@
 #include "builtinFonts/notosans_8_regular.h"
 #include "builtinFonts/ubuntu_10_bold.h"
 #include "builtinFonts/ubuntu_10_regular.h"
+#include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardFrame.h"
 #include "lexirise/card/CardLayout.h"
 #include "lexirise/card/ShapeGeometry.h"
@@ -307,7 +308,8 @@ int main(const int argc, char** argv) {
   const DeviceMetrics metrics;
   // The state is reached through the controller's own inputs, as on the device: open, step to the word,
   // let the phases finish, then tap ▼, the tab, the reading line, a level.
-  CardController c(book, ReadingMode::Kana, std::strcmp(argv[6], "low") == 0);
+  BenchSource source(book, std::strcmp(argv[6], "low") == 0);
+  CardController c(source, ReadingMode::Kana);
   unsigned long now = 0;
   c.open(now);
   const int steps = word - c.word();  // side-button presses: + next, − previous

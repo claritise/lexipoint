@@ -7,16 +7,12 @@
 
 #include "BenchFixtures.h"
 #include "CardModel.h"
+#include "CardSource.h"
 #include "DisplayList.h"
 
 namespace lexipoint::card::bench {
 
-struct Scene {
-  DisplayList page;     // the page text, the active word inverted (when the card is open)
-  Rect wordOnPage;      // the active word's box
-  StripLine strip;      // the active word's line
-  MarkedText sentence;  // the sentence (the book's context lines), the word marked
-};
+using Scene = PageScene;
 
 // The page for `book` with `word` active; `low`: the sentence low on the page ("Low on page", D17).
 // `highlightCodepoints` > 0 inverts only the word's first that many characters (phase 0: the tapped one;

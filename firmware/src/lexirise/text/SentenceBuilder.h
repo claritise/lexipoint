@@ -32,8 +32,20 @@ struct TokenRef {
   size_t token = 0;
 };
 
+// Where one character of a built sentence sits on the page: the laid-out token, and its index among that
+// token's codepoints (invisible ones counted, as in the token's text). A space the join inserted has none.
+struct SentenceChar {
+  uint32_t start = 0;  // UTF-16 units in the sentence
+  uint8_t units = 1;   // 2 for a non-BMP character
+  TokenRef token;
+  uint32_t codepoint = 0;
+};
+
 struct BuiltSentence {
   std::string text;  // UTF-8
+  // Every character with a place on the page, in order: a Lexirise range [charStart, charEnd) finds its
+  // page tokens here (the card's highlight, lookup-flow.md §6).
+  std::vector<SentenceChar> chars;
   // The tapped text's start in `text`, in UTF-16 code units (Lexirise's charStart), and its length. A
   // laid-out token can hold more than one sentence (Chinese “好。”“走 is one token): the tap is its first
   // piece with a letter in it.

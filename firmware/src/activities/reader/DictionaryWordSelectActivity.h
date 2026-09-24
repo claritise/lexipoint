@@ -12,9 +12,9 @@
 #include <optional>
 #include <string>
 
-#include "lexirise/lookup/LexiriseLookup.h"  // LEXIPOINT
-#include "lexirise/text/BookLanguage.h"      // LEXIPOINT
-#include "lexirise/text/SentenceBuilder.h"   // LEXIPOINT
+#include "lexirise/card/ReaderScene.h"      // LEXIPOINT
+#include "lexirise/text/BookLanguage.h"     // LEXIPOINT
+#include "lexirise/text/SentenceBuilder.h"  // LEXIPOINT
 #endif
 
 // Word selection over the current reader page: Left/Right step through words
@@ -67,6 +67,7 @@ class DictionaryWordSelectActivity final : public Activity {
   int wordAt(int x, int y) const;
   void moveVertical(int direction);
   void performLookup();
+  void runStarDict();  // LEXIPOINT: performLookup's StarDict half (the Lexirise card hands back to it)
   bool drawHighlightWithSnapshot();
   void drawHints() const;
 
@@ -80,11 +81,13 @@ class DictionaryWordSelectActivity final : public Activity {
 #if LEXIRISE
   std::optional<lexipoint::text::BookLanguage> book;  // LEXIPOINT
   lexipoint::text::PageModel pageModel;               // LEXIPOINT: built in extractWords()
+  lexipoint::card::ReaderPage readerPage;             // LEXIPOINT: the same page, as drawn (the live card)
   int initialTouchX = -1;                             // LEXIPOINT: setInitialTouch()
   int initialTouchY = -1;
-  bool lookupPending = false;  // LEXIPOINT: the long-press lookup runs on the first loop()
-  lexipoint::lookup::LookupOutcome lexiriseLookup(lexipoint::lookup::LookupCard& card, bool& busyShown);  // LEXIPOINT
-  void showLookupPopup(Popup kind, StrId message);                                                        // LEXIPOINT
+  bool lookupPending = false;    // LEXIPOINT: the long-press lookup runs on the first loop()
+  bool starDictPending = false;  // LEXIPOINT: Lexirise had no answer: StarDict runs on the next loop()
+  bool openLexiriseCard();       // LEXIPOINT: false when Lexirise isn't asked about this word
+  void showLookupPopup(Popup kind, StrId message);  // LEXIPOINT
   bool starDictLookup(std::string& definition, std::string& headword, Dictionary::LookupResult* result);
 #endif
   int selected = 0;

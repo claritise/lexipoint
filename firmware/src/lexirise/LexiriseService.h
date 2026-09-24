@@ -42,9 +42,17 @@ class LexiriseService final : public api::LexiriseApi {
   // read them). Both share the keep-alive session, so a lookup's two calls cost one handshake.
   api::ApiResponse analyze(Language language, std::string_view text) override;
   api::ApiResponse lookup(Language language, std::string_view lemma) override;
+  // A /v1/vocabulary write. One that isn't safe to resend (the save's POST, an upsert) starts on a fresh
+  // session (lookup-flow.md §7): a reused keep-alive session that turned stale would fail it unretried.
+  api::ApiResponse write(const net::Request& request) override;
 
   // Main-loop tick: a queued key check, the idle TLS close, and the WiFi idle teardown.
   void tick();
+
+  // While the live card is open, WiFi Lexipoint owns stays up between its calls (one per loop pass):
+  // "Keep WiFi on after a lookup: Off" means once per card, not once per call. Released, the idle rule
+  // counts from then (so Off turns it off at the next tick).
+  void holdWifi(bool hold);
 
   // The activity on screen is about to change (ActivityManager hook, before the next onEnter).
   // `reading`: a reader activity is on screen or under it. Leaving reading gives WiFi back and closes
@@ -66,6 +74,7 @@ class LexiriseService final : public api::LexiriseApi {
   bool checking_ = false;       // inside checkKey(): its own send() doesn't queue another
   bool sessionActive_ = false;  // a call ran since the last close: the idle close is armed
   unsigned long lastCallMs_ = 0;
+  bool wifiHeld_ = false;
   bool wifiIdleKnown_ = false;
   uint32_t wifiIdleRevision_ = 0;
   int wifiIdleMin_ = 0;

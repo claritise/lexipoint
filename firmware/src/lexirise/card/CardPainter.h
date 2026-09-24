@@ -32,6 +32,7 @@ class RendererMetrics final : public TextMetrics {
   int ascender(Font font) const override;
   int width(Font font, const std::string& text) const override;
   int single(Font font, const std::string& text) const;  // one font, no runs
+  int pageWidth(const std::string& text, uint8_t style) const override;
 
  private:
   GfxRenderer& renderer_;

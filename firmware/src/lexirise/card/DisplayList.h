@@ -45,6 +45,9 @@ struct Command {
   int radius = 0;     // RoundedFrame
   bool black = true;
   Font font = Font::Ui;  // Text
+  // Text in Font::Page: the page word's own style (EpdFontFamily::Style: 0 regular, 1 bold, 2 italic, 3
+  // both), so a highlighted word keeps its weight. The card's own fonts ignore it.
+  uint8_t pageStyle = 0;
   Shape shape = Shape::Cross;
   std::string text;  // Text (UTF-8)
 };
@@ -87,9 +90,11 @@ struct DisplayList {
   void roundedFrame(const Rect& r, const int thickness, const int radius) {
     add(Command::Kind::RoundedFrame, r, thickness, radius, true);
   }
-  void text(const Font font, const int x, const int y, std::string s, const bool black = true) {
+  void text(const Font font, const int x, const int y, std::string s, const bool black = true,
+            const uint8_t pageStyle = 0) {
     Command& c = add(Command::Kind::Text, {x, y, 0, 0}, 1, 0, black);
     c.font = font;
+    c.pageStyle = pageStyle;
     c.text = std::move(s);
   }
   void shape(const Shape s, const Rect& r, const bool black = true) {
@@ -123,6 +128,8 @@ class TextMetrics {
   virtual int ascender(Font font) const = 0;    // line box top to baseline
   // Advance width. For a UI font, of its runs (TextRuns.h: CJK in the reader family), as it's drawn.
   virtual int width(Font font, const std::string& text) const = 0;
+  // A page word's width in its own style (Command::pageStyle); by default the style doesn't change it.
+  virtual int pageWidth(const std::string& text, uint8_t) const { return width(Font::Page, text); }
 };
 
 }  // namespace lexipoint::card

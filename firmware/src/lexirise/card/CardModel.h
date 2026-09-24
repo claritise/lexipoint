@@ -101,8 +101,7 @@ struct CardStrings {
   const char* levels[metrics::kLevelCells] = {"T", "L", "F", "K"};
   const char* levelNames[metrics::kLevelCells] = {"tracked", "learning", "fresh", "known"};
   const char* notSaved = "not saved";
-  const char* bands[std::size(config::kRankBandLimits) + 1] =  // + "rare"
-      {"very common", "common", "uncommon", "rare"};
+  const char* bands[config::kRankBands] = {"very common", "common", "uncommon", "rare"};
   const char* translationPending = "translation pending";
   const char* tabsJa[5] = {"Meaning", "Examples", "Context", "Kanji", "Form"};
   const char* tabsZh[4] = {"Meaning", "Examples", "Context", "Chars"};
@@ -128,14 +127,16 @@ struct CardStrings {
   const char* kana = "kana";
   const char* romaji = "romaji";
   const char* removed = "Removed from Lexirise";
+  const char* saveFailed = "Couldn't reach Lexirise: not saved";
+  const char* notYet = "Not in this version yet";
   const char* actionDone[3] = {"Sentence saved as a card", "Ignored: won't be marked again", "Flagged for later"};
 };
 
 // The tabs for a language, ⋯ last.
 int tabCount(Language language);
 bool isActionsTab(Language language, int tab);
-// The rank word (popup-ui.md §1, languages.md §6): < 1k very common, < 5k common, < 20k uncommon, rare.
-int rankBand(uint32_t rank);
+// The rank word's band (popup-ui.md §1, languages.md §6): config::kRankBandLimitsJa / Zh.
+int rankBand(uint32_t rank, Language language);
 // ⌈frequency × 5⌉, at least 1.
 int filledBars(float frequency);
 
