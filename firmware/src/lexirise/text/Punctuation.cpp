@@ -4,6 +4,8 @@
 
 #include <cstddef>
 
+#include "CharClass.h"
+
 namespace lexipoint::text {
 namespace {
 
@@ -71,12 +73,36 @@ bool Punctuation::isOpener(const uint32_t cp, const Script script) {
 }
 
 bool Punctuation::continuesQuote(const uint32_t* next, const size_t count, const Script script) {
-  constexpr uint32_t kTo = 0x3068;        // と
-  constexpr uint32_t kSmallTsu = 0x3063;  // っ
-  constexpr uint32_t kTe = 0x3066;        // て
   if (script != Script::Japanese || count == 0) return false;
-  return next[0] == kTo || (next[0] == kSmallTsu && (count == 1 || next[1] == kTe));
+  return next[0] == chars::kQuotativeTo ||
+         (next[0] == chars::kSmallTsu && (count == 1 || next[1] == chars::kQuotativeTe));
 }
+
+bool Punctuation::isQuoteCloser(const uint32_t cp, const Script script) {
+  switch (script) {
+    case Script::Japanese:
+      return cp == 0x300D || cp == 0x300F;  // 」』
+    case Script::Chinese:
+      return cp == 0x201D || cp == 0x2019;  // ”’
+    case Script::Latin:
+    default:
+      return false;
+  }
+}
+
+bool Punctuation::isQuoteOpener(const uint32_t cp, const Script script) {
+  switch (script) {
+    case Script::Japanese:
+      return cp == 0x300C || cp == 0x300E;  // 「『
+    case Script::Chinese:
+      return cp == 0x201C || cp == 0x2018;  // “‘
+    case Script::Latin:
+    default:
+      return false;
+  }
+}
+
+bool Punctuation::isDot(const uint32_t cp) { return cp == '.' || cp == 0xFF0E; }
 
 bool Punctuation::isQuestionOrExclamation(const uint32_t cp) {
   return cp == '!' || cp == '?' || cp == 0xFF01 || cp == 0xFF1F;

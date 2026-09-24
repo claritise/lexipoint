@@ -18,9 +18,15 @@ struct Punctuation {
   static bool isEllipsis(uint32_t cp);
   // Kept with the sentence right after its terminator: 」』）】 (ja), ”’）】》 (zh), "')”’ (Latin).
   static bool isCloser(uint32_t cp, Script script);
-  // Opens a quote or bracket: 「『（【 (ja), “‘（【《 (zh). A closer followed by an opener (」「) is a
-  // sentence break even without a terminator: consecutive lines of dialogue.
+  // Opens a quote or bracket: 「『（【 (ja), “‘（【《 (zh).
   static bool isOpener(uint32_t cp, Script script);
+  // Quotation marks only (not brackets or titles): 」』 / 「『 (ja), ”’ / “‘ (zh). A closing quote followed
+  // by an opening one (」「, ”“) is a sentence break even without a terminator: consecutive lines of
+  // dialogue. 』（ or 》（ or 】【 is not.
+  static bool isQuoteCloser(uint32_t cp, Script script);
+  static bool isQuoteOpener(uint32_t cp, Script script);
+  // "." and "．": full stops that also sit inside numbers and abbreviations (3.50, ３．５, Ｕ．Ｓ．).
+  static bool isDot(uint32_t cp);
   // Chinese "；": a cut used only when a sentence would pass the codepoint cap.
   static bool isFallbackCut(uint32_t cp, Script script);
   // Japanese quotative と / って right after a closed quote (「行こう。」と言った) or a question or

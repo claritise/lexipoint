@@ -116,6 +116,14 @@ TEST_F(LayoutSentence, TerminatorRunsInsideQuotes) {
   EXPECT_EQ(sentence("疯", Script::Chinese), "“你疯了吗？！”");
 }
 
+TEST_F(LayoutSentence, FullWidthSpacesAndNumbers) {
+  layout("<p>　彼は来た。本当？　嘘でしょ。</p><p>値は３．５だった。</p><p>彼は『森』（村上春樹）を読んだ。</p>");
+  EXPECT_EQ(sentence("来", Script::Japanese), "彼は来た。");
+  EXPECT_EQ(sentence("嘘", Script::Japanese), "嘘でしょ。");
+  EXPECT_EQ(sentence("値", Script::Japanese), "値は３．５だった。");
+  EXPECT_EQ(sentence("読", Script::Japanese), "彼は『森』（村上春樹）を読んだ。");
+}
+
 TEST_F(LayoutSentence, ChineseDialogueInOneToken) {
   layout("<p>他说：</p><p>“好。”“走吧。”</p>");
   EXPECT_EQ(sentence("吧", Script::Chinese), "“走吧。”");

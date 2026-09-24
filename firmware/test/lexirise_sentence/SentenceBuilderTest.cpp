@@ -301,3 +301,49 @@ TEST(SentenceRuns, DottedLatinWordsStayWhole) {
   EXPECT_EQ(tapped(url), "example.com");
   EXPECT_EQ(build(en, "Wait", Script::Latin).text, "Wait... what?");
 }
+
+// Round-3 shapes: brackets and titles aren't dialogue, the full-width space is spacing, dots inside numbers.
+TEST(SentenceShapes, BracketsAndTitlesDoNotBreak) {
+  const PageModel ja{{layout("彼は『ノルウェイの森』（村上春樹）を読んだ。", true)}};
+  EXPECT_EQ(build(ja, "読").text, "彼は『ノルウェイの森』（村上春樹）を読んだ。");
+  const PageModel zh{{layout("我读了《红楼梦》（曹雪芹著）。", true)}};
+  EXPECT_EQ(build(zh, "读", Script::Chinese).text, "我读了《红楼梦》（曹雪芹著）。");
+  const PageModel news{{layout("【速報】【重要】地震が起きた。", true)}};
+  EXPECT_EQ(build(news, "地").text, "【速報】【重要】地震が起きた。");
+  // Known trade-off (sentence-extraction.md §2 rule 3): quoted words in a row read as dialogue lines.
+  const PageModel words{{layout("彼は「東京」「大阪」を訪れた。", true)}};
+  EXPECT_EQ(build(words, "訪").text, "「大阪」を訪れた。");
+}
+
+TEST(SentenceShapes, FullWidthSpaceIsSpacingNotText) {
+  const PageModel indent{{layout("　彼は来た。", true)}};
+  const auto s = build(indent, "来");
+  EXPECT_EQ(s.text, "彼は来た。");
+  EXPECT_EQ(s.tapOffset, 2u);
+  const PageModel after{{layout("本当？　嘘でしょ。", true)}};
+  EXPECT_EQ(build(after, "嘘").text, "嘘でしょ。");
+  EXPECT_EQ(build(after, "本").text, "本当？");
+  const PageModel quotative{{layout("何だ？　と思った。", true)}};
+  EXPECT_EQ(build(quotative, "思").text, "何だ？　と思った。");  // the quote runs on, its 　 kept inside
+  const PageModel bracketed{{layout("「何だ？」　と思った。", true)}};
+  EXPECT_EQ(build(bracketed, "思").text, "「何だ？」　と思った。");
+  // Tapping the space itself gives nothing to look up.
+  const PageModel only{{{{"　", "彼", "は"}, true}}};
+  EXPECT_FALSE(buildSentence(only, {0, 0}, Script::Japanese).has_value());
+}
+
+TEST(SentenceShapes, DotsInsideNumbersAndAbbreviations) {
+  const PageModel ja{{layout("値は３．５だった。次へ。", true)}};
+  EXPECT_EQ(build(ja, "値").text, "値は３．５だった。");
+  EXPECT_EQ(build(ja, "だ").text, "値は３．５だった。");
+  const PageModel usa{{layout("彼はＵ．Ｓ．Ａ．に行った。", true)}};
+  EXPECT_EQ(build(usa, "行").text, "彼はＵ．Ｓ．Ａ．に行った。");
+  const PageModel stop{{layout("三時だ。３時に会おう。", true)}};  // 。 before a digit still ends it
+  EXPECT_EQ(build(stop, "会").text, "３時に会おう。");
+}
+
+TEST(SentenceShapes, LatinPunctuationHugsItsWord) {
+  // Styled words arrive as their own tokens: “ go ” and "bold ," would be wrong.
+  PageModel page{{{{"A", "bold", ",", "word", "(really)", "and", "“", "go", "”", "now."}, true}}};
+  EXPECT_EQ(build(page, "word", Script::Latin).text, "A bold, word (really) and “go” now.");
+}

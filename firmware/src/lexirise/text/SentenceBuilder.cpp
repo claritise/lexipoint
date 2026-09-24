@@ -4,30 +4,11 @@
 
 #include <Utf8.h>
 
+#include "CharClass.h"
 #include "lexirise/LexiriseConfig.h"
 
 namespace lexipoint::text {
 namespace {
-
-// Characters the layout carries that are never part of the text (sentence-extraction.md §2 rule 7).
-bool isInvisible(const uint32_t cp) {
-  return cp == 0x00AD || cp == 0x200B || cp == 0x200C || cp == 0x200D || cp == 0x2060 || cp == 0xFEFF;
-}
-
-// A Latin space the layout kept as a token of its own (&nbsp;): it only means "a space here".
-bool isLatinSpace(const uint32_t cp) { return cp == ' ' || cp == 0x00A0 || cp == 0x202F; }
-
-bool isLatinHyphen(const uint32_t cp) { return cp == '-' || cp == 0x2010; }
-
-// Punctuation, symbols and spaces: a tap on a token picks its first piece with a character that isn't
-// one of these.
-bool isPunctuationLike(const uint32_t cp) {
-  if (cp < 0x80) return !((cp >= '0' && cp <= '9') || (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z'));
-  return (cp >= 0x2000 && cp <= 0x206F) || (cp >= 0x3000 && cp <= 0x3004) || (cp >= 0x3008 && cp <= 0x3011) ||
-         (cp >= 0x3014 && cp <= 0x301F) || cp == 0x30FB || (cp >= 0xFF01 && cp <= 0xFF0F) ||
-         (cp >= 0xFF1A && cp <= 0xFF20) || (cp >= 0xFF3B && cp <= 0xFF40) || (cp >= 0xFF5B && cp <= 0xFF65) ||
-         cp == 0x00A0 || cp == 0x00AB || cp == 0x00BB;
-}
 
 std::vector<uint32_t> decode(const std::string& utf8) {
   std::vector<uint32_t> cps;
@@ -36,39 +17,47 @@ std::vector<uint32_t> decode(const std::string& utf8) {
   return cps;
 }
 
+uint32_t units(const uint32_t cp) { return cp > 0xFFFF ? 2 : 1; }
+
+// What a token was that has no text of its own.
+enum class Spacing { None, Latin, Ideographic };
+
 // One piece of text in reading order. Usually one laid-out token; a token that holds a sentence break
 // inside it (Chinese “好。”“走 is a single token, since CrossPoint never splits two non-CJK characters)
-// becomes several pieces.
+// becomes several pieces. A token that is only spacing (&nbsp;, the full-width 　) becomes an empty
+// piece that keeps the line/paragraph flags and hands its spacing to the next piece.
 struct Item {
   std::vector<uint32_t> cps;
-  size_t token = 0;        // the laid-out token it came from (flattened index)
-  bool lineStart = false;  // first piece of the first token of a line
+  size_t token = 0;  // the laid-out token it came from (flattened index)
+  bool lineStart = false;
   bool paragraphStart = false;
-  bool spaceBefore = false;  // an explicit space token preceded it
+  Spacing spacingBefore = Spacing::None;
 };
 
 class Builder {
  public:
   Builder(const PageModel& page, const Script script) : script_(script) {
     size_t token = 0;
-    bool pendingSpace = false;
+    Spacing pending = Spacing::None;
     for (const TextLine& line : page.lines) {
       bool first = true;
       for (const std::string& text : line.tokens) {
         std::vector<uint32_t> cps;
-        bool onlySpaces = true;
+        bool latinSpaces = true;
+        bool ideographicSpaces = true;
         for (const uint32_t cp : decode(text)) {
-          if (isInvisible(cp)) continue;
-          onlySpaces = onlySpaces && isLatinSpace(cp);
+          if (chars::isInvisible(cp)) continue;
+          latinSpaces = latinSpaces && chars::isLatinSpace(cp);
+          ideographicSpaces = ideographicSpaces && cp == chars::kIdeographicSpace;
           cps.push_back(cp);
         }
-        if (!cps.empty() && onlySpaces) {
-          cps.clear();  // &nbsp;: no text of its own, just a space before what follows
-          pendingSpace = true;
+        if (!cps.empty() && (latinSpaces || ideographicSpaces)) {
+          pending = latinSpaces ? Spacing::Latin : Spacing::Ideographic;
+          cps.clear();
         }
         const bool hasText = !cps.empty();
-        addToken(std::move(cps), token, first, first && line.startsParagraph, pendingSpace && hasText);
-        if (hasText) pendingSpace = false;
+        addToken(std::move(cps), token, first, first && line.startsParagraph, hasText ? pending : Spacing::None);
+        if (hasText) pending = Spacing::None;
         first = false;
         token++;
       }
@@ -85,14 +74,14 @@ class Builder {
       if (items_[i].token != token) continue;
       if (first < 0) first = static_cast<long>(i);
       for (const uint32_t cp : items_[i].cps) {
-        if (!isPunctuationLike(cp)) return static_cast<long>(i);
+        if (!chars::isPunctuationLike(cp)) return static_cast<long>(i);
       }
     }
     return first;
   }
 
   std::optional<BuiltSentence> build(const size_t tap) const {
-    if (items_[tap].cps.empty()) return std::nullopt;
+    if (isEmpty(tap)) return std::nullopt;
     const size_t n = items_.size();
 
     // The sentence: from the last cut at or before the tap to the first cut after it.
@@ -114,37 +103,38 @@ class Builder {
   }
 
  private:
+  bool isTerminator(const uint32_t cp) const { return Punctuation::isTerminator(cp, script_); }
+  bool isCloser(const uint32_t cp) const { return Punctuation::isCloser(cp, script_); }
+
   // --- splitting a token into pieces ---
 
   // Where a sentence (or a line of dialogue) ends inside a token. CrossPoint glues punctuation onto the
   // character before it, so a token can be 好。”“走 (two sentences) but also か！？」と, 3.50 or
   // example.com (one). So: a run of terminators and closers stays together; after it, a closed run
   // (。” / ！？」) ends the sentence unless a Japanese quotative follows, and a bare run (。 / .) only when
-  // an opener or a CJK character follows it (never a digit or a letter: 3.50, e.g., example.com). A
-  // closer followed by an opener (”“ / 」「) is a break on its own.
+  // an opener or a CJK character follows it (never a digit or a letter after a dot: 3.50, ３．５,
+  // example.com). A closing quote followed by an opening one (”“ / 」「) is a break on its own.
   std::vector<size_t> internalCuts(const std::vector<uint32_t>& cps) const {
     std::vector<size_t> cuts;
     for (size_t k = 1; k < cps.size(); k++) {
       const uint32_t after = cps[k];
       // Never inside a run: closers stay with what they close, terminators with each other (！？, ...).
-      if (Punctuation::isCloser(after, script_) || Punctuation::isTerminator(after, script_) ||
-          Punctuation::isEllipsis(after)) {
-        continue;
-      }
-      bool cut = Punctuation::isCloser(cps[k - 1], script_) && Punctuation::isOpener(after, script_);
+      if (isCloser(after) || isTerminator(after) || Punctuation::isEllipsis(after)) continue;
+      bool cut = Punctuation::isQuoteCloser(cps[k - 1], script_) && Punctuation::isQuoteOpener(after, script_);
       if (!cut) {
         size_t j = k;  // back over closers, to the character they follow
-        while (j > 0 && Punctuation::isCloser(cps[j - 1], script_)) j--;
+        while (j > 0 && isCloser(cps[j - 1])) j--;
         const bool closed = j < k;
         if (j > 0) {
           const uint32_t end = cps[j - 1];
-          const bool terminated = Punctuation::isTerminator(end, script_) || (closed && Punctuation::isEllipsis(end));
-          const bool nextStartsASentence = Punctuation::isOpener(after, script_) || utf8IsCjkCodepoint(after);
-          cut = terminated && (closed || nextStartsASentence);
-        }
-        if (cut && (closed || Punctuation::isQuestionOrExclamation(cps[j - 1])) &&
-            Punctuation::continuesQuote(cps.data() + k, cps.size() - k, script_)) {
-          cut = false;
+          const bool terminated = isTerminator(end) || (closed && Punctuation::isEllipsis(end));
+          const bool dotInWord = !closed && Punctuation::isDot(end) && chars::isAlnum(after);
+          const bool nextStarts = Punctuation::isOpener(after, script_) || utf8IsCjkCodepoint(after);
+          cut = terminated && !dotInWord && (closed || nextStarts);
+          if (cut && (closed || Punctuation::isQuestionOrExclamation(end)) &&
+              Punctuation::continuesQuote(cps.data() + k, cps.size() - k, script_)) {
+            cut = false;
+          }
         }
       }
       if (cut) cuts.push_back(k);
@@ -153,7 +143,7 @@ class Builder {
   }
 
   void addToken(std::vector<uint32_t> cps, const size_t token, const bool lineStart, const bool paragraphStart,
-                const bool spaceBefore) {
+                const Spacing spacingBefore) {
     std::vector<size_t> cuts = internalCuts(cps);
     cuts.push_back(cps.size());
     size_t from = 0;
@@ -164,21 +154,42 @@ class Builder {
       item.token = token;
       item.lineStart = first && lineStart;
       item.paragraphStart = first && paragraphStart;
-      item.spaceBefore = first && spaceBefore;
+      item.spacingBefore = first ? spacingBefore : Spacing::None;
       items_.push_back(std::move(item));
       first = false;
       from = to;
     }
   }
 
-  // --- sentence boundaries between pieces ---
+  // --- sentence boundaries between pieces (empty pieces are looked past) ---
 
   bool isEmpty(const size_t i) const { return items_[i].cps.empty(); }
+
+  // The nearest piece with text before i (or -1), and after i (or items_.size()).
+  long textBefore(size_t i) const {
+    while (i > 0) {
+      if (!isEmpty(--i)) return static_cast<long>(i);
+    }
+    return -1;
+  }
+  size_t textAfter(size_t i) const {
+    while (++i < items_.size()) {
+      if (!isEmpty(i)) return i;
+    }
+    return items_.size();
+  }
+
+  bool paragraphStartsIn(const size_t from, const size_t to) const {
+    for (size_t i = from; i <= to && i < items_.size(); i++) {
+      if (items_[i].paragraphStart) return true;
+    }
+    return false;
+  }
 
   // The index of the last codepoint that isn't a closer, or -1.
   long lastNonCloser(const Item& item) const {
     long i = static_cast<long>(item.cps.size()) - 1;
-    while (i >= 0 && Punctuation::isCloser(item.cps[static_cast<size_t>(i)], script_)) i--;
+    while (i >= 0 && isCloser(item.cps[static_cast<size_t>(i)])) i--;
     return i;
   }
 
@@ -190,79 +201,103 @@ class Builder {
     const Item& item = items_[i];
     const long last = lastNonCloser(item);
     if (last < 0) return false;
-    const uint32_t cp = item.cps[static_cast<size_t>(last)];
+    const auto at = static_cast<size_t>(last);
+    const uint32_t cp = item.cps[at];
+    const bool closed = at + 1 < item.cps.size();
+    const size_t next = textAfter(i);
+    const bool hasNext = next < items_.size();
     // Latin "..." is an ellipsis, not three full stops.
-    const bool dots = cp == '.' && last > 0 && item.cps[static_cast<size_t>(last) - 1] == '.';
-    if (Punctuation::isTerminator(cp, script_) && !dots) return true;
+    const bool dots = cp == '.' && at > 0 && item.cps[at - 1] == '.';
+    if (isTerminator(cp) && !dots) return !(Punctuation::isDot(cp) && !closed && dotInWord(i, next));
     if (Punctuation::isEllipsis(cp) || dots) {
       // "…" ends a sentence when a closer follows, in this piece or the next, or the paragraph ends.
-      if (last + 1 < static_cast<long>(item.cps.size())) return true;
-      if (i + 1 >= items_.size()) return false;  // the page ends: unknown, so not a sentence end
-      return items_[i + 1].paragraphStart || isOnlyClosers(i + 1);
+      if (closed) return true;
+      if (!hasNext) return false;  // the page ends: unknown, so not a sentence end
+      return paragraphStartsIn(i + 1, next) || isOnlyClosers(next);
     }
     return false;
   }
 
+  // A dot that belongs to a number or an abbreviation rather than ending a sentence: straight before a
+  // digit or letter with no space between (３．｜５), or after a single letter that follows another
+  // letter-dot pair (Ｕ．Ｓ．Ａ．｜に). Across Latin words there was a space, so "late. The" still ends.
+  bool dotInWord(const size_t i, const size_t next) const {
+    const Item& item = items_[i];
+    if (next < items_.size() && between(item, items_[next]) == Spacing::None &&
+        chars::isAlnum(items_[next].cps.front())) {
+      return true;
+    }
+    const auto isLetterDot = [this](const Item& piece) {
+      return piece.cps.size() == 2 && chars::isAlnum(piece.cps[0]) && Punctuation::isDot(piece.cps[1]);
+    };
+    const long prev = textBefore(i);
+    return isLetterDot(item) && prev >= 0 && isLetterDot(items_[static_cast<size_t>(prev)]) &&
+           between(items_[static_cast<size_t>(prev)], item) == Spacing::None;
+  }
+
   // Does a sentence end just before piece i, counting the closers after a terminator (。」) as part of
   // the sentence they close?
-  bool sentenceEndsBefore(size_t i) const {
-    while (i > 0 && isOnlyClosers(i - 1)) i--;
-    return i > 0 && endsSentence(i - 1);
+  bool sentenceEndsBefore(const size_t i) const {
+    long j = textBefore(i);
+    while (j >= 0 && isOnlyClosers(static_cast<size_t>(j))) j = textBefore(static_cast<size_t>(j));
+    return j >= 0 && endsSentence(static_cast<size_t>(j));
   }
 
   // Does a quote before piece i run on into the sentence (Japanese 」と, ！？と, 」って)?
   bool quoteContinues(const size_t i) const {
-    const Item& prev = items_[i - 1];
-    if (prev.cps.empty()) return false;
-    const uint32_t last = prev.cps.back();
-    if (!Punctuation::isCloser(last, script_) && !Punctuation::isQuestionOrExclamation(last)) return false;
+    const long prev = textBefore(i);
+    if (prev < 0 || isEmpty(i)) return false;
+    const uint32_t last = items_[static_cast<size_t>(prev)].cps.back();
+    if (!isCloser(last) && !Punctuation::isQuestionOrExclamation(last)) return false;
     const Item& next = items_[i];
     return Punctuation::continuesQuote(next.cps.data(), next.cps.size(), script_);
   }
 
-  // Does a new sentence start at piece i (i > 0)?
+  // Does a new sentence start at piece i (i > 0)? An empty piece only starts one at a paragraph.
   bool cutBefore(const size_t i) const {
     if (items_[i].paragraphStart) return true;
+    if (isEmpty(i)) return false;
     if (!isOnlyClosers(i) && sentenceEndsBefore(i) && !quoteContinues(i)) return true;
-    // Dialogue: 」「 is a break even without a terminator.
-    const Item& prev = items_[i - 1];
-    return !prev.cps.empty() && !items_[i].cps.empty() && Punctuation::isCloser(prev.cps.back(), script_) &&
-           Punctuation::isOpener(items_[i].cps.front(), script_);
+    // Dialogue: 」「 / ”“ is a break even without a terminator (not 』（ or 】【).
+    const long prev = textBefore(i);
+    return prev >= 0 && Punctuation::isQuoteCloser(items_[static_cast<size_t>(prev)].cps.back(), script_) &&
+           Punctuation::isQuoteOpener(items_[i].cps.front(), script_);
   }
 
   // --- joining ---
 
-  // Whether a space goes between two neighbouring pieces. The layout doesn't keep that bit, so it is
-  // decided by script: CJK text never has spaces between characters, Latin words always do (an explicit
-  // &nbsp; token always does). A Latin word hyphenated across a line break rejoins without one.
-  static bool needsSpace(const Item& prev, const Item& next) {
-    if (next.spaceBefore) return true;
-    if (next.token == prev.token) return false;  // pieces of one token were never apart
+  // What goes between two neighbouring pieces. The layout doesn't keep spaces, so they're decided by
+  // script: CJK text never has spaces between characters, Latin words always do (not before , . ! ? ) ”
+  // or after ( “); a Latin word hyphenated across a line break rejoins without one. A spacing token
+  // (&nbsp;, 　) always shows as what it was.
+  static Spacing between(const Item& prev, const Item& next) {
+    if (next.spacingBefore != Spacing::None) return next.spacingBefore;
+    if (next.token == prev.token) return Spacing::None;  // pieces of one token were never apart
     const uint32_t left = prev.cps.back();
     const uint32_t right = next.cps.front();
-    if (utf8IsCjkCodepoint(left) || utf8IsCjkCodepoint(right)) return false;
-    if (next.lineStart && isLatinHyphen(left)) return false;
-    return true;
+    if (utf8IsCjkCodepoint(left) || utf8IsCjkCodepoint(right)) return Spacing::None;
+    if (next.lineStart && chars::isLatinHyphen(left)) return Spacing::None;
+    if (chars::attachesLeft(right) || chars::attachesRight(left)) return Spacing::None;
+    return Spacing::Latin;
   }
 
-  // Calls fn(index, spaceBefore) for each non-empty piece in [begin, end), exactly as they are joined.
+  // Calls fn(index, spacing) for each piece with text in [begin, end), exactly as they are joined (the
+  // first gets no spacing: a sentence never starts with a space).
   template <class Fn>
   void forEachJoined(const size_t begin, const size_t end, Fn&& fn) const {
     const Item* prev = nullptr;
     for (size_t i = begin; i < end; i++) {
       if (isEmpty(i)) continue;
-      fn(i, prev != nullptr && needsSpace(*prev, items_[i]));
+      fn(i, prev != nullptr ? between(*prev, items_[i]) : Spacing::None);
       prev = &items_[i];
     }
   }
 
-  static uint32_t units(const uint32_t cp) { return cp > 0xFFFF ? 2 : 1; }
-
   // The joined length (UTF-16 units): the cap and the offsets share one measure.
   size_t length(const size_t begin, const size_t end) const {
     size_t total = 0;
-    forEachJoined(begin, end, [&](const size_t i, const bool space) {
-      total += space ? 1 : 0;
+    forEachJoined(begin, end, [&](const size_t i, const Spacing spacing) {
+      total += spacing == Spacing::None ? 0 : 1;
       for (const uint32_t cp : items_[i].cps) total += units(cp);
     });
     return total;
@@ -316,9 +351,9 @@ class Builder {
     out.truncatedLeft = left;
     out.truncatedRight = right;
     uint32_t at = 0;
-    forEachJoined(begin, end, [&](const size_t i, const bool space) {
-      if (space) {
-        out.text += ' ';
+    forEachJoined(begin, end, [&](const size_t i, const Spacing spacing) {
+      if (spacing != Spacing::None) {
+        utf8AppendCodepoint(spacing == Spacing::Ideographic ? chars::kIdeographicSpace : ' ', out.text);
         at++;
       }
       if (i == tap) out.tapOffset = at;
@@ -339,7 +374,7 @@ class Builder {
 
 uint32_t utf16Length(const std::string& utf8) {
   uint32_t total = 0;
-  for (const uint32_t cp : decode(utf8)) total += cp > 0xFFFF ? 2 : 1;
+  for (const uint32_t cp : decode(utf8)) total += units(cp);
   return total;
 }
 

@@ -7,6 +7,8 @@
 #include <cctype>
 #include <string>
 
+#include "CharClass.h"
+
 namespace lexipoint::text {
 namespace {
 
@@ -30,16 +32,6 @@ bool hasSubtag(const std::string& tag, const std::string_view subtag) {
 }
 
 std::string primarySubtag(const std::string& tag) { return tag.substr(0, tag.find_first_of("-_")); }
-
-// Hiragana and katakana letters and their iteration marks; not ・ (U+30FB) or ー (U+30FC).
-bool isKana(const uint32_t cp) {
-  return (cp >= 0x3041 && cp <= 0x3096) || (cp >= 0x309D && cp <= 0x309F) || (cp >= 0x30A1 && cp <= 0x30FA) ||
-         (cp >= 0x30FD && cp <= 0x30FF);
-}
-bool isHan(const uint32_t cp) {
-  return (cp >= 0x3400 && cp <= 0x4DBF) || (cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0xF900 && cp <= 0xFAFF) ||
-         (cp >= 0x20000 && cp <= 0x323AF);
-}
 
 bool isEnabled(const Language language, const Settings& settings) {
   return settings.enabled && (language == Language::Japanese ? settings.japanese.enabled : settings.chinese.enabled);
@@ -92,8 +84,8 @@ LanguageDecision BookLanguage::decide(const std::string_view sentence, const Set
   const std::string text(sentence);
   const auto* p = reinterpret_cast<const unsigned char*>(text.c_str());
   while (const uint32_t cp = utf8NextCodepoint(&p)) {
-    if (isKana(cp)) return decision(Language::Japanese, LanguageSource::Kana, settings);
-    han = han || isHan(cp);
+    if (chars::isKana(cp)) return decision(Language::Japanese, LanguageSource::Kana, settings);
+    han = han || chars::isHan(cp);
   }
   if (han) return decision(settings.defaultLanguage, LanguageSource::DefaultForHan, settings);
   return {};
