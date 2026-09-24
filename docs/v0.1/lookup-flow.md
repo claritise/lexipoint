@@ -243,6 +243,32 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   has no page number, the ⋯ tab's v0.2 actions say "Not in this version yet", and "Saving…" isn't shown
   (the level shows at once instead). Errors beyond the save toast are P6 (`offline-and-errors.md`).
 
+### 5c. As built (P7)
+
+- **A long-press never also turns the page** (P3 already): the reader takes the long-press before its
+  page-turn zones and consumes it, which suppresses the rest of the contact, so the lift isn't a tap. P7
+  changed nothing there; the device check is owed.
+- **Back by entry point** (`popup-ui.md` §3): word select remembers a long-press on a word opened it
+  (`touchEntry`). Then any close of the card (Back, Home, ✕, a tap or swipe down outside it) goes straight
+  back to the reader (`card::AfterCard::BackToReader`), and so does closing StarDict's definition. Opened
+  from the menu, the card closes to word select, as before. A long-press on no word still opens word
+  select as usual, and it behaves as menu-opened.
+- **A long-press on another word while the card is open** (`popup-ui.md` §3.2): in card view, a
+  long-press on the page outside the card closes it with that point (`Outcome::lookUpAt` →
+  `LiveOutcome::lookUpAt` → `AfterCard::LookUpAt`), and word select looks up the word there on its next
+  `loop()`. The card writes its queued saves first, as on any close. On the card itself or over the detail
+  view (which covers the page) a long-press does nothing, and so it does when the reader's page isn't
+  drawn under the card (a landscape book, whose page is laid out in other coordinates). A long-press on
+  no word closes the card as a tap outside would. An unsent save is still said first (`UnsentSave`).
+- **Swipes** (`popup-ui.md` §3.2, deferred from P4): `CardController::swipe`: up on the card opens the
+  detail view, down goes back to the card and from the card closes it, left / right step the detail view's
+  tabs (stopping at Meaning and ⋯). A swipe only counts when it starts on the card
+  (`handleInput` matches its start against the frame on screen, like a tap) and at least
+  `config::kCardSwipeEdgeMarginPx` (85 px, ~10 mm) inside the left, top and bottom edges
+  (`swipeClearOfEdges`); the left-edge Back swipe stays Back. The start point comes from
+  `MappedInputManager::peekSwipe` (hook). `lxctl card-gestures` drives them on the bench card.
+- **Each language's own offline dictionary** (`settings.md` §1b): `lookup::starDictFolder`.
+
 ## 6. Left/Right on the card
 
 The analyze response already covers the whole sentence. Keep the compact `occurrences[]` (plus

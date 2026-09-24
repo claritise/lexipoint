@@ -113,6 +113,37 @@ same URL shown for uploading books).
   `SettingsPatch` before anything is saved). Settings apply at once, and the device's own screen shows
   the same values. The response is the page's full state, so the page always shows what was saved.
 
+## 1b. As built (P7): the device screen
+
+Code: `src/lexirise/settings/SettingsScreen.{h,cpp}` (pure: which rows show, their groups, the edit a tap
+makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSettingsActivity` (CrossPoint's
+`UiListActivity`, as `KOReaderSettingsActivity`).
+
+- **The row** is appended in `SettingsActivity.cpp` with the other device-only ACTION rows (`WiFi Networks`,
+  `KOReader Sync`, …), right after `KOReader Sync`. Upstream builds those there, not in `SettingsList.h`.
+- **Groups** are the list's stock section headings (`ListItem::sectionHeading`, as the library list uses
+  them): Account, Japanese, Chinese (Simplified), General. The hiding rules are §1's.
+- **Every edit is a `SettingsPatch`** through `applyPatch`, the web page's own validation, then
+  `SettingsStore::update`. A toggle flips; Readings flips Kana ⇄ Romaji; the language fallback flips
+  Japanese ⇄ Chinese; *Keep WiFi on* steps through Off / 1 / 2 / 5 / 10 min; *Offline dictionary* steps
+  through **Same as CrossPoint** (the global dictionary) and then each StarDict folder on the card.
+- **API key:** the keyboard's password mode, starting empty (the device never shows the stored key; an
+  empty entry keeps it). A value that isn't a key shows `Not a Lexirise key` on the key row until the next
+  edit. A new key is checked at once, from the next loop pass (the keyboard's result runs mid
+  activity switch): the Account row reads `Checking...`, then the result.
+- **Account:** `<name> · <plan>` once connected; otherwise `Not set`, `Not checked`, `Checking...`,
+  `Key rejected`, `No network` or `Could not connect` (`settings_screen::accountLine`). `/v1/me` gives no
+  key name, so the `key "lexipoint"` part of §1's example isn't shown.
+- **Test connection** runs the check there and then (the Account row shows `Checking...` first; a slow
+  network blocks the screen for up to one call), then gives back any WiFi Lexipoint brought up: Settings
+  isn't reading (`offline-and-errors.md` §5).
+- **Offline dictionary** (`lookup/StarDictChoice.h`): a tap uses its language's own folder when one is
+  chosen, else CrossPoint's Dictionary setting. The language is what the tapped text is
+  (`LanguageDecision::detected`), so the choice **still counts while that language's Lexirise lookups are
+  off**, which is exactly when StarDict answers every tap in it (the row is hidden then, and the value
+  kept). Word select reopens its dictionary when the language changes, and opens without CrossPoint's
+  dictionary when either language has its own.
+
 ## 2. The API key
 
 - **The web page (`/lexirise`, §1a) is the main way to enter it**: paste it from a phone or laptop browser. The device keyboard
