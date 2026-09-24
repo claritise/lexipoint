@@ -23,9 +23,12 @@ struct Punctuation {
   static bool isOpener(uint32_t cp, Script script);
   // Chinese "；": a cut used only when a sentence would pass the codepoint cap.
   static bool isFallbackCut(uint32_t cp, Script script);
-  // Japanese quotative と / って right after a closed quote (「行こう。」と言った): the quote is part of
-  // the sentence, not a sentence of its own. `next` is the token after the closer.
+  // Japanese quotative と / って right after a closed quote (「行こう。」と言った) or a question or
+  // exclamation mark (本当に!?と思った): the quote is part of the sentence, not a sentence of its own.
+  // `next` is what follows. (After 。 a と starts a new sentence: 。とにかく.)
   static bool continuesQuote(const uint32_t* next, size_t count, Script script);
+  // ？！?! (not 。): what an unbracketed quote can end with before its quotative.
+  static bool isQuestionOrExclamation(uint32_t cp);
 };
 
 }  // namespace lexipoint::text

@@ -94,6 +94,7 @@ void DictionaryWordSelectActivity::extractWords() {
 #if LEXIRISE
         pageText.append(text);  // LEXIPOINT: the page model measures every line's last token
         pageText.push_back(' ');
+        styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(block->wordStyle(i)) & 0x03));
 #endif
         continue;
       }
@@ -124,7 +125,8 @@ void DictionaryWordSelectActivity::extractWords() {
 
   if (styleMask == 0) styleMask = 0x01;  // REGULAR
 #if LEXIRISE
-  pageText.append(lexipoint::lookup::kEmProbe);  // LEXIPOINT
+  pageText.append(lexipoint::lookup::kEmProbe);  // LEXIPOINT: measured in REGULAR
+  styleMask |= 0x01;
 #endif
   renderer.ensureSdCardFontReady(fontId, pageText.c_str(), styleMask);
   for (auto& word : words) {

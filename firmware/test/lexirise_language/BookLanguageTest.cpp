@@ -34,7 +34,9 @@ TEST(BookLanguage, MetadataWinsOverTheSentence) {
   const auto ja = BookLanguage("ja", std::nullopt).decide("学生", s);
   EXPECT_EQ(ja.language, Language::Japanese);
   EXPECT_EQ(ja.source, LanguageSource::Metadata);
-  EXPECT_FALSE(BookLanguage("zh-TW", std::nullopt).decide("學生", s).language);  // Traditional: StarDict
+  const auto hant = BookLanguage("zh-TW", std::nullopt).decide("學生", s);
+  EXPECT_FALSE(hant.language);                  // Traditional: StarDict (H8 parked)
+  EXPECT_EQ(hant.detected, Language::Chinese);  // but cut with Chinese punctuation
 }
 
 TEST(BookLanguage, SentenceHeuristicWhenMetadataIsMissingOrWrong) {

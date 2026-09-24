@@ -21,7 +21,7 @@ namespace {
 
 // Reference copy of CrossPoint's CJK line-break rules (ParsedText.cpp: isNoBreakBefore/AfterCjkPunctuation,
 // hasCjkBreakOpportunityBetween), so the tokens here are the tokens the reader lays out. The end-to-end
-// suite (test/lexirise_pagemodel) runs the real parser and catches any drift.
+// suite (test/lexirise_layout) runs the real parser and catches any drift.
 bool noBreakBefore(const uint32_t cp) {
   for (const uint32_t c :
        {0x2Eu,   0x2Cu,   0x3Au,   0x3Bu,   0x21u,   0x3Fu,   0x29u,   0x5Du,   0x7Du,   0xBBu,   0x2019u,
@@ -177,12 +177,12 @@ TEST(SentenceJa, RunOnIsCappedAroundTheTap) {
   for (int i = 0; i < 300; i++) runOn += (i == 200 ? "猫" : "あ");
   const PageModel page{{layout(runOn, true)}};
   const auto s = build(page, "猫");
-  EXPECT_EQ(utf16Length(s.text), lexipoint::config::kMaxSentenceCodepoints);
+  EXPECT_EQ(utf16Length(s.text), lexipoint::config::kMaxSentenceUnits);
   EXPECT_EQ(tapped(s), "猫");
   EXPECT_TRUE(s.truncatedLeft);
   EXPECT_TRUE(s.truncatedRight);
   // Centred: roughly as much before the tap as after.
-  EXPECT_NEAR(static_cast<int>(s.tapOffset), static_cast<int>(lexipoint::config::kMaxSentenceCodepoints / 2), 1);
+  EXPECT_NEAR(static_cast<int>(s.tapOffset), static_cast<int>(lexipoint::config::kMaxSentenceUnits / 2), 1);
 }
 
 TEST(SentenceJa, LatinInsideJapaneseJoinsWithoutSpaces) {
@@ -253,7 +253,7 @@ TEST(SentenceZh, SemicolonIsAFallbackCutOnlyPastTheCap) {
   const auto s = build(page, "他", Script::Chinese);
   EXPECT_EQ(s.text.rfind("他走了", 0), 0u);  // cut right after the ；
   EXPECT_TRUE(s.truncatedLeft);
-  EXPECT_LE(utf16Length(s.text), lexipoint::config::kMaxSentenceCodepoints);
+  EXPECT_LE(utf16Length(s.text), lexipoint::config::kMaxSentenceUnits);
 }
 
 TEST(SentenceZh, CurlyQuotesAreClosersOnlyInChinese) {
@@ -278,4 +278,26 @@ TEST(SentenceEn, WordsJoinWithSpacesAndStopAtPunctuation) {
   const auto question = build(page, "late", Script::Latin);
   EXPECT_EQ(question.text, "It was late.");
   EXPECT_EQ(question.tapOffset, 7u);
+}
+
+// Terminator runs and dotted words stay whole; only a real sentence break inside a token splits it.
+TEST(SentenceRuns, TerminatorRunsStayTogether) {
+  const PageModel ja{{layout("「本当ですか！？」と彼は聞いた。次。", true)}};
+  EXPECT_EQ(build(ja, "本").text, "「本当ですか！？」と彼は聞いた。");
+  EXPECT_EQ(build(ja, "聞").text, "「本当ですか！？」と彼は聞いた。");
+  const PageModel jaAscii{{layout("本当に!?と思った。", true), layout("すごい!!次だ。", true)}};
+  EXPECT_EQ(build(jaAscii, "思").text, "本当に!?と思った。");
+  EXPECT_EQ(build(jaAscii, "す").text, "すごい!!");
+  const PageModel zh{{layout("“你疯了吗？！”他问。", true)}};
+  EXPECT_EQ(build(zh, "疯", Script::Chinese).text, "“你疯了吗？！”");
+  EXPECT_EQ(build(zh, "问", Script::Chinese).text, "他问。");
+}
+
+TEST(SentenceRuns, DottedLatinWordsStayWhole) {
+  const PageModel en{{layout("It costs 3.50 dollars today. See example.com for more. Wait... what?", true)}};
+  EXPECT_EQ(build(en, "costs", Script::Latin).text, "It costs 3.50 dollars today.");
+  const auto url = build(en, "example", Script::Latin);
+  EXPECT_EQ(url.text, "See example.com for more.");
+  EXPECT_EQ(tapped(url), "example.com");
+  EXPECT_EQ(build(en, "Wait", Script::Latin).text, "Wait... what?");
 }

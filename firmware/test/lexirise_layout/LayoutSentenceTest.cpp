@@ -110,6 +110,12 @@ TEST_F(LayoutSentence, FuriganaLineDoesNotBreakTheSentence) {
   EXPECT_EQ(s->text, "彼は漢字の本を読みながら、ゆっくりと静かな午後の時間を過ごしていた。");  // no ruby, not cut
 }
 
+TEST_F(LayoutSentence, TerminatorRunsInsideQuotes) {
+  layout("<p>「本当ですか！？」と彼は聞いた。</p><p>“你疯了吗？！”他问。</p>");
+  EXPECT_EQ(sentence("本", Script::Japanese), "「本当ですか！？」と彼は聞いた。");
+  EXPECT_EQ(sentence("疯", Script::Chinese), "“你疯了吗？！”");
+}
+
 TEST_F(LayoutSentence, ChineseDialogueInOneToken) {
   layout("<p>他说：</p><p>“好。”“走吧。”</p>");
   EXPECT_EQ(sentence("吧", Script::Chinese), "“走吧。”");

@@ -78,6 +78,10 @@ bool Punctuation::continuesQuote(const uint32_t* next, const size_t count, const
   return next[0] == kTo || (next[0] == kSmallTsu && (count == 1 || next[1] == kTe));
 }
 
+bool Punctuation::isQuestionOrExclamation(const uint32_t cp) {
+  return cp == '!' || cp == '?' || cp == 0xFF01 || cp == 0xFF1F;
+}
+
 bool Punctuation::isFallbackCut(const uint32_t cp, const Script script) {
   return script == Script::Chinese && cp == kZhFallbackCut;
 }

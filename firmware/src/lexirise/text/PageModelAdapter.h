@@ -4,7 +4,7 @@
 // line that DictionaryWordSelectActivity::extractWords() walks (a ::PageLine with a valid block), with
 // every token, in order, so a word's (line, token) indexes it directly. Base text only: ruby lives in
 // a separate list and never enters. Host-tested against real Page/TextBlock objects
-// (test/lexirise_pagemodel).
+// (test/lexirise_pagemodel; end to end with the real parser in test/lexirise_layout).
 
 #include <EpdFontFamily.h>
 

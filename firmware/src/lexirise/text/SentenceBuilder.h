@@ -3,7 +3,7 @@
 // From a laid-out page and a tapped token to the sentence around it, plus the tap's offset in the
 // server's unit (sentence-extraction.md). Pure: the page arrives as a PageModel (PageModelAdapter builds
 // one from CrossPoint's Page). Tests: test/lexirise_sentence, and end to end through CrossPoint's real
-// layout in test/lexirise_pagemodel.
+// layout in test/lexirise_layout.
 
 #include <cstddef>
 #include <cstdint>

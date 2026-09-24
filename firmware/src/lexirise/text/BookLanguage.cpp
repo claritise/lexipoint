@@ -78,8 +78,12 @@ LanguageDecision BookLanguage::decide(const std::string_view sentence, const Set
       return decision(Language::Japanese, LanguageSource::Metadata, settings);
     case TaggedLanguage::Chinese:
       return decision(Language::Chinese, LanguageSource::Metadata, settings);
-    case TaggedLanguage::ChineseTraditional:
-      return {};  // H8 (parked): Traditional goes to StarDict
+    case TaggedLanguage::ChineseTraditional: {
+      LanguageDecision out;  // H8 (parked): not sent (StarDict answers), but cut as Chinese
+      out.detected = Language::Chinese;
+      out.source = LanguageSource::Metadata;
+      return out;
+    }
     case TaggedLanguage::Unknown:
     default:
       break;

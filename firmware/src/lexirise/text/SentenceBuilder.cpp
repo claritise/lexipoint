@@ -103,10 +103,10 @@ class Builder {
     bool truncatedLeft = begin == 0 && !items_[0].paragraphStart;
     bool truncatedRight = end == n && !sentenceEndsBefore(n);
 
-    if (length(begin, end) > config::kMaxSentenceCodepoints) {
+    if (length(begin, end) > config::kMaxSentenceUnits) {
       // Chinese "；" first (a clause end is a better cut than a word in the middle), then centre on the tap.
       applyFallbackCuts(tap, begin, end, truncatedLeft, truncatedRight);
-      if (length(begin, end) > config::kMaxSentenceCodepoints) {
+      if (length(begin, end) > config::kMaxSentenceUnits) {
         centre(tap, begin, end, truncatedLeft, truncatedRight);
       }
     }
@@ -116,13 +116,21 @@ class Builder {
  private:
   // --- splitting a token into pieces ---
 
-  // Where a sentence (or a line of dialogue) ends inside a token: after a terminator and its closers
-  // (unless a Japanese quotative follows), and between a closer and an opener.
+  // Where a sentence (or a line of dialogue) ends inside a token. CrossPoint glues punctuation onto the
+  // character before it, so a token can be 好。”“走 (two sentences) but also か！？」と, 3.50 or
+  // example.com (one). So: a run of terminators and closers stays together; after it, a closed run
+  // (。” / ！？」) ends the sentence unless a Japanese quotative follows, and a bare run (。 / .) only when
+  // an opener or a CJK character follows it (never a digit or a letter: 3.50, e.g., example.com). A
+  // closer followed by an opener (”“ / 」「) is a break on its own.
   std::vector<size_t> internalCuts(const std::vector<uint32_t>& cps) const {
     std::vector<size_t> cuts;
     for (size_t k = 1; k < cps.size(); k++) {
       const uint32_t after = cps[k];
-      if (Punctuation::isCloser(after, script_)) continue;  // closers stay with what they close
+      // Never inside a run: closers stay with what they close, terminators with each other (！？, ...).
+      if (Punctuation::isCloser(after, script_) || Punctuation::isTerminator(after, script_) ||
+          Punctuation::isEllipsis(after)) {
+        continue;
+      }
       bool cut = Punctuation::isCloser(cps[k - 1], script_) && Punctuation::isOpener(after, script_);
       if (!cut) {
         size_t j = k;  // back over closers, to the character they follow
@@ -130,9 +138,14 @@ class Builder {
         const bool closed = j < k;
         if (j > 0) {
           const uint32_t end = cps[j - 1];
-          cut = Punctuation::isTerminator(end, script_) || (closed && Punctuation::isEllipsis(end));
+          const bool terminated = Punctuation::isTerminator(end, script_) || (closed && Punctuation::isEllipsis(end));
+          const bool nextStartsASentence = Punctuation::isOpener(after, script_) || utf8IsCjkCodepoint(after);
+          cut = terminated && (closed || nextStartsASentence);
         }
-        if (cut && closed && Punctuation::continuesQuote(cps.data() + k, cps.size() - k, script_)) cut = false;
+        if (cut && (closed || Punctuation::isQuestionOrExclamation(cps[j - 1])) &&
+            Punctuation::continuesQuote(cps.data() + k, cps.size() - k, script_)) {
+          cut = false;
+        }
       }
       if (cut) cuts.push_back(k);
     }
@@ -178,8 +191,10 @@ class Builder {
     const long last = lastNonCloser(item);
     if (last < 0) return false;
     const uint32_t cp = item.cps[static_cast<size_t>(last)];
-    if (Punctuation::isTerminator(cp, script_)) return true;
-    if (Punctuation::isEllipsis(cp)) {
+    // Latin "..." is an ellipsis, not three full stops.
+    const bool dots = cp == '.' && last > 0 && item.cps[static_cast<size_t>(last) - 1] == '.';
+    if (Punctuation::isTerminator(cp, script_) && !dots) return true;
+    if (Punctuation::isEllipsis(cp) || dots) {
       // "…" ends a sentence when a closer follows, in this piece or the next, or the paragraph ends.
       if (last + 1 < static_cast<long>(item.cps.size())) return true;
       if (i + 1 >= items_.size()) return false;  // the page ends: unknown, so not a sentence end
@@ -195,10 +210,12 @@ class Builder {
     return i > 0 && endsSentence(i - 1);
   }
 
-  // Does a closed quote before piece i run on into the sentence (Japanese 」と / 」って)?
+  // Does a quote before piece i run on into the sentence (Japanese 」と, ！？と, 」って)?
   bool quoteContinues(const size_t i) const {
     const Item& prev = items_[i - 1];
-    if (prev.cps.empty() || !Punctuation::isCloser(prev.cps.back(), script_)) return false;
+    if (prev.cps.empty()) return false;
+    const uint32_t last = prev.cps.back();
+    if (!Punctuation::isCloser(last, script_) && !Punctuation::isQuestionOrExclamation(last)) return false;
     const Item& next = items_[i];
     return Punctuation::continuesQuote(next.cps.data(), next.cps.size(), script_);
   }
@@ -278,8 +295,8 @@ class Builder {
     size_t hi = tap + 1;
     bool growLeft = true;
     while (true) {
-      const bool canLeft = lo > begin && length(lo - 1, hi) <= config::kMaxSentenceCodepoints;
-      const bool canRight = hi < end && length(lo, hi + 1) <= config::kMaxSentenceCodepoints;
+      const bool canLeft = lo > begin && length(lo - 1, hi) <= config::kMaxSentenceUnits;
+      const bool canRight = hi < end && length(lo, hi + 1) <= config::kMaxSentenceUnits;
       if (!canLeft && !canRight) break;
       if ((growLeft && canLeft) || !canRight) {
         lo--;

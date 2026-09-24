@@ -66,7 +66,7 @@ constexpr uint32_t kWifiPollMs = 50;
 constexpr unsigned long kMsPerMinute = 60UL * 1000UL;
 
 // Sentence extraction (sentence-extraction.md §2).
-constexpr size_t kMaxSentenceCodepoints = 120;  // cap, centred on the tap as far as the boundaries allow
+constexpr size_t kMaxSentenceUnits = 120;  // cap in UTF-16 units (Lexirise's), centred on the tap
 // Paragraph starts, read off line geometry (the laid-out page doesn't mark them): text/ParagraphBreaks.h.
 constexpr float kParagraphShortLineEm = 2.0f;  // the line before stops at least this far from the right edge
 constexpr float kParagraphGapFactor = 1.3f;    // or the gap to this line is this much above the usual line advance
