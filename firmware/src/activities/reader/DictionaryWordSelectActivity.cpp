@@ -13,6 +13,9 @@
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
 #include "components/UITheme.h"
+#if LEXIRISE
+#include "lexirise/lookup/PageTap.h"  // LEXIPOINT
+#endif
 
 namespace {
 
@@ -73,6 +76,9 @@ void DictionaryWordSelectActivity::extractWords() {
   pageText.reserve(2048);
   uint8_t styleMask = 0;
 
+#if LEXIRISE
+  uint16_t textLine = 0;  // LEXIPOINT: counts lines exactly as lexipoint::text::buildPageModel() does
+#endif
   for (const auto& element : page->elements) {
     if (element->getTag() != TAG_PageLine) continue;
     const auto* line = static_cast<const PageLine*>(element.get());
@@ -93,6 +99,10 @@ void DictionaryWordSelectActivity::extractWords() {
       box.width = 0;  // measured below, once the advance table is ready
       box.row = rowCount;
       box.text = text;
+#if LEXIRISE
+      box.line = textLine;  // LEXIPOINT
+      box.token = i;
+#endif
       words.push_back(box);
       rowHasWords = true;
 
@@ -101,6 +111,9 @@ void DictionaryWordSelectActivity::extractWords() {
       styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(box.style) & 0x03));
     }
     if (rowHasWords) rowCount++;
+#if LEXIRISE
+    textLine++;  // LEXIPOINT
+#endif
   }
 
   if (styleMask == 0) styleMask = 0x01;  // REGULAR
@@ -153,6 +166,14 @@ void DictionaryWordSelectActivity::moveVertical(const int direction) {
 }
 
 void DictionaryWordSelectActivity::performLookup() {
+#if LEXIRISE
+  // LEXIPOINT (P2): the sentence and language this tap would send to Lexirise, logged for the gate. P3
+  // routes the lookup through the provider chain instead.
+  if (book && selected >= 0 && selected < static_cast<int>(words.size())) {
+    lexipoint::lookup::logTapContext(lexipoint::lookup::describePageTap(
+        renderer, fontId, *page, {words[selected].line, words[selected].token}, *book));
+  }
+#endif
   popup = Popup::Busy;
   if (!dictOpenAttempted) {
     dictOpenAttempted = true;

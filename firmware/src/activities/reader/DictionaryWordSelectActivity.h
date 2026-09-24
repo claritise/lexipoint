@@ -8,6 +8,12 @@
 
 #include "activities/Activity.h"
 #include "util/Dictionary.h"
+#if LEXIRISE
+#include <optional>
+#include <string>
+
+#include "lexirise/text/BookLanguage.h"  // LEXIPOINT
+#endif
 
 // Word selection over the current reader page: Left/Right step through words
 // in reading order, Up/Down jump rows, Confirm looks the word up and opens
@@ -26,6 +32,11 @@ class DictionaryWordSelectActivity final : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
 
+#if LEXIRISE
+  // LEXIPOINT: the book's <dc:language> (and later its override), so a tap can pick its language.
+  void setBook(const std::string& dcLanguage) { book.emplace(dcLanguage, std::nullopt); }
+#endif
+
  private:
   // Screen box of one selectable word. `text` points into the owned Page's
   // TextBlock arena (NUL-terminated), valid for this activity's lifetime.
@@ -36,6 +47,10 @@ class DictionaryWordSelectActivity final : public Activity {
     uint16_t row;
     const char* text;
     EpdFontFamily::Style style;
+#if LEXIRISE
+    uint16_t line;   // LEXIPOINT: index among the page's text lines (lexipoint::text::PageModel)
+    uint16_t token;  // LEXIPOINT: index in that line's block, counting every token
+#endif
   };
 
   enum class Popup : uint8_t { None, Busy, NotFound, Error };
@@ -55,6 +70,9 @@ class DictionaryWordSelectActivity final : public Activity {
   int lineHeight = 0;
 
   std::vector<WordBox> words;
+#if LEXIRISE
+  std::optional<lexipoint::text::BookLanguage> book;  // LEXIPOINT
+#endif
   int selected = 0;
   uint16_t rowCount = 0;
   unsigned long lastHorizontalMoveTime = 0;
