@@ -118,7 +118,7 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | (P8) `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases (§6) |
 | `lib/GfxRenderer/GfxRenderer.cpp` | (P4) `applyPromotedRefresh`: a promoted refresh never weakens the one asked for (the stronger of the two), so the card's half refresh on dismiss can't turn the reader's due full refresh into a half one |
 | `src/SdCardFontSystem.{h,cpp}` | (P4) `familyFontIdAt(renderer, pt)`: the loaded SD family at another point size (the card's 8/10/18 pt), via the manager's existing `loadFamilyExtraSize` |
-| `src/lexirise/dev/DevHarness.cpp` (ours) | (P4) `LX:LEXI CARD ja\|zh [LOW]` pushes the card bench |
+| `src/lexirise/dev/DevHarness.cpp` (ours) | (P4) `LX:LEXI CARD ja\|zh [LOW] [KANA]` pushes the card bench (`KANA`: opens in kana, never saves the reading; `lxctl card-smoke`) |
 | (P3+) `lib/I18n/translations/english.yaml` | `STR_LEXI_*` strings |
 
 Anything that needs more than a few lines in an upstream file is a smell. Move the logic into
