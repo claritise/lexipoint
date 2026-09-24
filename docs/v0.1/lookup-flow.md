@@ -267,7 +267,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
 - **Swipes** (`popup-ui.md` §3.2, deferred from P4): `CardController::swipe`: up on the card opens the
   detail view, down goes back to the card and from the card closes it, left / right step the detail view's
   tabs (stopping at Meaning and ⋯). A swipe only counts when it starts on the card
-  (`handleInput` matches its start against the frame on screen, like a tap), at least
+  (`handleInput` matches its start against the frame on screen, like a tap; a touch on a frame that showed
+  the other view, drawn before a view change reached the screen, is dropped too), at least
   `config::kCardSwipeEdgeMarginPx` (85 px, ~10 mm) inside the left, top and bottom edges, and when the
   SDK wouldn't read it as an edge gesture (`fui::edgeSwipe`, its own bands: a right swipe starting in the
   left quarter is Back, a down swipe from the top 14 % the frontlight panel, an up swipe from the bottom

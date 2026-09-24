@@ -215,7 +215,8 @@ opened from word select (reader menu → Look Up) closes to word select.
 **Gesture safety:** CrossPoint reserves three edge swipes (`MappedInputManager`): left edge → right
 is **Back**, top edge → down is the **frontlight panel**, and bottom edge → up is the **reader menu**
 on Home-key boards like the X4 Pro. Card swipes are only recognised when they **start inside the
-card and at least ~10 mm from the left and bottom edges**. Use `wasSwipe()` together with the touch
+card and at least ~10 mm from the left and bottom edges** (as built, P7: the top edge too, and never inside
+the SDK's own edge-gesture bands, `lookup-flow.md` §5c). Use `wasSwipe()` together with the touch
 origin, and never `wasBackGesture()` territory.
 
 ### 3.3 Physical inputs on the X4 Pro
