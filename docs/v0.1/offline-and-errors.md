@@ -80,9 +80,11 @@ own spec before it's built.
   up as HTTP timeouts).
 - **Ownership is explicit.** Lexipoint owns WiFi only if it brought it up from radio-off, and keeps it
   across the driver's own reconnects. It gives it back after the idle time (`wifi_idle_min`, default
-  5 min) **or as soon as the screen leaves reading**: an ActivityManager hook reports every activity
-  change, and anything that isn't a reader activity, word select or a reader menu (KOSync, the web
-  server, OTA, ...) starts with the radio off and brings WiFi up itself. So Lexipoint can never turn
-  WiFi off under another feature. Before deep sleep upstream already turns WiFi off.
+  5 min) **or as soon as the screen leaves reading** (no reader activity on screen or under it: the
+  reader's menus, word select and the card keep it). An ActivityManager hook reports this *before* the
+  next activity's `onEnter`, so KOSync, the web server, OTA, ... start with the radio off and bring WiFi
+  up themselves: Lexipoint can never turn WiFi off under another feature. If Lexipoint's own link
+  drops, it rejoins (it's still its radio) rather than calling it busy. Before deep sleep upstream
+  already turns WiFi off.
 - **The TLS session is closed after 30 s idle**, on WiFi teardown, and on leaving reading, so it never
   holds internal heap that upstream TLS users pre-flight for.

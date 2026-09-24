@@ -55,8 +55,8 @@ cherry-pick it and note it in §5.
   (gtest via FetchContent, see `test/README`). Anything we write that is pure logic (sentence
   building, offset mapping, response parsing, config parsing) gets a suite here.
 - The build flag **`-DLEXIRISE=1`** gates the Lexirise hooks. With it off, the fork behaves like
-  upstream except for two deliberate, ungated changes (§3): the file manager's hidden-path guard,
-  and the nav script tag that 404s harmlessly.
+  upstream except for deliberate, ungated changes (§3): the file manager's and WebDAV's hidden-path
+  guard, and the nav script tag that 404s harmlessly.
 
 ## 3. Where our code lives
 
@@ -83,7 +83,8 @@ src/lexirise/
   web/LexiriseWeb.{h,cpp}       /lexirise page + /api/lexirise (settings.md §1a)
   web/LexirisePage.html, LexiriseNav.js  embedded by scripts/build_html.py like upstream's pages
   web/WebApi.{h,cpp}            /api/lexirise JSON ↔ SettingsPatch / page state (pure)
-  web/HiddenPath.h, Origin.h    file-manager, cross-site and DNS-rebinding guards (pure)
+  web/HiddenPath.h, Origin.h    file-manager (incl. FAT short names), cross-site and DNS-rebinding guards (pure)
+  web/HiddenPathHal.cpp         the SD card name lookup for HiddenPath (built in every env)
   dev/                          the USB dev harness (dev-harness.md), x4pro dev env only
   (P2+) SentenceBuilder, LookupProvider + Lexirise/StarDict providers, the card, Kana,
         the device settings activity
@@ -99,8 +100,9 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | File | Hook |
 |---|---|
 | `src/main.cpp` | Load the settings store at boot; `service().tick()` in the loop (queued key check, idle TLS close, WiFi idle teardown). Dev harness hooks (`LEXIPOINT_DEV_HARNESS`) |
-| `src/activities/ActivityManager.cpp` | Tell `LexiriseService` when the activity on screen changes (by name), so WiFi is given back outside reading (`offline-and-errors.md` §5) |
-| `src/network/CrossPointWebServer.cpp` | Register the `/lexirise` routes; collect the `Origin` header. **Not gated:** the file manager refuses any path with a hidden segment (`web/HiddenPath.h`) at all 8 entry points. Upstream only checked the last segment, so `/download?path=/.lexirise/config.ini` served the key |
+| `src/activities/ActivityManager.cpp` | Tell `LexiriseService` whether a reader activity is still on screen or under it, **before** the next activity's `onEnter` (push/replace, the immediate replace) and after a pop out of reading, so WiFi Lexipoint owns is given back first (`offline-and-errors.md` §5). Relies on nothing that uses WiFi being pushed over the reader (KOSync replaces it): re-check on upstream syncs |
+| `src/network/WebDAVHandler.cpp` | **Not gated:** `isProtectedPath` also refuses FAT short-name aliases of dot folders (`/LEXIRI~1`), via `web/HiddenPath.h` |
+| `src/network/CrossPointWebServer.cpp` | Register the `/lexirise` routes; collect the `Origin` header. **Not gated:** the file manager refuses any path with a hidden segment, typed or as a FAT short name (`web/HiddenPath.h`), at all 8 entry points. Upstream only checked the last segment as typed, so `/download?path=/.lexirise/config.ini` (and `/LEXIRI~1/config.ini`) served the key |
 | `src/network/html/{Home,Files,Fonts,Settings}Page.html` | **Not gated:** one `<script src="/lexirise/nav.js">` line. Lexirise builds serve it and it adds the nav link; other builds 404 it and nothing changes |
 | `lib/hal/HalGPIO.{h,cpp}` | Dev harness input overlay (`LEXIPOINT_DEV_HARNESS`) |
 | `platformio.ini` | A `[lexirise]` section (`-DLEXIRISE=1` plus wolfSSL SHA-384/P-384, lexirise-client.md §1) referenced by the three X4 Pro envs; the harness flag in `[env:x4pro]` only. `test_lxctl.py` guards both |
@@ -109,8 +111,6 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | (P6) `src/SettingsList.h`, `src/activities/settings/SettingsActivity.{h,cpp}` | The device `Lexirise` settings row |
 | (P8) `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases (§6) |
 | (P3+) `lib/I18n/translations/english.yaml` | `STR_LEXI_*` strings |
-
-WebDAV needed no hook: `WebDAVHandler::isProtectedPath` already refuses every dot segment.
 
 Anything that needs more than a few lines in an upstream file is a smell. Move the logic into
 `src/lexirise/` and call it from there.

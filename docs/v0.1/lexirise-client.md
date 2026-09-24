@@ -42,7 +42,9 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
   - Every wait feeds the task watchdog (`net/Wait.h`): calls run on the main loop task.
 - **`api/LexiriseClient`**: one request at a time over a `net::Connection`, **keep-alive reused**
   while the server allows it. A reused session that fails before any response byte (the server
-  dropped it while idle) is reopened and the request sent once more; nothing else is retried.
+  dropped it while idle) is reopened and the request sent once more, **only if it's idempotent** (GET,
+  PUT, DELETE, or a POST marked so: analyze/text and lookup are; a vocabulary save isn't, since the
+  server may have acted on it before dropping the connection). Nothing else is retried.
   Timeouts: 6 s for connect, handshake and each read, and **15 s for the whole request** once the
   connection is open (the stale-session retry shares it), so a trickling server can't hold the main
   loop. One call is bounded by WiFi join 6 s + NTP 5 s + TCP/handshake 12 s + 15 s.

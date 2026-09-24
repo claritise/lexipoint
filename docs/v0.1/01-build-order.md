@@ -90,7 +90,7 @@ handler.
 **Build:** the `LexiriseSettings` store and the **`/lexirise` web page** (`settings.md` §1a–3), so the key can be pasted from a browser from the start, then `LexiriseClient` (§1: the session lifecycle, request body
 building, the pre-flight, limits), and a debug-only serial command or test activity that runs one
 `analyze/text` and logs the parsed struct.
-**Gate:** the uniform gate, plus host suites `lexirise_settings` and `lexirise_request`. Paste the key on the `/lexirise` page. `GET /api/lexirise` returns it masked only (check the network response). `/.lexirise/` isn't listed in the file browser or over WebDAV. The `Lexirise` link shows in all four existing pages' menus. On device, an
+**Gate:** the uniform gate, plus host suites `lexirise_settings` and `lexirise_net` (request building is in the latter), plus `websmoke.py` against the device. Paste the key on the `/lexirise` page. `GET /api/lexirise` returns it masked only (check the network response). `/.lexirise/` isn't listed in the file browser or over WebDAV. The `Lexirise` link shows in all four existing pages' menus. On device, an
 analyze call succeeds, and a wrong certificate fails (point `base_url` at a self-signed host and
 confirm the call is refused). Log free internal heap before and after 20 consecutive calls: no
 monotonic loss.

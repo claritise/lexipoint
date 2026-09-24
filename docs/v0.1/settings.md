@@ -100,8 +100,12 @@ same URL shown for uploading books).
 - **Status line:** `Connected as <name> (<plan>)` / `Key rejected` / `Not checked` / `No internet` /
   `Could not connect`, from the cached `/v1/me` result (`api/KeyCheck`). `Test connection` re-runs it.
   A check is queued and run from the device's main loop (never inside the HTTP request); meanwhile the
-  status reads `Checking…` and the page polls. In hotspot mode the device has no internet and never
-  touches the hotspot's radio, so the status reads `No internet` until the reader is online.
+  status reads `Checking…` and the page polls (for the device's `checkTimeoutS`). In hotspot mode the
+  device has no internet and never touches the hotspot's radio, so the status reads `No internet`. It is
+  checked again when the page is next opened (`GET /api/lexirise?recheck=1`) and whenever a Lexirise
+  call next gets WiFi.
+- **Settings reset notice:** if `config.ini` couldn't be read at boot it is moved to `config.ini.bad`
+  (never overwritten), defaults are used, and the page says so.
   The name and plan are shown on this page only, never logged; the email is never read.
 - **Save:** a pasted key is validated client-side (`lx_` prefix, no spaces), saved, and tested straight
   away. The page never receives the full key back (§2).
@@ -137,8 +141,12 @@ same URL shown for uploading books).
 - **The web file manager can't reach `/.lexirise/`** (corrected in P1). Its listing hides dot items, but
   `/download`, upload, rename, move and delete only checked the last path segment, so
   `/download?path=/.lexirise/config.ini` served the key and delete + upload could replace the file. A
-  hook now refuses any path with a hidden segment at every entry point (`firmware-base.md` §3). WebDAV
-  already refused dot paths (`isProtectedPath`), so it needed nothing.
+  hook now refuses any path with a hidden segment at every entry point (`firmware-base.md` §3).
+  **FAT short names too** (P1 review): on FAT cards the folder is also reachable as `/LEXIRI~1`, which
+  doesn't start with a dot. A dot name's short name always carries a `~N` tail, so any segment with a
+  `~` is looked up on the card and refused if its real name is hidden (or can't be resolved). This
+  applies to the file manager and to WebDAV (which only checked typed names), and it also closes the
+  same hole for upstream's `/.crosspoint` (saved WiFi passwords). `websmoke.py` probes it.
 - **Never logged**, and not written anywhere else (unchanged from D8).
 
 ## 3. The file
