@@ -151,6 +151,26 @@ this API. `dictionary/lookup` gives every sense in a fixed order. See v0.2 C10 f
 | **`DELETE` on a dictionary word** | `{success: true, deleted: false}`: the item **stays, reset to proficiency 0 (unknown)**, **keeping its notes, translation and tags**. Clear them with `PATCH {notes: null, customTranslation: null, tags: []}`. A sentence item is really deleted (`deleted: true`, then 404) |
 | **Deleting tags** | **No endpoint.** Tag names persist on the account after their last use (test leftovers: `book:test-slug`, `lexipoint-test`, `lexipoint-test-2`). Keep device-created tag names few and predictable |
 
+## Rank by language (sampled 2026-09-25, `dictionary/lookup`, for the card's rank words)
+
+| Japanese | rank | list | Chinese | rank | list |
+|---|---|---|---|---|---|
+| する | 15 | N3 | 的 | 1 | HSK-1 |
+| 時間 | 259 | N2 | 时间 | 334 | HSK-1 |
+| 勉強 | 649 | N3 | 选择 | 1,113 | HSK-4 |
+| 猫 | 726 | N5 | 学习 | 1,265 | HSK-1 |
+| 電車 | 1,951 | N5 | 猫 | 1,656 | HSK-2 |
+| 景色 | 2,643 | N4 | 约定 | 5,742 | HSK-6 |
+| 兄貴 | 3,125 | – | 景色 | 8,123 | HSK-3 |
+| 憂鬱 | 17,185 | N1 | 引擎 | 13,961 | HSK-7+ |
+| 煩わしい | 29,774 | N1 | 忧郁 | 17,045 | HSK-7+ |
+| 微睡む | 123,851 | – | 电车 | 17,930 | HSK-6 |
+
+Chinese ranks run higher for words as common, so the thresholds are per language
+(`config::kRankBandLimitsJa` / `Zh`): Japanese 1k / 5k / 20k, Chinese 1k / 10k / 30k (the first stays
+1k: the approved reference shows 选择 #1,113 as *common*). A word that isn't in the dictionary (蓋然性,
+或然性) has no rank.
+
 ## Still not in the reference (P0 checks with curl)
 - **`Retry-After`** on 429, and the error body format in general.
 

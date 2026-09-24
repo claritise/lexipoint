@@ -192,6 +192,43 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
   choice comes with the device settings (P6).
 - `Unavailable` is only logged (`LXLOOK`) for now. The `offline` mark and error UI are P6.
 
+### 5b. As built (P5)
+
+The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/lookup/`; tests:
+`test/lexirise_card`, `test/lexirise_lookup`):
+
+- **Word select opens the card at once** (`openLexiriseCard()`): phase 0 (the tapped character, highlighted
+  alone) is on screen while WiFi and TLS come up. The card (`LexiriseCardActivity` with a `LiveSource`)
+  runs **one network call per loop pass**: `LiveSource::fetch()` makes it outside the render lock and
+  changes nothing `render()` reads; `apply()` takes the answer under the lock; the render task draws it
+  while the next call runs. Order: `analyze/text` (phase A), then the word on screen's
+  `dictionary/lookup` (phase B), then queued saves.
+- **The lookup is split** (`lookup::analyzeTap` → `cardFor` → `completeCard`): the sentence is analyzed
+  once, every word-like occurrence becomes a phase-A card without asking again, and Left/Right re-run only
+  `dictionary/lookup` for a word not yet looked up (§6). A phase-B failure still shows the word (no meaning,
+  not retried by itself).
+- **Not found / no answer**: the card ends and hands back through a shared `LiveOutcome`: word select shows
+  "Not found", or runs StarDict on its next `loop()` (`runStarDict()`), or says "No dictionary set".
+- **The page under the card** is the reader's own (word select's `Page::render`), with the word highlighted
+  where it stands: `BuiltSentence::chars` maps every sentence character back to its page token, so a
+  Lexirise range `[charStart, charEnd)` finds its boxes (`card::readerScene`, from `card::readerPageFor`'s
+  snapshot). A reader in landscape gets the card in portrait over a blank page (the page was laid out for
+  the other orientation; question 5 in the P4 ledger note).
+- **Saving (§7, popup-ui.md §3.2):** T L F K sets the level on the card at once (with the toast) and queues a
+  `LevelChange`; `LiveSource` sends them in order: a new word's `POST /v1/vocabulary` (D9: the lemma, the
+  first translation, the sentence as `notes`, the settings' tags, `proficiency` = the level, 1-4; it waits
+  for the word's phase B, looking it up first if the card moved on; on a fresh session, since a POST isn't
+  resent on a stale one), a saved word's `PATCH {proficiency}`, and a removal (Undo of a new save, ⋯ Undo
+  save) as `DELETE` + `PATCH {notes: null, customTranslation: null, tags: []}`. The new item's
+  `savedExpressionId` is kept for later changes. A refused or unanswered write puts the level back with
+  "Couldn't reach Lexirise: not saved" and drops the changes queued after it for that word. A tap on the
+  level already set sends nothing (the double-press guard). Writes still queued when the card closes are
+  sent first (the card stays on screen meanwhile). The log never shows a saved-expression id.
+- **Not yet:** the Kanji/Chars tab stays empty on a live card (Lexirise's `breakdown` would need a lookup per
+  character: v0.2), the Form tab lists only the book's form, "Met before" is never filled, the Context tab
+  has no page number, the ⋯ tab's v0.2 actions say "Not in this version yet", and "Saving…" isn't shown
+  (the level shows at once instead). Errors beyond the save toast are P6 (`offline-and-errors.md`).
+
 ## 6. Left/Right on the card
 
 The analyze response already covers the whole sentence. Keep the compact `occurrences[]` (plus
