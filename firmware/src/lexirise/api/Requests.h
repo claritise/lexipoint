@@ -16,6 +16,9 @@ net::Request meRequest();
 // config::kMaxAnalyzeTextBytes is cut at a UTF-8 boundary.
 net::Request analyzeRequest(Language language, std::string_view text);
 
+// POST /v1/dictionary/lookup for a lemma (read-only, so safe to resend).
+net::Request lookupRequest(Language language, std::string_view lemma);
+
 // "Lexipoint/<ver> CrossPoint/<ver>".
 std::string userAgent(std::string_view crossPointVersion);
 

@@ -75,6 +75,10 @@ api::ApiResponse LexiriseService::analyze(const Language language, const std::st
   return send(api::analyzeRequest(language, text));
 }
 
+api::ApiResponse LexiriseService::lookup(const Language language, const std::string_view lemma) {
+  return send(api::lookupRequest(language, lemma));
+}
+
 void LexiriseService::tick() {
   if (checkPending_) checkKey();
 

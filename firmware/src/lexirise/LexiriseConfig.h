@@ -72,8 +72,18 @@ constexpr float kParagraphShortLineEm = 2.0f;  // the line before stops at least
 constexpr float kParagraphGapFactor = 1.3f;    // or the gap to this line is this much above the usual line advance
 constexpr float kParagraphIndentEm = 0.5f;     // or this line is indented (and the one before wasn't)
 
+// Lookups (lookup-flow.md §4-5).
+constexpr size_t kMaxTranslations = 2;         // senses kept for the card (phase B)
+constexpr size_t kMaxTranslationBytes = 512;   // one sense's text; longer is cut at a character boundary
+constexpr size_t kStarDictMaxPrefixChars = 8;  // CJK longest-prefix probe for StarDict: 8, 7, … 1 characters
+
 // Response limits (lexirise-client.md §4): past these a response is treated as malformed.
 constexpr size_t kMaxOccurrences = 128;
+// entryMetaById / stateByEntryId entries kept per analyze (surface, lemma and breakdown entries, so more
+// than the occurrences). Past it, further entries are dropped, not failed on: the tapped word's entry
+// is usually among the first.
+constexpr size_t kMaxEntries = 512;
+constexpr uint32_t kMaxProficiency = 4;       // stateByEntryId proficiency is 0-4
 constexpr size_t kMaxTokenBytes = 256;        // one word / lemma / reading
 constexpr size_t kMaxDisplayFieldBytes = 64;  // /v1/me user.name and user.plan
 constexpr size_t kJsonMaxDepth = 12;          // Lexirise responses nest ~5 deep; the reader recurses

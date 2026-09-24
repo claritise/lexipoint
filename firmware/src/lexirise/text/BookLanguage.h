@@ -44,6 +44,10 @@ class BookLanguage {
   LanguageDecision decide(std::string_view sentence, const Settings& settings) const;
   // Whether decide() looks at the sentence at all (no override, and the metadata doesn't say).
   bool dependsOnSentence() const { return !override_ && tagged_ == TaggedLanguage::Unknown; }
+  // Whether any tap in this book could go to Lexirise: Lexirise and a language are on, and the book's
+  // known language (override or metadata) is one it sends. A book whose metadata doesn't say (or says
+  // something else: Japanese novels stamped "en" exist) may, since its sentences decide.
+  bool mayUseLexirise(const Settings& settings) const;
 
  private:
   TaggedLanguage tagged_;

@@ -227,7 +227,7 @@ class Builder {
         chars::isAlnum(items_[next].cps.front())) {
       return true;
     }
-    const auto isLetterDot = [this](const Item& piece) {
+    const auto isLetterDot = [](const Item& piece) {
       return piece.cps.size() == 2 && chars::isAlnum(piece.cps[0]) && Punctuation::isDot(piece.cps[1]);
     };
     const long prev = textBefore(i);

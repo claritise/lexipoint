@@ -91,6 +91,11 @@ LanguageDecision BookLanguage::decide(const std::string_view sentence, const Set
   return {};
 }
 
+bool BookLanguage::mayUseLexirise(const Settings& settings) const {
+  if (!settings.enabled || !(settings.japanese.enabled || settings.chinese.enabled)) return false;
+  return dependsOnSentence() || decide({}, settings).language.has_value();
+}
+
 const char* languageSourceName(const LanguageSource source) {
   switch (source) {
     case LanguageSource::Override:

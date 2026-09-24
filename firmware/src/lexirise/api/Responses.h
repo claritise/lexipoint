@@ -4,6 +4,7 @@
 // (the public repo never holds real responses). Tests: test/lexirise_net/ResponsesTest.cpp.
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,10 +35,45 @@ struct Occurrence {
   bool wordLike = false;
 };
 
+// entryMetaById[id]: the dictionary facts about one entry (the surface form's; not the lemma's).
+struct EntryMeta {
+  std::string reading;       // transliteration
+  std::string partOfSpeech;  // the first one
+  uint32_t rank = 0;         // 0: unknown
+};
+
+// stateByEntryId[id]: the reader's own state for an entry, present only once it is saved.
+struct EntryState {
+  std::string savedExpressionId;  // as sent (a number or a string); empty: not saved
+  int proficiency = 0;            // 0-4
+  uint32_t seenCount = 0;
+};
+
 struct AnalyzeResult {
   std::vector<Occurrence> occurrences;
+  std::map<uint32_t, EntryMeta> meta;
+  std::map<uint32_t, EntryState> state;
   bool morphoPending = false;
+
+  const EntryMeta* metaFor(uint32_t entryId) const;
+  const EntryState* stateFor(uint32_t entryId) const;
 };
 ParseStatus parseAnalyze(std::string_view body, AnalyzeResult& out);
+
+// POST /v1/dictionary/lookup: the lemma's entry.
+struct Sense {
+  std::string translation;
+  std::string partOfSpeech;  // the first one
+};
+
+struct LookupResult {
+  std::string word;
+  std::string reading;        // transliteration
+  std::vector<Sense> senses;  // the first config::kMaxTranslations
+  std::string level;          // "JLPT-N5" / "HSK-1" … / "HSK-7+" from system_tags; empty when on no list
+  uint32_t rank = 0;
+  bool translationPending = false;  // translation_status isn't "ready" (a rare word's first lookup)
+};
+ParseStatus parseLookup(std::string_view body, LookupResult& out);
 
 }  // namespace lexipoint::api

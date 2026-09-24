@@ -41,3 +41,17 @@ TEST(Requests, UserAgent) {
   EXPECT_EQ(lexipoint::api::userAgent("1.6.5"),
             std::string("Lexipoint/") + lexipoint::config::kLexipointVersion + " CrossPoint/1.6.5");
 }
+
+TEST(Requests, LookupIsARetryablePostOfTheLemma) {
+  const auto r = lexipoint::api::lookupRequest(Language::Japanese, "食べる");
+  EXPECT_EQ(r.method, Method::Post);
+  EXPECT_EQ(r.path, "/v1/dictionary/lookup");
+  EXPECT_EQ(r.body, R"({"text":"食べる","language":"ja"})");
+  EXPECT_TRUE(r.retryable());
+  std::string lemma;
+  while (lemma.size() < lexipoint::config::kMaxTokenBytes + 10) lemma += "学";
+  const auto body = lexipoint::api::lookupRequest(Language::Chinese, lemma).body;
+  const size_t kept = body.find("\",\"language\"") - (body.find("\"text\":\"") + 8);
+  EXPECT_LE(kept, lexipoint::config::kMaxTokenBytes);
+  EXPECT_EQ(kept % 3, 0u);
+}

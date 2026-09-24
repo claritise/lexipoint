@@ -75,6 +75,14 @@ inline bool isHan(const uint32_t cp) {
          (cp >= 0x20000 && cp <= 0x323AF);
 }
 
+// A character of a Japanese or Chinese word, for StarDict's longest-prefix probe: Han, kana, and the
+// marks that live inside words (ー in コーヒー, 々 in 人々). Not Hangul: Korean is written with spaces.
+constexpr uint32_t kProlongedSoundMark = 0x30FC;  // ー
+constexpr uint32_t kIterationMark = 0x3005;       // 々
+inline bool isJaZhWordChar(const uint32_t cp) {
+  return isHan(cp) || isKana(cp) || cp == kProlongedSoundMark || cp == kIterationMark;
+}
+
 // The Japanese quotative particle と and the start of って.
 constexpr uint32_t kQuotativeTo = 0x3068;  // と
 constexpr uint32_t kSmallTsu = 0x3063;     // っ

@@ -26,8 +26,16 @@ text::PageModel pageModelFor(GfxRenderer& renderer, const int fontId, const Page
       em, renderer.getFontAscenderSize(fontId));
 }
 
-void logTap(const text::PageModel& page, const text::TokenRef tap, const text::BookLanguage& book) {
-  const text::TapContext context = text::describeTap(page, tap, book, settingsStore().snapshot());
+text::TapContext describeTap(const text::PageModel& page, const text::TokenRef tap, const text::BookLanguage& book) {
+  return text::describeTap(page, tap, book, settingsStore().snapshot());
+}
+
+bool lexiriseUsable(const text::BookLanguage& book) {
+  const Settings settings = settingsStore().snapshot();
+  return settings.hasApiKey() && book.mayUseLexirise(settings);
+}
+
+void logTap(const text::TapContext& context) {
   if (!context.sentence) {
     LOG_DBG(kLogTag, "no text at the tap");
     return;

@@ -94,3 +94,21 @@ TEST(BookLanguage, SourceNames) {
   EXPECT_STREQ(lexipoint::text::languageSourceName(LanguageSource::Kana), "kana");
   EXPECT_STREQ(lexipoint::text::languageSourceName(LanguageSource::None), "none");
 }
+
+TEST(BookLanguage, MayUseLexirise) {
+  Settings s;
+  EXPECT_TRUE(BookLanguage("ja", std::nullopt).mayUseLexirise(s));
+  EXPECT_TRUE(BookLanguage("zh-CN", std::nullopt).mayUseLexirise(s));
+  EXPECT_TRUE(BookLanguage("", std::nullopt).mayUseLexirise(s));        // the sentences decide
+  EXPECT_TRUE(BookLanguage("en", std::nullopt).mayUseLexirise(s));      // may be a mis-stamped Japanese novel
+  EXPECT_FALSE(BookLanguage("zh-TW", std::nullopt).mayUseLexirise(s));  // Traditional: never sent (H8)
+  s.chinese.enabled = false;
+  EXPECT_FALSE(BookLanguage("zh", std::nullopt).mayUseLexirise(s));
+  EXPECT_TRUE(BookLanguage("ja", std::nullopt).mayUseLexirise(s));
+  EXPECT_FALSE(BookLanguage("ja", Language::Chinese).mayUseLexirise(s));  // the override is what's sent
+  s.japanese.enabled = false;
+  EXPECT_FALSE(BookLanguage("", std::nullopt).mayUseLexirise(s));  // no language on at all
+  s = Settings{};
+  s.enabled = false;
+  EXPECT_FALSE(BookLanguage("ja", std::nullopt).mayUseLexirise(s));
+}

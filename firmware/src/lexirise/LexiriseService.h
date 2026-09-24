@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "api/KeyCheck.h"
+#include "api/LexiriseApi.h"
 #include "api/LexiriseClient.h"
 #include "net/Connection.h"
 #include "net/WifiSession.h"
@@ -18,7 +19,7 @@
 
 namespace lexipoint {
 
-class LexiriseService {
+class LexiriseService final : public api::LexiriseApi {
  public:
   using Clock = api::LexiriseClient::Clock;
 
@@ -37,8 +38,10 @@ class LexiriseService {
   // The key or server changed: the cached status no longer applies.
   void invalidateKeyStatus() { status_ = api::KeyStatus(); }
 
-  // POST /v1/analyze/text (the raw response; api::parseAnalyze reads it).
-  api::ApiResponse analyze(Language language, std::string_view text);
+  // POST /v1/analyze/text and /v1/dictionary/lookup (raw responses; api::parseAnalyze / parseLookup
+  // read them). Both share the keep-alive session, so a lookup's two calls cost one handshake.
+  api::ApiResponse analyze(Language language, std::string_view text) override;
+  api::ApiResponse lookup(Language language, std::string_view lemma) override;
 
   // Main-loop tick: a queued key check, the idle TLS close, and the WiFi idle teardown.
   void tick();

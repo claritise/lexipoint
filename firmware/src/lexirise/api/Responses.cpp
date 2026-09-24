@@ -4,12 +4,14 @@
 
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/net/JsonReader.h"
+#include "lexirise/text/Utf8Prefix.h"
 
 namespace lexipoint::api {
 namespace {
 
 using json::Path;
 using json::Type;
+using text::utf8Prefix;
 
 // A JSON number that is a whole value in [0, UINT32_MAX] ("12", not "1.5", "-1" or "1e3").
 bool toUint32(const Type type, const std::string_view text, uint32_t& out) {
@@ -78,6 +80,9 @@ class AnalyzeVisitor final : public json::Visitor {
   }
 
   void onValue(const Path& path, const Type type, const std::string_view text) override {
+    if (path.depth() >= 3 && !path.isIndex(1) && (path.keyIs(0, "entryMetaById") || path.keyIs(0, "stateByEntryId"))) {
+      return entryValue(path, type, text);
+    }
     if (path.matches({"morphoPending"})) {
       out_.morphoPending = type == Type::Bool && text == "true";
       return;
@@ -111,6 +116,38 @@ class AnalyzeVisitor final : public json::Visitor {
   bool malformed_ = false;
 
  private:
+  // entryMetaById.<id>.{transliteration, partOfSpeech[0], rank} and
+  // stateByEntryId.<id>.{saved_expression_id, proficiency, seen_count}. Other fields are skipped.
+  void entryValue(const Path& path, const Type type, const std::string_view text) {
+    uint32_t id = 0;
+    if (!toUint32(Type::Number, path.at(1).key, id)) return;  // the key is the id's digits
+    const bool isMeta = path.keyIs(0, "entryMetaById");
+    const size_t entries = isMeta ? out_.meta.size() : out_.state.size();
+    const bool known = isMeta ? out_.meta.count(id) != 0 : out_.state.count(id) != 0;
+    if (entries >= config::kMaxEntries && !known) return;  // dropped, not failed on (kMaxEntries)
+    if (isMeta) {
+      EntryMeta& meta = out_.meta[id];
+      if (path.depth() == 3 && path.keyIs(2, "transliteration")) {
+        takeString(type, text, meta.reading);
+      } else if (path.depth() == 3 && path.keyIs(2, "rank")) {
+        toUint32(type, text, meta.rank);
+      } else if (path.depth() == 4 && path.keyIs(2, "partOfSpeech") && path.index(3) == 0) {
+        takeString(type, text, meta.partOfSpeech);
+      }
+      return;
+    }
+    if (path.depth() != 3) return;
+    EntryState& state = out_.state[id];
+    if (path.keyIs(2, "saved_expression_id")) {
+      if (type == Type::Number || type == Type::String) takeString(Type::String, text, state.savedExpressionId);
+    } else if (path.keyIs(2, "proficiency")) {
+      uint32_t value = 0;
+      if (toUint32(type, text, value) && value <= config::kMaxProficiency) state.proficiency = static_cast<int>(value);
+    } else if (path.keyIs(2, "seen_count")) {
+      toUint32(type, text, state.seenCount);
+    }
+  }
+
   // Null or a non-string leaves the field empty (undocumented fields degrade quietly, §4a).
   bool takeString(const Type type, const std::string_view text, std::string& field) {
     if (type != Type::String) return false;
@@ -129,7 +166,88 @@ class AnalyzeVisitor final : public json::Visitor {
   bool sawEnd_ = false;
 };
 
+class LookupVisitor final : public json::Visitor {
+ public:
+  explicit LookupVisitor(LookupResult& out) : out_(out) {}
+  bool sawWord() const { return sawWord_; }
+
+  void onValue(const Path& path, const Type type, const std::string_view text) override {
+    if (path.matches({"word"})) {
+      sawWord_ = type == Type::String && !text.empty();
+      if (sawWord_) out_.word.assign(utf8Prefix(text, config::kMaxTokenBytes));
+    } else if (path.matches({"transliteration"})) {
+      if (type == Type::String) out_.reading.assign(utf8Prefix(text, config::kMaxTokenBytes));
+    } else if (path.matches({"rank"})) {
+      toUint32(type, text, out_.rank);
+    } else if (path.matches({"translation_status"})) {
+      out_.translationPending = type == Type::String && text != "ready";
+    } else if (path.matches({"system_tags", "[]"})) {
+      takeLevel(type, text);
+    } else if (path.depth() >= 3 && path.keyIs(0, "translations") && path.isIndex(1)) {
+      sense(path, type, text);
+    }
+  }
+
+  // The element being read has ended: keep it if it has a translation, up to kMaxTranslations.
+  void finishSense() {
+    if (!pending_.translation.empty() && out_.senses.size() < config::kMaxTranslations) {
+      out_.senses.push_back(std::move(pending_));
+    }
+    pending_ = Sense{};
+  }
+
+ private:
+  // JLPT-N1..N5 / HSK-1..9 / HSK-7+: matched by pattern, since other tags sit beside it (kanji, char).
+  void takeLevel(const Type type, const std::string_view text) {
+    if (type != Type::String || !out_.level.empty()) return;
+    const bool jlpt = text.size() == 7 && text.substr(0, 6) == "JLPT-N" && text[6] >= '1' && text[6] <= '5';
+    const bool hsk = text.size() >= 5 && text.size() <= 6 && text.substr(0, 4) == "HSK-" && text[4] >= '1' &&
+                     text[4] <= '9' && (text.size() == 5 || text[5] == '+');
+    if (jlpt || hsk) out_.level.assign(text);
+  }
+
+  // translations[i].translation and translations[i].part_of_speech[0]: the first kMaxTranslations
+  // elements that have a translation (one without is skipped, not counted).
+  void sense(const Path& path, const Type type, const std::string_view text) {
+    const int index = path.index(1);
+    if (index != pendingIndex_) {
+      finishSense();
+      pendingIndex_ = index;
+    }
+    if (out_.senses.size() >= config::kMaxTranslations || type != Type::String) return;
+    if (path.depth() == 3 && path.keyIs(2, "translation")) {
+      pending_.translation.assign(utf8Prefix(text, config::kMaxTranslationBytes));
+    } else if (path.depth() == 4 && path.keyIs(2, "part_of_speech") && path.index(3) == 0) {
+      pending_.partOfSpeech.assign(utf8Prefix(text, config::kMaxTokenBytes));
+    }
+  }
+
+  LookupResult& out_;
+  bool sawWord_ = false;
+  Sense pending_;
+  int pendingIndex_ = -1;
+};
+
 }  // namespace
+
+const EntryMeta* AnalyzeResult::metaFor(const uint32_t entryId) const {
+  const auto it = meta.find(entryId);
+  return it == meta.end() ? nullptr : &it->second;
+}
+
+const EntryState* AnalyzeResult::stateFor(const uint32_t entryId) const {
+  const auto it = state.find(entryId);
+  return it == state.end() || it->second.savedExpressionId.empty() ? nullptr : &it->second;
+}
+
+ParseStatus parseLookup(const std::string_view body, LookupResult& out) {
+  LookupResult parsed;
+  LookupVisitor visitor(parsed);
+  if (json::read(body, visitor) != json::Result::Ok || !visitor.sawWord()) return ParseStatus::Malformed;
+  visitor.finishSense();  // the last element
+  out = std::move(parsed);
+  return ParseStatus::Ok;
+}
 
 ParseStatus parseMe(const std::string_view body, MeInfo& out) {
   MeInfo parsed;

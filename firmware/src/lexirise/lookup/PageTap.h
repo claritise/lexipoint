@@ -20,7 +20,14 @@ constexpr const char* kEmProbe = "\xE5\x9B\xBD";  // 国: one full-width charact
 // DictionaryWordSelectActivity measures its words: after ensureSdCardFontReady() on the page's text.
 text::PageModel pageModelFor(GfxRenderer& renderer, int fontId, const Page& page);
 
-// P2's debug line for a tap: language, source, offsets, truncation, sentence (debug builds only).
-void logTap(const text::PageModel& page, text::TokenRef tap, const text::BookLanguage& book);
+// Everything about a tap on the page: the sentence, the tap's offset and the language (pure work).
+text::TapContext describeTap(const text::PageModel& page, text::TokenRef tap, const text::BookLanguage& book);
+
+// Lexirise is on, has a key, and this book's language may go to it: lookups can go to it (word select
+// opens without a StarDict dictionary).
+bool lexiriseUsable(const text::BookLanguage& book);
+
+// A debug line for a tap: language, source, offsets, truncation, sentence (debug builds only).
+void logTap(const text::TapContext& context);
 
 }  // namespace lexipoint::lookup
