@@ -27,15 +27,15 @@ One command per line on the USB serial port (115200), prefixed `LX:`. Replies ar
 |---|---|---|
 | `LX:PING` | Liveness + context | `LX:PONG <version> orientation=<n> screen=<w>x<h>` |
 | `LX:TAP x y` | Down → held (120 ms) → tap + release, over 3 frames | `LX:OK TAP` (queued, not yet delivered: use `SYNC`) |
-| `LX:LONG x y` | Down → held → long-press (800 ms) → release, over 4 frames | `LX:OK LONG` |
-| `LX:SWIPE x1 y1 x2 y2` | Down → held → swipe + release, over 3 frames | `LX:OK SWIPE` |
-| `LX:BTN LEFT\|RIGHT\|POWER [ms]` | Holds a page key (LEFT = previous, RIGHT = next) or Power for `ms` (default 150, clamped 120–5000, and at least 3 input updates) | `LX:OK BTN` |
+| `LX:LONG x y` | Down → held → long-press (800 ms) → **tap + release**, over 4 frames. Like the SDK, an unconsumed long-press taps on lift, and a screen that consumes it suppresses that tap | `LX:OK LONG` |
+| `LX:SWIPE x1 y1 x2 y2` | Down → held **at the end point, moved** (not a tap candidate, so no touch-down fires at the start) → swipe + release, over 3 frames | `LX:OK SWIPE` |
+| `LX:BTN LEFT\|RIGHT\|POWER [ms]` | Holds a page key (LEFT = previous, RIGHT = next) or Power for `ms` (default 150, clamped 120–5000, and at least 3 input updates) | `LX:OK BTN`, or `LX:ERR button busy` while a previous press is still held |
 | `LX:HOME` / `LX:HOME HOLD` | Capacitive Home tap / long-press | `LX:OK HOME` |
 | `LX:SYNC` | Waits until queued input is delivered, buttons are released and no render has run for 3 polls | `LX:OK SYNC` (or `LX:ERR SYNC timeout` after 15 s) |
 | `LX:SHOT` | Raw framebuffer, read **under the render lock** (never torn) | `LX:SHOT <bytes> <w> <h> <crc32>`, then the raw bytes, a newline, then `LX:OK SHOT` (or `LX:ERR SHOT short write`) |
 | `LX:MEM` | Heap stats | `LX:MEM heap_free=… heap_min=… heap_maxalloc=… psram_free=…` |
 | `LX:SELFTEST` | Round-trips a grid of points through the real `tapToLogical()` | `LX:SELFTEST coords checked=… failed=…`, then OK/ERR |
-| `LX:AWAKE 0\|1\|2` | Keep-awake mode: 0 = off, 1 = always, **2 = lease (default)**: any command keeps the device out of power saving and auto-sleep for **10 minutes** (from boot, too). With no host, a dev build sleeps normally | `LX:OK AWAKE` |
+| `LX:AWAKE 0\|1\|2` | Keep-awake mode: 0 = off, 1 = always, **2 = lease (default)**: while **a USB host is on the line** (`HWCDC::isPlugged()`, false on battery or a charger) and has sent a command in the last **10 minutes** (the lease also starts at boot), the device skips power saving and auto-sleep. Log chatter doesn't renew it | `LX:OK AWAKE` |
 | `LX:REBOOT` | `ESP.restart()`, after waiting for any render to finish | `LX:OK REBOOT` |
 
 - **Coordinates are logical screen pixels** (portrait 480×800 by default), the same space the UI
@@ -81,14 +81,16 @@ resets the ESP32-S3.
 - `test/lexirise_dev_coords/`: every pixel, all four orientations, round-trips against a reference
   copy of `tapToLogical()` (5 tests).
 - `test/lexirise_dev/`: the parser and line assembly (boundaries, malformed input, legacy command),
-  gesture frame sequences and the all-or-nothing queue, and the overlay's one-frame promotion, suppress
-  latch and held-time latch (27 tests).
+  gesture frame sequences and the all-or-nothing queue, the overlay (one-frame promotion, every query's
+  mapping, the suppress latch, the held-time latch including suppressed releases, moved fingers), and
+  timing (the lease incl. no-host and millis() wrap, button presses incl. the min-samples floor and busy) (39 tests).
 - `scripts/lexipoint/test_lxctl.py` (`python3 -m unittest discover -s scripts/lexipoint`): PNG rotation,
   reply matching against a fake serial port (log noise, stale replies, errors, CRC mismatch, short write),
-  and a **release guard**: no `*release*` env in `platformio.ini` defines the harness, and no built
-  release binary contains it (10 tests).
-- `lxctl.py smoke`: an on-device end-to-end check (ping, selftest, mem, and screenshots around Home and a
-  page-key press).
+  and a **release guard** that follows `extends` and `build_src_flags`: no `*release*` env defines the
+  harness, a synthetic sneaky env is caught, and no built release binary contains it (11 tests).
+- `lxctl.py smoke`: an on-device end-to-end check using only theme-independent gestures: ping, selftest, mem,
+  Home, a **top-edge swipe** into the frontlight panel, a **left-edge swipe** back, a page key. Screenshots
+  after each step, exits non-zero on the first failure.
 - On device: `LX:SELFTEST` against the real renderer, plus the smoke checks in `01-build-order.md`.
 
 ## 5. Known limits
