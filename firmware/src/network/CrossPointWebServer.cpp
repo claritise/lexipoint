@@ -82,7 +82,7 @@ bool isHiddenWebPath(const String& path) { return lexipoint::web::isHiddenOnCard
 
 bool isProtectedItemName(const String& name) {
   // LEXIPOINT: as SdFat will store it (" .lexirise" creates ".lexirise"), not just as typed.
-  if (name.startsWith(".") || lexipoint::web::isHiddenPath(name.c_str())) {
+  if (lexipoint::web::isHiddenPath(name.c_str())) {
     return true;
   }
   for (const auto* item : HIDDEN_ITEMS) {
@@ -481,8 +481,10 @@ void CrossPointWebServer::scanFiles(const char* path, const std::function<void(F
     file.getName(name, sizeof(name));
     auto fileName = String(name);
 
-    // Skip hidden items (starting with ".")
-    bool shouldHide = !SETTINGS.showHiddenFiles && fileName.startsWith(".");
+    // Skip hidden items (starting with "."). LEXIPOINT: always, over the web: hidden paths are refused
+    // (isHiddenWebPath), so listing them would only offer folders that can't be opened. The device's
+    // own file browser still honours "Show hidden files".
+    bool shouldHide = fileName.startsWith(".");
 
     // Check against explicitly hidden items list
     if (!shouldHide) {
