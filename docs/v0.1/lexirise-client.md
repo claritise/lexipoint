@@ -136,7 +136,11 @@ never a correctness dependency.**
 
 Hard limits (so a hostile or broken response can't exhaust memory): 128 occurrences, 256 bytes per
 word/lemma/reading, a 64KB body, and 32 levels of nesting. Anything over a limit is `OverLimit`/`Malformed`,
-and the provider returns `Unavailable`.
+and the provider returns `Unavailable`. The exception is `entryMetaById` / `stateByEntryId`: they hold
+more entries than there are occurrences (surface, lemma and breakdown entries), so past
+`kMaxEntries` (512) further entries are **dropped** rather than failing the whole analyze.
+`dictionary/lookup` keeps the first `kMaxTranslations` (2) non-empty senses, each cut at
+`kMaxTranslationBytes` (512) on a character boundary.
 
 ## 4a. Undocumented fields degrade quietly
 

@@ -145,31 +145,38 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
 - **Match (②)**: `matchOccurrence()` takes the word-like occurrence covering the tap. If there is
   none (a tap on punctuation), it takes the **nearest** word-like occurrence on either side, the
   earlier one on a tie. Only a sentence with no word-like occurrence at all is `NotFound`.
-- **Parsing keeps every `entryMetaById` / `stateByEntryId` entry** (at most
-  `kMaxOccurrences` each, in maps), not only the chosen IDs. It is simpler, key order doesn't
+- **Parsing keeps every `entryMetaById` / `stateByEntryId` entry** (up to `kMaxEntries` each, in
+  maps; extra entries are dropped, not fatal), not only the chosen IDs. It is simpler, key order doesn't
   matter, and a sentence's worth is a few KB. `stateFor()` counts an entry as saved only when it
   has a `saved_expression_id`. The card takes the lemma's state, else the surface's.
 - **`dictionary/lookup`** gives: reading (overrides the surface's), the first
   `kMaxTranslations` non-empty senses (≤ `kMaxTranslationBytes` each, cut on a character),
   `level` (the first `JLPT-N1..5` / `HSK-1..9` / `HSK-7+` in `system_tags`), `rank`, and
   `translationPending` (status isn't `ready`). If it fails, the lookup is **still a card**, with
-  `translationOffline` set (word, reading and saved state, without a meaning).
+  `translationUnavailable` set (word, reading and saved state, without a meaning). The lookup asks
+  for the headword (the lemma, or the surface when the lemma is empty). Until it answers, the reading is
+  the lemma's own `entryMetaById` reading, or the surface's only when the surface is the headword, so
+  食べる never shows "tabesaserareta".
 - **One blocking call, no phases yet.** The busy popup shows, both requests run in the activity's
   loop (≤ 2 × `kMaxCallMs`), then the placeholder opens (`DictionaryDefinitionActivity` with
   `LookupCard::headword()` / `plainText()`). Phase A/B rendering arrives with the card (P4/P5).
 - **Long-press (§1)**: `EpubReaderActivity::loop()` checks `isScreenTouchHeld` +
-  `lookupOwnsLongPress()` + `wasScreenLongPress` before link taps. With CrossPoint's
-  `longPressButtonBehavior` on (a hold of ≥ 700 ms on a page-turn zone, acted on at release), the
-  outer thirds stay CrossPoint's and the lookup owns the centre third. With it off, or in swipe mode,
-  the lookup owns the whole page. `wasScreenLongPress` suppresses the rest of the contact, so the
+  `lookupOwnsLongPress()` + `lookupsAvailable()` + `wasScreenLongPress` before link taps. With
+  CrossPoint's `longPressButtonBehavior` on in a tap mode (normal or inverted: a hold of ≥ 700 ms on a
+  page-turn zone, acted on at release), the outer zones (`ReaderUtils::pageTurnZoneWidth`, shared)
+  stay CrossPoint's and the lookup owns the centre. With it off, in swipe mode, or with touch controls
+  off, the lookup owns the whole page. **If nothing can answer** (no StarDict dictionary and Lexirise
+  unusable), the long-press isn't consumed, so a slow tap still turns the page or opens the menu. `wasScreenLongPress` suppresses the rest of the contact, so the
   finger lift doesn't tap word select. Word select takes the point through `setInitialTouch(x, y)`
   (a setter, not a constructor overload), selects `wordAt(x, y)` and looks it up on its first
   `loop()` after the first render. A press on no word opens word select as usual.
 - Word select now **opens without a StarDict dictionary** when Lexirise is usable (enabled and a key
-  set, `lookup::lexiriseUsable()`).
+  set, `lookup::lexiriseUsable()`). If Lexirise then has no answer, word select shows "No dictionary
+  set" (not a dictionary error).
 - **StarDict**: `starDictCandidates()` gives the longest CJK run from the tapped character along the
-  line (≤ `kStarDictMaxPrefixChars`, stopping at punctuation or non-CJK), down to 1. A read error
-  stops the probing. **Not yet:** the per-language folders (`stardict_ja` / `stardict_zh`,
+  line (≤ `kStarDictMaxPrefixChars`, stopping at punctuation, non-CJK or the line end), down to 1.
+  `probeStarDict()` tries them in order, and a read error stops the probing. A token that starts with
+  punctuation (「食) is looked up as it stands. **Not yet:** the per-language folders (`stardict_ja` / `stardict_zh`,
   `languages.md` §4). P3 uses the one dictionary chosen in CrossPoint's settings, and the folder
   choice comes with the device settings (P6).
 - `Unavailable` is only logged (`LXLOOK`) for now. The `offline` mark and error UI are P6.
