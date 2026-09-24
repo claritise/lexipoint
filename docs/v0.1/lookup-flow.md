@@ -162,8 +162,10 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
 - **One blocking call, no phases yet.** The busy popup shows, both requests run in the activity's
   loop (≤ 2 × `kMaxCallMs`), then the placeholder opens (`DictionaryDefinitionActivity` with
   `LookupCard::headword()` / `plainText()`). Phase A/B rendering arrives with the card (P4/P5).
-- **Long-press (§1)**: `EpubReaderActivity::loop()` checks `isScreenTouchHeld` +
-  `lookupOwnsLongPress()` + `lookupsAvailable()` + `wasScreenLongPress` before link taps. With
+- **Long-press (§1)**: `EpubReaderActivity::loop()`, before link taps, peeks at the long-press
+  (`MappedInputManager::peekScreenLongPress`, its touch-down point, as the page-turn zones use), then
+  `takeLongPress()`: the lookup owns that zone (`lookupOwnsLongPress()`), and only then is
+  `lookupsAvailable()` (which reads the settings) asked. Only then is it consumed (`wasScreenLongPress`). With
   CrossPoint's `longPressButtonBehavior` on in a tap mode (normal or inverted: a hold of ≥ 700 ms on a
   page-turn zone, acted on at release), the outer zones (`ReaderUtils::pageTurnZoneWidth`, shared)
   stay CrossPoint's and the lookup owns the centre. With it off, in swipe mode, or with touch controls
