@@ -110,8 +110,8 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | `lib/hal/HalGPIO.{h,cpp}` | Dev harness input overlay (`LEXIPOINT_DEV_HARNESS`) |
 | `platformio.ini` | A `[lexirise]` section (`-DLEXIRISE=1` plus wolfSSL SHA-384/P-384, lexirise-client.md §1) referenced by the three X4 Pro envs; the harness flag in `[env:x4pro]` only. `test_lxctl.py` guards both |
 | `test/CMakeLists.txt` | The `lexirise_*` suites |
-| `src/activities/reader/DictionaryWordSelectActivity.{h,cpp}` | (P2) `WordBox` gets `(line, token)`, counted exactly as `text::buildPageModel` counts lines; `setBook(dcLanguage)`; `performLookup()` logs the tap's sentence/offset/language (debug). (P3) the provider chain; touch long-press → lookup (`lookup-flow.md` §1) |
-| `src/activities/reader/EpubReaderActivity.cpp` | (P2) pass the book's `<dc:language>` to word select |
+| `src/activities/reader/DictionaryWordSelectActivity.{h,cpp}` | (P2) `WordBox` gets `(line, token)`, counted exactly as `text::buildPageModel` counts lines; `setBook(dcLanguage)`. (P3) `performLookup()` asks Lexirise first (`lexiriseLookup()`: busy popup, placeholder definition screen or not-found popup) and falls back to StarDict with longest-prefix CJK candidates (`starDictLookup()`); `setInitialTouch(x, y)` selects the long-pressed word and looks it up on the first `loop()` (`lookup-flow.md` §5a) |
+| `src/activities/reader/EpubReaderActivity.{h,cpp}` | (P2) pass the book's `<dc:language>` to word select. (P3) touch long-press → word select at that point, before link taps, owning the centre third only when CrossPoint's hold action is on (`lookup::lookupOwnsLongPress`); word select opens without a StarDict dictionary when Lexirise is usable |
 | (P6) `src/SettingsList.h`, `src/activities/settings/SettingsActivity.{h,cpp}` | The device `Lexirise` settings row |
 | (P8) `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases (§6) |
 | (P3+) `lib/I18n/translations/english.yaml` | `STR_LEXI_*` strings |

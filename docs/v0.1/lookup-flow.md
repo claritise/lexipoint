@@ -129,6 +129,51 @@ the chosen IDs**, and skips everything else while streaming. That needs `occurre
 before the two maps. If the server doesn't guarantee key order, buffer the maps' raw bytes for
 the needed IDs (`lexirise-client.md` §4).
 
+### 5a. As built (P3)
+
+What P3 shipped, where it differs from the plan above (code: `src/lexirise/lookup/`, tests:
+`test/lexirise_lookup`):
+
+- **No `LookupProvider` interface yet.** With two providers, the chain is written out in
+  `DictionaryWordSelectActivity::performLookup()`. First `lexiriseLookup()`: `describeTap` →
+  `lookupWithLexirise(api, TapContext, card)` → `LookupOutcome {Card, NotFound, Unavailable}` plus
+  the `ApiError`. Then, on `Unavailable`, the unchanged StarDict code with `starDictCandidates()`.
+  The network sits behind `lookup::LexiriseApi` (`analyze`, `lookup`), which `LexiriseService`
+  implements and a fake implements in tests. Add the interface when a third provider appears.
+- **Lexirise isn't asked at all** when `TapContext` has no sentence or no language to send
+  (Lexirise off, the language switched off, a non-CJK book). StarDict answers as before.
+- **Match (②)**: `matchOccurrence()` takes the word-like occurrence covering the tap. If there is
+  none (a tap on punctuation), it takes the **nearest** word-like occurrence on either side, the
+  earlier one on a tie. Only a sentence with no word-like occurrence at all is `NotFound`.
+- **Parsing keeps every `entryMetaById` / `stateByEntryId` entry** (at most
+  `kMaxOccurrences` each, in maps), not only the chosen IDs. It is simpler, key order doesn't
+  matter, and a sentence's worth is a few KB. `stateFor()` counts an entry as saved only when it
+  has a `saved_expression_id`. The card takes the lemma's state, else the surface's.
+- **`dictionary/lookup`** gives: reading (overrides the surface's), the first
+  `kMaxTranslations` non-empty senses (≤ `kMaxTranslationBytes` each, cut on a character),
+  `level` (the first `JLPT-N1..5` / `HSK-1..9` / `HSK-7+` in `system_tags`), `rank`, and
+  `translationPending` (status isn't `ready`). If it fails, the lookup is **still a card**, with
+  `translationOffline` set (word, reading and saved state, without a meaning).
+- **One blocking call, no phases yet.** The busy popup shows, both requests run in the activity's
+  loop (≤ 2 × `kMaxCallMs`), then the placeholder opens (`DictionaryDefinitionActivity` with
+  `LookupCard::headword()` / `plainText()`). Phase A/B rendering arrives with the card (P4/P5).
+- **Long-press (§1)**: `EpubReaderActivity::loop()` checks `isScreenTouchHeld` +
+  `lookupOwnsLongPress()` + `wasScreenLongPress` before link taps. With CrossPoint's
+  `longPressButtonBehavior` on (a hold of ≥ 700 ms on a page-turn zone, acted on at release), the
+  outer thirds stay CrossPoint's and the lookup owns the centre third. With it off, or in swipe mode,
+  the lookup owns the whole page. `wasScreenLongPress` suppresses the rest of the contact, so the
+  finger lift doesn't tap word select. Word select takes the point through `setInitialTouch(x, y)`
+  (a setter, not a constructor overload), selects `wordAt(x, y)` and looks it up on its first
+  `loop()` after the first render. A press on no word opens word select as usual.
+- Word select now **opens without a StarDict dictionary** when Lexirise is usable (enabled and a key
+  set, `lookup::lexiriseUsable()`).
+- **StarDict**: `starDictCandidates()` gives the longest CJK run from the tapped character along the
+  line (≤ `kStarDictMaxPrefixChars`, stopping at punctuation or non-CJK), down to 1. A read error
+  stops the probing. **Not yet:** the per-language folders (`stardict_ja` / `stardict_zh`,
+  `languages.md` §4). P3 uses the one dictionary chosen in CrossPoint's settings, and the folder
+  choice comes with the device settings (P6).
+- `Unavailable` is only logged (`LXLOOK`) for now. The `offline` mark and error UI are P6.
+
 ## 6. Left/Right on the card
 
 The analyze response already covers the whole sentence. Keep the compact `occurrences[]` (plus
