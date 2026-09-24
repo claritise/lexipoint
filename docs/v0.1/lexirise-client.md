@@ -139,7 +139,8 @@ word/lemma/reading, a 64KB body, and 32 levels of nesting. Anything over a limit
 and the provider returns `Unavailable`. The exception is `entryMetaById` / `stateByEntryId`: they hold
 more entries than there are occurrences (surface, lemma and breakdown entries), so past
 `kMaxEntries` (512) further entries are **dropped** rather than failing the whole analyze.
-`dictionary/lookup` keeps the first `kMaxTranslations` (2) non-empty senses, each cut at
+`dictionary/lookup` keeps the first `kMaxTranslations` (2) senses that have a translation (an empty one
+isn't counted), each cut at
 `kMaxTranslationBytes` (512) on a character boundary.
 
 ## 4a. Undocumented fields degrade quietly

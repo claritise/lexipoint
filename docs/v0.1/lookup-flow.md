@@ -135,11 +135,13 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
 `test/lexirise_lookup`):
 
 - **No `LookupProvider` interface yet.** With two providers, the chain is written out in
-  `DictionaryWordSelectActivity::performLookup()`. First `lexiriseLookup()`: `describeTap` →
+  `DictionaryWordSelectActivity::performLookup()`. First `lexiriseLookup(card)`: `describeTap` →
   `lookupWithLexirise(api, TapContext, card)` → `LookupOutcome {Card, NotFound, Unavailable}` plus
-  the `ApiError`. Then, on `Unavailable`, the unchanged StarDict code with `starDictCandidates()`.
-  The network sits behind `lookup::LexiriseApi` (`analyze`, `lookup`), which `LexiriseService`
-  implements and a fake implements in tests. Add the interface when a third provider appears.
+  the `ApiError`. Then the pure `chainStep(outcome, starDictSet)` decides: `ShowCard`,
+  `ShowNotFound` (a Lexirise miss is final), `RunStarDict` (the unchanged StarDict code with
+  `starDictCandidates()`) or `NoDictionary`. The network sits behind `api::LexiriseApi` (`analyze`,
+  `lookup`), which `LexiriseService` implements and a fake implements in tests. Add the provider
+  interface when a third provider appears.
 - **Lexirise isn't asked at all** when `TapContext` has no sentence or no language to send
   (Lexirise off, the language switched off, a non-CJK book). StarDict answers as before.
 - **Match (②)**: `matchOccurrence()` takes the word-like occurrence covering the tap. If there is
@@ -155,8 +157,8 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
   `translationPending` (status isn't `ready`). If it fails, the lookup is **still a card**, with
   `translationUnavailable` set (word, reading and saved state, without a meaning). The lookup asks
   for the headword (the lemma, or the surface when the lemma is empty). Until it answers, the reading is
-  the lemma's own `entryMetaById` reading, or the surface's only when the surface is the headword, so
-  食べる never shows "tabesaserareta".
+  the lemma's own `entryMetaById` reading (only when the server named a `lemmaEntryId`), or the
+  surface's only when the surface is the headword, so 食べる never shows "tabesaserareta".
 - **One blocking call, no phases yet.** The busy popup shows, both requests run in the activity's
   loop (≤ 2 × `kMaxCallMs`), then the placeholder opens (`DictionaryDefinitionActivity` with
   `LookupCard::headword()` / `plainText()`). Phase A/B rendering arrives with the card (P4/P5).
@@ -165,16 +167,23 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
   CrossPoint's `longPressButtonBehavior` on in a tap mode (normal or inverted: a hold of ≥ 700 ms on a
   page-turn zone, acted on at release), the outer zones (`ReaderUtils::pageTurnZoneWidth`, shared)
   stay CrossPoint's and the lookup owns the centre. With it off, in swipe mode, or with touch controls
-  off, the lookup owns the whole page. **If nothing can answer** (no StarDict dictionary and Lexirise
-  unusable), the long-press isn't consumed, so a slow tap still turns the page or opens the menu. `wasScreenLongPress` suppresses the rest of the contact, so the
+  off, the lookup owns the whole page. **If nothing can answer** (no StarDict dictionary, and Lexirise
+  unusable for this book: off, no key, or the book's known language isn't sent, e.g. zh-TW or a
+  switched-off language), the long-press isn't consumed, so a slow tap still turns the page or opens
+  the menu. A book with no language tag, or a non-CJK one, still counts (its sentences decide:
+  Japanese novels stamped "en" exist), so with a key and no StarDict a slow tap in an English book
+  opens word select. `wasScreenLongPress` suppresses the rest of the contact, so the
   finger lift doesn't tap word select. Word select takes the point through `setInitialTouch(x, y)`
   (a setter, not a constructor overload), selects `wordAt(x, y)` and looks it up on its first
   `loop()` after the first render. A press on no word opens word select as usual.
 - Word select now **opens without a StarDict dictionary** when Lexirise is usable (enabled and a key
   set, `lookup::lexiriseUsable()`). If Lexirise then has no answer, word select shows "No dictionary
   set" (not a dictionary error).
-- **StarDict**: `starDictCandidates()` gives the longest CJK run from the tapped character along the
-  line (≤ `kStarDictMaxPrefixChars`, stopping at punctuation, non-CJK or the line end), down to 1.
+- **StarDict**: `starDictCandidates()` gives the longest run of Japanese/Chinese word characters (Han,
+  kana, ー, 々: `chars::isJaZhWordChar`) from the tapped character along the line
+  (≤ `kStarDictMaxPrefixChars`, stopping at anything else or the line end), down to 1. Hangul isn't
+  included (Korean is written with spaces, which the page model doesn't record), so a Korean tap is
+  looked up as its token.
   `probeStarDict()` tries them in order, and a read error stops the probing. A token that starts with
   punctuation (「食) is looked up as it stands. **Not yet:** the per-language folders (`stardict_ja` / `stardict_zh`,
   `languages.md` §4). P3 uses the one dictionary chosen in CrossPoint's settings, and the folder
