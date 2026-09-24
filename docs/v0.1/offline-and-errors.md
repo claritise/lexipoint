@@ -89,7 +89,8 @@ doesn't have (`ja-card-unanswered`, `ja-expanded-meaning-unanswered`, `ja-card-s
   `Lexirise key rejected` (no retry); 429 → `Rate limited: try in N s · Retry` (Retry waits out the back-off: tapped at once, the save goes
   when Lexirise may be asked again). A save the card couldn't send as it closed (a Retry still waiting,
   WiFi gone) is told by word select once the card is gone: `Lexirise: rate limited`, `Lexirise key
-  rejected`, or `Lexirise: not saved`. The level goes back to what
+  rejected`, or `Lexirise: not saved`. When the card goes because the device sleeps, the queued saves are
+  still attempted, but a failure there is only logged (`LXCARD level change failed`). The level goes back to what
   Lexirise has meanwhile. Any 2xx is the `Saved as <level> · Undo` toast shown at the tap.
 - **Strings:** every word on the card is an I18n key (`STR_LEXI_CARD_*`, plus `STR_LEXI_NO_KEY`,
   `STR_LEXI_AUTH_FAILED`, `STR_LEXI_RATE_LIMITED`, `STR_LEXI_OFFLINE`, `STR_LEXI_SAVE_FAILED`); languages without them fall back to
