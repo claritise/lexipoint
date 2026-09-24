@@ -56,7 +56,7 @@ A double press must not save twice: while `Saving…` shows, Confirm is ignored.
 ## 3a. As built (P6)
 
 Code: `api/AccessPolicy.h`, `lookup/Fallback.h`, `LexiriseService`, word select's `fallBack()`, the card
-(`CardController::levelFailed`, `Phase::Offline`). Tests: `test/lexirise_net` (`AccessPolicyTest`, `ServiceTest`),
+(`CardController::levelFailed`, `Phase::Unanswered`). Tests: `test/lexirise_net` (`AccessPolicyTest`, `ServiceTest`),
 `test/lexirise_lookup` (`Fallback`), `test/lexirise_card` (`LiveErrors`), `scripts/lexipoint/test_card_strings.py`.
 
 - **Asking Lexirise at all** (`lookup::lexiriseGate`, and `lookup::gateFallback` for what's said): off (or

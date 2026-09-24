@@ -179,7 +179,7 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
   (a setter, not a constructor overload), selects `wordAt(x, y)` and looks it up on its first
   `loop()` after the first render. A press on no word opens word select as usual.
 - Word select now **opens without a StarDict dictionary** when Lexirise is usable (enabled and a key
-  set, `lookup::lexiriseUsable()`). If Lexirise then has no answer, word select shows "No dictionary
+  set, `lookup::lexiriseConfigured()`). If Lexirise then has no answer, word select shows "No dictionary
   set" (not a dictionary error).
 - **StarDict**: `starDictCandidates()` gives the longest run of Japanese/Chinese word characters (Han,
   kana, ー, 々: `chars::isJaZhWordChar`) from the tapped character along the line
@@ -228,7 +228,7 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   saved the item (an item the user made in the app keeps its notes, translation and tags). A save whose
   word's lookup failed retries it once, so the POST carries the translation. The new item's
   `savedExpressionId` is kept for later changes. A refused or unanswered write puts the level back with
-  "Couldn't reach Lexirise: not saved" (even when the card has moved on) and drops the changes queued after
+  "Save failed · Retry" (or the key-rejected / rate-limited toast, offline-and-errors.md §3a; even when the card has moved on) and drops the changes queued after
   it for that word. A tap on the level already set sends nothing (the double-press guard). After a removal,
   saving a word this card saved is a full POST again (tags, notes and translation); the user's own item
   stays in Lexirise at proficiency 0 with its notes, so a later level is a PATCH; a word that was already at
