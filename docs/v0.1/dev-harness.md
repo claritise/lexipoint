@@ -98,8 +98,10 @@ resets the ESP32-S3.
 - **A sleeping device can't be woken over USB.** Deep sleep drops the USB port. The harness's
   keep-awake prevents this, but only once a harness build is running. The first flash after a stock
   firmware needs one Power press.
-- Injected touches don't pass through the SDK's gesture classifier. A gesture the classifier would
-  reject (e.g. a too-short swipe) can still be injected. Tests must use realistic gestures.
+- Injected touches don't pass through the SDK's gesture classifier. The harness rejects the one easy-to-get-wrong
+  case (swipes under the SDK's 60 px minimum, as `LX:ERR swipe too short`), and gesture timings are
+  compile-time checked against the reader's long-press threshold. Beyond that, tests must use realistic
+  gestures.
 - **Holds measured in real time** (keyboard key alternates, sliders, auto-repeat) aren't drivable yet.
   Each gesture reports fixed durations. A future `LX:HOLD x y ms` would repeat held frames.
 - **A blocked main loop stretches button presses**, since the mask is released on the first update after the
