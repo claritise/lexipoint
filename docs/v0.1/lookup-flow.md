@@ -201,7 +201,7 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   alone) is on screen while WiFi and TLS come up. The card (`LexiriseCardActivity` with a `LiveSource`)
   runs **one network call per loop pass**: `LiveSource::fetch()` makes it outside the render lock and
   changes nothing `render()` reads; `apply()` takes the answer under the lock; the render task draws it
-  while the next call runs. Order: `analyze/text` (phase A), then the word on screen's
+  before the next call starts (`CardSession::shouldFetch`). Order: `analyze/text` (phase A), then the word on screen's
   `dictionary/lookup` (phase B), then queued saves.
 - **The lookup is split** (`lookup::analyzeTap` → `cardFor` → `completeCard`): the sentence is analyzed
   once, every word-like occurrence becomes a phase-A card without asking again, and Left/Right re-run only
@@ -228,7 +228,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   `savedExpressionId` is kept for later changes. A refused or unanswered write puts the level back with
   "Couldn't reach Lexirise: not saved" (even when the card has moved on) and drops the changes queued after
   it for that word. A tap on the level already set sends nothing (the double-press guard). After a removal,
-  saving the word again is a full POST (tags, notes and translation again); a word that was already at
+  saving a word this card saved is a full POST again (tags, notes and translation); the user's own item
+  stays in Lexirise at proficiency 0 with its notes, so a later level is a PATCH; a word that was already at
   proficiency 0 when the card opened (undone earlier) is changed with a PATCH, so notes and tags the user
   kept in the app aren't replaced. The same entry twice in a sentence is one word: its level and id are
   shared. Writes still queued when the card closes (or the device sleeps with it open) are sent first,
