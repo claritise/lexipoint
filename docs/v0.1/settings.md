@@ -144,9 +144,11 @@ same URL shown for uploading books).
   hook now refuses any path with a hidden segment at every entry point (`firmware-base.md` §3).
   **FAT short names too** (P1 review): on FAT cards the folder is also reachable as `/LEXIRI~1`, which
   doesn't start with a dot. A dot name's short name always carries a `~N` tail, so any segment with a
-  `~` is looked up on the card and refused if its real name is hidden (or can't be resolved). This
-  applies to the file manager and to WebDAV (which only checked typed names), and it also closes the
-  same hole for upstream's `/.crosspoint` (saved WiFi passwords). `websmoke.py` probes it.
+  `~` is looked up on the card and refused if its real name is hidden (or exists but can't be read).
+  A `~` name that doesn't exist is allowed (it can't be an alias), and ordinary `~` names like
+  `Tolkien ~ The Hobbit.epub` keep working. This applies to the file manager and to WebDAV (which only
+  checked typed names, and whose `PROPFIND` listed hidden folders), and it also closes the same hole
+  for upstream's `/.crosspoint` (saved WiFi passwords). `websmoke.py` probes it.
 - **Never logged**, and not written anywhere else (unchanged from D8).
 
 ## 3. The file

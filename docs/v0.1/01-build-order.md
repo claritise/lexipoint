@@ -116,7 +116,7 @@ fine). StarDict works as the fallback.
 CJK), `WifiSession`, the hook in `DictionaryWordSelectActivity::performLookup()`, and the **touch
 long-press entry** from the reader (`lookup-flow.md` §1). The X4 Pro has no Confirm button, so
 without it there's no quick way into lookups (D15).
-**Gate:** the uniform gate, plus the `lexirise_json` suite (fixtures from P0), plus a match-step unit
+**Gate:** the uniform gate, plus the `lexirise_json` suite (fixtures from P0), plus a match-step unit **Also (from P1):** Lexipoint keeps its WiFi while a reader activity is on screen or under it, which is only safe if nothing that uses WiFi is ever *pushed* over the reader (KOSync replaces it). Re-check the reader's `startActivityForResult` targets, including the new card, and after every upstream sync.
 test (tap offset → occurrence, including a tap on particles and punctuation). On device: 食べさせられた
 with a tap on さ resolves to 食べる. 我们在学习中文 with a tap on 习 resolves to 学习, with language `zh`. WiFi off → StarDict answers. Idle for 5 min → WiFi stops
 (serial log).
