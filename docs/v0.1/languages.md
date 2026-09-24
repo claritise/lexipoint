@@ -119,7 +119,8 @@ romanization is consistent:
 **Known limit:** the converter can only be as right as Lexirise's reading. Seen live: 一緒 →
 `ichiitoguchi` (should be いっしょ), and 一日 in 四月一日 → `ichinichi` (context, see v0.2 C10).
 Report these to Lexirise. Don't patch them on the device. Hepburn itself can't tell ず from づ or じ
-from ぢ (`tsuzuku` → つずく, not つづく): the converter writes ず / じ, so a word with づ / ぢ reads one kana off.
+from ぢ (`tsuzuku` → つずく, not つづく): the converter writes ず / じ, so a word with づ / ぢ reads one kana off. Nor can it tell the particle は (read *wa*) from わ: こんにちは
+comes out こんにちわ.
 
 **Tests** (`test/lexirise_kana/`): every row above, the six mock words (まいあさ, まんいんでんしゃ,
 わずらわしい, かれ, かいしゃ, やめる), `n` edge cases (`kin'en` きんえん vs `kinen` きねん,
