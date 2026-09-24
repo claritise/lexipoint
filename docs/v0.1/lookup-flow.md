@@ -215,11 +215,16 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   snapshot). A reader in landscape gets the card in portrait over a blank page (the page was laid out for
   the other orientation; question 5 in the P4 ledger note).
 - **Saving (§7, popup-ui.md §3.2):** T L F K sets the level on the card at once (with the toast) and queues a
-  `LevelChange`; `LiveSource` sends them in order: a new word's `POST /v1/vocabulary` (D9: the lemma, the
+  `LevelChange`. A change with an Undo toast waits out its window (`config::kToastMs`) before anything is
+  sent, and a later change to the same entry merges into it: T then Undo sends nothing, K then T is one
+  PATCH. The loop makes no call while a frame is on its way (`CardSession::shouldFetch`), so the toast is
+  drawn before any network wait. `LiveSource` sends them in order: a new word's `POST /v1/vocabulary` (D9: the lemma, the
   first translation, the sentence as `notes`, the settings' tags, `proficiency` = the level, 1-4; it waits
   for the word's phase B, looking it up first if the card moved on; on a fresh session, since a POST isn't
-  resent on a stale one), a saved word's `PATCH {proficiency}`, and a removal (Undo of a new save, ⋯ Undo
-  save) as `DELETE` + `PATCH {notes: null, customTranslation: null, tags: []}`. The new item's
+  resent on a stale one), a saved word's `PATCH {proficiency}`, and a removal (⋯ Undo save, or an Undo after
+  its window) as `DELETE`, plus `PATCH {notes: null, customTranslation: null, tags: []}` when this card
+  saved the item (an item the user made in the app keeps its notes, translation and tags). A save whose
+  word's lookup failed retries it once, so the POST carries the translation. The new item's
   `savedExpressionId` is kept for later changes. A refused or unanswered write puts the level back with
   "Couldn't reach Lexirise: not saved" (even when the card has moved on) and drops the changes queued after
   it for that word. A tap on the level already set sends nothing (the double-press guard). After a removal,
