@@ -42,7 +42,7 @@ and `getRubyTexts()`. Tokens are the layout's units:
 
 ```cpp
 struct BuiltSentence {       // src/lexirise/text/SentenceBuilder.h
-  std::string text;          // UTF-8, base text only, ≤ kMaxSentenceCodepoints (120)
+  std::string text;          // UTF-8, base text only, ≤ kMaxSentenceUnits (120)
   uint32_t tapOffset;        // tapped token start, in UTF-16 code units (Lexirise's charStart, H5)
   uint32_t tapLength;        // tapped token length, same unit (the token as laid out, e.g. 猫。)
   bool truncatedLeft;        // cut by the cap or the page top, not by a sentence end
@@ -58,15 +58,19 @@ sentence is first cut with Japanese rules, the language read off it, then recut 
 2. *(Punctuation is per language. The Japanese set is below; the Chinese set is in `languages.md` §2.)*
    **Stop left** after a sentence terminator: `。 ！ ？ ! ? ．` plus `…` when it is followed by a
    closing bracket or ends the paragraph. **Stop right** at the terminator, and include it along
-   with any closing brackets or quotes straight after it (`」 』 ） 】 " '`).
+   with any closing brackets or quotes straight after it (`」 』 ） 】`; Chinese `” ’ ） 】 》`).
 3. **A paragraph end is a sentence end.** Blocks that don't flow into each other (a new `TextBlock`
    with a paragraph start) stop the walk. This matters for dialogue-heavy novels, where each 「…」
-   is its own paragraph with no 。. **Also** (P2): a closer followed by an opener (」「) is a break
-   even on one line, and in Japanese a closed quote followed by the quotative と / って continues the
+   is its own paragraph with no 。. **Also** (P2): a closing *quote* followed by an opening quote
+   (」「, ”“) is a break even on one line (brackets and titles aren't: 』（, 》（, 】【 run on). Known
+   trade-off: quoted words in a row (彼は「東京」「大阪」を訪れた) split the same way; dialogue lines are
+   normally separate paragraphs anyway, and in Japanese a closed quote followed by the quotative と / って continues the
    sentence (「行こう。」と彼は言った。 is one sentence, not two), as does と after an unbracketed
    `？！` (本当に!?と思った。); after `。` a と starts a new sentence (。とにかく). Runs of terminators and
-   closers stay together (`！？」`, `？！”`), a Latin `...` is an ellipsis, and a full stop inside a Latin
-   word (`3.50`, `example.com`) never ends a sentence.
+   closers stay together (`！？」`, `？！”`), a Latin `...` is an ellipsis, and a full stop inside a
+   number or abbreviation (`3.50`, `example.com`, `３．５`, `Ｕ．Ｓ．Ａ．`) never ends a sentence. The
+   full-width space `　` (paragraph indent, and after `？！` between sentences) is spacing, not text: it
+   never starts a sentence and is kept as `　` inside one (何だ？　と思った。).
 4. **Page bounded.** The walk stops at the page's first and last line and sets `truncated*`. v0.1
    doesn't read the neighbouring page. Chapter files are parsed per section, and loading the
    previous page costs an SD read and a layout pass, for a sentence that is only a little more
