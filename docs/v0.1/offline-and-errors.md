@@ -59,9 +59,13 @@ Code: `api/AccessPolicy.h`, `lookup/Fallback.h`, `LexiriseService`, word select'
 (`CardController::levelFailed`, `Phase::Offline`). Tests: `test/lexirise_net` (`AccessPolicyTest`, `ServiceTest`),
 `test/lexirise_lookup` (`Fallback`), `test/lexirise_card` (`LiveErrors`), `scripts/lexipoint/test_card_strings.py`.
 
-- **Asking Lexirise at all** (`lookup::lexiriseGate`): off (or not for the book's language) → StarDict,
-  silently; **no key** → `No Lexirise key` once per boot, then StarDict; a **rejected key** or a **rate
-  limit's back-off** → StarDict, silently (the notice was shown when it happened).
+- **Asking Lexirise at all** (`lookup::lexiriseGate`, and `lookup::gateFallback` for what's said): off (or
+  not for the book's language) → StarDict, silently; **no key** → `No Lexirise key` once per boot, then
+  StarDict; a **rejected key** or a **rate limit's back-off** → its notice once, the first lookup after it
+  began however it was found (a key check on the web page included), then StarDict silently. With no
+  StarDict to answer, the notice is shown every time (it says more than `No dictionary set`). What
+  doesn't change with time (the long-press is a lookup, word select opens without StarDict, the page is
+  snapshot for the card) follows the settings only (`lookup::lexiriseConfigured`).
 - **401 / 403** (`AccessPolicy`): Lexirise is off until reboot or a new key saved on the `/lexirise` page;
   every call is refused without the network. A key check (`/v1/me`, the page's Test button) may still
   probe the key, and a good answer lifts the rejection. The lookup that got it shows `Lexirise key
@@ -72,11 +76,15 @@ Code: `api/AccessPolicy.h`, `lookup/Fallback.h`, `LexiriseService`, word select'
   reached (the join failed or the radio was busy, a timeout or dropped connection, the clock unset, 5xx).
   **No saved network** isn't offline: StarDict answers unmarked (`ApiError::NoWifiSaved`). Neither are a
   TLS or certificate failure, low memory, or an unreadable response (the log has the heap numbers, the
-  wolfSSL code, or the body's first 128 bytes). On the card, a phase B that couldn't reach Lexirise shows
-  `offline` in the meaning row (and the Meaning tab); the word, reading and rank stay. The card has no
+  wolfSSL code, or the body's first 128 bytes; a response over a limit or cut short at the HTTP level is
+  logged by its status and error, its body having been dropped). On the card, a phase B that failed says why in the meaning row (and the Meaning
+  tab): `offline` (couldn't be reached), `Lexirise key rejected`, `Lexirise: rate limited`, or `meaning
+  unavailable`; the word, reading and rank stay. The card has no
   separate header label: the meaning row already says it, and the approved card gets no new chrome.
-- **Saves (§3)** are toasts on the card, not a Confirm prompt (the X4 Pro has no Confirm button): a
-  network failure → `Save failed · Retry` (tap it: the level is set again and sent at once); 401/403 →
+- **Saves (§3)** are toasts on the card, not a Confirm prompt (the X4 Pro has no Confirm button), up for
+  6 s (`config::kFailureToastMs`: they come after the Undo window and the network): a network failure →
+  `Save failed · Retry` (tap it: the level is set again and sent at once, its word looked up again if
+  the translation was missing); 401/403 →
   `Lexirise key rejected` (no retry); 429 → `Rate limited: try in N s · Retry`. The level goes back to what
   Lexirise has meanwhile. Any 2xx is the `Saved as <level> · Undo` toast shown at the tap.
 - **Strings:** every word on the card is an I18n key (`STR_LEXI_CARD_*`, plus `STR_LEXI_NO_KEY`,
