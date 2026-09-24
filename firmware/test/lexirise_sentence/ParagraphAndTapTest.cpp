@@ -94,6 +94,12 @@ TEST(ParagraphBreaks, UsualAdvanceSurvivesDialoguePages) {
   EXPECT_EQ(starts, (std::vector<bool>{false, true, true, false, false, true, true}));
 }
 
+TEST(ParagraphBreaks, OneWrappedLineIsEnoughForTheAdvance) {
+  // Dialogue page, extra paragraph spacing: a single line step (16), the rest paragraph gaps (24).
+  std::vector<LineShape> lines = {{0, 400, 0}, {0, 400, 16}, {0, 400, 40}, {0, 400, 64}, {0, 400, 88}};
+  EXPECT_EQ(paragraphStarts(lines, 0), (std::vector<bool>{false, false, true, true, true}));
+}
+
 TEST(ParagraphBreaks, ThePageTopOnlyByIndent) {
   EXPECT_FALSE(paragraphStarts({full(0), full(1)}, kEm)[0]);
   EXPECT_TRUE(paragraphStarts({{20, 400, 0}, full(1)}, kEm)[0]);

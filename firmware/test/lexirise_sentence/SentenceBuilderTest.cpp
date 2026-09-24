@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/text/CharClass.h"
 #include "lexirise/text/SentenceBuilder.h"
 
 using lexipoint::text::buildSentence;
@@ -364,4 +365,20 @@ TEST(SentenceShapes, AbbreviationBeforeASpaceEnds) {
 TEST(SentenceShapes, ContractionsSplitByStylesRejoin) {
   PageModel en{{{{"Dickens", "\u2019s", "novel", "and", "Rock", "\u2019n\u2019", "roll", "\u2019twas"}, true}}};
   EXPECT_EQ(build(en, "novel", Script::Latin).text, "Dickens\u2019s novel and Rock \u2019n\u2019 roll \u2019twas");
+}
+
+TEST(CharClass, ContractionSuffixes) {
+  const auto suffix = [](const char* text) {
+    std::vector<uint32_t> cps;
+    const auto* p = reinterpret_cast<const unsigned char*>(text);
+    while (const uint32_t cp = utf8NextCodepoint(&p)) cps.push_back(cp);
+    return lexipoint::text::chars::isContractionSuffix(cps.data(), cps.size());
+  };
+  for (const char* yes : {"\u2019s", "\u2019t", "\u2019d", "\u2019m", "\u2019ll", "\u2019re", "\u2019ve", "\u2019S",
+                          "\u2019LL", "\u2019s.", "\u2019s,"}) {
+    EXPECT_TRUE(suffix(yes)) << yes;
+  }
+  for (const char* no : {"\u2019", "\u2019n\u2019", "\u2019twas", "\u2019tis", "\u2019til", "\u2019em", "s", "'s"}) {
+    EXPECT_FALSE(suffix(no)) << no;
+  }
 }
