@@ -124,6 +124,15 @@ TEST_F(LayoutSentence, FullWidthSpacesAndNumbers) {
   EXPECT_EQ(sentence("読", Script::Japanese), "彼は『森』（村上春樹）を読んだ。");
 }
 
+TEST_F(LayoutSentence, PauseSpaceWrappingToALineStartIsNotAParagraph) {
+  layout("<p>彼彼彼彼彼彼彼彼彼は来た。本当に何だ？　と思った。そして寝た。</p>");
+  const PageModel m = model();
+  ASSERT_GE(m.lines.size(), 2u);
+  ASSERT_EQ(m.lines[1].tokens.front(), "\u3000");  // the case under test: the 　 wrapped to a line start
+  EXPECT_FALSE(m.lines[1].startsParagraph);
+  EXPECT_EQ(sentence("思", Script::Japanese), "本当に何だ？　と思った。");
+}
+
 TEST_F(LayoutSentence, ChineseDialogueInOneToken) {
   layout("<p>他说：</p><p>“好。”“走吧。”</p>");
   EXPECT_EQ(sentence("吧", Script::Chinese), "“走吧。”");

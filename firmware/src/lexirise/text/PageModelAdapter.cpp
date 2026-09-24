@@ -3,15 +3,26 @@
 #include "PageModelAdapter.h"
 
 #include <Epub/Page.h>
+#include <Utf8.h>
 
-#include <cstring>
-
+#include "CharClass.h"
 #include "ParagraphBreaks.h"
+#include "Punctuation.h"
 
 namespace lexipoint::text {
 namespace {
 
-constexpr const char* kIdeographicSpace = "\xE3\x80\x80";  // U+3000
+uint32_t firstCodepoint(const char* text) {
+  const auto* p = reinterpret_cast<const unsigned char*>(text);
+  return utf8NextCodepoint(&p);
+}
+
+uint32_t lastCodepoint(const char* text) {
+  const auto* p = reinterpret_cast<const unsigned char*>(text);
+  uint32_t last = 0;
+  while (const uint32_t cp = utf8NextCodepoint(&p)) last = cp;
+  return last;
+}
 
 }  // namespace
 
@@ -38,7 +49,9 @@ PageModel buildPageModel(const Page& page, const MeasureText& measure, const int
       shape.left = line->xPos + block->wordXpos(0);
       const uint16_t last = count - 1;
       shape.right = line->xPos + block->wordXpos(last) + measure(block->wordText(last), block->wordStyle(last));
-      shape.startsWithIdeographicSpace = std::strncmp(block->wordText(0), kIdeographicSpace, 3) == 0;
+      shape.startsWithIdeographicSpace = firstCodepoint(block->wordText(0)) == chars::kIdeographicSpace;
+      const uint32_t end = lastCodepoint(block->wordText(last));
+      shape.endsWithPause = Punctuation::isQuestionOrExclamation(end) || Punctuation::isEllipsis(end);
     } else {
       shape.left = shape.right = line->xPos;
     }

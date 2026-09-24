@@ -347,3 +347,16 @@ TEST(SentenceShapes, LatinPunctuationHugsItsWord) {
   PageModel page{{{{"A", "bold", ",", "word", "(really)", "and", "“", "go", "”", "now."}, true}}};
   EXPECT_EQ(build(page, "word", Script::Latin).text, "A bold, word (really) and “go” now.");
 }
+
+TEST(SentenceShapes, DialogueAcrossASpaceAndApostrophes) {
+  const PageModel ja{{layout("「うん」　「わかった」と答えた。", true)}};
+  EXPECT_EQ(build(ja, "わ").text, "「わかった」と答えた。");
+  EXPECT_EQ(build(ja, "う").text, "「うん」");
+  PageModel en{{{{"Rock", "\u2019n\u2019", "roll", "don\u2019t", "stop", "\u201cgo", "\u2019", "now."}, true}}};
+  EXPECT_EQ(build(en, "roll", Script::Latin).text, "Rock \u2019n\u2019 roll don\u2019t stop \u201cgo\u2019 now.");
+}
+
+TEST(SentenceShapes, AbbreviationBeforeASpaceEnds) {
+  const PageModel ja{{layout("彼はＵ．Ｓ．Ａ．　次の文だ。", true)}};
+  EXPECT_EQ(build(ja, "次").text, "次の文だ。");
+}

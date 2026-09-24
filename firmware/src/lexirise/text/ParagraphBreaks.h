@@ -22,6 +22,9 @@ struct LineShape {
   int blockInset = 0;                       // the block's left margin + padding
   int alignment = 0;                        // the block's text-align
   int rubyShift = 0;                        // extra height a furigana line takes above its text
+  // The line ends in ？！?! or …: the only places Japanese puts a full-width space mid-paragraph, so a
+  // 　 that wraps to the next line after one of these is a pause, not an indent.
+  bool endsWithPause = false;
 };
 
 // One flag per line. `em` is the width of one full-width character in the page's font; without one
@@ -61,7 +64,8 @@ inline std::vector<bool> paragraphStarts(const std::vector<LineShape>& lines, co
   };
   for (size_t i = 0; i < lines.size(); i++) {
     const LineShape& line = lines[i];
-    bool start = line.startsWithIdeographicSpace || firstLineIndent(i);
+    const bool indentSpace = line.startsWithIdeographicSpace && (i == 0 || !lines[i - 1].endsWithPause);
+    bool start = indentSpace || firstLineIndent(i);
     if (i > 0) {
       const LineShape& prev = lines[i - 1];
       start = start || (useEm && contentRight - prev.right >= static_cast<int>(config::kParagraphShortLineEm * em)) ||

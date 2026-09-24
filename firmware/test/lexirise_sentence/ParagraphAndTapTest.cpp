@@ -69,6 +69,16 @@ TEST(ParagraphBreaks, WithoutAnEmOnlyUnmeasuredSignalsCount) {
   EXPECT_TRUE(paragraphStarts(lines, 0)[2]);
 }
 
+TEST(ParagraphBreaks, ASpaceAfterAPauseIsNotAnIndent) {
+  // ？　 wrapping: the 　 lands at a line start but the paragraph goes on.
+  std::vector<LineShape> lines = {full(0), full(1)};
+  lines[0].endsWithPause = true;
+  lines[1].startsWithIdeographicSpace = true;
+  EXPECT_FALSE(paragraphStarts(lines, kEm)[1]);
+  lines[0].endsWithPause = false;  // after anything else it is the paragraph indent
+  EXPECT_TRUE(paragraphStarts(lines, kEm)[1]);
+}
+
 TEST(ParagraphBreaks, ThePageTopOnlyByIndent) {
   EXPECT_FALSE(paragraphStarts({full(0), full(1)}, kEm)[0]);
   EXPECT_TRUE(paragraphStarts({{20, 400, 0}, full(1)}, kEm)[0]);

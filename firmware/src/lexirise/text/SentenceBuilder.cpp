@@ -231,7 +231,8 @@ class Builder {
       return piece.cps.size() == 2 && chars::isAlnum(piece.cps[0]) && Punctuation::isDot(piece.cps[1]);
     };
     const long prev = textBefore(i);
-    return isLetterDot(item) && prev >= 0 && isLetterDot(items_[static_cast<size_t>(prev)]) &&
+    const bool spacedAfter = next < items_.size() && between(item, items_[next]) != Spacing::None;
+    return isLetterDot(item) && !spacedAfter && prev >= 0 && isLetterDot(items_[static_cast<size_t>(prev)]) &&
            between(items_[static_cast<size_t>(prev)], item) == Spacing::None;
   }
 
@@ -277,7 +278,9 @@ class Builder {
     const uint32_t right = next.cps.front();
     if (utf8IsCjkCodepoint(left) || utf8IsCjkCodepoint(right)) return Spacing::None;
     if (next.lineStart && chars::isLatinHyphen(left)) return Spacing::None;
-    if (chars::attachesLeft(right) || chars::attachesRight(left)) return Spacing::None;
+    // ’ closes a quote ("go’" ) but also starts a word ("’n’", "’tis"): only a bare one attaches.
+    const bool apostropheWord = right == 0x2019 && next.cps.size() > 1 && !chars::isPunctuationLike(next.cps[1]);
+    if ((chars::attachesLeft(right) && !apostropheWord) || chars::attachesRight(left)) return Spacing::None;
     return Spacing::Latin;
   }
 
