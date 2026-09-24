@@ -19,8 +19,9 @@ namespace lexipoint::web {
 const char* parsePatch(std::string_view body, SettingsPatch& out);
 
 // Everything the page shows. The key only ever appears masked (settings.md §2). settingsReset: the
-// file was unreadable at boot and moved aside (the page says so). checkTimeoutS: how long the page
-// polls a queued key check (config::kMaxCallMs).
+// file was unreadable at boot and moved aside (the page says so). The output also carries
+// "checkTimeoutS" (from config::kMaxCallMs: how long the page polls a queued key check) and
+// "defaultBaseUrl" (the page warns when the key goes anywhere else).
 std::string stateJson(const Settings& settings, const api::KeyStatus& status,
                       const std::vector<std::string>& dictionaries, bool settingsReset = false);
 

@@ -61,6 +61,9 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
                 return self._send(403, '{"error":"cross-origin"}')
             key = "lx_FULLSECRETKEY0000abc" if "mask" in self.broken else MASKED
             return self._send(200, json.dumps({"hasKey": True, "key": key, "status": {"state": "connected"}}))
+        if url.path == "/api/files" and q.get("path", [""])[0] == "/":
+            names = [{"name": "books"}] + ([{"name": ".lexirise"}] if "listing" in self.broken else [])
+            return self._send(200, json.dumps(names))
         if url.path in ("/api/files", "/download"):
             return self._send(403 if self._hidden(q.get("path", [""])[0]) else 404)
         if url.path.startswith("/.") or url.path.upper().startswith("/LEXIRI~1"):
@@ -110,6 +113,7 @@ class WebSmoke(unittest.TestCase):
     def test_each_broken_guard_is_caught(self):
         expectations = {
             "mask": {"key is masked"},
+            "listing": {"root listing has no dot entries"},
             "origin": {"foreign Origin refused (GET)", "foreign Origin refused (POST)"},
             "host": {"rebinding Host refused"},
             "files": {"hidden folder not listed", "hidden download refused", "hidden rename refused",

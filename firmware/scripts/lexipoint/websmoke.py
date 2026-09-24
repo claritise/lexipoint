@@ -71,6 +71,15 @@ def checks(host: str, port: int = 80):
     status, _ = request(host, "GET", "/api/lexirise", headers={"Host": EVIL_HOST}, port=port)
     yield "rebinding Host refused", status == 403, f"status {status}"
 
+    status, body = request(host, "GET", "/api/files?path=/", port=port)
+    names = []
+    try:
+        names = [entry.get("name", "") for entry in json.loads(body)] if status == 200 else []
+    except (ValueError, AttributeError):
+        pass
+    hidden_listed = [n for n in names if n.startswith(".")]
+    yield "root listing has no dot entries", status == 200 and not hidden_listed, f"status {status}, {hidden_listed}"
+
     quoted = urllib.parse.quote(PROBE)
     status, _ = request(host, "GET", f"/api/files?path={urllib.parse.quote('/.lexirise')}", port=port)
     yield "hidden folder not listed", status == 403, f"status {status}"
