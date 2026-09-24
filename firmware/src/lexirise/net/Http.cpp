@@ -192,8 +192,15 @@ size_t ResponseParser::feed(const char* data, const size_t len) {
       sawStatus_ = true;
     } else if (line_.empty()) {
       if (status_ >= 100 && status_ < 200) {
-        // Interim response (100 Continue): discard it and everything it said, parse the real one.
+        // Interim response (100 Continue): discard it and everything it said, parse the real one. A
+        // server that never stops sending them is malformed.
+        const int interim = interimResponses_ + 1;
+        if (interim > config::kHttpMaxInterimResponses) {
+          fail(Failure::Malformed);
+          return static_cast<size_t>(p - data);
+        }
         *this = ResponseParser(maxBody_, noBody_);
+        interimResponses_ = interim;
       } else {
         ok = onHeadersEnd();
       }

@@ -6,6 +6,8 @@ namespace lexipoint::api {
 
 const char* keyStateName(const KeyState state) {
   switch (state) {
+    case KeyState::Checking:
+      return "checking";
     case KeyState::NoKey:
       return "no-key";
     case KeyState::Connected:
@@ -40,6 +42,7 @@ KeyStatus keyStatusFrom(const ApiResponse& response) {
     case ApiError::Unauthorized:
       status.state = KeyState::Rejected;
       break;
+    case ApiError::NoWifi:
     case ApiError::Network:
     case ApiError::Timeout:
     case ApiError::ClockNotSet:

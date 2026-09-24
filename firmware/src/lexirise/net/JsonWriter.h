@@ -22,6 +22,9 @@ class JsonObject {
   JsonObject& add(std::string_view key, int value) { return add(key, static_cast<long long>(value)); }
   JsonObject& add(std::string_view key, bool value);
   JsonObject& add(std::string_view key, const std::vector<std::string>& values);  // array of strings
+  JsonObject& add(std::string_view key, const std::vector<int>& values);          // array of numbers
+  JsonObject& add(std::string_view key, const JsonObject& nested);                // nested object
+  JsonObject& addNull(std::string_view key);
 
   // The finished object. The writer stays usable (more add() calls extend it).
   std::string str() const { return body_ + "}"; }

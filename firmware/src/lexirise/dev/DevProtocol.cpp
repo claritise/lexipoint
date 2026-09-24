@@ -135,7 +135,7 @@ Command parseLine(const char* rawLine) {
       return fail("usage: HOME [HOLD]");
     }
   } else if (!std::strcmp(verb, "LEXI")) {
-    constexpr const char* kUsage = "usage: LEXI ME | ANALYZE ja|zh | SOAK n";
+    constexpr const char* kUsage = "usage: LEXI ME | ANALYZE ja|zh | SOAK n [COLD]";
     if (t.count == 2 && !std::strcmp(t.text[1], "ME")) {
       c.lexi = LexiAction::Me;
     } else if (t.count == 3 && !std::strcmp(t.text[1], "ANALYZE")) {
@@ -147,8 +147,10 @@ Command parseLine(const char* rawLine) {
         return fail(kUsage);
       }
       c.lexi = LexiAction::Analyze;
-    } else if (t.count == 3 && !std::strcmp(t.text[1], "SOAK")) {
+    } else if ((t.count == 3 || t.count == 4) && !std::strcmp(t.text[1], "SOAK")) {
       if (!parseInt(t.text[2], c.count) || c.count < 1 || c.count > config::kLexiSoakMax) return fail(kUsage);
+      if (t.count == 4 && std::strcmp(t.text[3], "COLD") != 0) return fail(kUsage);
+      c.cold = t.count == 4;
       c.lexi = LexiAction::Soak;
     } else {
       return fail(kUsage);

@@ -7,8 +7,6 @@
 namespace lexipoint::api {
 namespace {
 
-constexpr size_t kReadChunk = 1024;
-
 ApiError fromOpenError(const net::OpenError error) {
   switch (error) {
     case net::OpenError::None:
@@ -35,6 +33,8 @@ const char* apiErrorName(const ApiError error) {
       return "ok";
     case ApiError::NotConfigured:
       return "not-configured";
+    case ApiError::NoWifi:
+      return "no-wifi";
     case ApiError::LowMemory:
       return "low-memory";
     case ApiError::ClockNotSet:
@@ -88,12 +88,21 @@ ApiResponse LexiriseClient::send(const net::Request& request) {
     response.error = ApiError::NotConfigured;
     return response;
   }
+  deadlineSet_ = false;
   const bool reused = connection_.isOpen();
   if (attempt(request, reused, response) == Attempt::StaleSession) {
     response = ApiResponse();
     attempt(request, false, response);
   }
   return response;
+}
+
+// The read wait: kHttpTimeoutMs, or less when the request's deadline is nearer (0 once it's past).
+uint32_t LexiriseClient::readTimeout() const {
+  const long left = static_cast<long>(deadlineMs_ - clock_());
+  if (left <= 0) return 0;
+  return static_cast<unsigned long>(left) < config::kHttpTimeoutMs ? static_cast<uint32_t>(left)
+                                                                   : config::kHttpTimeoutMs;
 }
 
 LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, const bool reused, ApiResponse& out) {
@@ -103,6 +112,12 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
       out.error = fromOpenError(openError);
       return Attempt::Done;
     }
+  }
+  // The request's budget starts once a connection is up (opening has its own bounds). The retry on a
+  // fresh session keeps whatever the stale attempt left.
+  if (!deadlineSet_) {
+    deadlineMs_ = clock_() + config::kRequestDeadlineMs;
+    deadlineSet_ = true;
   }
 
   const std::string wire = net::buildRequest(endpoint_, request, apiKey_, userAgent_);
@@ -114,10 +129,11 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
   }
 
   net::ResponseParser parser;
-  char buffer[kReadChunk];
+  char buffer[config::kHttpReadChunkBytes];
   bool gotBytes = false;
   while (!parser.done() && parser.state() != net::ResponseParser::State::Error) {
-    const int n = connection_.read(buffer, sizeof(buffer), config::kHttpTimeoutMs);
+    const uint32_t timeout = readTimeout();
+    const int n = timeout == 0 ? 0 : connection_.read(buffer, sizeof(buffer), timeout);
     if (n == 0) {
       connection_.close();
       out.error = ApiError::Timeout;

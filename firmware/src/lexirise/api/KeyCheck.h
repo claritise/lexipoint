@@ -13,6 +13,7 @@ namespace lexipoint::api {
 
 enum class KeyState {
   Unchecked,  // no check yet this boot
+  Checking,   // a check is queued or running (the web page polls until it settles)
   NoKey,
   Connected,
   Rejected,  // 401 / 403

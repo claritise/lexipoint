@@ -42,6 +42,7 @@ struct Command {
   LexiAction lexi = LexiAction::Me;
   bool chinese = false;         // LEXI ANALYZE language
   int count = 0;                // LEXI SOAK calls, in [1, config::kLexiSoakMax]
+  bool cold = false;            // LEXI SOAK n COLD: WiFi and TLS torn down between calls
   const char* error = nullptr;  // set when an LX: line is malformed; the verb is None
 };
 

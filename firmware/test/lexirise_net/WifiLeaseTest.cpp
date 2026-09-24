@@ -37,3 +37,21 @@ TEST(WifiLease, SurvivesMillisWrap) {
   EXPECT_FALSE(lease.expired(500, 1));  // 1.5 s later, across the wrap
   EXPECT_TRUE(lease.expired(kMsPerMinute, 1));
 }
+
+TEST(WifiPolicy, OnlyBringsWifiUpFromRadioOff) {
+  using lexipoint::net::decideEnsureUp;
+  using lexipoint::net::WifiAction;
+  EXPECT_EQ(decideEnsureUp(/*stationConnected=*/true, /*radioOff=*/false), WifiAction::UseExisting);
+  EXPECT_EQ(decideEnsureUp(false, true), WifiAction::Join);
+  // The web server's hotspot, or someone else's join in progress: never touched.
+  EXPECT_EQ(decideEnsureUp(false, false), WifiAction::Busy);
+}
+
+TEST(WifiPolicy, ReadingActivitiesKeepLookupWifi) {
+  using lexipoint::net::keepsLookupWifi;
+  EXPECT_TRUE(keepsLookupWifi("AnythingReader", true));
+  for (const char* name : lexipoint::config::kLookupActivityNames) EXPECT_TRUE(keepsLookupWifi(name, false)) << name;
+  for (const char* name : {"KOReaderSync", "CrossPointWebServer", "Home", "Settings", "OtaUpdate", ""}) {
+    EXPECT_FALSE(keepsLookupWifi(name, false)) << name;
+  }
+}

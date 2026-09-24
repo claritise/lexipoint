@@ -4,9 +4,10 @@
 
 #include <Logging.h>
 
+#include <utility>
+
 #include "api/Requests.h"
-#include "net/WifiSession.h"
-#include "settings/SettingsStore.h"
+#include "net/WifiLease.h"
 
 namespace lexipoint {
 namespace {
@@ -15,35 +16,51 @@ constexpr const char* kLogTag = "LXS";
 
 }  // namespace
 
-LexiriseService::LexiriseService() : client_(connection_, api::userAgent(CROSSPOINT_VERSION)) {}
+LexiriseService::LexiriseService(SettingsStore& store, net::WifiControl& wifi, net::Connection& connection,
+                                 std::string userAgent, const Clock clock)
+    : store_(store), wifi_(wifi), client_(connection, std::move(userAgent), clock), clock_(clock) {}
 
 api::ApiResponse LexiriseService::send(const net::Request& request) {
-  const Settings settings = settingsStore().snapshot();
+  const Settings settings = store_.snapshot();
   api::ApiResponse response;
   if (!client_.configure(settings.baseUrl, settings.apiKey)) {
     response.error = api::ApiError::NotConfigured;
     return response;
   }
-  if (net::wifiSession().ensureUp() != net::WifiResult::Up) {
-    client_.close();
-    response.error = api::ApiError::Network;
+  if (wifi_.ensureUp() != net::WifiResult::Up) {
+    closeSession();
+    response.error = api::ApiError::NoWifi;
     return response;
   }
   response = client_.send(request);
-  net::wifiSession().touch();
+  wifi_.touch();
+  sessionActive_ = true;
+  lastCallMs_ = clock_();
   // Never log the body or the key: the status and error name are enough to diagnose.
   LOG_INF(kLogTag, "%s %s -> %d (%s)", net::methodName(request.method), request.path.c_str(), response.status,
           api::apiErrorName(response.error));
   return response;
 }
 
+void LexiriseService::closeSession() {
+  client_.close();
+  sessionActive_ = false;
+}
+
 api::KeyStatus LexiriseService::checkKey() {
+  checkPending_ = false;
   status_ = api::keyStatusFrom(send(api::meRequest()));
   if (status_.state == api::KeyState::Connected) {
-    LOG_INF(kLogTag, "Key OK, rate limit %u per %u s", (unsigned)status_.me.rateLimitMax,
-            (unsigned)(status_.me.rateLimitWindowMs / 1000));
+    LOG_INF(kLogTag, "Key OK, rate limit %u per %u s", static_cast<unsigned>(status_.me.rateLimitMax),
+            static_cast<unsigned>(status_.me.rateLimitWindowMs / 1000));
   }
   return status_;
+}
+
+void LexiriseService::requestKeyCheck() {
+  checkPending_ = true;
+  status_ = api::KeyStatus();
+  status_.state = api::KeyState::Checking;
 }
 
 api::ApiResponse LexiriseService::analyze(const Language language, const std::string_view text) {
@@ -51,19 +68,27 @@ api::ApiResponse LexiriseService::analyze(const Language language, const std::st
 }
 
 void LexiriseService::tick() {
+  if (checkPending_) checkKey();
+
+  if (sessionActive_ && clock_() - lastCallMs_ >= config::kTlsIdleCloseMs) closeSession();
+
   // Re-read the idle setting only when the settings changed: no settings copy on every loop pass.
-  const uint32_t revision = settingsStore().revision();
+  const uint32_t revision = store_.revision();
   if (!wifiIdleKnown_ || revision != wifiIdleRevision_) {
-    wifiIdleMin_ = settingsStore().snapshot().wifiIdleMin;
+    wifiIdleMin_ = store_.snapshot().wifiIdleMin;
     wifiIdleRevision_ = revision;
     wifiIdleKnown_ = true;
   }
-  net::wifiSession().tick(wifiIdleMin_);
+  if (wifi_.tick(wifiIdleMin_)) closeSession();
 }
 
-LexiriseService& service() {
-  static LexiriseService instance;
-  return instance;
+void LexiriseService::onActivityChanged(const std::string_view activityName, const bool isReaderActivity) {
+  if (!net::keepsLookupWifi(activityName, isReaderActivity)) releaseWifi();
+}
+
+void LexiriseService::releaseWifi() {
+  closeSession();
+  wifi_.release();
 }
 
 }  // namespace lexipoint

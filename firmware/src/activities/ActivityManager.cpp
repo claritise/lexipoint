@@ -26,8 +26,14 @@
 #include "util/BmpViewerActivity.h"
 #include "util/FrontlightPanelActivity.h"
 #include "util/FullScreenMessageActivity.h"
+#if LEXIRISE
+#include "lexirise/LexiriseService.h"  // LEXIPOINT
+#endif
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
+#if LEXIRISE
+static std::string lexipointShownActivity;  // LEXIPOINT: the activity Lexipoint was last told about
+#endif
 
 void ActivityManager::begin() {
 #if defined(configNUM_CORES) && configNUM_CORES > 1
@@ -193,6 +199,14 @@ void ActivityManager::loop() {
       continue;
     }
   }
+
+#if LEXIRISE
+  // LEXIPOINT: tell Lexipoint when the activity on screen changes (it gives back WiFi outside reading).
+  if (currentActivity && currentActivity->name != lexipointShownActivity) {
+    lexipointShownActivity = currentActivity->name;
+    lexipoint::service().onActivityChanged(currentActivity->name, currentActivity->isReaderActivity());
+  }
+#endif
 
   if (requestedUpdate.exchange(false)) {
     // Using direct notification to signal the render task to update

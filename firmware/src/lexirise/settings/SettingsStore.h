@@ -5,8 +5,8 @@
 // recovery logic is host-testable (test/lexirise_settings/SettingsStoreTest.cpp); the SD card adapter
 // lives in SettingsFilesHal.cpp.
 //
-// Threading: the main task and the web server task both use the store. Two locks, never nested the
-// other way round:
+// Threading: the store is shared across FreeRTOS tasks by design (CrossPoint's web handlers run on
+// the main task today, but nothing here relies on that). Two locks, never nested the other way round:
 //   - writeMutex_ serialises updates, and is held across the SD write (writers only);
 //   - dataMutex_ guards the in-memory copy, held only for a copy/assign, never across I/O.
 // So snapshot() (render path, lookups) never waits behind an SD write.
@@ -39,7 +39,7 @@ enum class LoadOutcome {
   Defaults,         // no file yet (first boot)
   Loaded,           // config.ini parsed
   RecoveredBackup,  // config.ini was missing, the .bak from an interrupted save was restored
-  Unreadable,       // file too large or unreadable: defaults in memory, the file is left untouched
+  Unreadable,       // too large or unreadable: defaults in memory, the file moved to config.ini.bad
 };
 
 class SettingsStore {

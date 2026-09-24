@@ -4,56 +4,17 @@
 #include <string>
 #include <thread>
 
+#include "Fakes.h"
 #include "lexirise/settings/SettingsStore.h"
 
 using lexipoint::LoadOutcome;
 using lexipoint::Settings;
-using lexipoint::SettingsFiles;
 using lexipoint::SettingsStore;
 namespace config = lexipoint::config;
 
 namespace {
 
-// In-memory card with SdFat's rename semantics and one-shot failure injection.
-class FakeFiles : public SettingsFiles {
- public:
-  std::map<std::string, std::string> files;
-  std::string failWriteOf;   // path whose next write fails
-  std::string failRenameTo;  // destination whose next rename fails
-  int writes = 0;
-
-  ReadStatus read(const char* path, size_t maxBytes, std::string& out) override {
-    const auto it = files.find(path);
-    if (it == files.end()) return ReadStatus::Missing;
-    if (it->second.size() > maxBytes) return ReadStatus::TooLarge;
-    out = it->second;
-    return ReadStatus::Ok;
-  }
-  bool write(const char* path, std::string_view content) override {
-    writes++;
-    if (failWriteOf == path) {
-      failWriteOf.clear();
-      files[path] = "[acc";  // torn
-      return false;
-    }
-    files[path] = std::string(content);
-    return true;
-  }
-  bool exists(const char* path) override { return files.count(path) != 0; }
-  bool remove(const char* path) override { return files.erase(path) != 0; }
-  bool rename(const char* from, const char* to) override {
-    if (failRenameTo == to) {
-      failRenameTo.clear();
-      return false;
-    }
-    const auto it = files.find(from);
-    if (it == files.end() || files.count(to) != 0) return false;
-    files[to] = it->second;
-    files.erase(it);
-    return true;
-  }
-  bool ensureDir(const char*) override { return true; }
-};
+using lexipoint::fakes::FakeFiles;
 
 const std::string kKey = "lx_TESTKEYtestkey0123456789";
 
@@ -144,13 +105,32 @@ TEST(SettingsStore, DropsStaleBackupWhenNewFileLanded) {
   EXPECT_EQ(fs.files.size(), 1u);
 }
 
-TEST(SettingsStore, OversizedFileIsLeftAloneWithDefaults) {
+TEST(SettingsStore, OversizedFileIsMovedAsideNotOverwritten) {
   FakeFiles fs;
-  fs.files[config::kSettingsPath] = std::string(config::kSettingsMaxBytes + 1, '#');
+  const std::string big = fileWithKey(kKey) + std::string(config::kSettingsMaxBytes, '#');
+  fs.files[config::kSettingsPath] = big;
+  fs.files[config::kSettingsBadPath] = "older";
   SettingsStore store(fs);
   EXPECT_EQ(store.load(), LoadOutcome::Unreadable);
   EXPECT_FALSE(store.snapshot().hasApiKey());
-  EXPECT_EQ(fs.files.at(config::kSettingsPath).size(), config::kSettingsMaxBytes + 1);
+  EXPECT_EQ(fs.files.at(config::kSettingsBadPath), big);
+  // A later save writes a fresh file; the user's original is still in .bad.
+  ASSERT_EQ(store.update([](Settings& s) {
+    s.tags = "x";
+    return true;
+  }),
+            SettingsStore::UpdateResult::Saved);
+  EXPECT_EQ(fs.files.at(config::kSettingsBadPath), big);
+  EXPECT_EQ(fs.files.count(config::kSettingsPath), 1u);
+}
+
+TEST(SettingsStore, ReadErrorAlsoKeepsTheFile) {
+  FakeFiles fs;
+  fs.files[config::kSettingsPath] = fileWithKey(kKey);
+  fs.failReads = true;
+  SettingsStore store(fs);
+  EXPECT_EQ(store.load(), LoadOutcome::Unreadable);
+  EXPECT_EQ(fs.files.at(config::kSettingsBadPath), fileWithKey(kKey));
 }
 
 TEST(SettingsStore, LegacyFileIsRewrittenInSections) {

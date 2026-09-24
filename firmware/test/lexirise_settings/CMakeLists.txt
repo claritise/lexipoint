@@ -12,6 +12,8 @@ target_compile_definitions(LexiriseSettingsTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseSettingsTest PRIVATE
   ${REPO_ROOT}/src
+  ${REPO_ROOT}/test/lexirise_fakes
+  ${REPO_ROOT}/test/lexirise_fakes/stubs
 )
 
 target_link_libraries(LexiriseSettingsTest PRIVATE

@@ -4,7 +4,7 @@
 // buffered and bounded by the HTTP layer, so this walks it in place and reports every scalar with
 // its path. Unlike lib/JsonParser/StreamingJsonParser it decodes \u escapes (surrogate pairs too),
 // has no token-length limit that could misattribute a value to the previous key, and rejects
-// malformed or truncated documents. Tests: test/lexirise_net/JsonReaderTest.cpp.
+// malformed, truncated or over-deep (config::kJsonMaxDepth) documents. Tests: test/lexirise_net/JsonReaderTest.cpp.
 
 #include <cstddef>
 #include <initializer_list>
@@ -12,9 +12,9 @@
 #include <string_view>
 #include <vector>
 
-namespace lexipoint::json {
+#include "lexirise/LexiriseConfig.h"
 
-constexpr size_t kMaxDepth = 32;
+namespace lexipoint::json {
 
 // Where a value sits: one segment per enclosing container, e.g. occurrences[3].word is
 // {key "occurrences"}, {index 3}, {key "word"}.

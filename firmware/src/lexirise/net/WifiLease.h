@@ -1,15 +1,38 @@
 #pragma once
 
-// Who owns the WiFi connection, and when Lexipoint should give it back (offline-and-errors.md §5).
-// Pure; WifiSession feeds it. Tests: test/lexirise_net/WifiLeaseTest.cpp.
+// When Lexipoint may use, bring up, and give back WiFi (offline-and-errors.md §5). Pure; WifiSession
+// and LexiriseService feed it. Tests: test/lexirise_net/WifiLeaseTest.cpp.
 //
-// Lexipoint tears WiFi down only if it brought WiFi up itself, and only after the configured idle
-// time. The moment anything else touches the connection (the web server or KOSync reconnecting, or
-// the link dropping) the lease is lost for good and WiFi is theirs.
+// The rules:
+//   - Lexipoint only ever *brings WiFi up* from radio-off. A connected station is used as it is; a
+//     radio that's on but not connected (the web server's hotspot, someone else's join in progress)
+//     is somebody else's and is left alone.
+//   - WiFi Lexipoint brought up is its own (the lease) until it idles out, or until the screen
+//     leaves reading: any other activity (KOSync, the web server, OTA, ...) gets a radio that's off
+//     and brings WiFi up itself, so Lexipoint can never turn WiFi off under it.
+
+#include <string_view>
 
 #include "lexirise/LexiriseConfig.h"
 
 namespace lexipoint::net {
+
+enum class WifiAction { UseExisting, Busy, Join };
+
+inline WifiAction decideEnsureUp(const bool stationConnected, const bool radioOff) {
+  if (stationConnected) return WifiAction::UseExisting;
+  return radioOff ? WifiAction::Join : WifiAction::Busy;
+}
+
+// The activities that are "reading": Lexipoint keeps its WiFi across them (a lookup card is pushed
+// over the reader, and closing it must not drop WiFi before the next lookup).
+inline bool keepsLookupWifi(const std::string_view activityName, const bool isReaderActivity) {
+  if (isReaderActivity) return true;
+  for (const char* name : config::kLookupActivityNames) {
+    if (activityName == name) return true;
+  }
+  return false;
+}
 
 class WifiLease {
  public:

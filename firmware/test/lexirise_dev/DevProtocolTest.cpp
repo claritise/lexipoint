@@ -98,9 +98,11 @@ TEST(DevProtocol, Lexi) {
   const auto soak = parse("LX:LEXI SOAK 20");
   EXPECT_EQ(soak.lexi, LexiAction::Soak);
   EXPECT_EQ(soak.count, 20);
+  EXPECT_FALSE(soak.cold);
+  EXPECT_TRUE(parse("LX:LEXI SOAK 5 COLD").cold);
   EXPECT_EQ(parse(("LX:LEXI SOAK " + std::to_string(lexipoint::dev::config::kLexiSoakMax)).c_str()).verb, Verb::Lexi);
   for (const char* bad : {"LX:LEXI", "LX:LEXI ANALYZE", "LX:LEXI ANALYZE ko", "LX:LEXI SOAK 0", "LX:LEXI SOAK 51",
-                          "LX:LEXI SOAK x", "LX:LEXI ME 1", "LX:LEXI KEY lx_abc"}) {
+                          "LX:LEXI SOAK x", "LX:LEXI SOAK 5 WARM", "LX:LEXI ME 1", "LX:LEXI KEY lx_abc"}) {
     EXPECT_NE(parse(bad).error, nullptr) << bad;
     EXPECT_EQ(parse(bad).verb, Verb::None) << bad;
   }

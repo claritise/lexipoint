@@ -87,8 +87,8 @@ TEST(JsonReader, RejectsMalformedAndTruncated) {
 
 TEST(JsonReader, DepthIsLimited) {
   Recorder r;
-  const std::string deep(lexipoint::json::kMaxDepth + 1, '[');
-  EXPECT_EQ(lexipoint::json::read(deep + std::string(lexipoint::json::kMaxDepth + 1, ']'), r), Result::TooDeep);
-  const std::string ok(lexipoint::json::kMaxDepth, '[');
-  EXPECT_EQ(lexipoint::json::read(ok + std::string(lexipoint::json::kMaxDepth, ']'), r), Result::Ok);
+  const std::string deep(lexipoint::config::kJsonMaxDepth + 1, '[');
+  EXPECT_EQ(lexipoint::json::read(deep + std::string(lexipoint::config::kJsonMaxDepth + 1, ']'), r), Result::TooDeep);
+  const std::string ok(lexipoint::config::kJsonMaxDepth, '[');
+  EXPECT_EQ(lexipoint::json::read(ok + std::string(lexipoint::config::kJsonMaxDepth, ']'), r), Result::Ok);
 }

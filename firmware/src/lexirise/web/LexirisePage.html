@@ -163,9 +163,12 @@
 
   <script>
     const STATUS_TEXT = {
-      'unchecked': 'Not checked', 'no-key': 'No key', 'rejected': 'Key rejected',
-      'offline': 'No internet', 'error': 'Could not connect'
+      'unchecked': 'Not checked', 'checking': 'Checking…', 'no-key': 'No key', 'rejected': 'Key rejected',
+      'offline': 'No internet (it is checked again when the reader is online)', 'error': 'Could not connect'
     };
+    // The device checks a new key from its main loop, not inside the request, so the page polls.
+    const POLL_MS = 1000;
+    const POLL_LIMIT = 60;  // > the device's worst case for one call (WiFi + NTP + TLS + request)
     let state = null;
 
     function get(obj, path) { return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj); }
@@ -234,6 +237,17 @@
       });
     }
 
+    async function pollUntilSettled() {
+      for (let i = 0; i < POLL_LIMIT && state && state.status.state === 'checking'; i++) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        try {
+          const res = await fetch('/api/lexirise');
+          if (res.ok) render(await res.json());
+        } catch (e) { /* keep polling */ }
+      }
+      return state;
+    }
+
     async function send(url, body) {
       try {
         const res = await fetch(url, {
@@ -277,7 +291,7 @@
             // A new server needs the key pasted alongside it (settings.md §2).
             const key = document.getElementById('key').value.trim();
             send('/api/lexirise', key ? { baseUrl: value, key: key } : { baseUrl: value })
-              .then(d => { if (d) document.getElementById('key').value = ''; });
+              .then(d => { if (d) { document.getElementById('key').value = ''; pollUntilSettled(); } });
             return;
           }
           send('/api/lexirise', patchFor(el.dataset.field, value)).then(d => { if (d) showMessage('Saved.', true); });
@@ -296,19 +310,21 @@
       button.disabled = true;
       button.textContent = 'Checking…';
       const d = await send('/api/lexirise', { key: key });
-      button.disabled = false;
-      button.textContent = 'Save';
       if (d) {
         input.value = '';
-        showMessage(d.status.state === 'connected' ? 'Key saved and working.' : 'Key saved. ' + (STATUS_TEXT[d.status.state] || ''), d.status.state === 'connected');
+        const settled = await pollUntilSettled();
+        const st = settled.status.state;
+        showMessage(st === 'connected' ? 'Key saved and working.' : 'Key saved. ' + (STATUS_TEXT[st] || st), st === 'connected');
       }
+      button.disabled = false;
+      button.textContent = 'Save';
     });
 
     document.getElementById('test').addEventListener('click', async () => {
       const button = document.getElementById('test');
       button.disabled = true;
       button.textContent = 'Testing…';
-      await send('/api/lexirise/test');
+      if (await send('/api/lexirise/test')) await pollUntilSettled();
       button.disabled = false;
       button.textContent = 'Test connection';
     });
@@ -319,7 +335,7 @@
 
     buildToggles();
     wireFields();
-    fetch('/api/lexirise').then(r => r.json()).then(render)
+    fetch('/api/lexirise').then(r => r.json()).then(s => { render(s); pollUntilSettled(); })
       .catch(e => showMessage('Could not load settings: ' + e.message, false));
   </script>
 </body>

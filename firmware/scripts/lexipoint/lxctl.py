@@ -45,9 +45,12 @@ SHOT_TIMEOUT_S = 10.0  # > DevConfig kShotWriteDeadlineMs (3 s) plus the render 
 PORT_GLOBS = ("/dev/cu.usbmodem*", "/dev/ttyACM*")
 EDGE_INSET = 2  # px from an edge: satisfies any FreeInkUI edgeSwipe edge fraction
 ACTIVITY_WAIT_S = 10.0  # screen transitions (log line "Entering activity: <Name>")
-# LX:LEXI: one call can take WiFi join (6 s) + NTP (5 s) + handshake and reads (6 s each) on a cold start.
-LEXI_CALL_TIMEOUT_S = 30.0
+# LX:LEXI: the device bounds one call by kWifiConnectMs + kNtpWaitMs + 2 * kHttpTimeoutMs +
+# kRequestDeadlineMs (LexiriseConfig.h: 6 + 5 + 12 + 15 = 38 s); wait a little longer than that.
+LEXI_CALL_TIMEOUT_S = 45.0
 LEXI_SOAK_MAX = 50  # DevConfig kLexiSoakMax
+LEAK_BYTES_PER_CALL = 64  # a free-heap trend steeper than this, per call, fails the soak
+LEAK_MIN_SAMPLES = 5
 
 
 def find_port() -> str:
@@ -243,11 +246,22 @@ def parse_fields(line: str) -> dict[str, str]:
     return dict(tok.split("=", 1) for tok in line.split() if "=" in tok)
 
 
+def heap_slope(values: list[int]) -> float:
+    """Least-squares trend of free heap, in bytes per call (negative = losing memory)."""
+    n = len(values)
+    if n < 2:
+        return 0.0
+    mean_x = (n - 1) / 2
+    mean_y = sum(values) / n
+    num = sum((i - mean_x) * (v - mean_y) for i, v in enumerate(values))
+    den = sum((i - mean_x) ** 2 for i in range(n))
+    return num / den
+
+
 def heap_leaks(values: list[int]) -> bool:
-    """True for a monotonic loss: free heap never recovers across the run and ends lower (P1 gate)."""
-    if len(values) < 2:
-        return False
-    return all(b <= a for a, b in zip(values, values[1:])) and values[-1] < values[0]
+    """True when free heap trends down by more than LEAK_BYTES_PER_CALL per call (P1 gate: no
+    monotonic loss). A trend, not a strict series, so one noisy recovery can't hide a slow leak."""
+    return len(values) >= LEAK_MIN_SAMPLES and heap_slope(values) < -LEAK_BYTES_PER_CALL
 
 
 def lexi(h: Harness, args: list[str]) -> None:
@@ -260,20 +274,23 @@ def lexi(h: Harness, args: list[str]) -> None:
             print(line)
     elif sub == "soak":
         n = int(args[1]) if len(args) > 1 else 20
+        cold = len(args) > 2 and args[2].lower() == "cold"
         if not 1 <= n <= LEXI_SOAK_MAX:
             sys.exit(f"soak count must be 1..{LEXI_SOAK_MAX}")
-        lines = h.collect(f"LEXI SOAK {n}", "LX:LEXI analyze", LEXI_CALL_TIMEOUT_S * n)
+        lines = h.collect(f"LEXI SOAK {n}{' COLD' if cold else ''}", "LX:LEXI analyze", LEXI_CALL_TIMEOUT_S * n)
         for line in lines:
             print(line)
         fields = [parse_fields(line) for line in lines]
         failed = [f for f in fields if f.get("parsed") != "1"]
         heap = [int(f["heap_free"]) for f in fields if "heap_free" in f]
+        stack = [int(f["stack_free"]) for f in fields if "stack_free" in f]
         print(f"calls={len(fields)} failed={len(failed)} heap_first={heap[0] if heap else '-'} "
-              f"heap_last={heap[-1] if heap else '-'} heap_min={min(heap) if heap else '-'}")
+              f"heap_last={heap[-1] if heap else '-'} heap_min={min(heap) if heap else '-'} "
+              f"heap_trend={heap_slope(heap):+.0f}B/call stack_free_min={min(stack) if stack else '-'}")
         if failed or heap_leaks(heap):
-            sys.exit("soak FAILED" + (" (monotonic heap loss)" if heap_leaks(heap) else ""))
+            sys.exit("soak FAILED" + (" (free heap trending down)" if heap_leaks(heap) else ""))
     else:
-        sys.exit("usage: lexi me | analyze ja|zh | soak [n]")
+        sys.exit("usage: lexi me | analyze ja|zh | soak [n] [cold]")
 
 
 def main() -> None:

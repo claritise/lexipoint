@@ -17,6 +17,7 @@ namespace lexipoint::api {
 enum class ApiError {
   None,
   NotConfigured,  // no key, or an unusable base URL
+  NoWifi,         // no saved network, the join failed, or the radio is someone else's (hotspot)
   LowMemory,
   ClockNotSet,
   Network,  // connect failed or the connection dropped
@@ -44,8 +45,10 @@ ApiError classifyStatus(int status);
 
 class LexiriseClient {
  public:
-  LexiriseClient(net::Connection& connection, std::string userAgent)
-      : connection_(connection), userAgent_(std::move(userAgent)) {}
+  using Clock = unsigned long (*)();  // millis() on the device, a fake in tests
+
+  LexiriseClient(net::Connection& connection, std::string userAgent, Clock clock)
+      : connection_(connection), userAgent_(std::move(userAgent)), clock_(clock) {}
 
   // Points the client at a base URL and key. Closes the session if the endpoint changed. Returns
   // false (and the client stays unconfigured) for a non-https or malformed URL or an empty key.
@@ -53,7 +56,8 @@ class LexiriseClient {
   bool configured() const { return configured_; }
 
   // Sends one request. A reused keep-alive session that turns out to be stale (it fails before any
-  // response byte) is reopened and the request sent once more; nothing else is retried.
+  // response byte) is reopened and the request sent once more; nothing else is retried. Once a
+  // connection is open the whole request, retry included, gets config::kRequestDeadlineMs.
   ApiResponse send(const net::Request& request);
 
   void close() { connection_.close(); }
@@ -61,9 +65,13 @@ class LexiriseClient {
  private:
   enum class Attempt { Done, StaleSession };
   Attempt attempt(const net::Request& request, bool reused, ApiResponse& out);
+  uint32_t readTimeout() const;
 
   net::Connection& connection_;
   std::string userAgent_;
+  Clock clock_;
+  unsigned long deadlineMs_ = 0;
+  bool deadlineSet_ = false;
   net::Endpoint endpoint_;
   std::string apiKey_;
   bool configured_ = false;

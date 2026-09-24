@@ -86,6 +86,8 @@ TEST(ResponsesAnalyze, RejectsBrokenResponses) {
   EXPECT_EQ(parseAnalyze(R"({"occurrences":[{"word":"x","charStart":3,"charEnd":1}]})", r), ParseStatus::Malformed);
   EXPECT_EQ(parseAnalyze(R"({"occurrences":[{"word":"x","charStart":-1,"charEnd":1}]})", r), ParseStatus::Malformed);
   EXPECT_EQ(parseAnalyze(R"({"occurrences":[{"word":"x","charStart":0.5,"charEnd":1}]})", r), ParseStatus::Malformed);
+  EXPECT_EQ(parseAnalyze(R"({"occurrences":[{"word":"x","charEnd":1}]})", r), ParseStatus::Malformed);    // no start
+  EXPECT_EQ(parseAnalyze(R"({"occurrences":[{"word":"x","charStart":0}]})", r), ParseStatus::Malformed);  // no end
   const std::string truncated(kAnalyze, 120);
   EXPECT_EQ(parseAnalyze(truncated, r), ParseStatus::Malformed);
   EXPECT_TRUE(r.occurrences.empty());  // the output is untouched on failure

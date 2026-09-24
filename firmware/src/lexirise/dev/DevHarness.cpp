@@ -133,6 +133,9 @@ void memoryStats() {
 }
 
 #if LEXIRISE
+// Bytes of this task's stack never used so far (the loop task runs the TLS handshake and JSON parse).
+unsigned stackFree() { return static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)); }
+
 // LX:LEXI. Blocks the main loop for the call(s), as a lookup will; the key status is printed by name
 // only (never the account name or plan).
 void lexiAnalyze(const bool chinese, const int index) {
@@ -143,10 +146,11 @@ void lexiAnalyze(const bool chinese, const int index) {
   api::AnalyzeResult parsed;
   const bool parsedOk = response.ok() && api::parseAnalyze(response.body, parsed) == api::ParseStatus::Ok;
   const auto heap = HalMemory::getDefaultHeap();
-  logSerial.printf("LX:LEXI analyze %d %s status=%d occ=%u parsed=%d ms=%lu heap_free=%u heap_maxalloc=%u\n", index,
-                   api::apiErrorName(response.error), response.status, static_cast<unsigned>(parsed.occurrences.size()),
-                   parsedOk ? 1 : 0, ms, static_cast<unsigned>(heap.freeBytes),
-                   static_cast<unsigned>(heap.largestBlockBytes));
+  logSerial.printf(
+      "LX:LEXI analyze %d %s status=%d occ=%u parsed=%d ms=%lu heap_free=%u heap_maxalloc=%u stack_free=%u\n", index,
+      api::apiErrorName(response.error), response.status, static_cast<unsigned>(parsed.occurrences.size()),
+      parsedOk ? 1 : 0, ms, static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.largestBlockBytes),
+      stackFree());
   if (index != 0) return;  // the soak prints one line per call
   for (const auto& occ : parsed.occurrences) {
     logSerial.printf("LX:LEXI occ %u-%u word=%s lemma=%s reading=%s wordlike=%d\n",
@@ -159,7 +163,8 @@ void lexi(const Command& c) {
   switch (c.lexi) {
     case LexiAction::Me: {
       const auto status = service().checkKey();
-      logSerial.printf("LX:LEXI me %s %s\n", api::keyStateName(status.state), api::apiErrorName(status.error));
+      logSerial.printf("LX:LEXI me %s %s stack_free=%u\n", api::keyStateName(status.state),
+                       api::apiErrorName(status.error), stackFree());
       break;
     }
     case LexiAction::Analyze:
@@ -168,6 +173,7 @@ void lexi(const Command& c) {
     case LexiAction::Soak:
       for (int i = 1; i <= c.count; i++) {
         lexiAnalyze(false, i);
+        if (c.cold) service().releaseWifi();  // every call pays a WiFi join and a new TLS session
         gKeepAwake.renew(millis());
       }
       break;

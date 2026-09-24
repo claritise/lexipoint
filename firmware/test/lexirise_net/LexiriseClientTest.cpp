@@ -4,11 +4,11 @@
 #include <string>
 #include <vector>
 
+#include "Fakes.h"
 #include "lexirise/api/LexiriseClient.h"
 
 using lexipoint::api::ApiError;
 using lexipoint::api::LexiriseClient;
-using lexipoint::net::Connection;
 using lexipoint::net::Endpoint;
 using lexipoint::net::Method;
 using lexipoint::net::OpenError;
@@ -19,67 +19,9 @@ namespace {
 constexpr const char* kKey = "lx_TESTKEYtestkey0123456789";
 constexpr const char* kBase = "https://api.lexirise.app";
 
-// Scripted connection: each read() pops the next chunk; kClose means the peer closed, kStall a
-// timeout. open() results can be queued too.
-class FakeConnection : public Connection {
- public:
-  static constexpr const char* kClose = "\x01<close>";
-  static constexpr const char* kStall = "\x01<stall>";
-
-  std::deque<std::string> reads;
-  std::deque<OpenError> openResults;
-  bool failNextWrite = false;
-  bool open_ = false;
-  int opens = 0;
-  int closes = 0;
-  std::vector<std::string> written;
-
-  OpenError open(const Endpoint&) override {
-    opens++;
-    OpenError result = OpenError::None;
-    if (!openResults.empty()) {
-      result = openResults.front();
-      openResults.pop_front();
-    }
-    open_ = result == OpenError::None;
-    return result;
-  }
-  bool isOpen() override { return open_; }
-  bool writeAll(const char* data, size_t len) override {
-    if (failNextWrite) {
-      failNextWrite = false;
-      open_ = false;
-      return false;
-    }
-    written.emplace_back(data, len);
-    return true;
-  }
-  int read(char* buffer, size_t capacity, uint32_t) override {
-    if (reads.empty() || reads.front() == kClose) {
-      if (!reads.empty()) reads.pop_front();
-      open_ = false;
-      return -1;
-    }
-    if (reads.front() == kStall) {
-      reads.pop_front();
-      return 0;
-    }
-    std::string& chunk = reads.front();
-    const size_t n = std::min(capacity, chunk.size());
-    chunk.copy(buffer, n);
-    chunk.erase(0, n);
-    if (chunk.empty()) reads.pop_front();
-    return static_cast<int>(n);
-  }
-  void close() override {
-    if (open_) closes++;
-    open_ = false;
-  }
-};
-
-std::string ok(const std::string& body, const std::string& extra = "") {
-  return "HTTP/1.1 200 OK\r\n" + extra + "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
-}
+using lexipoint::fakes::FakeClock;
+using lexipoint::fakes::FakeConnection;
+std::string ok(const std::string& body, const std::string& extra = "") { return lexipoint::fakes::httpOk(body, extra); }
 
 const Request kMe{Method::Get, "/v1/me", ""};
 
@@ -87,7 +29,7 @@ const Request kMe{Method::Get, "/v1/me", ""};
 
 TEST(LexiriseClient, RefusesToSendUnconfigured) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   EXPECT_EQ(client.send(kMe).error, ApiError::NotConfigured);
   EXPECT_FALSE(client.configure("http://api.lexirise.app", kKey));
   EXPECT_FALSE(client.configure(kBase, ""));
@@ -97,7 +39,7 @@ TEST(LexiriseClient, RefusesToSendUnconfigured) {
 
 TEST(LexiriseClient, SendsAndReusesKeepAliveSession) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   ASSERT_TRUE(client.configure(kBase, kKey));
   conn.reads = {ok("{\"a\":1}"), ok("{\"b\":2}")};
   auto first = client.send(kMe);
@@ -113,7 +55,7 @@ TEST(LexiriseClient, SendsAndReusesKeepAliveSession) {
 
 TEST(LexiriseClient, ConnectionCloseEndsTheSession) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   conn.reads = {ok("{}", "Connection: close\r\n"), ok("{}")};
   EXPECT_TRUE(client.send(kMe).ok());
@@ -124,7 +66,7 @@ TEST(LexiriseClient, ConnectionCloseEndsTheSession) {
 
 TEST(LexiriseClient, StaleReusedSessionIsRetriedOnce) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   conn.reads = {ok("{}")};
   ASSERT_TRUE(client.send(kMe).ok());
@@ -144,7 +86,7 @@ TEST(LexiriseClient, StaleReusedSessionIsRetriedOnce) {
 
 TEST(LexiriseClient, FreshSessionFailuresAreNotRetried) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   conn.reads = {FakeConnection::kClose, ok("{}")};
   EXPECT_EQ(client.send(kMe).error, ApiError::Network);
@@ -153,7 +95,7 @@ TEST(LexiriseClient, FreshSessionFailuresAreNotRetried) {
 
 TEST(LexiriseClient, MapsOpenErrors) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   const std::pair<OpenError, ApiError> cases[] = {{OpenError::LowMemory, ApiError::LowMemory},
                                                   {OpenError::ClockNotSet, ApiError::ClockNotSet},
@@ -168,7 +110,7 @@ TEST(LexiriseClient, MapsOpenErrors) {
 
 TEST(LexiriseClient, MapsStatuses) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   const std::pair<const char*, ApiError> cases[] = {
       {"HTTP/1.1 401 Unauthorized\r\nContent-Length: 2\r\n\r\n{}", ApiError::Unauthorized},
@@ -186,7 +128,7 @@ TEST(LexiriseClient, MapsStatuses) {
 
 TEST(LexiriseClient, RateLimitCarriesRetryAfter) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   conn.reads = {"HTTP/1.1 429 Slow\r\nRetry-After: 42\r\nContent-Length: 0\r\n\r\n"};
   auto r = client.send(kMe);
@@ -198,7 +140,7 @@ TEST(LexiriseClient, RateLimitCarriesRetryAfter) {
 
 TEST(LexiriseClient, TimeoutTruncationAndGarbage) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   conn.reads = {"HTTP/1.1 200 OK\r\n", FakeConnection::kStall};
   EXPECT_EQ(client.send(kMe).error, ApiError::Timeout);
@@ -214,7 +156,7 @@ TEST(LexiriseClient, TimeoutTruncationAndGarbage) {
 
 TEST(LexiriseClient, ChangingEndpointClosesTheSession) {
   FakeConnection conn;
-  LexiriseClient client(conn, "UA");
+  LexiriseClient client(conn, "UA", FakeClock::now);
   client.configure(kBase, kKey);
   conn.reads = {ok("{}")};
   client.send(kMe);
@@ -223,4 +165,30 @@ TEST(LexiriseClient, ChangingEndpointClosesTheSession) {
   EXPECT_TRUE(conn.isOpen());
   client.configure("https://staging.example.com", kKey);
   EXPECT_FALSE(conn.isOpen());
+}
+
+TEST(LexiriseClient, TricklingServerHitsTheRequestDeadline) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  // One byte per read, 1 s per read: a 40-byte response would take 40 s.
+  conn.reads = {ok(std::string(20, 'x'))};
+  conn.maxBytesPerRead = 1;
+  conn.msPerRead = 1000;
+  const unsigned long started = FakeClock::nowMs;
+  EXPECT_EQ(client.send(kMe).error, ApiError::Timeout);
+  EXPECT_LE(FakeClock::nowMs - started, lexipoint::config::kRequestDeadlineMs + 1000);
+  EXPECT_FALSE(conn.isOpen());
+}
+
+TEST(LexiriseClient, StaleRetryKeepsTheSameDeadline) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  conn.reads = {ok("{}")};
+  ASSERT_TRUE(client.send(kMe).ok());
+  // The stale attempt burns most of the budget before the close; the retry only gets what's left.
+  conn.msPerRead = lexipoint::config::kRequestDeadlineMs - 500;
+  conn.reads = {FakeConnection::kClose, "HTTP/1.1 200 OK\r\n", "Content-Length: 2\r\n\r\n{}"};
+  EXPECT_EQ(client.send(kMe).error, ApiError::Timeout);
 }

@@ -36,6 +36,10 @@ LoadOutcome SettingsStore::load() {
     case SettingsFiles::ReadStatus::TooLarge:
     case SettingsFiles::ReadStatus::Error:
     default:
+      // Defaults in memory, and the unreadable file moved aside (replacing an older one) so the first
+      // save can't overwrite what may be the user's only copy of their key and settings.
+      if (files_.exists(config::kSettingsBadPath)) files_.remove(config::kSettingsBadPath);
+      files_.rename(config::kSettingsPath, config::kSettingsBadPath);
       return LoadOutcome::Unreadable;
   }
 

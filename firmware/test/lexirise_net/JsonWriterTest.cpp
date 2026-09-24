@@ -51,4 +51,6 @@ TEST(JsonWriter, BuildsFlatObjects) {
                                .str();
   EXPECT_EQ(body, R"({"text":"彼は\"走った\"","language":"ja","proficiency":1,"fast":false,"tags":["xteink","a\"b"]})");
   EXPECT_EQ(JsonObject().add("tags", std::vector<std::string>{}).str(), R"({"tags":[]})");
+  EXPECT_EQ(JsonObject().add("n", std::vector<int>{0, 5}).add("o", JsonObject().add("a", true)).addNull("z").str(),
+            R"({"n":[0,5],"o":{"a":true},"z":null})");
 }

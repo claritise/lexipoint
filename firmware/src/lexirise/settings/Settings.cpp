@@ -13,7 +13,6 @@ namespace {
 
 // UTF-8 bytes of the mask character "•" (U+2022).
 constexpr const char* kMaskDot = "\xE2\x80\xA2";
-constexpr int kMaskDots = 8;
 
 std::string_view trim(std::string_view s) {
   while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.remove_prefix(1);
@@ -326,7 +325,7 @@ std::string serializeSettings(const Settings& s) {
 std::string maskApiKey(std::string_view key) {
   if (key.empty()) return {};
   std::string out(config::kApiKeyPrefix);
-  for (int i = 0; i < kMaskDots; i++) out.append(kMaskDot);
+  for (int i = 0; i < config::kMaskedKeyDots; i++) out.append(kMaskDot);
   if (key.size() > config::kMaskedKeyTail + std::string_view(config::kApiKeyPrefix).size()) {
     out.append(key.substr(key.size() - config::kMaskedKeyTail));
   }

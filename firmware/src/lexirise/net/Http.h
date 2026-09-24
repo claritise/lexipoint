@@ -85,6 +85,7 @@ class ResponseParser {
   std::string line_;
   size_t headerBytes_ = 0;
   bool sawStatus_ = false;
+  int interimResponses_ = 0;
 
   int status_ = 0;
   bool keepAlive_ = false;

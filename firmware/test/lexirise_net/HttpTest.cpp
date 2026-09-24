@@ -178,3 +178,12 @@ TEST(HttpResponse, HeadResponseHasNoBody) {
   p.feed(wire.data(), wire.size());
   EXPECT_TRUE(p.done());
 }
+
+TEST(HttpResponse, EndlessInterimResponsesAreMalformed) {
+  std::string wire;
+  for (int i = 0; i <= config::kHttpMaxInterimResponses; i++) wire += "HTTP/1.1 100 Continue\r\n\r\n";
+  EXPECT_EQ(parse(wire + "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").failure(), ResponseParser::Failure::Malformed);
+  std::string allowed;
+  for (int i = 0; i < config::kHttpMaxInterimResponses; i++) allowed += "HTTP/1.1 100 Continue\r\n\r\n";
+  EXPECT_TRUE(parse(allowed + "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").done());
+}

@@ -16,42 +16,17 @@ constexpr const char* kLogTag = "LXW";
 
 }  // namespace
 
-void WifiSession::registerEvents() {
-  if (eventsRegistered_) return;
-  eventsRegistered_ = true;
-  // Runs on the network event task: only touches atomics, the main task acts on them in tick().
-  WiFi.onEvent([this](const arduino_event_id_t event, arduino_event_info_t) {
-    switch (phase_.load()) {
-      case Phase::Connecting:
-        if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) phase_.store(Phase::Idle);
-        return;
-      case Phase::Disconnecting:
-        if (event == ARDUINO_EVENT_WIFI_STA_STOP) phase_.store(Phase::Idle);
-        return;
-      case Phase::Idle:
-      default:
-        if (event == ARDUINO_EVENT_WIFI_STA_CONNECTED || event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED ||
-            event == ARDUINO_EVENT_WIFI_STA_STOP) {
-          foreignEvent_.store(true);
-        }
-        return;
-    }
-  });
-}
-
-// Bounded: if a terminal event never comes (driver quirk), give up waiting and treat the transition
-// as over, so later foreign events are still seen.
-void WifiSession::waitForPhaseIdle() {
-  const unsigned long started = millis();
-  while (phase_.load() != Phase::Idle && millis() - started < config::kWifiEventSettleMs) pollWait(config::kWifiPollMs);
-  phase_.store(Phase::Idle);
-}
-
 WifiResult WifiSession::ensureUp() {
-  registerEvents();
-  if (WiFi.status() == WL_CONNECTED) {
-    touch();
-    return WifiResult::Up;
+  switch (decideEnsureUp(WiFi.status() == WL_CONNECTED, WiFi.getMode() == WIFI_MODE_NULL)) {
+    case WifiAction::UseExisting:
+      touch();
+      return WifiResult::Up;
+    case WifiAction::Busy:
+      LOG_INF(kLogTag, "WiFi is in use by something else, not touching it");
+      return WifiResult::Busy;
+    case WifiAction::Join:
+    default:
+      break;
   }
 
   WIFI_STORE.loadFromFile();  // cheap, and picks up a network added since boot
@@ -65,7 +40,6 @@ WifiResult WifiSession::ensureUp() {
   }
 
   // Same recipe as WifiSelectionActivity::attemptConnection (credentials live in the store, not NVS).
-  phase_.store(Phase::Connecting);
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);
   WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
@@ -80,45 +54,37 @@ WifiResult WifiSession::ensureUp() {
     pollWait(config::kWifiPollMs);
   }
   const bool up = WiFi.status() == WL_CONNECTED;
-  if (up) {
-    waitForPhaseIdle();
-    WiFi.setSleep(false);  // modem sleep shows up as HTTP timeouts (KOSync does the same)
-    foreignEvent_.store(false);
-    lease_.acquired(millis());
-  } else {
+  // Ours from here, including a failed attempt's radio (tearDown turns it back off).
+  lease_.acquired(millis());
+  if (!up) {
     tearDown();
+    LOG_INF(kLogTag, "WiFi failed after %lu ms", millis() - started);
+    return WifiResult::Failed;
   }
-  LOG_INF(kLogTag, up ? "WiFi up in %lu ms" : "WiFi failed after %lu ms", millis() - started);
-  return up ? WifiResult::Up : WifiResult::Failed;
+  WiFi.setSleep(false);  // modem sleep shows up as HTTP timeouts (KOSync does the same)
+  LOG_INF(kLogTag, "WiFi up in %lu ms", millis() - started);
+  return WifiResult::Up;
 }
 
 void WifiSession::touch() { lease_.used(millis()); }
 
-void WifiSession::tick(const int idleMin) {
-  if (foreignEvent_.exchange(false)) lease_.lost();
-  if (lease_.expired(millis(), idleMin)) {
-    LOG_INF(kLogTag, "WiFi idle, turning it off");
-    tearDown();
-  }
+bool WifiSession::tick(const int idleMin) {
+  if (!lease_.expired(millis(), idleMin)) return false;
+  LOG_INF(kLogTag, "WiFi idle, turning it off");
+  tearDown();
+  return true;
 }
 
-void WifiSession::release() {
-  if (foreignEvent_.exchange(false)) lease_.lost();
-  if (lease_.owned()) tearDown();
+bool WifiSession::release() {
+  if (!lease_.owned()) return false;
+  tearDown();
+  return true;
 }
 
 void WifiSession::tearDown() {
-  phase_.store(Phase::Disconnecting);  // our own disconnect is not a foreign event
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  waitForPhaseIdle();
-  foreignEvent_.store(false);
   lease_.lost();
-}
-
-WifiSession& wifiSession() {
-  static WifiSession session;
-  return session;
 }
 
 }  // namespace lexipoint::net

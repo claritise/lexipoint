@@ -114,6 +114,29 @@ JsonObject& JsonObject::add(const std::string_view key, const bool value) {
   return *this;
 }
 
+JsonObject& JsonObject::add(const std::string_view key, const std::vector<int>& values) {
+  this->key(key);
+  body_ += '[';
+  for (size_t i = 0; i < values.size(); i++) {
+    if (i > 0) body_ += ',';
+    body_ += std::to_string(values[i]);
+  }
+  body_ += ']';
+  return *this;
+}
+
+JsonObject& JsonObject::add(const std::string_view key, const JsonObject& nested) {
+  this->key(key);
+  body_ += nested.str();
+  return *this;
+}
+
+JsonObject& JsonObject::addNull(const std::string_view key) {
+  this->key(key);
+  body_ += "null";
+  return *this;
+}
+
 JsonObject& JsonObject::add(const std::string_view key, const std::vector<std::string>& values) {
   this->key(key);
   body_ += '[';

@@ -108,7 +108,7 @@ class Reader {
   }
 
   bool object(const size_t depth) {
-    if (depth >= kMaxDepth) {
+    if (depth >= config::kJsonMaxDepth) {
       tooDeep_ = true;
       return false;
     }
@@ -143,7 +143,7 @@ class Reader {
   }
 
   bool array(const size_t depth) {
-    if (depth >= kMaxDepth) {
+    if (depth >= config::kJsonMaxDepth) {
       tooDeep_ = true;
       return false;
     }

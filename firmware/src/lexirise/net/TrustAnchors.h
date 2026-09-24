@@ -3,11 +3,12 @@
 // Trust anchors for the Lexirise TLS client (lexirise-client.md §1). Only these roots are trusted:
 // api.lexirise.app chains to ISRG Root X2 (ECDSA P-384), which is cross-signed by ISRG Root X1
 // (RSA 4096), so both are pinned to cover either path the server sends.
-//   ISRG Root X1  SHA-256
-//   96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6  (expires
-//   2035-06-04) ISRG Root X2  SHA-256
-//   69:72:9B:8E:15:A8:6E:FC:17:7A:57:AF:B7:17:1D:FC:64:AD:D2:8C:2F:CA:8C:F1:50:7E:34:45:3C:CB:14:70  (expires
-//   2040-09-17)
+// clang-format off
+//   ISRG Root X1  expires 2035-06-04  SHA-256
+//     96:BC:EC:06:26:49:76:F3:74:60:77:9A:CF:28:C5:A7:CF:E8:A3:C0:AA:E1:1A:8F:FC:EE:05:C0:BD:DF:08:C6
+//   ISRG Root X2  expires 2040-09-17  SHA-256
+//     69:72:9B:8E:15:A8:6E:FC:17:7A:57:AF:B7:17:1D:FC:64:AD:D2:8C:2F:CA:8C:F1:50:7E:34:45:3C:CB:14:70
+// clang-format on
 // A base_url override on another CA fails verification by design (settings.md §3).
 
 namespace lexipoint::net {

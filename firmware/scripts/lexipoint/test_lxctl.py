@@ -148,11 +148,18 @@ class LexiCommands(unittest.TestCase):
         self.assertEqual(f["status"], "200")
         self.assertEqual(f["heap_free"], "51000")
 
-    def test_heap_leaks_only_on_monotonic_net_loss(self):
-        self.assertTrue(lxctl.heap_leaks([100, 99, 99, 98]))
-        self.assertFalse(lxctl.heap_leaks([100, 99, 101, 98]))  # recovers in between
-        self.assertFalse(lxctl.heap_leaks([100, 100, 100]))     # flat
-        self.assertFalse(lxctl.heap_leaks([100]))
+    def test_heap_slope(self):
+        self.assertAlmostEqual(lxctl.heap_slope([100, 90, 80, 70]), -10.0)
+        self.assertAlmostEqual(lxctl.heap_slope([5, 5, 5]), 0.0)
+        self.assertEqual(lxctl.heap_slope([1]), 0.0)
+
+    def test_heap_leaks_on_a_trend_not_noise(self):
+        steady = [50000, 50400, 49800, 50200, 49900, 50100, 50000]
+        self.assertFalse(lxctl.heap_leaks(steady))
+        # A slow leak with one noisy recovery in the middle is still a leak.
+        leaking = [50000, 49800, 49600, 49900, 49200, 49000, 48800, 48600]
+        self.assertTrue(lxctl.heap_leaks(leaking))
+        self.assertFalse(lxctl.heap_leaks([50000, 40000]))  # too few samples to call
 
 
 LEXIRISE_FLAG = re.compile(r"-D\s*LEXIRISE=1\b")

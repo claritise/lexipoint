@@ -61,6 +61,8 @@ class AnalyzeVisitor final : public json::Visitor {
       out_.occurrences.emplace_back();
       inOccurrence_ = true;
       sawLemma_ = false;
+      sawStart_ = false;
+      sawEnd_ = false;
       sawOccurrences_ = true;
     } else if (isArray && path.matches({"occurrences"})) {
       sawOccurrences_ = true;
@@ -71,7 +73,7 @@ class AnalyzeVisitor final : public json::Visitor {
     if (isArray || !inOccurrence_ || !path.matches({"occurrences", "[]"})) return;
     Occurrence& occ = out_.occurrences.back();
     if (!sawLemma_) occ.lemma = occ.word;
-    if (occ.word.empty() || occ.charEnd < occ.charStart) malformed_ = true;
+    if (occ.word.empty() || !sawStart_ || !sawEnd_ || occ.charEnd < occ.charStart) malformed_ = true;
     inOccurrence_ = false;
   }
 
@@ -94,9 +96,11 @@ class AnalyzeVisitor final : public json::Visitor {
     } else if (field == "lemmaEntryId") {
       toUint32(type, text, occ.lemmaEntryId);
     } else if (field == "charStart") {
-      if (!toUint32(type, text, occ.charStart)) malformed_ = true;
+      sawStart_ = toUint32(type, text, occ.charStart);
+      if (!sawStart_) malformed_ = true;
     } else if (field == "charEnd") {
-      if (!toUint32(type, text, occ.charEnd)) malformed_ = true;
+      sawEnd_ = toUint32(type, text, occ.charEnd);
+      if (!sawEnd_) malformed_ = true;
     } else if (field == "isWordLike") {
       occ.wordLike = type == Type::Bool && text == "true";
     }
@@ -121,6 +125,8 @@ class AnalyzeVisitor final : public json::Visitor {
   AnalyzeResult& out_;
   bool inOccurrence_ = false;
   bool sawLemma_ = false;
+  bool sawStart_ = false;
+  bool sawEnd_ = false;
 };
 
 }  // namespace

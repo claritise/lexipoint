@@ -33,11 +33,11 @@ TEST(KeyCheck, UnreadableSuccessIsAnError) {
 TEST(KeyCheck, MapsEveryError) {
   const std::pair<ApiError, KeyState> cases[] = {
       {ApiError::NotConfigured, KeyState::NoKey}, {ApiError::Unauthorized, KeyState::Rejected},
-      {ApiError::Network, KeyState::Offline},     {ApiError::Timeout, KeyState::Offline},
-      {ApiError::ClockNotSet, KeyState::Offline}, {ApiError::Tls, KeyState::Error},
-      {ApiError::LowMemory, KeyState::Error},     {ApiError::RateLimited, KeyState::Error},
-      {ApiError::Server, KeyState::Error},        {ApiError::Http, KeyState::Error},
-      {ApiError::Malformed, KeyState::Error}};
+      {ApiError::NoWifi, KeyState::Offline},      {ApiError::Network, KeyState::Offline},
+      {ApiError::Timeout, KeyState::Offline},     {ApiError::ClockNotSet, KeyState::Offline},
+      {ApiError::Tls, KeyState::Error},           {ApiError::LowMemory, KeyState::Error},
+      {ApiError::RateLimited, KeyState::Error},   {ApiError::Server, KeyState::Error},
+      {ApiError::Http, KeyState::Error},          {ApiError::Malformed, KeyState::Error}};
   for (const auto& [error, state] : cases) {
     EXPECT_EQ(keyStatusFrom(response(error)).state, state) << lexipoint::api::apiErrorName(error);
   }
