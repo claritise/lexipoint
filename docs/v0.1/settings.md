@@ -129,14 +129,17 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
   through **Same as CrossPoint** (the global dictionary) and then each StarDict folder on the card.
 - **API key:** the keyboard's password mode, starting empty (the device never shows the stored key; an
   empty entry keeps it). A value that isn't a key shows `Not a Lexirise key` on the key row until the next
-  edit. A new key is checked at once, from the next loop pass (the keyboard's result runs mid
+  edit. Any other edit that fails shows `Couldn't save` on its own row the same way. A new key is checked at once, from the next loop pass (the keyboard's result runs mid
   activity switch): the Account row reads `Checking...`, then the result.
 - **Account:** `<name> · <plan>` once connected; otherwise `Not set`, `Not checked`, `Checking...`,
-  `Key rejected`, `No network` or `Could not connect` (`settings_screen::accountLine`). `/v1/me` gives no
+  `Key rejected`, `No network` or `Could not connect` (`settings_screen::accountLine`; `Connected` alone if the account has no name or plan). `/v1/me` gives no
   key name, so the `key "lexipoint"` part of §1's example isn't shown.
 - **Test connection** runs the check there and then (the Account row shows `Checking...` first; a slow
   network blocks the screen for up to one call), then gives back any WiFi Lexipoint brought up: Settings
   isn't reading (`offline-and-errors.md` §5).
+- **A tap means the row that was drawn at it**: `listCount()` and taps read the rows of the last built
+  frame (`drawnRows_`, published by `buildScreen` on the render task under a mutex), so a second tap
+  while a toggle's rows collapse never lands on the row that moved up (`settings_screen::rowAt`).
 - **Offline dictionary** (`lookup/StarDictChoice.h`): a tap uses its language's own folder when one is
   chosen, else CrossPoint's Dictionary setting. The language is what the tapped text is
   (`LanguageDecision::detected`), so the choice **still counts while that language's Lexirise lookups are

@@ -258,16 +258,24 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   `LiveOutcome::lookUpAt` → `AfterCard::LookUpAt`), and word select looks up the word there on its next
   `loop()`. The card writes its queued saves first, as on any close. On the card itself or over the detail
   view (which covers the page) a long-press does nothing, and so it does when the reader's page isn't
-  drawn under the card (a landscape book, whose page is laid out in other coordinates). A long-press on
+  drawn under the card (a landscape book, whose page is laid out in other coordinates) and on the bench.
+  The card always takes (consumes) a long-press, so the finger's lift is never also a tap on it. A long-press on
   no word closes the card as a tap outside would. An unsent save is still said first (`UnsentSave`).
 - **Swipes** (`popup-ui.md` §3.2, deferred from P4): `CardController::swipe`: up on the card opens the
   detail view, down goes back to the card and from the card closes it, left / right step the detail view's
   tabs (stopping at Meaning and ⋯). A swipe only counts when it starts on the card
-  (`handleInput` matches its start against the frame on screen, like a tap) and at least
-  `config::kCardSwipeEdgeMarginPx` (85 px, ~10 mm) inside the left, top and bottom edges
-  (`swipeClearOfEdges`); the left-edge Back swipe stays Back. The start point comes from
-  `MappedInputManager::peekSwipe` (hook). `lxctl card-gestures` drives them on the bench card.
-- **Each language's own offline dictionary** (`settings.md` §1b): `lookup::starDictFolder`.
+  (`handleInput` matches its start against the frame on screen, like a tap), at least
+  `config::kCardSwipeEdgeMarginPx` (85 px, ~10 mm) inside the left, top and bottom edges, and when the
+  SDK wouldn't read it as an edge gesture (`fui::edgeSwipe`, its own bands: a right swipe starting in the
+  left quarter is Back, a down swipe from the top 14 % the frontlight panel, an up swipe from the bottom
+  14 % the reader menu or Home). So a "previous tab" swipe must start right of x = 120
+  (`swipeClearOfEdges`). Both ends come from `MappedInputManager::peekSwipe` (hook), and the direction is
+  the SDK's dominant-axis rule. `lxctl card-gestures` drives them on the bench card.
+- **Each language's own offline dictionary** (`settings.md` §1b): `lookup::starDictFolder`. The tap is
+  only described (sentence and language) when Lexirise is asked or a language has its own dictionary, so
+  a plain StarDict lookup stays upstream's. A language's own dictionary makes the long-press a lookup
+  (`lookup::anyStarDict`) unless the book's override or metadata names the other language; an untagged
+  or non-CJK-tagged book counts, as it does for Lexirise.
 
 ## 6. Left/Right on the card
 
