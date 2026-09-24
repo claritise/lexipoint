@@ -10,20 +10,16 @@
 namespace lexipoint::web {
 namespace {
 
-// Only the first character matters to the rule, so a short buffer is enough even for long names.
-constexpr size_t kNameProbeBytes = 16;
-
-std::optional<std::string> longNameOnCard(const std::string_view prefix) {
+NameLookupResult lookupOnCard(const std::string_view prefix) {
   const std::string path(prefix);
+  if (!Storage.exists(path.c_str())) return {};  // Missing
   HalFile entry = Storage.open(path.c_str());
-  if (!entry) return std::nullopt;
-  char name[kNameProbeBytes] = {};
-  const size_t len = entry.getName(name, sizeof(name));
-  return std::string(name, len < sizeof(name) ? len : sizeof(name) - 1);
+  if (!entry) return {NameLookupResult::Kind::Unreadable, {}};
+  return readEntryName([&entry](char* name, const size_t size) { return entry.getName(name, size); });
 }
 
 }  // namespace
 
-bool isHiddenOnCard(const char* path) { return isHiddenPath(path, longNameOnCard); }
+bool isHiddenOnCard(const char* path) { return isHiddenPath(path, lookupOnCard); }
 
 }  // namespace lexipoint::web

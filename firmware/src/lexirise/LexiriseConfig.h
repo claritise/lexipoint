@@ -15,6 +15,8 @@ constexpr const char* kSettingsTmpPath = "/.lexirise/config.ini.tmp";
 constexpr const char* kSettingsBackupPath = "/.lexirise/config.ini.bak";
 constexpr const char* kSettingsBadPath = "/.lexirise/config.ini.bad";  // an unreadable file, moved aside
 constexpr size_t kSettingsMaxBytes = 4096;  // a hand-edited file larger than this is rejected
+// The longest FAT/exFAT long name in UTF-8: 255 UTF-16 units, up to 3 bytes each (web/HiddenPath.h).
+constexpr size_t kMaxFatNameBytes = 255 * 3;
 
 // Lexirise API.
 constexpr const char* kDefaultBaseUrl = "https://api.lexirise.app";

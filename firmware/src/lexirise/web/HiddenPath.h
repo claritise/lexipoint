@@ -10,18 +10,27 @@
 // "~N" tail: only segments containing '~' can be aliases, and only those are looked up on the card.
 
 #include <functional>
-#include <optional>
 #include <string>
 #include <string_view>
 
+#include "lexirise/LexiriseConfig.h"
+
 namespace lexipoint::web {
 
-// Given a path prefix ("/LEXIRI~1"), the entry's real (long) name, or nullopt if it doesn't exist.
-using NameLookup = std::function<std::optional<std::string>(std::string_view prefix)>;
+// What the card says about a path prefix ("/LEXIRI~1").
+struct NameLookupResult {
+  enum class Kind {
+    Missing,     // no such entry: it can't be an alias (the request 404s, or creates a new name)
+    Found,       // `name` is the entry's real (long) name
+    Unreadable,  // it exists but its name couldn't be read: refused, to be safe
+  };
+  Kind kind = Kind::Missing;
+  std::string name;
+};
+using NameLookup = std::function<NameLookupResult(std::string_view prefix)>;
 
 // True if a segment of `path` is hidden as typed ("/.lexirise/config.ini", "/a/.x/b", "/.."; not
-// "/a.b/c"), or, given a lookup, is a short-name alias of a hidden entry. An alias that can't be
-// resolved is refused too: that costs a 403 instead of a 404, never access.
+// "/a.b/c"), or, given a lookup, is a short-name alias of a hidden entry.
 inline bool isHiddenPath(const std::string_view path, const NameLookup& lookup = nullptr) {
   size_t start = 0;
   while (start < path.size()) {
@@ -34,12 +43,25 @@ inline bool isHiddenPath(const std::string_view path, const NameLookup& lookup =
     const std::string_view segment = path.substr(start, end - start);
     if (segment.front() == '.') return true;
     if (lookup && segment.find('~') != std::string_view::npos) {
-      const std::optional<std::string> name = lookup(path.substr(0, end));
-      if (!name || name->empty() || name->front() == '.') return true;
+      const NameLookupResult entry = lookup(path.substr(0, end));
+      if (entry.kind == NameLookupResult::Kind::Unreadable) return true;
+      if (entry.kind == NameLookupResult::Kind::Found && (entry.name.empty() || entry.name.front() == '.')) {
+        return true;
+      }
     }
     start = end + 1;
   }
   return false;
+}
+
+// Reads an open entry's long name through a getName(buffer, size)-style call (SdFat's FsFile::getName
+// returns 0 and an empty name when the buffer is too small, so the buffer fits the longest FAT name).
+inline NameLookupResult readEntryName(const std::function<size_t(char*, size_t)>& getName) {
+  std::string buffer(config::kMaxFatNameBytes + 1, '\0');
+  const size_t len = getName(buffer.data(), buffer.size());
+  if (len == 0 || len >= buffer.size()) return {NameLookupResult::Kind::Unreadable, {}};
+  buffer.resize(len);
+  return {NameLookupResult::Kind::Found, std::move(buffer)};
 }
 
 // The device's check against the SD card (HiddenPathHal.cpp).
