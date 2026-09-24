@@ -12,6 +12,9 @@
 #include <algorithm>
 
 #include "FontCacheManager.h"
+#if LEXIRISE
+#include "RefreshStrength.h"  // LEXIPOINT
+#endif
 
 namespace {
 
@@ -1688,7 +1691,13 @@ void GfxRenderer::invertScreen() const {
 HalDisplay::RefreshMode GfxRenderer::applyPromotedRefresh(const HalDisplay::RefreshMode refreshMode) const {
   if (!promotedRefreshPending_) return refreshMode;
   promotedRefreshPending_ = false;
+#if LEXIRISE
+  // LEXIPOINT: a promotion never weakens the refresh asked for (the Lexirise card's half refresh on
+  // dismiss must not turn the reader's due full refresh into a half one).
+  return strongerRefresh(refreshMode, promotedRefresh_, HalDisplay::FULL_REFRESH, HalDisplay::HALF_REFRESH);
+#else
   return promotedRefresh_;
+#endif
 }
 
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {

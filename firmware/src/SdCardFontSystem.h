@@ -32,6 +32,13 @@ class SdCardFontSystem {
   /// Non-const access to the registry (for FontInstaller).
   SdCardFontRegistry& registry() { return registry_; }
 
+#if LEXIRISE
+  /// LEXIPOINT: the loaded SD family at another point size (the Lexirise card's word, readings and
+  /// sentences), loading that file if it isn't yet. 0 when no SD family is loaded or it has no file at
+  /// that size. Call under RenderLock: it can change the renderer's font map.
+  int familyFontIdAt(GfxRenderer& renderer, uint8_t pointSize);
+#endif
+
   /// Mark the registry as needing re-discovery.
   /// Thread-safe: can be called from the web server task.
   void markRegistryDirty() { registryDirty_.store(true, std::memory_order_release); }

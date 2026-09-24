@@ -21,7 +21,11 @@
 #if LEXIRISE
 #include "lexirise/LexiriseService.h"
 #include "lexirise/api/Responses.h"
+#include "lexirise/card/BenchFixtures.h"
+#include "lexirise/card/LexiriseCardActivity.h"
 #endif
+
+extern MappedInputManager mappedInputManager;  // main.cpp (LX:LEXI CARD pushes the bench with it)
 
 namespace lexipoint::dev {
 namespace {
@@ -176,6 +180,11 @@ void lexi(const Command& c) {
         if (c.cold) service().releaseWifi();  // every call pays a WiFi join and a new TLS session
         gKeepAwake.renew(millis());
       }
+      break;
+    case LexiAction::Card:  // the card bench (P4): the reference's fixtures, phases on a timer
+      activityManager.pushActivity(std::make_unique<card::LexiriseCardActivity>(
+          *gRenderer, mappedInputManager, c.chinese ? card::benchChinese() : card::benchJapanese(),
+          card::LexiriseCardActivity::Options{c.low, c.kana}));
       break;
   }
   ok(Verb::Lexi);

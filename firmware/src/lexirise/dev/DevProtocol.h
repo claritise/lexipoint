@@ -26,12 +26,12 @@ enum class Verb {
   Sync,
   Awake,
   Reboot,
-  Lexi,              // LX:LEXI ME | ANALYZE ja|zh | SOAK n: drives the Lexirise client (P1 gate)
+  Lexi,              // LX:LEXI ME | ANALYZE ja|zh | SOAK n: the Lexirise client (P1); CARD ja|zh [LOW]: the bench (P4)
   LegacyScreenshot,  // upstream "CMD:SCREENSHOT", kept working
 };
 
 enum class ButtonName { Left, Right, Power };
-enum class LexiAction { Me, Analyze, Soak };
+enum class LexiAction { Me, Analyze, Soak, Card };
 
 struct Command {
   Verb verb = Verb::None;
@@ -40,7 +40,9 @@ struct Command {
   int ms = config::kButtonDefaultMs;  // buttons, clamped to [kButtonMinMs, kButtonMaxMs]
   AwakeMode awake = AwakeMode::Lease;
   LexiAction lexi = LexiAction::Me;
-  bool chinese = false;         // LEXI ANALYZE language
+  bool chinese = false;         // LEXI ANALYZE / CARD language
+  bool low = false;             // LEXI CARD: the sentence low on the page (D17)
+  bool kana = false;            // LEXI CARD … KANA: opens in kana, never saves the reading (card-smoke)
   int count = 0;                // LEXI SOAK calls, in [1, config::kLexiSoakMax]
   bool cold = false;            // LEXI SOAK n COLD: WiFi and TLS torn down between calls
   const char* error = nullptr;  // set when an LX: line is malformed; the verb is None

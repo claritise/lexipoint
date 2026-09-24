@@ -120,7 +120,17 @@ void FontCacheManager::recordText(const char* text, int fontId, EpdFontFamily::S
     }
   }
   if (fontSlot == scanFontCount_) {
-    if (scanFontCount_ >= MAX_SCAN_FONTS) return;
+    if (scanFontCount_ >= MAX_SCAN_FONTS) {
+#if LEXIRISE
+      // LEXIPOINT: say so once per render (its glyphs load one by one from SD).
+      if (!scanOverflowWarned_) {
+        LOG_DBG("FCM", "Scan font cap (%u) reached; font %d loads on demand", static_cast<unsigned>(MAX_SCAN_FONTS),
+                fontId);
+        scanOverflowWarned_ = true;
+      }
+#endif
+      return;
+    }
     scanFontIds_[scanFontCount_++] = fontId;
   }
 

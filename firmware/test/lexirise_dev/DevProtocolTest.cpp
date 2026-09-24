@@ -100,9 +100,22 @@ TEST(DevProtocol, Lexi) {
   EXPECT_EQ(soak.count, 20);
   EXPECT_FALSE(soak.cold);
   EXPECT_TRUE(parse("LX:LEXI SOAK 5 COLD").cold);
+  const auto card = parse("LX:LEXI CARD zh LOW");
+  EXPECT_EQ(card.lexi, LexiAction::Card);
+  EXPECT_TRUE(card.chinese);
+  EXPECT_TRUE(card.low);
+  EXPECT_FALSE(parse("LX:LEXI CARD ja").low);
+  EXPECT_FALSE(parse("LX:LEXI CARD ja").kana);
+  const auto smoke = parse("LX:LEXI CARD ja LOW KANA");
+  EXPECT_TRUE(smoke.low);
+  EXPECT_TRUE(smoke.kana);
+  EXPECT_TRUE(parse("LX:LEXI CARD zh KANA").kana);
+  EXPECT_FALSE(parse("LX:LEXI CARD zh KANA").low);
   EXPECT_EQ(parse(("LX:LEXI SOAK " + std::to_string(lexipoint::dev::config::kLexiSoakMax)).c_str()).verb, Verb::Lexi);
   for (const char* bad : {"LX:LEXI", "LX:LEXI ANALYZE", "LX:LEXI ANALYZE ko", "LX:LEXI SOAK 0", "LX:LEXI SOAK 51",
-                          "LX:LEXI SOAK x", "LX:LEXI SOAK 5 WARM", "LX:LEXI ME 1", "LX:LEXI KEY lx_abc"}) {
+                          "LX:LEXI SOAK x", "LX:LEXI SOAK 5 WARM", "LX:LEXI ME 1", "LX:LEXI KEY lx_abc", "LX:LEXI CARD",
+                          "LX:LEXI CARD ko", "LX:LEXI CARD ja HIGH", "LX:LEXI CARD JA", "LX:LEXI CARD ja KANA LOW",
+                          "LX:LEXI CARD ja LOW LOW", "LX:LEXI CARD ja LOW KANA x"}) {
     EXPECT_NE(parse(bad).error, nullptr) << bad;
     EXPECT_EQ(parse(bad).verb, Verb::None) << bad;
   }

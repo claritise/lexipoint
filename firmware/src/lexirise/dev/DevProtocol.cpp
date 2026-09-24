@@ -135,7 +135,7 @@ Command parseLine(const char* rawLine) {
       return fail("usage: HOME [HOLD]");
     }
   } else if (!std::strcmp(verb, "LEXI")) {
-    constexpr const char* kUsage = "usage: LEXI ME | ANALYZE ja|zh | SOAK n [COLD]";
+    constexpr const char* kUsage = "usage: LEXI ME | ANALYZE ja|zh | SOAK n [COLD] | CARD ja|zh [LOW] [KANA]";
     if (t.count == 2 && !std::strcmp(t.text[1], "ME")) {
       c.lexi = LexiAction::Me;
     } else if (t.count == 3 && !std::strcmp(t.text[1], "ANALYZE")) {
@@ -152,6 +152,21 @@ Command parseLine(const char* rawLine) {
       if (t.count == 4 && std::strcmp(t.text[3], "COLD") != 0) return fail(kUsage);
       c.cold = t.count == 4;
       c.lexi = LexiAction::Soak;
+    } else if (t.count >= 3 && t.count <= 5 && !std::strcmp(t.text[1], "CARD")) {
+      if (!std::strcmp(t.text[2], "ja")) {
+        c.chinese = false;
+      } else if (!std::strcmp(t.text[2], "zh")) {
+        c.chinese = true;
+      } else {
+        return fail(kUsage);
+      }
+      int next = 3;  // then [LOW] [KANA], in that order
+      c.low = next < t.count && !std::strcmp(t.text[next], "LOW");
+      if (c.low) next++;
+      c.kana = next < t.count && !std::strcmp(t.text[next], "KANA");
+      if (c.kana) next++;
+      if (next != t.count) return fail(kUsage);
+      c.lexi = LexiAction::Card;
     } else {
       return fail(kUsage);
     }

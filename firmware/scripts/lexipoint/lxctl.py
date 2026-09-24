@@ -8,6 +8,7 @@ Examples:
   lxctl.py ping
   lxctl.py tap 240 400
   lxctl.py long 120 300
+  lxctl.py lexi card ja [low]    # the card bench (P4); then tap / button / home to drive it
   lxctl.py swipe 240 600 240 200
   lxctl.py btn next            # right page key; also: prev, power; optional ms
   lxctl.py home [hold]
@@ -20,13 +21,17 @@ Examples:
   lxctl.py log 10              # print device log for N seconds
   lxctl.py wait "Entering activity: Home" 15
   lxctl.py smoke [outdir]      # end-to-end harness check with screenshots
+  lxctl.py card-smoke [outdir] [name]  # every reference card state on the device, a screenshot each (P4 gate);
+                                       # upright portrait, default side buttons
 """
 
 from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
+import re
 import struct
 import sys
 import time
@@ -51,6 +56,15 @@ LEXI_CALL_TIMEOUT_S = 45.0
 LEXI_SOAK_MAX = 50  # DevConfig kLexiSoakMax
 LEAK_BYTES_PER_CALL = 64  # a free-heap trend steeper than this, per call, fails the soak
 LEAK_MIN_SAMPLES = 5
+# card-smoke: the bench's phases end by config::kBenchPhaseBMs (900 ms); wait for them before tapping.
+CARD_PHASES_S = 1.5
+CARD_HOME_PRESSES_MAX = 3  # Home: expanded → card → closed, plus one spare
+# A close redraws the reader, a half or full refresh on every 5th card (~1.34 s measured, popup-ui.md §2);
+# wait that out with a margin before the next Home, or a spare Home would reach the screen underneath.
+PANEL_FULL_REFRESH_S = 1.34
+CARD_CLOSE_WAIT_S = 3.0
+CARD_WORD_LOG = re.compile(r"\[LXCARD\] word (\d+)")  # LexiriseCardActivity, smoke mode
+GOLDEN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "test", "lexirise_card", "golden")
 
 
 def find_port() -> str:
@@ -94,8 +108,10 @@ class Harness:
             buf += ch
         return None
 
-    def command(self, cmd: str, expect: str | None = None, timeout: float = REPLY_TIMEOUT_S) -> str:
-        """Send a command and return its reply. Log lines and stale replies are skipped.
+    def command(self, cmd: str, expect: str | None = None, timeout: float = REPLY_TIMEOUT_S,
+                seen: list[str] | None = None) -> str:
+        """Send a command and return its reply. Log lines and stale replies are skipped (and appended to
+        `seen` when given, for a caller that checks the log the command caused).
 
         expect defaults to "LX:OK <VERB>", the device's acknowledgement for this command.
         """
@@ -111,6 +127,8 @@ class Harness:
                 return line
             if line.startswith("LX:ERR"):
                 raise RuntimeError(f"{cmd}: {line}")
+            if seen is not None:
+                seen.append(line)
 
     def collect(self, cmd: str, prefix: str, timeout: float) -> list[str]:
         """Send a command and return every line starting with prefix until its LX:OK."""
@@ -241,6 +259,82 @@ def smoke(h: Harness, outdir: str) -> None:
     print(f"smoke OK, screenshots in {outdir}")
 
 
+def card_state_commands(state: dict, lang: str, low: bool) -> list[str]:
+    """The harness commands that reach one golden card state (test/lexirise_card/golden, written by
+    LexiriseCardRender from the same controller inputs): open the bench in kana without saving the reading
+    (KANA: the goldens start in kana, and the user's setting stays as it was), step to the word with the
+    side buttons, then the taps. Pure, so test_lxctl checks it against the device grammar."""
+    cmds = [f"LEXI CARD {lang}{' LOW' if low else ''} KANA"]
+    steps = int(state["steps"])
+    cmds += ["BTN RIGHT" if steps > 0 else "BTN LEFT"] * abs(steps)
+    cmds += [f"TAP {x} {y}" for x, y in state["taps"]]
+    return cmds
+
+
+def check_stepped_word(log: list[str], expected: int, name: str) -> None:
+    """The card's last "[LXCARD] word n" log line (smoke mode) must be the golden's word: the side buttons'
+    direction follows the reader settings and orientation, so a mapped-the-other-way press is caught here
+    instead of shooting the wrong word."""
+    words = [int(m.group(1)) for line in log if (m := CARD_WORD_LOG.search(line))]
+    if not words:
+        raise RuntimeError(f"{name}: the card logged no word after the side-button steps")
+    if words[-1] != expected:
+        raise RuntimeError(f"{name}: stepped to word {words[-1]}, not {expected} (side-button mapping? "
+                           "card-smoke needs upright portrait and the default side buttons)")
+
+
+def card_smoke(h: Harness, outdir: str, only: str = "", sleep=time.sleep, shot=None,
+               golden_dir: str = GOLDEN_DIR) -> list[str]:
+    """Every reference card state on the device, one screenshot each, for the P4 design conformance gate
+    (compare with cardshots.py's panels). Starts and ends over the current screen. Returns the states shot."""
+    shot = shot or save_shot
+    os.makedirs(outdir, exist_ok=True)
+    names = sorted(f[:-5] for f in os.listdir(golden_dir) if f.endswith(".json"))
+    done = []
+    for name in names:
+        if only and only not in name:
+            continue
+        with open(os.path.join(golden_dir, name + ".json"), encoding="utf-8") as f:
+            state = json.load(f)
+        cmds = card_state_commands(state, name.split("-")[0], "-low" in name)
+        h.command(cmds[0], "LX:OK LEXI")
+        h.wait_for("Entering activity: LexiriseCard", ACTIVITY_WAIT_S)
+        steps = [c for c in cmds[1:] if c.startswith("BTN")]
+        taps = [c for c in cmds[1:] if c.startswith("TAP")]
+        log: list[str] = []
+        for cmd in steps:
+            h.command(cmd, seen=log)
+            # A press is held for a while and the device refuses the next one until it's released: wait
+            # until the input has landed and the card has redrawn.
+            h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+        if steps:
+            check_stepped_word(log, int(state["word"]), name)
+        for cmd in taps:
+            sleep(CARD_PHASES_S)  # the phases end before a finger would tap
+            h.command(cmd)
+            h.command("SYNC", timeout=SYNC_TIMEOUT_S)
+        # The last tap's SYNC already waited for its redraw; sleeping again would outlast a toast
+        # (config::kToastMs) the reference shows. Without taps, the phases still have to end.
+        if not state["taps"]:
+            sleep(CARD_PHASES_S)
+        shot(h, os.path.join(outdir, f"{name}.device.png"))
+        print(name)
+        done.append(name)
+        for _ in range(CARD_HOME_PRESSES_MAX):
+            h.command("HOME")
+            try:
+                h.wait_for("Exiting activity: LexiriseCard", CARD_CLOSE_WAIT_S)
+                break
+            except TimeoutError:
+                continue
+        else:
+            raise RuntimeError(f"{name}: the card didn't close on Home")
+    if not done:
+        raise RuntimeError(f"no golden state matches {only!r}")
+    print(f"card-smoke OK: {len(done)} states, screenshots in {outdir}")
+    return done
+
+
 def parse_fields(line: str) -> dict[str, str]:
     """The key=value fields of an LX:LEXI line."""
     return dict(tok.split("=", 1) for tok in line.split() if "=" in tok)
@@ -289,8 +383,12 @@ def lexi(h: Harness, args: list[str]) -> None:
               f"heap_trend={heap_slope(heap):+.0f}B/call stack_free_min={min(stack) if stack else '-'}")
         if failed or heap_leaks(heap):
             sys.exit("soak FAILED" + (" (free heap trending down)" if heap_leaks(heap) else ""))
+    elif sub == "card":  # the card bench (P4): opens over the current screen; drive it with tap/button/home
+        lang = args[1] if len(args) > 1 else "ja"
+        low = len(args) > 2 and args[2].lower() == "low"
+        print(h.command(f"LEXI CARD {lang}{' LOW' if low else ''}", "LX:OK LEXI"))
     else:
-        sys.exit("usage: lexi me | analyze ja|zh | soak [n] [cold]")
+        sys.exit("usage: lexi me | analyze ja|zh | soak [n] [cold] | card ja|zh [low]")
 
 
 def main() -> None:
@@ -345,6 +443,11 @@ def main() -> None:
             print(h.wait_for(a.args[0], float(a.args[1]) if len(a.args) > 1 else 15))
         elif c == "lexi":
             lexi(h, a.args)
+        elif c == "card-smoke":
+            try:
+                card_smoke(h, a.args[0] if a.args else "card-shots", a.args[1] if len(a.args) > 1 else "")
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"card-smoke FAILED: {e}")
         elif c == "smoke":
             try:
                 smoke(h, a.args[0] if a.args else "smoke-shots")

@@ -6,6 +6,7 @@
 """
 
 import configparser
+import json
 import os
 import re
 import struct
@@ -138,6 +139,12 @@ class LexiCommands(unittest.TestCase):
         self.assertEqual(lines, ["LX:LEXI analyze 0 ok parsed=1", "LX:LEXI occ 0-1 word=x"])
         self.assertEqual(dev.written, b"LX:LEXI ANALYZE ja\n")
 
+    def test_lexi_card_sends_the_bench_command(self):
+        for args, sent in ((["card", "zh", "low"], b"LX:LEXI CARD zh LOW\n"), (["card"], b"LX:LEXI CARD ja\n")):
+            dev = FakeSerial(b"LX:OK LEXI\n")
+            lxctl.lexi(lxctl.Harness(dev), args)
+            self.assertEqual(dev.written, sent)
+
     def test_collect_raises_on_error(self):
         h = lxctl.Harness(FakeSerial(b"LX:ERR built without LEXIRISE\n"))
         with self.assertRaises(RuntimeError):
@@ -180,6 +187,144 @@ class HostConstantsMatchTheFirmware(unittest.TestCase):
         c = header_constants("src/lexirise/dev/DevConfig.h")
         self.assertEqual(lxctl.LEXI_SOAK_MAX, c["kLexiSoakMax"])
 
+    def test_card_smoke_waits_out_a_close(self):
+        self.assertGreater(lxctl.CARD_CLOSE_WAIT_S, 2 * lxctl.PANEL_FULL_REFRESH_S)
+
+    def test_card_smoke_waits_out_the_phases(self):
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        self.assertGreater(lxctl.CARD_PHASES_S * 1000, c["kBenchPhaseBMs"])
+
+
+def usage_regex(usage: str) -> re.Pattern:
+    """A device usage line ("CARD ja|zh [LOW] [KANA]") as a regex over one command."""
+    parts = []
+    for tok in usage.split():
+        optional = tok.startswith("[") and tok.endswith("]")
+        tok = tok.strip("[]")
+        alt = "|".join(re.escape(a) if not a.islower() or a in ("ja", "zh") else r"-?\d+"
+                       for a in tok.split("|"))
+        parts.append(f"(?: (?:{alt}))?" if optional else f" (?:{alt})")
+    return re.compile("^" + "".join(parts).lstrip() + "$")
+
+
+def device_usages() -> dict[str, re.Pattern]:
+    """The DevProtocol.cpp usage lines, by verb (LEXI split into its sub-verbs)."""
+    src = open(os.path.join(REPO, "src/lexirise/dev/DevProtocol.cpp"), encoding="utf-8").read()
+    out = {}
+    for line in set(re.findall(r'"usage: ([^"]+)"', src)):
+        verb, _, rest = line.partition(" ")
+        if verb == "LEXI":
+            for sub in rest.split(" | "):
+                out["LEXI " + sub.split()[0]] = usage_regex("LEXI " + sub)
+        elif verb in ("TAP", "BTN", "SYNC", "HOME"):
+            out[verb] = usage_regex(line)
+    out.setdefault("SYNC", re.compile("^SYNC$"))
+    return out
+
+
+class FakeCardHarness:
+    """The device's side of card-smoke: refuses a BTN while the last press is still held (until a SYNC),
+    logs the card's word after a step as smoke mode does, and keeps a clock the fake sleep advances."""
+
+    def __init__(self, starts: list[int], direction: int = 1):
+        self.sent = []
+        self.held = False
+        self.starts = list(starts)  # each state's opening word, in the order card-smoke opens them
+        self.direction = direction  # -1: the side buttons mapped the other way round
+        self.word = 0
+        self.clock = 0.0
+        self.taps_at = []
+        self.shots_at = []
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LEXI CARD"):
+            self.word = self.starts.pop(0)
+        elif cmd.startswith("BTN"):
+            if self.held:
+                raise RuntimeError("LX:ERR button busy")
+            self.held = True
+            self.word += self.direction * (1 if cmd == "BTN RIGHT" else -1)
+        elif cmd.startswith("TAP"):
+            self.taps_at.append(self.clock)
+        elif cmd == "SYNC":
+            if self.held and seen is not None:
+                seen.append(f"[123] [INF] [LXCARD] word {self.word}")
+            self.held = False
+        return "LX:OK"
+
+    def wait_for(self, pattern, timeout):
+        return pattern
+
+    def sleep(self, seconds):
+        self.clock += seconds
+
+    def shot(self, _h, _path):
+        self.shots_at.append(self.clock)
+
+
+class CardSmoke(unittest.TestCase):
+    def test_commands_reach_the_state(self):
+        state = {"steps": -2, "taps": [[240, 700], [120, 690]]}
+        self.assertEqual(lxctl.card_state_commands(state, "ja", True),
+                         ["LEXI CARD ja LOW KANA", "BTN LEFT", "BTN LEFT", "TAP 240 700", "TAP 120 690"])
+        self.assertEqual(lxctl.card_state_commands({"steps": 1, "taps": []}, "zh", False),
+                         ["LEXI CARD zh KANA", "BTN RIGHT"])
+
+    def goldens(self):
+        names = sorted(f for f in os.listdir(lxctl.GOLDEN_DIR) if f.endswith(".json"))
+        self.assertTrue(names, "no golden files: python3 scripts/lexipoint/cardgolden.py --update")
+        for name in names:
+            with open(os.path.join(lxctl.GOLDEN_DIR, name), encoding="utf-8") as f:
+                yield name[:-5], json.load(f)
+
+    def test_every_command_matches_the_device_grammar(self):
+        usages = device_usages()
+        for name, state in self.goldens():
+            for cmd in lxctl.card_state_commands(state, name.split("-")[0], "-low" in name) + ["SYNC", "HOME"]:
+                key = " ".join(cmd.split()[:2]) if cmd.startswith("LEXI") else cmd.split()[0]
+                self.assertIn(key, usages, cmd)
+                self.assertRegex(cmd, usages[key], f"{name}: {cmd!r} isn't what DevProtocol.cpp accepts")
+
+    def test_taps_are_on_screen(self):
+        for name, state in self.goldens():
+            self.assertIsInstance(state["steps"], int, name)
+            for x, y in state["taps"]:
+                self.assertTrue(0 <= x < 480 and 0 <= y < 800, name)
+
+    def replay(self, direction: int = 1) -> FakeCardHarness:
+        states = sorted(self.goldens())  # card-smoke's order
+        h = FakeCardHarness([s["word"] - s["steps"] for _, s in states], direction)
+        with tempfile.TemporaryDirectory() as out:
+            h.done = lxctl.card_smoke(h, out, sleep=h.sleep, shot=h.shot)
+        return h
+
+    def test_replay_paces_the_buttons_and_runs_every_state(self):
+        h = self.replay()
+        self.assertEqual(len(h.done), len(list(self.goldens())))
+        self.assertEqual(len(h.shots_at), len(h.done))
+        self.assertTrue(all("KANA" in c for c in h.sent if c.startswith("LEXI CARD")))  # the setting untouched
+
+    def test_a_toast_is_still_up_for_the_shot(self):
+        toast_s = header_constants("src/lexirise/LexiriseConfig.h")["kToastMs"] / 1000
+        refresh_s = 0.5  # a partial refresh on the X4 Pro (popup-ui.md §2), which the SYNC waits out
+        h = self.replay()
+        last_tap = {}
+        for t in h.taps_at:
+            later = [s for s in h.shots_at if s >= t]
+            last_tap[min(later)] = t
+        self.assertTrue(last_tap)
+        for shot, tap in last_tap.items():
+            self.assertLess(shot - tap + refresh_s, toast_s)
+
+    def test_a_step_the_wrong_way_fails_instead_of_shooting_the_wrong_word(self):
+        with self.assertRaisesRegex(RuntimeError, "side-button mapping"):
+            self.replay(direction=-1)
+
+    def test_replay_is_the_same_in_any_order(self):
+        # Each state opens in kana (KANA), so what came before can't leak into it.
+        for name, state in self.goldens():
+            self.assertTrue(lxctl.card_state_commands(state, name.split("-")[0], "-low" in name)[0].endswith("KANA"))
 
 LEXIRISE_FLAG = re.compile(r"-D\s*LEXIRISE=1\b")
 

@@ -77,6 +77,19 @@ constexpr size_t kMaxTranslations = 2;         // senses kept for the card (phas
 constexpr size_t kMaxTranslationBytes = 512;   // one sense's text; longer is cut at a character boundary
 constexpr size_t kStarDictMaxPrefixChars = 8;  // CJK longest-prefix probe for StarDict: 8, 7, … 1 characters
 
+// The card's rank words (popup-ui.md §1, languages.md §6): below each threshold, that band; past the
+// last, "rare". One table for both languages until P5 tunes them per language.
+constexpr uint32_t kRankBandLimits[] = {1000, 5000, 20000};
+
+// The card (popup-ui.md §2, §3.2).
+constexpr unsigned long kToastMs = 2000;      // "Saved as learning · Undo"
+constexpr unsigned long kPhaseMergeMs = 300;  // phase B this soon after A: one refresh for both
+constexpr int kCardHalfRefreshEvery = 5;      // the 5th card's dismiss: a half refresh (ghosts), as the reader's
+constexpr int kCardPendingInputMax = 4;       // taps/steps read while a card refresh runs, handled after it
+// The bench (P4) plays the phases on a timer, as a lookup would fill them.
+constexpr unsigned long kBenchPhaseAMs = 250;  // tap → analyzed
+constexpr unsigned long kBenchPhaseBMs = 900;  // tap → translated
+
 // Response limits (lexirise-client.md §4): past these a response is treated as malformed.
 constexpr size_t kMaxOccurrences = 128;
 // entryMetaById / stateByEntryId entries kept per analyze (surface, lemma and breakdown entries, so more
