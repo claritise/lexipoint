@@ -86,8 +86,11 @@ src/lexirise/
   web/HiddenPath.h, Origin.h    file-manager (incl. FAT short names), cross-site and DNS-rebinding guards (pure)
   web/HiddenPathHal.cpp         the SD card name lookup for HiddenPath (built in every env)
   dev/                          the USB dev harness (dev-harness.md), x4pro dev env only
-  (P2+) SentenceBuilder, LookupProvider + Lexirise/StarDict providers, the card, Kana,
-        the device settings activity
+  text/SentenceBuilder, Punctuation  the sentence and tap offset (sentence-extraction.md), pure
+  text/BookLanguage, TapContext      the language to send (languages.md §1), pure
+  text/PageModelAdapter, ParagraphBreaks  CrossPoint's Page → PageModel (host-tested on real Pages)
+  lookup/PageTap                      the device glue (renderer measuring), reused by P3
+  (P3+) LookupProvider + Lexirise/StarDict providers, the card, Kana, the device settings activity
 test/lexirise_*/                host gtest suites
 scripts/lexipoint/lxctl.py      host side of the dev harness (+ test_lxctl.py)
 scripts/lexipoint/websmoke.py   read-only smoke test of the web surface against a device (+ test_websmoke.py)
@@ -107,7 +110,8 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | `lib/hal/HalGPIO.{h,cpp}` | Dev harness input overlay (`LEXIPOINT_DEV_HARNESS`) |
 | `platformio.ini` | A `[lexirise]` section (`-DLEXIRISE=1` plus wolfSSL SHA-384/P-384, lexirise-client.md §1) referenced by the three X4 Pro envs; the harness flag in `[env:x4pro]` only. `test_lxctl.py` guards both |
 | `test/CMakeLists.txt` | The `lexirise_*` suites |
-| (P3) `src/activities/reader/DictionaryWordSelectActivity.{h,cpp}`, `EpubReaderActivity.cpp` | Provider chain; touch long-press → lookup (`lookup-flow.md` §1) |
+| `src/activities/reader/DictionaryWordSelectActivity.{h,cpp}` | (P2) `WordBox` gets `(line, token)`, counted exactly as `text::buildPageModel` counts lines; `setBook(dcLanguage)`; `performLookup()` logs the tap's sentence/offset/language (debug). (P3) the provider chain; touch long-press → lookup (`lookup-flow.md` §1) |
+| `src/activities/reader/EpubReaderActivity.cpp` | (P2) pass the book's `<dc:language>` to word select |
 | (P6) `src/SettingsList.h`, `src/activities/settings/SettingsActivity.{h,cpp}` | The device `Lexirise` settings row |
 | (P8) `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases (§6) |
 | (P3+) `lib/I18n/translations/english.yaml` | `STR_LEXI_*` strings |

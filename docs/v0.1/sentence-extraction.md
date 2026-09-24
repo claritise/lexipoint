@@ -20,18 +20,27 @@ and `getRubyTexts()`. Tokens are the layout's units:
 - `TokenBoundary` bits record whether a gap is a real space, a CJK zero-width gap, or an
   attachment. **Rejoin with a space only where the original had one.** Joining Japanese tokens
   with spaces would break the server's tokenizer.
+- **Built in P2:** those bits exist only during layout; a loaded `Page` doesn't keep them (and every
+  line is its own `TextBlock`, with no paragraph marker). So `text/PageModelAdapter` turns the Page into
+  a plain `PageModel` (text lines 1:1 with the lines `extractWords()` walks, every token, never ruby),
+  and the builder decides spaces by script: **a space only between two non-CJK tokens** (Latin words),
+  never next to a CJK character, and none after a Latin hyphen at a line break. Paragraph starts come
+  from line geometry (`text/ParagraphBreaks.h`: the previous line ended ≥ 2 em short of the column, the
+  gap grew ≥ 1.3× the usual advance, a new indent, a leading `　`, or a block-style change).
 
 ## 1. Output
 
 ```cpp
-struct BuiltSentence {
-  std::string text;      // UTF-8, base text only, ≤ MAX_SENTENCE_CP codepoints
-  uint16_t tapOffset;    // tapped token start, in Lexirise's charStart unit (H5)
-  uint16_t tapLen;       // tapped token length, same unit
-  bool truncatedLeft;    // cut by the cap or the page top, not by a sentence end
+struct BuiltSentence {       // src/lexirise/text/SentenceBuilder.h
+  std::string text;          // UTF-8, base text only, ≤ kMaxSentenceCodepoints (120)
+  uint32_t tapOffset;        // tapped token start, in UTF-16 code units (Lexirise's charStart, H5)
+  uint32_t tapLength;        // tapped token length, same unit (the token as laid out, e.g. 猫。)
+  bool truncatedLeft;        // cut by the cap or the page top, not by a sentence end
   bool truncatedRight;
 };
 ```
+`text/TapContext` pairs it with the language decision (`languages.md` §1): with no metadata the
+sentence is first cut with Japanese rules, the language read off it, then recut with the right rules.
 
 ## 2. Rules
 
@@ -42,7 +51,9 @@ struct BuiltSentence {
    with any closing brackets or quotes straight after it (`」 』 ） 】 " '`).
 3. **A paragraph end is a sentence end.** Blocks that don't flow into each other (a new `TextBlock`
    with a paragraph start) stop the walk. This matters for dialogue-heavy novels, where each 「…」
-   is its own paragraph with no 。.
+   is its own paragraph with no 。. **Also** (P2): a closer followed by an opener (」「) is a break
+   even on one line, and in Japanese a closed quote followed by the quotative と / って continues the
+   sentence (「行こう。」と彼は言った。 is one sentence, not two).
 4. **Page bounded.** The walk stops at the page's first and last line and sets `truncated*`. v0.1
    doesn't read the neighbouring page. Chapter files are parsed per section, and loading the
    previous page costs an SD read and a layout pass, for a sentence that is only a little more

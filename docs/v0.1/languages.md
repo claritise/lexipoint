@@ -47,6 +47,12 @@ book**, in this order:
 The decision is made once, when the book is opened, and cached for the reading session. The
 sentence heuristic in step 2 runs per lookup only when there's no metadata.
 
+**As built (P2, `text/BookLanguage`):** precedence is override → metadata → sentence. Metadata that is
+missing, `und`, or any non-CJK language falls through to the sentence (a converted Japanese novel
+stamped `en` still gets `ja`); a sentence with no CJK at all (a real English book) gets no language,
+so StarDict answers. `zh-TW`/`zh-HK`/`zh-MO`/`zh-Hant` go to StarDict while H8 is parked. A language
+switched off in settings (or Lexirise off) gives none, even with an override.
+
 Config (superseded by the per-language sections in `settings.md` §3; the flat keys below are still read and migrated):
 
 ```ini
