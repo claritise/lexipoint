@@ -116,6 +116,8 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | `src/activities/reader/EpubReaderActivity.{h,cpp}` | (P2) pass the book's `<dc:language>` to word select. (P3) touch long-press → word select at that point, before link taps, owning the centre third only when CrossPoint's hold action is on (`lookup::lookupOwnsLongPress`); word select opens without a StarDict dictionary when Lexirise is usable |
 | (P6) `src/SettingsList.h`, `src/activities/settings/SettingsActivity.{h,cpp}` | The device `Lexirise` settings row |
 | (P8) `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases (§6) |
+| `src/SdCardFontSystem.{h,cpp}` | (P4) `familyFontIdAt(renderer, pt)`: the loaded SD family at another point size (the card's 8/10/18 pt), via the manager's existing `loadFamilyExtraSize` |
+| `src/lexirise/dev/DevHarness.cpp` (ours) | (P4) `LX:LEXI CARD ja\|zh [LOW]` pushes the card bench |
 | (P3+) `lib/I18n/translations/english.yaml` | `STR_LEXI_*` strings |
 
 Anything that needs more than a few lines in an upstream file is a smell. Move the logic into
