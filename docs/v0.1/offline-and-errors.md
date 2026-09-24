@@ -57,7 +57,8 @@ A double press must not save twice: while `Saving…` shows, Confirm is ignored.
 
 Code: `api/AccessPolicy.h`, `lookup/Fallback.h`, `LexiriseService`, word select's `fallBack()`, the card
 (`CardController::levelFailed`, `Phase::Unanswered`). Tests: `test/lexirise_net` (`AccessPolicyTest`, `ServiceTest`),
-`test/lexirise_lookup` (`Fallback`), `test/lexirise_card` (`LiveErrors`), `scripts/lexipoint/test_card_strings.py`.
+`test/lexirise_lookup` (`Fallback`), `test/lexirise_card` (`LiveErrors`), `scripts/lexipoint/test_card_strings.py`, and golden display lists for the error states the reference
+doesn't have (`ja-card-unanswered`, `ja-expanded-meaning-unanswered`, `ja-card-save-failed`, `ja-card-rate-limited`).
 
 - **Asking Lexirise at all** (`lookup::lexiriseGate`, and `lookup::gateFallback` for what's said): off (or
   not for the book's language) → StarDict, silently; **no key** → `No Lexirise key` once per boot, then
@@ -85,7 +86,8 @@ Code: `api/AccessPolicy.h`, `lookup/Fallback.h`, `LexiriseService`, word select'
   6 s (`config::kFailureToastMs`: they come after the Undo window and the network): a network failure →
   `Save failed · Retry` (tap it: the level is set again and sent at once, its word looked up again if
   the translation was missing); 401/403 →
-  `Lexirise key rejected` (no retry); 429 → `Rate limited: try in N s · Retry`. The level goes back to what
+  `Lexirise key rejected` (no retry); 429 → `Rate limited: try in N s · Retry` (Retry waits out the back-off: tapped at once, the save goes
+  when Lexirise may be asked again). The level goes back to what
   Lexirise has meanwhile. Any 2xx is the `Saved as <level> · Undo` toast shown at the tap.
 - **Strings:** every word on the card is an I18n key (`STR_LEXI_CARD_*`, plus `STR_LEXI_NO_KEY`,
   `STR_LEXI_AUTH_FAILED`, `STR_LEXI_RATE_LIMITED`, `STR_LEXI_OFFLINE`); languages without them fall back to
