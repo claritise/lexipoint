@@ -41,6 +41,10 @@
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+#if LEXIRISE
+#include "lexirise/LexiriseService.h"         // LEXIPOINT
+#include "lexirise/settings/SettingsStore.h"  // LEXIPOINT
+#endif
 #if LEXIPOINT_DEV_HARNESS
 #include "lexirise/dev/DevHarness.h"  // LEXIPOINT: dev-only USB remote control
 #endif
@@ -434,6 +438,9 @@ void setup() {
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();
+#if LEXIRISE
+  lexipoint::settingsStore().load();  // LEXIPOINT
+#endif
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
@@ -644,6 +651,10 @@ void loop() {
       }
     }
   }
+#endif
+
+#if LEXIRISE
+  lexipoint::service().tick();  // LEXIPOINT: gives back WiFi a lookup brought up, once idle
 #endif
 
   // Check for any user activity (button press or release) or active background work

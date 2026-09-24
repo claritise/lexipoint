@@ -25,6 +25,10 @@
 #include "html/HomePageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
 #include "html/js/jszip_minJs.generated.h"
+#include "lexirise/web/HiddenPath.h"  // LEXIPOINT
+#if LEXIRISE
+#include "lexirise/web/LexiriseWeb.h"  // LEXIPOINT
+#endif
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -69,6 +73,11 @@ String normalizeWebPath(const String& inputPath) {
   }
   return result;
 }
+
+// LEXIPOINT: the name checks below only look at the last segment, so without a whole-path check
+// /download?path=/.lexirise/config.ini would serve the Lexirise API key, and delete + upload could
+// replace the file. The file manager never shows dot items, so nothing visible changes.
+bool isHiddenWebPath(const String& path) { return lexipoint::web::isHiddenWebPath(path.c_str()); }
 
 bool isProtectedItemName(const String& name) {
   if (name.startsWith(".")) {
@@ -185,14 +194,19 @@ void CrossPointWebServer::begin() {
   server->on("/api/wifi", HTTP_POST, [this] { handlePostWifiNetwork(); });
   server->on("/api/wifi/delete", HTTP_POST, [this] { handleDeleteWifiNetwork(); });
 
+#if LEXIRISE
+  lexipoint::web::registerRoutes(*server);  // LEXIPOINT: /lexirise page and /api/lexirise
+#endif
+
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
 
   // Collect WebDAV headers and register handler
   // If-None-Match is collected so the static-page handlers can answer conditional GETs with 304
-  const char* collectedHeaders[] = {"Depth",      "Destination", "Overwrite",    "If",
-                                    "Lock-Token", "Timeout",     "If-None-Match"};
-  server->collectHeaders(collectedHeaders, 7);
+  // LEXIPOINT: + Origin, which /api/lexirise checks to refuse cross-site requests.
+  const char* collectedHeaders[] = {"Depth",      "Destination", "Overwrite",     "If",
+                                    "Lock-Token", "Timeout",     "If-None-Match", "Origin"};
+  server->collectHeaders(collectedHeaders, sizeof(collectedHeaders) / sizeof(collectedHeaders[0]));
   server->addHandler(new WebDAVHandler());  // Note: WebDAVHandler will be deleted by WebServer when server is stopped
   LOG_DBG("WEB", "WebDAV handler initialized");
 
@@ -514,6 +528,10 @@ void CrossPointWebServer::handleFileListData() const {
   if (server->hasArg("path")) {
     currentPath = normalizeWebPath(server->arg("path"));
   }
+  if (isHiddenWebPath(currentPath)) {  // LEXIPOINT
+    server->send(403, "text/plain", "Cannot access system files");
+    return;
+  }
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
@@ -563,7 +581,7 @@ void CrossPointWebServer::handleDownload() const {
   }
 
   const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
-  if (itemName.startsWith(".")) {
+  if (itemName.startsWith(".") || isHiddenWebPath(itemPath)) {  // LEXIPOINT: whole path
     server->send(403, "text/plain", "Cannot access system files");
     return;
   }
@@ -694,6 +712,10 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
       state.path = normalizeWebPath(server->arg("path"));
     } else {
       state.path = "/";
+    }
+    if (isHiddenWebPath(state.path)) {  // LEXIPOINT
+      state.error = "Cannot access system files";
+      return;
     }
 
     LOG_DBG("WEB", "[UPLOAD] START: %s to path: %s", state.fileName.c_str(), state.path.c_str());
@@ -837,6 +859,10 @@ void CrossPointWebServer::handleCreateFolder() const {
   if (server->hasArg("path")) {
     parentPath = normalizeWebPath(server->arg("path"));
   }
+  if (isHiddenWebPath(parentPath)) {  // LEXIPOINT
+    server->send(403, "text/plain", "Cannot access system files");
+    return;
+  }
 
   // Build full folder path
   String folderPath = parentPath;
@@ -870,6 +896,10 @@ void CrossPointWebServer::handleRename() const {
   String itemPath = normalizeWebPath(server->arg("path"));
   String newName = server->arg("name");
   newName.trim();
+  if (isHiddenWebPath(itemPath)) {  // LEXIPOINT
+    server->send(403, "text/plain", "Cannot access system files");
+    return;
+  }
 
   if (itemPath.isEmpty() || itemPath == "/") {
     server->send(400, "text/plain", "Invalid path");
@@ -951,6 +981,10 @@ void CrossPointWebServer::handleMove() const {
 
   String itemPath = normalizeWebPath(server->arg("path"));
   String destPath = normalizeWebPath(server->arg("dest"));
+  if (isHiddenWebPath(itemPath) || isHiddenWebPath(destPath)) {  // LEXIPOINT
+    server->send(403, "text/plain", "Cannot access system files");
+    return;
+  }
 
   if (itemPath.isEmpty() || itemPath == "/") {
     server->send(400, "text/plain", "Invalid path");
@@ -1079,6 +1113,11 @@ void CrossPointWebServer::handleDelete() const {
 
   for (const auto& p : paths) {
     auto itemPath = normalizeWebPath(p.as<String>());
+    if (isHiddenWebPath(itemPath)) {  // LEXIPOINT
+      failedItems += itemPath + " (system file); ";
+      allSuccess = false;
+      continue;
+    }
 
     // Validate path
     if (itemPath.isEmpty() || itemPath == "/") {
@@ -1657,6 +1696,12 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
           }
           wsUploadSize = sizeToken.toInt();
           wsUploadPath = normalizeWebPath(msg.substring(secondColon + 1));
+          if (isHiddenWebPath(wsUploadPath)) {  // LEXIPOINT
+            wsServer->sendTXT(num, "ERROR:Cannot access system files");
+            wsUploadInProgress = false;
+            wsUploadClientNum = 255;
+            return;
+          }
           wsUploadReceived = 0;
           wsLastProgressSent = 0;
           wsUploadStartTime = millis();

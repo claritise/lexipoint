@@ -61,6 +61,8 @@ add_subdirectory(css_parser)
 # LEXIPOINT: Lexirise fork suites
 add_subdirectory(lexirise_dev_coords)
 add_subdirectory(lexirise_dev)
+add_subdirectory(lexirise_settings)
+add_subdirectory(lexirise_net)
 add_subdirectory(chapter_html_slim_parser)
 add_subdirectory(ligature_guard)
 add_subdirectory(page_link)
