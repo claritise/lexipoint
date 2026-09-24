@@ -43,7 +43,18 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
 - **`api/LexiriseClient`**: one request at a time over a `net::Connection`, **keep-alive reused**
   while the server allows it. A reused session that fails before any response byte (the server
   dropped it while idle) is reopened and the request sent once more; nothing else is retried.
-  Timeouts: 6 s for connect, handshake and each read.
+  Timeouts: 6 s for connect, handshake and each read, and **15 s for the whole request** once the
+  connection is open (the stale-session retry shares it), so a trickling server can't hold the main
+  loop. One call is bounded by WiFi join 6 s + NTP 5 s + TCP/handshake 12 s + 15 s.
+- **Idle close:** the TLS session is closed 30 s after the last call (and on WiFi teardown, and on
+  leaving reading), so it never sits on internal heap.
+- **The web page never blocks on the network:** a key check is queued (`requestKeyCheck`) and run by
+  `LexiriseService::tick()` from the main loop, off `WebServer::handleClient`'s stack; the page polls.
+- **wolfSSL scope:** the SHA-384/P-384 flags apply to every wolfSSL user in the X4 Pro builds. OTA,
+  OPDS, KOSync and font downloads now also offer those suites; P1's on-device list re-tests them.
+- **Clock source:** NTP only for now. Seeding the system clock from the RTC (so a network that blocks
+  NTP still works, and the first call after boot skips the wait) needs a HalClock date accessor, an
+  upstream change; tracked for P8 (it only matters on NTP-blocking networks).
 - **`net/Http`**: the request serialiser and a bounded incremental response parser
   (Content-Length, chunked or close-delimited; 8KB of headers, 1KB lines, 64KB body).
 - Headers: `Authorization: Bearer <key>`, `Accept: application/json`, `Content-Type: application/json`

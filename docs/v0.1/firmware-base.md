@@ -70,6 +70,7 @@ src/lexirise/
   settings/SettingsStore.{h,cpp}  crash-safe save of /.lexirise/config.ini, snapshot reads (settings.md §3)
   settings/SettingsFilesHal.cpp  the SD card adapter for the store
   settings/SettingsPatch.{h,cpp}  validated web edits (pure)
+  LexiriseServiceHal.cpp        wires the device LexiriseService (store, WifiSession, TlsConnection, millis)
   net/Http.{h,cpp}              base URL, request serialiser, bounded response parser (pure)
   net/JsonWriter.{h,cpp}        request bodies (pure)
   net/JsonReader.{h,cpp}        strict path-reporting reader for response bodies (pure)
@@ -81,12 +82,15 @@ src/lexirise/
   api/Requests.{h,cpp} / Responses.{h,cpp} / KeyCheck.{h,cpp}  endpoints (pure)
   web/LexiriseWeb.{h,cpp}       /lexirise page + /api/lexirise (settings.md §1a)
   web/LexirisePage.html, LexiriseNav.js  embedded by scripts/build_html.py like upstream's pages
-  web/HiddenPath.h, Origin.h    file-manager and cross-site guards (pure)
+  web/WebApi.{h,cpp}            /api/lexirise JSON ↔ SettingsPatch / page state (pure)
+  web/HiddenPath.h, Origin.h    file-manager, cross-site and DNS-rebinding guards (pure)
   dev/                          the USB dev harness (dev-harness.md), x4pro dev env only
   (P2+) SentenceBuilder, LookupProvider + Lexirise/StarDict providers, the card, Kana,
         the device settings activity
 test/lexirise_*/                host gtest suites
 scripts/lexipoint/lxctl.py      host side of the dev harness (+ test_lxctl.py)
+scripts/lexipoint/websmoke.py   read-only smoke test of the web surface against a device (+ test_websmoke.py)
+test/lexirise_fakes/            fakes shared by the suites (card, connection, WiFi, clock)
 ```
 
 **Upstream files we touch.** Each hook carries a `// LEXIPOINT` comment, so `git grep LEXIPOINT`
@@ -94,7 +98,8 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 
 | File | Hook |
 |---|---|
-| `src/main.cpp` | Load the settings store at boot; `service().tick()` in the loop (WiFi idle teardown). Dev harness hooks (`LEXIPOINT_DEV_HARNESS`) |
+| `src/main.cpp` | Load the settings store at boot; `service().tick()` in the loop (queued key check, idle TLS close, WiFi idle teardown). Dev harness hooks (`LEXIPOINT_DEV_HARNESS`) |
+| `src/activities/ActivityManager.cpp` | Tell `LexiriseService` when the activity on screen changes (by name), so WiFi is given back outside reading (`offline-and-errors.md` §5) |
 | `src/network/CrossPointWebServer.cpp` | Register the `/lexirise` routes; collect the `Origin` header. **Not gated:** the file manager refuses any path with a hidden segment (`web/HiddenPath.h`) at all 8 entry points. Upstream only checked the last segment, so `/download?path=/.lexirise/config.ini` served the key |
 | `src/network/html/{Home,Files,Fonts,Settings}Page.html` | **Not gated:** one `<script src="/lexirise/nav.js">` line. Lexirise builds serve it and it adds the nav link; other builds 404 it and nothing changes |
 | `lib/hal/HalGPIO.{h,cpp}` | Dev harness input overlay (`LEXIPOINT_DEV_HARNESS`) |

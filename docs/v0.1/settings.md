@@ -99,6 +99,9 @@ same URL shown for uploading books).
   the rest of CrossPoint's web UI. No new visual language.
 - **Status line:** `Connected as <name> (<plan>)` / `Key rejected` / `Not checked` / `No internet` /
   `Could not connect`, from the cached `/v1/me` result (`api/KeyCheck`). `Test connection` re-runs it.
+  A check is queued and run from the device's main loop (never inside the HTTP request); meanwhile the
+  status reads `Checking…` and the page polls. In hotspot mode the device has no internet and never
+  touches the hotspot's radio, so the status reads `No internet` until the reader is online.
   The name and plan are shown on this page only, never logged; the email is never read.
 - **Save:** a pasted key is validated client-side (`lx_` prefix, no spaces), saved, and tested straight
   away. The page never receives the full key back (§2).
@@ -120,8 +123,9 @@ same URL shown for uploading books).
   say to use network mode on trusted networks.
 - **Other websites can't use the page** (P1). CrossPoint allows every origin (`enableCORS`), so without a
   guard any page open in the user's browser could POST new settings to the device. Every `/api/lexirise`
-  call is refused (403) when it carries an `Origin` that isn't the device itself. Browsers always send
-  `Origin` cross-site; curl and the dev harness send none and are allowed (`web/Origin.h`).
+  call is refused (403) when it carries an `Origin` that isn't the device itself, or a `Host` that isn't an
+  IPv4 literal or an mDNS `<name>.local` (DNS rebinding). Browsers always send `Origin` cross-site;
+  curl and the dev harness send none and are allowed (`web/Origin.h`).
 - **A new server needs the key pasted again** (P1). Pointing `base_url` somewhere else is only accepted
   in the same save as a pasted key (or with the key removed), so no edit can redirect the stored key
   to another server (`SettingsPatch`, error field `apiKeyForServer`). The page says so under Advanced.

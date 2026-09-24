@@ -69,15 +69,20 @@ own spec before it's built.
 
 ## 5. WiFi lifecycle (D10)
 
-`WifiSession` owns it for the reader:
+`WifiSession` owns it for the reader (rules in `src/lexirise/net/WifiLease.h`, revised in P1 review):
 
-- `ensureUp()`: already connected → return. Otherwise connect using the stored credentials
-  (`WifiCredentialStore`, the same store `WifiSelectionActivity` writes) with a 6 s budget.
-  **Never open the WiFi selection UI from a lookup.** If no network is configured, return
-  `Unavailable`.
+- `ensureUp()`: a connected station (anyone's) → use it. **Radio off** → join the last-used saved
+  network (`WifiCredentialStore`, the store `WifiSelectionActivity` writes) within 6 s. **Radio on but
+  not connected** (the web server's hotspot, someone else's join in progress) → `Busy`, and the radio is
+  not touched. **Never open the WiFi selection UI from a lookup.** No network, a failed join, or `Busy`
+  → `NoWifi` → `Unavailable`.
 - `WiFi.setSleep(false)` while up (KOSync does this for the same reason: modem sleep stalls show
   up as HTTP timeouts).
-- **Idle teardown** 5 min after the last Lexirise call → `esp_wifi_stop()`. Also tear down when
-  leaving the reader, and before deep sleep.
-- **Don't fight other WiFi users.** If KOSync, OTA, or the web server brought WiFi up, `WifiSession`
-  doesn't own it and doesn't tear it down.
+- **Ownership is explicit.** Lexipoint owns WiFi only if it brought it up from radio-off, and keeps it
+  across the driver's own reconnects. It gives it back after the idle time (`wifi_idle_min`, default
+  5 min) **or as soon as the screen leaves reading**: an ActivityManager hook reports every activity
+  change, and anything that isn't a reader activity, word select or a reader menu (KOSync, the web
+  server, OTA, ...) starts with the radio off and brings WiFi up itself. So Lexipoint can never turn
+  WiFi off under another feature. Before deep sleep upstream already turns WiFi off.
+- **The TLS session is closed after 30 s idle**, on WiFi teardown, and on leaving reading, so it never
+  holds internal heap that upstream TLS users pre-flight for.
