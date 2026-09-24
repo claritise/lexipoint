@@ -8,6 +8,9 @@ add_executable(LexiriseLookupTest
   ${REPO_ROOT}/src/lexirise/lookup/LookupCard.cpp
   ${REPO_ROOT}/src/lexirise/api/Responses.cpp
   ${REPO_ROOT}/src/lexirise/net/JsonReader.cpp
+  ${REPO_ROOT}/src/lexirise/text/BookLanguage.cpp
+  ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
+  ${REPO_ROOT}/src/lexirise/net/Http.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 

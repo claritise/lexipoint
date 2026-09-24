@@ -293,7 +293,7 @@ class CardSmoke(unittest.TestCase):
                 self.assertTrue(0 <= x < 480 and 0 <= y < 800, name)
 
     def replay(self, direction: int = 1) -> FakeCardHarness:
-        states = sorted(self.goldens())  # card-smoke's order
+        states = sorted(g for g in self.goldens() if not g[1].get("extra"))  # card-smoke's order and states
         h = FakeCardHarness([s["word"] - s["steps"] for _, s in states], direction)
         with tempfile.TemporaryDirectory() as out:
             h.done = lxctl.card_smoke(h, out, sleep=h.sleep, shot=h.shot)
@@ -301,7 +301,7 @@ class CardSmoke(unittest.TestCase):
 
     def test_replay_paces_the_buttons_and_runs_every_state(self):
         h = self.replay()
-        self.assertEqual(len(h.done), len(list(self.goldens())))
+        self.assertEqual(len(h.done), len([g for g in self.goldens() if not g[1].get("extra")]))
         self.assertEqual(len(h.shots_at), len(h.done))
         self.assertTrue(all("KANA" in c for c in h.sent if c.startswith("LEXI CARD")))  # the setting untouched
 

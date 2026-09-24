@@ -1,6 +1,7 @@
 add_executable(LexiriseNetTest
   JsonWriterTest.cpp
   HttpTest.cpp
+  AccessPolicyTest.cpp
   JsonReaderTest.cpp
   ResponsesTest.cpp
   LexiriseClientTest.cpp

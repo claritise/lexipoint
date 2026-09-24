@@ -211,3 +211,14 @@ TEST(LexiriseClient, NonIdempotentPostIsNeverSentTwice) {
   ASSERT_TRUE(client.send(analyze).ok());  // opens a session
   EXPECT_TRUE(client.send(analyze).ok());  // stale, retried
 }
+
+TEST(LexiriseClient, AnOverLimitBodyKeepsItsStatusForTheLog) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  conn.reads = {"HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(lexipoint::config::kHttpMaxBodyBytes + 1) +
+                "\r\n\r\n{"};
+  const auto r = client.send(kMe);
+  EXPECT_EQ(r.error, ApiError::Malformed);
+  EXPECT_EQ(r.status, 200);
+}

@@ -88,10 +88,11 @@ static_assert(std::size(kRankBandLimitsJa) == std::size(kRankBandLimitsZh), "one
 constexpr size_t kRankBands = std::size(kRankBandLimitsJa) + 1;  // + "rare"
 
 // The card (popup-ui.md §2, §3.2).
-constexpr unsigned long kToastMs = 2000;      // "Saved as learning · Undo"
-constexpr unsigned long kPhaseMergeMs = 300;  // phase B this soon after A: one refresh for both
-constexpr int kCardHalfRefreshEvery = 5;      // the 5th card's dismiss: a half refresh (ghosts), as the reader's
-constexpr int kCardPendingInputMax = 4;       // taps/steps read while a card refresh runs, handled after it
+constexpr unsigned long kToastMs = 2000;         // "Saved as learning · Undo"
+constexpr unsigned long kFailureToastMs = 6000;  // "Save failed · Retry": it comes late, the eyes are elsewhere
+constexpr unsigned long kPhaseMergeMs = 300;     // phase B this soon after A: one refresh for both
+constexpr int kCardHalfRefreshEvery = 5;         // the 5th card's dismiss: a half refresh (ghosts), as the reader's
+constexpr int kCardPendingInputMax = 4;          // taps/steps read while a card refresh runs, handled after it
 // The bench (P4) plays the phases on a timer, as a lookup would fill them.
 constexpr unsigned long kBenchPhaseAMs = 250;  // tap → analyzed
 constexpr unsigned long kBenchPhaseBMs = 900;  // tap → translated
@@ -104,6 +105,7 @@ constexpr size_t kMaxOccurrences = 128;
 constexpr size_t kMaxEntries = 512;
 constexpr uint32_t kMaxProficiency = 4;       // stateByEntryId proficiency is 0-4
 constexpr size_t kMaxTokenBytes = 256;        // one word / lemma / reading
+constexpr size_t kLoggedBodyBytes = 128;      // of a response we couldn't read (it holds no key)
 constexpr size_t kMaxSavedIdBytes = 64;       // a saved-expression id (it goes into a request path)
 constexpr size_t kMaxScoreChars = 24;         // a frequency_score as JSON text ("0.4861234")
 constexpr size_t kMaxDisplayFieldBytes = 64;  // /v1/me user.name and user.plan

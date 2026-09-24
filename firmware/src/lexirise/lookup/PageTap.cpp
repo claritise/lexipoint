@@ -6,6 +6,7 @@
 #include <GfxRenderer.h>
 #include <Logging.h>
 
+#include "lexirise/LexiriseService.h"
 #include "lexirise/settings/SettingsStore.h"
 #include "lexirise/text/PageModelAdapter.h"
 
@@ -30,9 +31,25 @@ text::TapContext describeTap(const text::PageModel& page, const text::TokenRef t
   return text::describeTap(page, tap, book, settingsStore().snapshot());
 }
 
-bool lexiriseUsable(const text::BookLanguage& book) {
+bool lexiriseConfigured(const text::BookLanguage& book) {
   const Settings settings = settingsStore().snapshot();
   return settings.hasApiKey() && book.mayUseLexirise(settings);
+}
+
+Gate lexiriseGate(const text::BookLanguage& book) {
+  return lookup::lexiriseGate(settingsStore().snapshot(), book, service().blocked());
+}
+
+api::AccessPolicy::Block takeUnannouncedIf(const Gate gate) {
+  if (gate != Gate::Rejected && gate != Gate::RateLimited) return api::AccessPolicy::Block::None;
+  return service().takeUnannouncedBlock();
+}
+
+bool takeNoKeyNotice() {
+  static bool said = false;  // main task only
+  const bool first = !said;
+  said = true;
+  return first;
 }
 
 void logTap(const text::TapContext& context) {

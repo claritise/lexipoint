@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 
+#include "api/AccessPolicy.h"
 #include "api/KeyCheck.h"
 #include "api/LexiriseApi.h"
 #include "api/LexiriseClient.h"
@@ -35,8 +36,18 @@ class LexiriseService final : public api::LexiriseApi {
   // Queues a check if the cached status is stale (never checked, or offline last time) and there is a
   // key. The web page calls it when it opens; send() does it itself whenever WiFi comes up.
   void recheckIfStale();
-  // The key or server changed: the cached status no longer applies.
-  void invalidateKeyStatus() { status_ = api::KeyStatus(); }
+  // A new key or server: the cached status, and a rejection or back-off, no longer apply.
+  void invalidateKeyStatus() {
+    status_ = api::KeyStatus();
+    access_.reset();
+  }
+
+  // Whether Lexirise may be asked now: not after a 401/403 (until reboot or a new key), not during a 429's
+  // back-off. Lookups skip it then (StarDict answers), and writes fail at once.
+  api::AccessPolicy::Block blocked() const { return access_.blocked(clock_()); }
+  uint32_t retryInS() const { return access_.retryInS(clock_()); }
+  // The block the reader hasn't been told about yet (then it has): word select shows its notice.
+  api::AccessPolicy::Block takeUnannouncedBlock() { return access_.takeUnannounced(clock_()); }
 
   // POST /v1/analyze/text and /v1/dictionary/lookup (raw responses; api::parseAnalyze / parseLookup
   // read them). Both share the keep-alive session, so a lookup's two calls cost one handshake.
@@ -70,6 +81,7 @@ class LexiriseService final : public api::LexiriseApi {
   api::LexiriseClient client_;
   Clock clock_;
   api::KeyStatus status_;
+  api::AccessPolicy access_;
   bool checkPending_ = false;
   bool checking_ = false;       // inside checkKey(): its own send() doesn't queue another
   bool sessionActive_ = false;  // a call ran since the last close: the idle close is armed

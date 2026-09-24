@@ -29,7 +29,7 @@ import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
 
-from cardstates import render_args, states
+from cardstates import has_reference, render_args, states
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 TOOL = REPO / "build/test/lexirise_card/LexiriseCardRender"
@@ -168,6 +168,8 @@ def main() -> int:
         tmp = pathlib.Path(t)
         for st in states():
             if args.only and args.only not in st["name"]:
+                continue
+            if not has_reference(st):  # an error state (P6): pinned by the goldens only
                 continue
             dev, ref = tmp / "dev.png", tmp / "ref.png"
             render_device(st, dev, tmp)

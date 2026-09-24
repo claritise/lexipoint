@@ -5,6 +5,8 @@
 #include <algorithm>
 
 #include "Match.h"
+#include "lexirise/LexiriseConfig.h"
+#include "lexirise/text/Utf8Prefix.h"
 
 namespace lexipoint::lookup {
 
@@ -23,6 +25,7 @@ LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, Anal
   sentence.language = language;
   if (api::parseAnalyze(analyzed.body, sentence.analysis) != api::ParseStatus::Ok) {
     report.error = api::ApiError::Malformed;
+    report.bodyHead = bodyHead(analyzed.body);
     return report;
   }
 
@@ -78,15 +81,22 @@ LookupCard cardFor(const AnalyzedSentence& sentence, const size_t word) {
   return out;
 }
 
-api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card) {
+std::string bodyHead(const std::string_view body) {
+  return std::string(text::utf8Prefix(body, config::kLoggedBodyBytes));
+}
+
+api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string* unreadable) {
   card.complete = true;
   const api::ApiResponse looked = api.lookup(card.language, card.headword());
   api::LookupResult entry;
   if (!looked.ok() || api::parseLookup(looked.body, entry) != api::ParseStatus::Ok) {
     card.translationUnavailable = true;
-    return looked.ok() ? api::ApiError::Malformed : looked.error;
+    card.translationError = looked.ok() ? api::ApiError::Malformed : looked.error;
+    if (looked.ok() && unreadable) *unreadable = bodyHead(looked.body);
+    return card.translationError;
   }
   card.translationUnavailable = false;
+  card.translationError = api::ApiError::None;
   if (!entry.reading.empty()) card.reading = entry.reading;
   card.senses = std::move(entry.senses);
   card.level = std::move(entry.level);

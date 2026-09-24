@@ -317,7 +317,7 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
 bool EpubReaderActivity::dictionaryLookupsAvailable() const {
   return lexipoint::lookup::lookupsAvailable(
       SETTINGS.dictionaryName[0] != '\0',
-      lexipoint::lookup::lexiriseUsable(lexipoint::text::BookLanguage(epub->getLanguage(), std::nullopt)));
+      lexipoint::lookup::lexiriseConfigured(lexipoint::text::BookLanguage(epub->getLanguage(), std::nullopt)));
 }
 #endif
 

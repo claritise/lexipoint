@@ -4,6 +4,7 @@
 // lemma. Pure: the network is behind api::LexiriseApi (LexiriseService on the device, a fake in tests).
 // Tests: test/lexirise_lookup.
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -21,8 +22,12 @@ enum class LookupOutcome {
 
 struct LookupReport {
   LookupOutcome outcome = LookupOutcome::Unavailable;
-  api::ApiError error = api::ApiError::None;  // why it was Unavailable (for the log and, in P6, the UI)
+  api::ApiError error = api::ApiError::None;  // why it was Unavailable (for the log and the UI)
+  std::string bodyHead;                       // Malformed: the body's first config::kLoggedBodyBytes, for the log
 };
+
+// The start of a body we couldn't read, for the log (offline-and-errors.md §1: it holds no key).
+std::string bodyHead(std::string_view body);
 
 // The tapped sentence as Lexirise analyzed it: every word in it can become a card without asking again
 // (lookup-flow.md §6: Left/Right re-run only dictionary/lookup).
@@ -33,7 +38,7 @@ struct AnalyzedSentence {
 };
 
 // Whether a tap goes to Lexirise at all (the card opens): a sentence and a language to send, and Lexirise
-// usable for the book (on, a key, the language not switched off: lookup::lexiriseUsable). Otherwise word
+// usable for the book (on, a key, the language not switched off: lookup::lexiriseConfigured). Otherwise word
 // select goes straight to StarDict, with no card flashing up first.
 inline bool asksLexirise(const text::TapContext& tap, const bool usable) {
   return usable && tap.sentence && tap.language.language;
@@ -49,7 +54,7 @@ LookupCard cardFor(const AnalyzedSentence& sentence, size_t word);
 
 // ③ Phase B: the headword's dictionary entry into `card` (meaning, level, rank, the lemma's reading).
 // A failure still leaves the card, with translationUnavailable set; the error is returned.
-api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card);
+api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string* unreadable = nullptr);
 
 // All three at once, blocking (the tests' one-call form; the card runs them one per loop pass).
 LookupReport lookupWithLexirise(api::LexiriseApi& api, const text::TapContext& tap, LookupCard& card);

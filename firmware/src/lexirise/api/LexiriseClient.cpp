@@ -33,6 +33,8 @@ const char* apiErrorName(const ApiError error) {
       return "ok";
     case ApiError::NotConfigured:
       return "not-configured";
+    case ApiError::NoWifiSaved:
+      return "no-wifi-saved";
     case ApiError::NoWifi:
       return "no-wifi";
     case ApiError::LowMemory:
@@ -163,6 +165,7 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
 
   if (!parser.done()) {
     connection_.close();
+    out.status = parser.status();  // read before the body went wrong (0 if it never came): for the log
     out.error = parser.failure() == net::ResponseParser::Failure::Truncated ? ApiError::Network : ApiError::Malformed;
     return Attempt::Done;
   }

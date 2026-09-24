@@ -10,9 +10,10 @@ from __future__ import annotations
 def states() -> list[dict]:
     out = []
 
-    def add(name, lang, word, view="card", tab=0, pos="high", reading="kana", toast="", actions=None, level=None):
+    def add(name, lang, word, view="card", tab=0, pos="high", reading="kana", toast="", actions=None, level=None,
+            extra=""):
         out.append(dict(name=name, lang=lang, word=word, view=view, tab=tab, pos=pos, reading=reading, toast=toast,
-                        actions=actions or [], level=level))
+                        actions=actions or [], level=level, extra=extra))
 
     ja_tabs = ["meaning", "examples", "context", "kanji", "form", "actions"]
     zh_tabs = ["meaning", "examples", "context", "chars", "actions"]
@@ -31,7 +32,17 @@ def states() -> list[dict]:
     add("zh-card-low", "zh", 5, pos="low")
     for i, t in enumerate(zh_tabs):
         add(f"zh-expanded-{t}", "zh", 5, view="expanded", tab=i)
+    # Error states (P6, offline-and-errors.md §3a): not in the reference, so pinned here and nowhere else.
+    add("ja-card-unanswered", "ja", 2, extra="unanswered")
+    add("ja-expanded-meaning-unanswered", "ja", 2, view="expanded", extra="unanswered")
+    add("ja-card-save-failed", "ja", 0, extra="save-failed")
+    add("ja-card-rate-limited", "ja", 0, extra="rate-limited")
     return out
+
+
+def has_reference(state: dict) -> bool:
+    """The state exists in card-reference.html (cardshots compares it; card-smoke replays it)."""
+    return not state.get("extra")
 
 
 def render_args(state: dict) -> list[str]:
@@ -39,4 +50,6 @@ def render_args(state: dict) -> list[str]:
     args = [state["lang"], str(state["word"]), state["view"], str(state["tab"]), state["pos"], state["reading"]]
     if state["level"] is not None:  # the tool reaches the state by tapping, so the toast comes by itself
         args.append(str(state["level"]))
+    if state.get("extra"):
+        args.append("+" + state["extra"])
     return args

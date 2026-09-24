@@ -30,6 +30,8 @@ LiveSource::LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage p
 
 void LiveSource::queue(const LevelChange& change) {
   const std::vector<int> same = sameWord(change.word);
+  // Each save gets its one lookup retry: a Retry after a failure looks the word up again too.
+  for (const int w : same) saveRetried_[w] = false;
   for (auto it = writes_.begin(); it != writes_.end(); ++it) {
     if (std::find(same.begin(), same.end(), it->word) == same.end()) continue;
     // Still waiting: one change from where Lexirise is to where the user left it.
@@ -67,8 +69,8 @@ bool LiveSource::hasWork(const unsigned long nowMs) const {
   return !analyzed_ || lookupDue(nowMs, false) >= 0 || writeReady(nowMs, false);
 }
 
-std::optional<LevelChange> LiveSource::takeFailedWrite() {
-  std::optional<LevelChange> failed = std::move(failedWrite_);
+std::optional<LiveSource::FailedWrite> LiveSource::takeFailedWrite() {
+  std::optional<FailedWrite> failed = std::move(failedWrite_);
   failedWrite_.reset();
   return failed;
 }
@@ -111,16 +113,19 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
     if (closing) return f;  // nothing shown, nothing queued
     f.kind = Fetched::Kind::Analysis;
     f.report = lookup::analyzeTap(api_, tap_, f.analysis, f.tapped);
+    f.unreadable = f.report.bodyHead;
   } else if (const int due = lookupDue(nowMs, closing); due >= 0) {
     f.kind = Fetched::Kind::Entry;
     f.index = due;
     f.card = cards_[due];
-    f.saveRetry = f.card.complete;                 // it ran before and failed: this is the save's retry
-    f.error = lookup::completeCard(api_, f.card);  // a failure still completes it: the word without its meaning
+    f.saveRetry = f.card.complete;                                // it ran before and failed: this is the save's retry
+    f.error = lookup::completeCard(api_, f.card, &f.unreadable);  // a failure still completes it
   } else if (writeReady(nowMs, closing)) {
     f.kind = Fetched::Kind::Write;
     f.index = writes_.front().word;
-    f.error = send(writes_.front(), cards_[f.index], f.savedExpressionId, f.clearFailed).error;
+    const api::ApiResponse sent = send(writes_.front(), cards_[f.index], f.savedExpressionId, f.clearFailed);
+    f.error = sent.error;
+    f.retryAfterS = sent.retryAfterS;
   }
   return f;
 }
@@ -166,7 +171,7 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
         back.word = change.word;
         back.from = change.to;
         back.to = change.from;
-        failedWrite_ = back;
+        failedWrite_ = FailedWrite{back, fetched.error, fetched.retryAfterS};
         return Advance::Idle;
       }
       std::optional<api::EntryState> saved = card.saved;

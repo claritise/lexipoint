@@ -17,7 +17,8 @@ namespace lexipoint::api {
 enum class ApiError {
   None,
   NotConfigured,  // no key, or an unusable base URL
-  NoWifi,         // no saved network, the join failed, or the radio is someone else's (hotspot)
+  NoWifiSaved,    // no saved network: nothing to reach Lexirise with (StarDict answers unmarked)
+  NoWifi,         // the join failed, or the radio is someone else's (hotspot): offline
   LowMemory,
   ClockNotSet,
   Network,  // connect failed or the connection dropped

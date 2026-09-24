@@ -79,4 +79,6 @@ TEST(LiveWord, BadgesLevelsAndPhases) {
   EXPECT_EQ(phaseOf(c), Phase::Complete);
   c.translationPending = true;
   EXPECT_EQ(phaseOf(c), Phase::TranslationPending);
+  c.translationUnavailable = true;
+  EXPECT_EQ(phaseOf(c), Phase::Unanswered);
 }

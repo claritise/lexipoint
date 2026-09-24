@@ -13,12 +13,19 @@ Outcome CardSession::handleInput(const unsigned long nowMs) {
   return outcome;
 }
 
+CardController::WriteFailure writeFailure(const api::ApiError error) {
+  if (error == api::ApiError::Unauthorized) return CardController::WriteFailure::KeyRejected;
+  if (error == api::ApiError::RateLimited) return CardController::WriteFailure::RateLimited;
+  return CardController::WriteFailure::Network;
+}
+
 CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsigned long nowMs) {
   Answer answer;
   if (!live_) return answer;
   answer.clearFailed = fetched.clearFailed;
-  // A lookup for the word on screen changes what it shows (a save's retry fills a meaning in while the
-  // phase stays Complete), even when the controller sees no change of phase or level.
+  answer.unreadable = fetched.unreadable;
+  // A lookup for the word on screen changes what it shows (a save's retry fills the meaning in, or gives
+  // another reason for none), even when the controller sees no change of phase or level.
   const bool onScreen = fetched.kind == LiveSource::Fetched::Kind::Entry && fetched.index == controller_.word();
   switch (live_->apply(std::move(fetched))) {
     case LiveSource::Advance::NotFound:
@@ -34,9 +41,19 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
       break;
   }
   if (const auto failed = live_->takeFailedWrite()) {  // Lexirise didn't take a level change: put it back
-    controller_.levelFailed(failed->word, failed->to, nowMs);
+    controller_.levelFailed(failed->back.word, failed->back.to, nowMs, writeFailure(failed->error), failed->back.from,
+                            failed->retryAfterS);
     answer.writeFailed = true;
     answer.redraw = true;
+  }
+  return answer;
+}
+
+CardSession::Answer CardSession::applyClosing(LiveSource::Fetched fetched, const unsigned long nowMs) {
+  Answer answer = apply(std::move(fetched), nowMs);
+  if (answer.writeFailed) {
+    unsentSaves_++;
+    unsentError_ = live_->error();
   }
   return answer;
 }

@@ -11,6 +11,7 @@
 #include "CardModel.h"
 #include "CardSource.h"
 #include "DisplayList.h"
+#include "lexirise/LexiriseConfig.h"
 
 namespace lexipoint::card {
 
@@ -46,9 +47,16 @@ class CardController {
   bool step(int direction, unsigned long nowMs);     // side buttons: previous / next word, stopping at the ends
   Outcome tap(const Hit* hit, unsigned long nowMs);  // nullptr: outside the card
   Outcome home();                                    // expanded → card; card → close
+  // Why a level change didn't reach Lexirise (offline-and-errors.md §3).
+  enum class WriteFailure : uint8_t {
+    Network,      // no WiFi, a timeout, 5xx, a bad answer: "Save failed · Retry"
+    KeyRejected,  // 401/403: "Lexirise key rejected", no retry (Lexirise is off until reboot or a new key)
+    RateLimited,  // 429: "Rate limited: try in N s · Retry"
+  };
   // Lexirise refused a level change (or couldn't be reached): the word (and the sentence's other
-  // occurrences of it) go back to `level`, with a toast wherever the card is.
-  void levelFailed(int word, Level level, unsigned long nowMs);
+  // occurrences of it) go back to `level`, with a toast wherever the card is. `wanted` is what the user
+  // had set: the toast's Retry sets it again.
+  void levelFailed(int word, Level level, unsigned long nowMs, WriteFailure why, Level wanted, uint32_t retryInS);
 
   const CardSource& source() const { return source_; }
   int word() const { return word_; }
@@ -62,10 +70,13 @@ class CardController {
   int highlightCodepoints() const { return state_.phase == Phase::Pending ? 1 : 0; }
 
  private:
-  void showToast(std::string text, unsigned long nowMs, bool undo = false);
+  // `tappable`: the toast is a target (Undo, or Retry after a failure).
+  void showToast(std::string text, unsigned long nowMs, bool tappable = false,
+                 unsigned long durationMs = config::kToastMs);
   void clearToast();
   Outcome setLevel(Level level, const char* toastPrefix, bool undo, unsigned long nowMs);
-  bool syncWord();  // true: something shown changed
+  Outcome retry(unsigned long nowMs);  // the failed change again (the toast's Retry)
+  bool syncWord();                     // true: something shown changed
   bool hasWord() const { return word_ < source_.wordCount(); }
 
   CardSource& source_;
@@ -78,6 +89,15 @@ class CardController {
   // What the toast's Undo reverts: that word back to that level (None: the save is removed).
   int undoWord_ = -1;
   Level undoLevel_ = Level::None;
+  // What the toast's Retry sets again: every level change that failed since the toast came up (a 429
+  // fails the queued ones one after another), each word to the level the user had set.
+  struct Failed {
+    int word;
+    Level wanted;
+    unsigned long notBeforeMs;  // a 429's back-off: its Retry is sent when it has passed
+  };
+  std::vector<Failed> retries_;
+  bool failureToast_ = false;  // the toast is a failure (levelFailed): a step doesn't clear it
 };
 
 }  // namespace lexipoint::card

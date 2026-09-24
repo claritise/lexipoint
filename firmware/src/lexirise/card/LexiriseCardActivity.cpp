@@ -13,6 +13,7 @@
 #include "lexirise/card/CardFrame.h"
 #include "lexirise/card/CardOrientation.h"
 #include "lexirise/card/CardPainter.h"
+#include "lexirise/card/CardStringsI18n.h"
 #include "lexirise/settings/SettingsStore.h"
 #include "lexirise/util/Timing.h"
 
@@ -46,7 +47,7 @@ LexiriseCardActivity::LexiriseCardActivity(GfxRenderer& renderer, MappedInputMan
       live_(static_cast<LiveSource*>(source_.get())),
       drawPage_(std::move(drawPage)),
       outcome_(std::move(outcome)),
-      controller_(*source_, savedReading()),
+      controller_(*source_, savedReading(), cardStringsFromI18n()),  // the bench keeps the reference's English
       session_(controller_, targets_, input_, live_) {}
 
 void LexiriseCardActivity::onEnter() {
@@ -117,18 +118,20 @@ void LexiriseCardActivity::fetchAnswer() {
 void LexiriseCardActivity::logAnswer(const CardSession::Answer& answer) const {
   if (answer.writeFailed) LOG_INF("LXCARD", "level change failed (%s)", api::apiErrorName(live_->error()));
   if (answer.clearFailed) LOG_INF("LXCARD", "removed, but its notes and tags weren't cleared");
+  if (!answer.unreadable.empty()) LOG_INF("LXCARD", "unreadable response: %s", answer.unreadable.c_str());
 }
 
 void LexiriseCardActivity::flushWrites(const bool lockHeld) {
-  // The card stays on screen meanwhile. A failure can't be shown any more: it's logged.
+  // The card stays on screen meanwhile. A write that fails now can't be shown on the card: the session
+  // counts it, and word select says so after the card (LiveOutcome::unsentSaves).
   while (session_.hasPendingWrites()) {
     LiveSource::Fetched fetched = session_.fetch(millis(), /*closing=*/true);
     CardSession::Answer answer;
     if (lockHeld) {
-      answer = session_.apply(std::move(fetched), millis());
+      answer = session_.applyClosing(std::move(fetched), millis());
     } else {
       RenderLock lock;
-      answer = session_.apply(std::move(fetched), millis());
+      answer = session_.applyClosing(std::move(fetched), millis());
     }
     logAnswer(answer);
   }
@@ -160,12 +163,17 @@ void LexiriseCardActivity::end(const LiveOutcome ending) {
   if (finishing_) return;
   finishing_ = true;
   flushWrites(/*lockHeld=*/false);
-  if (outcome_) *outcome_ = ending;
+  if (outcome_) {
+    *outcome_ = ending;
+    outcome_->unsentSaves = session_.unsentSaves();
+    outcome_->unsentError = session_.unsentError();
+  }
   finish();
 }
 
 void LexiriseCardActivity::onExit() {
-  // Leaving without end() (sleep, or the stack cleared under the card): the queued writes still go.
+  // Leaving without end() (sleep, or the stack cleared under the card): the queued writes are still
+  // attempted; a failure here can only be logged (word select's result handler doesn't run).
   if (!finishing_) flushWrites(/*lockHeld=*/true);
   if (live_) service().holdWifi(false);
   // Ghost cleanup: after every Nth card the reader's redraw is a half refresh (popup-ui.md §2). Here,

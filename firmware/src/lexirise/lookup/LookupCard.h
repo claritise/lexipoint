@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "lexirise/api/LexiriseClient.h"
 #include "lexirise/api/Responses.h"
 #include "lexirise/settings/Settings.h"
 
@@ -30,7 +31,8 @@ struct LookupCard {
   std::optional<api::EntryState> saved;  // the lemma's state if saved, else the surface's
   bool translationPending = false;       // phase B: the server is still translating
   bool translationUnavailable = false;   // phase B failed (offline, or an error): the word without its meaning
-  bool complete = false;                 // phase B ran (whatever it found)
+  api::ApiError translationError = api::ApiError::None;  // why
+  bool complete = false;                                 // phase B ran (whatever it found)
 
   std::string headword() const;  // what the dictionary is asked for: the lemma, else the surface
 };

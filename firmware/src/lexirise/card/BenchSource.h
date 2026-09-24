@@ -24,6 +24,9 @@ class BenchSource final : public CardSource {
   int pageNumber() const override { return book_.pageNumber; }
   bool demoActions() const override { return true; }
 
+  // Phase B with no meaning (the offline row): for the P6 goldens and previews, not the bench's timer.
+  void unanswered() { phase_ = Phase::Unanswered; }
+
   void open(unsigned long nowMs) override;
   void focus(int index, unsigned long nowMs) override;
   bool tick(unsigned long nowMs) override;

@@ -21,7 +21,7 @@ namespace lexipoint::card {
 
 class LiveSource final : public CardSource {
  public:
-  // `tap` must have a sentence and a language (a Lexirise lookup: lookup::lexiriseUsable). `tags` go on
+  // `tap` must have a sentence and a language (a Lexirise lookup: lookup::lexiriseConfigured). `tags` go on
   // every word saved from it (settings: tags).
   LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage page, std::vector<std::string> tags = {});
 
@@ -43,6 +43,15 @@ class LiveSource final : public CardSource {
     std::string savedExpressionId;  // Write: a new save's id (empty for a level change or a removal)
     bool clearFailed = false;       // Write: removed (DELETE), but its notes and tags weren't cleared
     bool saveRetry = false;         // Entry: the lookup again, for a save, after it failed once
+    std::string unreadable;         // a response we couldn't read: its start, for the log
+    uint32_t retryAfterS = 0;       // Write refused with 429: seconds until Lexirise may be asked
+  };
+  // A write Lexirise refused or didn't answer: the word goes back to `back.to` (what Lexirise has; its
+  // `from` is what the user had set), why, and for a 429 how long until it may be asked again.
+  struct FailedWrite {
+    LevelChange back;
+    api::ApiError error = api::ApiError::None;
+    uint32_t retryAfterS = 0;
   };
 
   // A level the user set (CardController's LevelChange), queued in order and sent one per fetch() once
@@ -53,9 +62,9 @@ class LiveSource final : public CardSource {
   // one still waiting merges into it (T then Undo in the window: nothing is sent at all).
   void queue(const LevelChange& change);
   bool hasPendingWrites() const { return !writes_.empty(); }
-  // A write Lexirise refused or didn't answer: the word goes back to `level`, and its later changes are
-  // dropped (they were built on it). Taken by the activity after apply().
-  std::optional<LevelChange> takeFailedWrite();
+  // A write Lexirise refused or didn't answer: the word goes back to `back.to` (FailedWrite), and its later
+  // changes are dropped (they were built on it). Taken by CardSession after apply().
+  std::optional<FailedWrite> takeFailedWrite();
 
   bool hasWork(unsigned long nowMs) const;  // fetch() would call the network
   // At most one call: the analysis; then the focused word's lookup; then the next write that is ready
@@ -95,7 +104,7 @@ class LiveSource final : public CardSource {
   api::ApiError error_ = api::ApiError::None;
   std::vector<std::string> tags_;
   std::deque<LevelChange> writes_;
-  std::optional<LevelChange> failedWrite_;
+  std::optional<FailedWrite> failedWrite_;
   std::vector<std::string> createdIds_;  // items this card saved (their removal clears them too)
   std::vector<bool> saveRetried_;        // per word: its lookup was retried for a save
 

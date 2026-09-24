@@ -33,7 +33,15 @@ class LayoutSentence : public ::testing::Test {
   CssParser css{"/tmp"};
   std::vector<std::unique_ptr<Page>> pages;
   // The parser keeps a reference to its path: it must outlive the parse.
-  std::string path = (std::filesystem::temp_directory_path() / "lexipoint-layout-test.xhtml").string();
+  std::string path = casePath();
+
+  // One file per test case: ctest runs the cases as parallel processes, and a shared name raced.
+  static std::string casePath() {
+    const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+    return (std::filesystem::temp_directory_path() /
+            (std::string("lexipoint-layout-") + info->test_suite_name() + "-" + info->name() + ".xhtml"))
+        .string();
+  }
 
   // Lays out a body of XHTML into pages, as the reader would.
   void layout(const std::string& body, const bool extraParagraphSpacing = false) {

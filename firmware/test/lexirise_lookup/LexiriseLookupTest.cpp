@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "lexirise/lookup/Fallback.h"
 #include "lexirise/lookup/LexiriseLookup.h"
 
 using lexipoint::Language;
@@ -351,4 +352,80 @@ TEST(LexiriseLookup, LexiriseIsAskedOnlyWithASentenceALanguageAndAKey) {
   TapContext noLanguage = tap();
   noLanguage.language.language.reset();
   EXPECT_FALSE(asksLexirise(noLanguage, true));
+}
+
+TEST(Fallback, TheGateSaysWhyLexiriseIsntAsked) {
+  using lexipoint::lookup::Gate;
+  using lexipoint::lookup::lexiriseGate;
+  using Block = lexipoint::api::AccessPolicy::Block;
+  const lexipoint::text::BookLanguage ja("ja", std::nullopt);
+  lexipoint::Settings s;
+  s.enabled = true;
+  s.apiKey = "lx_TESTKEYtestkey0123456789";
+  EXPECT_EQ(lexiriseGate(s, ja, Block::None), Gate::Ask);
+  EXPECT_EQ(lexiriseGate(s, ja, Block::Rejected), Gate::Rejected);
+  EXPECT_EQ(lexiriseGate(s, ja, Block::RateLimited), Gate::RateLimited);
+  s.apiKey.clear();
+  EXPECT_EQ(lexiriseGate(s, ja, Block::None), Gate::NoKey);
+  s.enabled = false;
+  EXPECT_EQ(lexiriseGate(s, ja, Block::None), Gate::Off);  // off beats "no key": nothing to say
+}
+
+TEST(Fallback, WhatTheUserIsToldWhenLexiriseDoesntAnswer) {
+  using lexipoint::lookup::fallbackFor;
+  using lexipoint::lookup::Notice;
+  EXPECT_EQ(fallbackFor(ApiError::Unauthorized).notice, Notice::KeyRejected);
+  EXPECT_EQ(fallbackFor(ApiError::RateLimited).notice, Notice::RateLimited);
+  for (const ApiError e :
+       {ApiError::NoWifi, ApiError::Network, ApiError::Timeout, ApiError::ClockNotSet, ApiError::Server}) {
+    EXPECT_TRUE(fallbackFor(e).offline);
+    EXPECT_EQ(fallbackFor(e).notice, Notice::None);
+  }
+  for (const ApiError e :
+       {ApiError::NotConfigured, ApiError::Tls, ApiError::LowMemory, ApiError::Malformed, ApiError::Http}) {
+    EXPECT_FALSE(fallbackFor(e).offline);
+    EXPECT_EQ(fallbackFor(e).notice, Notice::None);
+  }
+}
+
+TEST(Fallback, AGateSaysItsBlockOnceOrAlwaysWithoutStarDict) {
+  using lexipoint::lookup::Gate;
+  using lexipoint::lookup::gateFallback;
+  using lexipoint::lookup::Notice;
+  using Block = lexipoint::api::AccessPolicy::Block;
+  // A wrong key found by the web page's check: the first lookup says so, later ones go quietly to StarDict.
+  EXPECT_EQ(gateFallback(Gate::Rejected, false, Block::Rejected, true).notice, Notice::KeyRejected);
+  EXPECT_EQ(gateFallback(Gate::Rejected, false, Block::None, true).notice, Notice::None);
+  // No StarDict: the block says more than "No dictionary set", every time.
+  EXPECT_EQ(gateFallback(Gate::RateLimited, false, Block::None, false).notice, Notice::RateLimited);
+  EXPECT_EQ(gateFallback(Gate::NoKey, true, Block::None, true).notice, Notice::NoKey);
+  EXPECT_EQ(gateFallback(Gate::NoKey, false, Block::None, true).notice, Notice::None);  // said this boot
+  EXPECT_EQ(gateFallback(Gate::Off, false, Block::None, false).notice, Notice::None);
+}
+
+TEST(Fallback, ThePlanWordSelectCarriesOut) {
+  using lexipoint::lookup::Fallback;
+  using lexipoint::lookup::Notice;
+  using lexipoint::lookup::planFallback;
+  auto p = planFallback(Fallback{Notice::KeyRejected, false}, true);
+  EXPECT_EQ(p.notice, Notice::KeyRejected);  // the notice, then StarDict
+  EXPECT_TRUE(p.starDict);
+  EXPECT_FALSE(p.noDictionary);
+  p = planFallback(Fallback{Notice::RateLimited, false}, false);
+  EXPECT_FALSE(p.starDict);  // the notice alone: it says more than "No dictionary set"
+  EXPECT_FALSE(p.noDictionary);
+  p = planFallback(Fallback{Notice::None, true}, true);
+  EXPECT_TRUE(p.starDict);
+  EXPECT_TRUE(p.offline);  // StarDict's title marked
+  p = planFallback(Fallback{Notice::None, true}, false);
+  EXPECT_TRUE(p.noDictionary);
+  EXPECT_FALSE(p.offline);
+}
+
+TEST(Fallback, AnUnsentSaveSaysWhy) {
+  using lexipoint::lookup::Notice;
+  using lexipoint::lookup::noticeForUnsentSave;
+  EXPECT_EQ(noticeForUnsentSave(ApiError::RateLimited), Notice::RateLimited);
+  EXPECT_EQ(noticeForUnsentSave(ApiError::Unauthorized), Notice::KeyRejected);
+  EXPECT_EQ(noticeForUnsentSave(ApiError::NoWifi), Notice::SaveFailed);
 }

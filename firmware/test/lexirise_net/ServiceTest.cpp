@@ -57,7 +57,7 @@ TEST(Service, NoWifiIsOfflineAndOpensNothing) {
     rig.wifi.result = result;
     const auto status = rig.service.checkKey();
     EXPECT_EQ(status.state, KeyState::Offline);
-    EXPECT_EQ(status.error, ApiError::NoWifi);
+    EXPECT_EQ(status.error, result == WifiResult::NotConfigured ? ApiError::NoWifiSaved : ApiError::NoWifi);
     EXPECT_EQ(rig.conn.opens, 0);
   }
 }
@@ -188,4 +188,55 @@ TEST(Service, AHeldWifiOutlastsTheIdleRuleUntilReleased) {
   EXPECT_EQ(rig.wifi.touches, touches + 1);
   rig.service.tick();
   EXPECT_FALSE(rig.wifi.owned);  // the idle rule applies again
+}
+
+TEST(Service, ARejectedKeyIsNotAskedAgainButAKeyCheckMayProbeIt) {
+  Rig rig;
+  rig.conn.reads = {"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n", httpOk(kMe)};
+  EXPECT_EQ(rig.service.analyze(lexipoint::Language::Japanese, "x").error, lexipoint::api::ApiError::Unauthorized);
+  EXPECT_EQ(rig.service.blocked(), lexipoint::api::AccessPolicy::Block::Rejected);
+  const size_t written = rig.conn.written.size();
+  EXPECT_EQ(rig.service.lookup(lexipoint::Language::Japanese, "x").error, lexipoint::api::ApiError::Unauthorized);
+  EXPECT_EQ(rig.conn.written.size(), written);                   // refused without the network
+  EXPECT_EQ(rig.service.checkKey().state, KeyState::Connected);  // the key works again (fixed at Lexirise)
+  EXPECT_EQ(rig.service.blocked(), lexipoint::api::AccessPolicy::Block::None);
+}
+
+TEST(Service, ARateLimitHoldsOffEveryCallForItsRetryAfter) {
+  Rig rig;
+  rig.conn.reads = {"HTTP/1.1 429 Too Many Requests\r\nRetry-After: 20\r\nContent-Length: 0\r\n\r\n",
+                    httpOk(R"({"occurrences":[]})")};
+  EXPECT_EQ(rig.service.analyze(lexipoint::Language::Japanese, "x").error, lexipoint::api::ApiError::RateLimited);
+  EXPECT_EQ(rig.service.retryInS(), 20u);
+  const size_t written = rig.conn.written.size();
+  EXPECT_EQ(rig.service.analyze(lexipoint::Language::Japanese, "x").error, lexipoint::api::ApiError::RateLimited);
+  EXPECT_EQ(rig.service.checkKey().state, KeyState::Error);  // even the key check waits
+  EXPECT_EQ(rig.conn.written.size(), written);
+  FakeClock::nowMs += 20'000;
+  EXPECT_TRUE(rig.service.analyze(lexipoint::Language::Japanese, "x").ok());
+}
+
+TEST(Service, ANewKeyLiftsARejection) {
+  Rig rig;
+  rig.conn.reads = {"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"};
+  rig.service.analyze(lexipoint::Language::Japanese, "x");
+  ASSERT_EQ(rig.service.blocked(), lexipoint::api::AccessPolicy::Block::Rejected);
+  rig.service.invalidateKeyStatus();  // the web page saved a new key
+  EXPECT_EQ(rig.service.blocked(), lexipoint::api::AccessPolicy::Block::None);
+}
+
+TEST(Service, NoSavedNetworkIsNotOffline) {
+  Rig rig;
+  rig.wifi.result = WifiResult::NotConfigured;  // WiFi was never set up
+  EXPECT_EQ(rig.service.analyze(lexipoint::Language::Japanese, "x").error, lexipoint::api::ApiError::NoWifiSaved);
+  rig.wifi.result = WifiResult::Failed;  // set up, but the join failed: offline
+  EXPECT_EQ(rig.service.analyze(lexipoint::Language::Japanese, "x").error, lexipoint::api::ApiError::NoWifi);
+}
+
+TEST(Service, AKeyRejectedDuringALookupShowsOnTheWebPage) {
+  Rig rig;
+  rig.conn.reads = {httpOk(kMe), "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n"};
+  ASSERT_EQ(rig.service.checkKey().state, KeyState::Connected);
+  rig.service.analyze(lexipoint::Language::Japanese, "x");  // revoked in the app since
+  EXPECT_EQ(rig.service.keyStatus().state, KeyState::Rejected);
 }

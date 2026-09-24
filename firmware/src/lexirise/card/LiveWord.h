@@ -16,8 +16,12 @@ namespace lexipoint::card {
 // lookup per character), other forms, and sentences met before.
 CardWord cardWord(const lookup::LookupCard& card);
 
-// Where the lookup is: A until phase B has run, then B, or B′ while the server still translates.
+// Where the lookup is: A until phase B has run, then B, B′ while the server still translates, or
+// Unanswered when B failed (CardWord::noMeaning says why).
 Phase phaseOf(const lookup::LookupCard& card);
+
+// Why phase B brought no meaning, from its error: the meaning row's words.
+NoMeaning noMeaningFor(api::ApiError error);
 
 // "JLPT-N1" → "N1", "HSK-4" → "HSK 4", "HSK-7+" → "HSK 7+"; anything else: none.
 std::string badgeFor(std::string_view level);

@@ -38,6 +38,14 @@ struct MarkedText {
   size_t markLength = 0;
 };
 
+// Why phase B brought no meaning (offline-and-errors.md §1): the meaning row says it.
+enum class NoMeaning : uint8_t {
+  Offline,      // Lexirise couldn't be reached: "offline"
+  KeyRejected,  // 401/403
+  RateLimited,  // 429
+  Unavailable,  // anything else (a bad answer, TLS, low memory): "meaning unavailable"
+};
+
 struct CardWord {
   Language language = Language::Japanese;
   std::string reading;  // kana (ja; romaji when it couldn't be converted) or pinyin (zh)
@@ -54,8 +62,9 @@ struct CardWord {
   std::vector<FormInfo> forms;
   std::optional<MarkedText> metBefore;  // a sentence from another book
   std::string metBeforeBook;
-  bool examplesOnlyTraditional = false;  // Lexirise's only examples are Traditional (a Simplified book)
-  std::string traditionalForm;           // the word in Traditional characters, for that note (選擇)
+  bool examplesOnlyTraditional = false;      // Lexirise's only examples are Traditional (a Simplified book)
+  std::string traditionalForm;               // the word in Traditional characters, for that note (選擇)
+  NoMeaning noMeaning = NoMeaning::Offline;  // Phase::Unanswered: why
 };
 
 // One line of the page, for the strips: its tokens at their x positions (relative to the line's start).
@@ -78,6 +87,7 @@ enum class Phase : uint8_t {
   Analyzed,            // A: the word, reading, form, POS, state
   Complete,            // B: + translation, rank, badge
   TranslationPending,  // B′: + "translation pending"
+  Unanswered,          // B failed: the word without its meaning, and why (CardWord::noMeaning)
 };
 enum class ReadingMode : uint8_t { Kana, Romaji };
 
@@ -127,7 +137,15 @@ struct CardStrings {
   const char* kana = "kana";
   const char* romaji = "romaji";
   const char* removed = "Removed from Lexirise";
-  const char* saveFailed = "Couldn't reach Lexirise: not saved";
+  const char* saveFailed = "Save failed";
+  const char* retrySuffix = "  \xC2\xB7  Retry";
+  const char* keyRejected = "Lexirise key rejected";
+  const char* rateLimitedTryIn = "Rate limited: try in ";
+  const char* seconds = " s";
+  const char* retrying = "Trying again\xE2\x80\xA6";
+  const char* offline = "offline";  // the meaning row when phase B couldn't reach Lexirise
+  const char* rateLimited = "Lexirise: rate limited";
+  const char* meaningUnavailable = "meaning unavailable";
   const char* notYet = "Not in this version yet";
   const char* actionDone[3] = {"Sentence saved as a card", "Ignored: won't be marked again", "Flagged for later"};
 };

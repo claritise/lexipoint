@@ -13,8 +13,8 @@
 namespace lexipoint::lookup {
 
 // Word select has something to ask: a StarDict dictionary, or Lexirise (enabled, with a key).
-inline bool lookupsAvailable(const bool starDictSet, const bool lexiriseUsable) {
-  return starDictSet || lexiriseUsable;
+inline bool lookupsAvailable(const bool starDictSet, const bool lexiriseConfigured) {
+  return starDictSet || lexiriseConfigured;
 }
 
 struct LongPressRules {

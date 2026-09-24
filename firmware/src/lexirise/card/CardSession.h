@@ -19,16 +19,20 @@ namespace lexipoint::card {
 // because Lexirise had no word (NotFound) or no answer (Unavailable: StarDict gets its turn).
 struct LiveOutcome {
   enum class Kind : uint8_t { Closed, NotFound, Unavailable } kind = Kind::Closed;
-  api::ApiError error = api::ApiError::None;
+  api::ApiError error = api::ApiError::None;  // NotFound / Unavailable: why
+  // Closed: saves that couldn't be sent as the card closed (a Retry still waiting out a 429, WiFi gone),
+  // and why the last one failed: word select says so, since the card can't any more.
+  int unsentSaves = 0;
+  api::ApiError unsentError = api::ApiError::None;
 };
 
 // What word select does once the card has ended (lookup-flow.md §4, §5b): redraw its page; say "Not
 // found" (a Lexirise miss is final); let StarDict answer; or say "No dictionary set" when there's none.
-enum class AfterCard : uint8_t { Redraw, NotFound, RunStarDict, NoDictionary };
-inline AfterCard afterCard(const LiveOutcome::Kind ended, const bool starDictSet) {
-  switch (ended) {
+enum class AfterCard : uint8_t { Redraw, UnsentSave, NotFound, RunStarDict, NoDictionary };
+inline AfterCard afterCard(const LiveOutcome& ended, const bool starDictSet) {
+  switch (ended.kind) {
     case LiveOutcome::Kind::Closed:
-      return AfterCard::Redraw;
+      return ended.unsentSaves > 0 ? AfterCard::UnsentSave : AfterCard::Redraw;  // never fails silently (§0)
     case LiveOutcome::Kind::NotFound:
       return AfterCard::NotFound;
     case LiveOutcome::Kind::Unavailable:
@@ -36,6 +40,9 @@ inline AfterCard afterCard(const LiveOutcome::Kind ended, const bool starDictSet
   }
   return starDictSet ? AfterCard::RunStarDict : AfterCard::NoDictionary;
 }
+
+// How a write's failure is told on the card (offline-and-errors.md §3).
+CardController::WriteFailure writeFailure(api::ApiError error);
 
 class CardSession {
  public:
@@ -70,8 +77,14 @@ class CardSession {
     std::optional<LiveOutcome> ended;  // the card ends: nothing to show
     bool writeFailed = false;          // a level change was put back (the error is live's error())
     bool clearFailed = false;          // a removal went through, its notes and tags weren't cleared
+    std::string unreadable;            // a response we couldn't read: its start, for the log
   };
   Answer apply(LiveSource::Fetched fetched, unsigned long nowMs);  // under RenderLock on the device
+  // The same, as the card closes: a write that fails now is counted for word select to tell
+  // (LiveOutcome::unsentSaves), since the card can't show its toast any more.
+  Answer applyClosing(LiveSource::Fetched fetched, unsigned long nowMs);
+  int unsentSaves() const { return unsentSaves_; }
+  api::ApiError unsentError() const { return unsentError_; }
 
   bool hasPendingWrites() const { return live_ && live_->hasPendingWrites(); }
 
@@ -81,6 +94,8 @@ class CardSession {
   PendingInput& input_;
   LiveSource* live_;
   std::atomic<bool> drawPending_{false};  // redrawAsked(), not yet frameShown()
+  int unsentSaves_ = 0;
+  api::ApiError unsentError_ = api::ApiError::None;
 };
 
 }  // namespace lexipoint::card

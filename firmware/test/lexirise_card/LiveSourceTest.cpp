@@ -9,6 +9,7 @@
 #include "lexirise/card/CardFrame.h"
 #include "lexirise/card/CardSession.h"
 #include "lexirise/card/LiveSource.h"
+#include "lexirise/lookup/Fallback.h"
 
 using namespace lexipoint::card;
 using lexipoint::Language;
@@ -139,7 +140,7 @@ TEST(LiveSource, APhaseBFailureStillShowsTheWord) {
   EXPECT_EQ(source.error(), ApiError::Timeout);
   c.sourceChanged();
   EXPECT_EQ(c.currentWord().word, "本");
-  EXPECT_EQ(c.state().phase, Phase::Complete);
+  EXPECT_EQ(c.state().phase, Phase::Unanswered);  // the meaning row says "offline"
   EXPECT_TRUE(c.currentWord().senses.empty());
   EXPECT_FALSE(source.hasWork(0));  // not retried on its own
 }
@@ -335,7 +336,7 @@ TEST(LiveSave, AFailedSavePutsTheWordBackAndDropsWhatFollowed) {
   s.drain();
   EXPECT_EQ(s.rig.api.written.size(), 1u);
   EXPECT_EQ(s.c.state().level, Level::None);
-  EXPECT_EQ(s.c.state().toast, "Couldn't reach Lexirise: not saved");
+  EXPECT_EQ(s.c.state().toast, "Save failed  \xC2\xB7  Retry");
 }
 
 TEST(LiveSave, TheLaterActionsDontPretend) {
@@ -382,7 +383,7 @@ TEST(LiveSession, AFailureAfterTheCardMovedOnStillSaysSo) {
   s.level(1);
   s.step(-1);  // を
   s.drain();
-  EXPECT_EQ(s.c.state().toast, "Couldn't reach Lexirise: not saved");
+  EXPECT_EQ(s.c.state().toast, "Save failed  \xC2\xB7  Retry");
   s.step(+1);  // back to 読む: put back
   EXPECT_EQ(s.c.state().level, Level::None);
 }
@@ -605,11 +606,14 @@ TEST(LiveSession, WhatWordSelectDoesAfterTheCard) {
   using lexipoint::card::AfterCard;
   using Kind = LiveOutcome::Kind;
   for (const bool starDict : {false, true}) {
-    EXPECT_EQ(afterCard(Kind::Closed, starDict), AfterCard::Redraw);
-    EXPECT_EQ(afterCard(Kind::NotFound, starDict), AfterCard::NotFound);  // a Lexirise miss is final
+    EXPECT_EQ(afterCard(LiveOutcome{Kind::Closed}, starDict), AfterCard::Redraw);
+    EXPECT_EQ(afterCard(LiveOutcome{Kind::NotFound}, starDict), AfterCard::NotFound);  // a Lexirise miss is final
+    LiveOutcome unsent{Kind::Closed};
+    unsent.unsentSaves = 1;
+    EXPECT_EQ(afterCard(unsent, starDict), AfterCard::UnsentSave);  // never fails silently
   }
-  EXPECT_EQ(afterCard(Kind::Unavailable, true), AfterCard::RunStarDict);
-  EXPECT_EQ(afterCard(Kind::Unavailable, false), AfterCard::NoDictionary);
+  EXPECT_EQ(afterCard(LiveOutcome{Kind::Unavailable}, true), AfterCard::RunStarDict);
+  EXPECT_EQ(afterCard(LiveOutcome{Kind::Unavailable}, false), AfterCard::NoDictionary);
 }
 
 TEST(LiveSession, QueuedInputGoesBeforeANetworkCall) {
@@ -618,4 +622,203 @@ TEST(LiveSession, QueuedInputGoesBeforeANetworkCall) {
   EXPECT_FALSE(s.session.shouldFetch(s.now, /*rendering=*/false));
   s.session.handleInput(s.now);
   EXPECT_TRUE(s.session.shouldFetch(s.now, false));
+}
+
+TEST(LiveSession, AnUnreadableResponseIsLoggedByItsStart) {
+  Rig rig;
+  rig.api.analyzeReplies = {apiOk(std::string("{\"occurrences\":") + std::string(300, 'x'))};
+  LiveSource source(rig.api, rig.tap(0, 0), rig.page);
+  CardController c(source, ReadingMode::Kana);
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session(c, targets, input, &source);
+  c.open(0);
+  const CardSession::Answer a = session.apply(session.fetch(1), 1);
+  ASSERT_TRUE(a.ended);
+  EXPECT_EQ(a.ended->error, ApiError::Malformed);
+  EXPECT_EQ(a.unreadable.size(), lexipoint::config::kLoggedBodyBytes);
+  EXPECT_EQ(a.unreadable.rfind("{\"occurrences\":", 0), 0u);
+}
+
+namespace {
+
+lexipoint::api::ApiResponse refused(const ApiError error, const uint32_t retryAfterS = 0) {
+  lexipoint::api::ApiResponse r = apiFailure(error);
+  r.retryAfterS = retryAfterS;
+  return r;
+}
+
+bool drawn(const DisplayList& list, const std::string& text) {
+  for (const Command& c : list.commands) {
+    if (c.kind == Command::Kind::Text && c.text == text) return true;
+  }
+  return false;
+}
+
+}  // namespace
+
+TEST(LiveErrors, ASaveThatFailsOffersRetryWhichSendsItAgain) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::Timeout), apiOk(R"({"result":{"savedExpressionId":5}})")};
+  s.level(1);
+  s.drain();
+  EXPECT_EQ(s.c.state().toast, "Save failed  \xC2\xB7  Retry");
+  EXPECT_TRUE(s.c.state().toastUndo);  // tappable
+  EXPECT_EQ(s.c.state().level, Level::None);
+  s.tap(Target::ToastUndo);  // Retry
+  EXPECT_EQ(s.c.state().level, Level::Learning);
+  EXPECT_EQ(s.c.state().toast, "Trying again\xE2\x80\xA6");
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Post);
+  EXPECT_EQ(s.c.state().level, Level::Learning);
+}
+
+TEST(LiveErrors, ARejectedKeySaysSoWithoutARetry) {
+  Saving s;
+  s.rig.api.writeReplies = {refused(ApiError::Unauthorized)};
+  s.level(1);
+  s.drain();
+  EXPECT_EQ(s.c.state().toast, "Lexirise key rejected");
+  EXPECT_FALSE(s.c.state().toastUndo);
+  EXPECT_EQ(s.c.state().level, Level::None);
+}
+
+TEST(LiveErrors, ARateLimitSaysHowLongAndOffersRetry) {
+  Saving s;
+  s.rig.api.writeReplies = {refused(ApiError::RateLimited, 42)};
+  s.level(1);
+  s.drain();
+  EXPECT_EQ(s.c.state().toast, "Rate limited: try in 42 s  \xC2\xB7  Retry");
+  EXPECT_TRUE(s.c.state().toastUndo);
+}
+
+TEST(LiveErrors, PhaseBOfflineSaysSoInTheMeaningRow) {
+  Saving s(/*complete=*/false);
+  s.rig.api.lookupReplies = {apiFailure(ApiError::NoWifi)};
+  s.fetchOne();
+  EXPECT_EQ(s.c.state().phase, Phase::Unanswered);
+  EXPECT_TRUE(drawn(composeFrame(s.c, kMetrics).card, "offline"));
+}
+
+TEST(LiveErrors, TheMeaningRowSaysWhyPhaseBBroughtNone) {
+  for (const auto& [reply, text] : std::vector<std::pair<lexipoint::api::ApiResponse, std::string>>{
+           {apiFailure(ApiError::Timeout), "offline"},
+           {refused(ApiError::RateLimited, 30), "Lexirise: rate limited"},
+           {refused(ApiError::Unauthorized), "Lexirise key rejected"},
+           {apiOk("{"), "meaning unavailable"}}) {
+    Saving s(/*complete=*/false);
+    s.rig.api.lookupReplies = {reply};
+    s.fetchOne();
+    EXPECT_EQ(s.c.state().phase, Phase::Unanswered) << text;
+    EXPECT_TRUE(drawn(composeFrame(s.c, kMetrics).card, text)) << text;
+  }
+}
+
+TEST(LiveErrors, RetryLooksTheWordUpAgainSoTheSaveHasItsTranslation) {
+  Saving s(/*complete=*/false);
+  s.rig.api.lookupReplies = {apiFailure(ApiError::Timeout), apiFailure(ApiError::Timeout), apiOk(kLookupYomu)};
+  s.rig.api.writeReplies = {apiFailure(ApiError::Timeout), apiOk(R"({"result":{"savedExpressionId":5}})")};
+  s.fetchOne();  // B times out
+  s.level(1);
+  s.drain();  // the save's retry of the lookup times out too, and so does the POST
+  ASSERT_EQ(s.c.state().toast, "Save failed  \xC2\xB7  Retry");
+  s.tap(Target::ToastUndo);  // Retry: WiFi is back
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_NE(s.rig.api.written[1].body.find(R"("translation":"to read")"), std::string::npos);
+}
+
+TEST(LiveErrors, AFailureStaysUpLongerThanAnUndo) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::Timeout)};
+  s.level(1);
+  s.drain();
+  ASSERT_TRUE(s.c.state().toastUndo);
+  s.c.tick(s.now + lexipoint::config::kToastMs);
+  EXPECT_FALSE(s.c.state().toast.empty());  // Retry is still there
+  s.c.tick(s.now + lexipoint::config::kFailureToastMs);
+  EXPECT_TRUE(s.c.state().toast.empty());
+}
+
+TEST(LiveErrors, RetryResendsEveryFailureItCovers) {
+  Saving s;
+  s.rig.api.lookupReplies = {apiOk(kLookupYomu),
+                             apiOk(R"({"word":"を","translations":[{"translation":"object marker"}]})")};
+  s.rig.api.writeReplies = {refused(ApiError::RateLimited, 30), refused(ApiError::RateLimited, 29),
+                            apiOk(R"({"result":{"savedExpressionId":1}})"),
+                            apiOk(R"({"result":{"savedExpressionId":2}})")};
+  s.level(1);  // 読む
+  s.step(-1);
+  s.fetchOne();  // を's meaning
+  s.level(2);    // を
+  s.drain();     // both refused: one toast, both on it
+  EXPECT_EQ(s.c.state().toast, "Rate limited: try in 29 s  \xC2\xB7  Retry");
+  s.tap(Target::ToastUndo);
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 4u);  // both sent again
+  EXPECT_EQ(s.rig.api.written[2].method, lexipoint::net::Method::Post);
+  EXPECT_EQ(s.rig.api.written[3].method, lexipoint::net::Method::Post);
+}
+
+TEST(LiveErrors, RetryDuringARateLimitWaitsItOut) {
+  Saving s;
+  s.rig.api.writeReplies = {refused(ApiError::RateLimited, 30), apiOk(R"({"result":{"savedExpressionId":1}})")};
+  s.level(1);
+  s.drain();  // refused: "try in 30 s · Retry"
+  const unsigned long failedAt = s.now;
+  s.tap(Target::ToastUndo);                // Retry at once
+  EXPECT_FALSE(s.session.hasWork(s.now));  // not sent into the back-off
+  EXPECT_TRUE(s.session.hasWork(failedAt + 30'000));
+  s.now = failedAt + 30'000;
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.c.state().level, Level::Learning);
+}
+
+TEST(LiveErrors, ARetryWaitingOutARateLimitWhenTheCardClosesIsReported) {
+  Saving s;
+  s.rig.api.writeReplies = {refused(ApiError::RateLimited, 60), refused(ApiError::RateLimited, 58)};
+  s.level(1);
+  s.drain();
+  s.tap(Target::ToastUndo);               // Retry: waits out the 60 s
+  while (s.session.hasPendingWrites()) {  // the card closes (the activity's flushWrites)
+    s.session.applyClosing(s.session.fetch(s.now, /*closing=*/true), ++s.now);
+  }
+  EXPECT_EQ(s.session.unsentSaves(), 1);  // → LiveOutcome::unsentSaves: word select says "Lexirise: rate limited"
+  EXPECT_EQ(lexipoint::lookup::noticeForUnsentSave(s.session.unsentError()), lexipoint::lookup::Notice::RateLimited);
+}
+
+TEST(LiveErrors, OneRetryWaitsOutTheLatestBackOffForEveryFailure) {
+  Saving s;
+  s.rig.api.lookupReplies = {apiOk(kLookupYomu),
+                             apiOk(R"({"word":"を","translations":[{"translation":"object marker"}]})")};
+  s.rig.api.writeReplies = {apiFailure(ApiError::Timeout), refused(ApiError::RateLimited, 60),
+                            apiOk(R"({"result":{"savedExpressionId":1}})"),
+                            apiOk(R"({"result":{"savedExpressionId":2}})")};
+  s.level(1);  // 読む: times out
+  s.step(-1);
+  s.fetchOne();
+  s.level(2);  // を: rate limited
+  s.drain();
+  const unsigned long failedAt = s.now;
+  s.tap(Target::ToastUndo);
+  EXPECT_FALSE(s.session.hasWork(s.now));  // not even the timed-out one: it'd be refused into the back-off
+  s.now = failedAt + 60'000;
+  s.drain();
+  EXPECT_EQ(s.rig.api.written.size(), 4u);
+}
+
+TEST(LiveErrors, AStepKeepsAFailureAndItsRetry) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::Timeout), apiOk(R"({"result":{"savedExpressionId":1}})")};
+  s.level(1);
+  s.drain();
+  s.step(-1);  // the user moved on while the save was timing out
+  EXPECT_EQ(s.c.state().toast, "Save failed  \xC2\xB7  Retry");
+  EXPECT_TRUE(s.c.state().toastUndo);
+  s.tap(Target::ToastUndo);  // Retry still works, for the word it was about
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_NE(s.rig.api.written[1].body.find(R"("text":"読む")"), std::string::npos);
 }

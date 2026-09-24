@@ -3,6 +3,7 @@
 #include "LiveWord.h"
 
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/lookup/Fallback.h"
 #include "lexirise/text/Kana.h"
 
 namespace lexipoint::card {
@@ -27,8 +28,15 @@ Level levelOf(const std::optional<api::EntryState>& saved) {
 
 int proficiencyOf(const Level level) { return level == Level::None ? 0 : static_cast<int>(level) + 1; }
 
+NoMeaning noMeaningFor(const api::ApiError error) {
+  if (error == api::ApiError::Unauthorized) return NoMeaning::KeyRejected;
+  if (error == api::ApiError::RateLimited) return NoMeaning::RateLimited;
+  return lookup::fallbackFor(error).offline ? NoMeaning::Offline : NoMeaning::Unavailable;
+}
+
 Phase phaseOf(const lookup::LookupCard& card) {
   if (!card.complete) return Phase::Analyzed;
+  if (card.translationUnavailable) return Phase::Unanswered;
   return card.translationPending ? Phase::TranslationPending : Phase::Complete;
 }
 
@@ -52,6 +60,7 @@ CardWord cardWord(const lookup::LookupCard& card) {
   for (const api::Sense& sense : card.senses) w.senses.push_back(sense.translation);
   w.rank = card.rank;
   w.frequency = card.frequency;
+  w.noMeaning = noMeaningFor(card.translationError);
   return w;
 }
 

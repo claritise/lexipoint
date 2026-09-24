@@ -322,7 +322,28 @@ int main(const int argc, char** argv) {
   if (std::strcmp(argv[4], "expanded") == 0) ok = ok && tapTarget(c, metrics, Target::RankRow, 0, now, taps);
   if (const int tab = std::atoi(argv[5]); tab != 0) ok = ok && tapTarget(c, metrics, Target::Tab, tab, now, taps);
   if (std::strcmp(argv[7], "romaji") == 0) ok = ok && tapTarget(c, metrics, Target::ReadingLine, 0, now, taps);
-  if (argc > 8) ok = ok && tapTarget(c, metrics, Target::Level, std::atoi(argv[8]), now, taps);
+  // Then optional arguments: a level index to tap (the save toast), and +extra error states (P6) the
+  // reference doesn't have: +unanswered (phase B brought no meaning), +save-failed, +rate-limited.
+  std::string extra;
+  for (int i = 8; i < argc; i++) {
+    if (argv[i][0] == '+') {
+      extra = argv[i] + 1;
+    } else {
+      ok = ok && tapTarget(c, metrics, Target::Level, std::atoi(argv[i]), now, taps);
+    }
+  }
+  if (extra == "unanswered") {
+    source.unanswered();
+    c.sourceChanged();
+  } else if (extra == "save-failed") {
+    c.levelFailed(c.word(), c.state().level, now, CardController::WriteFailure::Network, Level::Learning, 0);
+  } else if (extra == "rate-limited") {  // the longest toast: the largest back-off (config::kRetryAfterMaxS)
+    c.levelFailed(c.word(), c.state().level, now, CardController::WriteFailure::RateLimited, Level::Learning,
+                  lexipoint::config::kRetryAfterMaxS);
+  } else if (!extra.empty()) {
+    std::fprintf(stderr, "unknown state +%s\n", extra.c_str());
+    return 2;
+  }
   if (!ok) {
     std::fprintf(stderr, "a target to reach the state wasn't there\n");
     return 3;
@@ -336,7 +357,7 @@ int main(const int argc, char** argv) {
   write(f, frame.card, metrics);
   f << "],\n\"hits\":[\n";
   writeHits(f, frame.card);
-  f << "],\n\"word\":" << c.word() << ",\n\"steps\":" << steps << ",\n\"taps\":[";
+  f << "],\n\"extra\":\"" << extra << "\",\n\"word\":" << c.word() << ",\n\"steps\":" << steps << ",\n\"taps\":[";
   for (size_t i = 0; i < taps.size(); i++) f << (i ? "," : "") << "[" << taps[i].x << "," << taps[i].y << "]";
   f << "]}\n";
   return f.good() ? 0 : 1;

@@ -42,6 +42,7 @@ KeyStatus keyStatusFrom(const ApiResponse& response) {
     case ApiError::Unauthorized:
       status.state = KeyState::Rejected;
       break;
+    case ApiError::NoWifiSaved:
     case ApiError::NoWifi:
     case ApiError::Network:
     case ApiError::Timeout:

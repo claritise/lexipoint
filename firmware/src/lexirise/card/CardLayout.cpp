@@ -252,7 +252,10 @@ class Layout {
   int lh(const Font f) const { return m_.lineHeight(f); }
   int tw(const Font f, const std::string& t) const { return m_.width(f, t); }
   bool pending() const { return s_.phase == Phase::Pending; }
-  bool translated() const { return s_.phase == Phase::Complete || s_.phase == Phase::TranslationPending; }
+  // Phase B has run (the rank row and badge are final), whatever it found.
+  bool translated() const {
+    return s_.phase == Phase::Complete || s_.phase == Phase::TranslationPending || s_.phase == Phase::Unanswered;
+  }
   Font readingFont() const { return ja_ && s_.reading == ReadingMode::Kana ? Font::ReaderSmall : Font::UiSmall; }
   std::string readingText() const {
     if (pending()) return {};
@@ -357,6 +360,20 @@ class Layout {
 
   // ---- meaning (card view) ----
 
+  const char* noMeaningText() const {
+    switch (w_.noMeaning) {
+      case NoMeaning::Offline:
+        return str_.offline;
+      case NoMeaning::KeyRejected:
+        return str_.keyRejected;
+      case NoMeaning::RateLimited:
+        return str_.rateLimited;
+      case NoMeaning::Unavailable:
+        break;
+    }
+    return str_.meaningUnavailable;
+  }
+
   const std::vector<std::string>& meaningLines() const {
     if (!meaningLines_.empty()) return meaningLines_;
     std::string text;
@@ -364,6 +381,8 @@ class Layout {
       text = meaningText(w_.senses, m_, kContentW);
     } else if (s_.phase == Phase::TranslationPending) {
       text = str_.translationPending;  // grey in the reference: black on the device (deviation 1)
+    } else if (s_.phase == Phase::Unanswered) {
+      text = noMeaningText();  // why phase B brought none (offline-and-errors.md §1)
     } else {
       text = kEllipsis;
     }
@@ -627,6 +646,7 @@ class Layout {
     if (isActionsTab(w_.language, tab)) return actions(f);
     switch (tab) {
       case 0:  // Meaning: "1. sense", wrapping back to the left edge (the number is bold)
+        if (s_.phase == Phase::Unanswered) return f.paragraph(Font::UiSmall, noMeaningText());
         for (size_t i = 0; i < w_.senses.size() && translated(); i++) {
           const int box = pct(m::kSenseText, m::kSenseLineHeightPct);
           const std::string number = std::to_string(i + 1) + ".";

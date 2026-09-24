@@ -296,6 +296,8 @@ def card_smoke(h: Harness, outdir: str, only: str = "", sleep=time.sleep, shot=N
             continue
         with open(os.path.join(golden_dir, name + ".json"), encoding="utf-8") as f:
             state = json.load(f)
+        if state.get("extra"):  # an error state (P6): the bench can't be driven into it from the harness
+            continue
         cmds = card_state_commands(state, name.split("-")[0], "-low" in name)
         h.command(cmds[0], "LX:OK LEXI")
         h.wait_for("Entering activity: LexiriseCard", ACTIVITY_WAIT_S)

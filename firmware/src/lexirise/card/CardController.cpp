@@ -67,23 +67,30 @@ bool CardController::step(const int direction, const unsigned long nowMs) {
   if (!hasWord() || next < 0 || next >= source_.wordCount()) return false;  // v0.1: stop at the ends
   word_ = next;
   steps_++;
-  clearToast();  // a toast (and its Undo) belongs to the word it was about
+  // A toast (and its Undo) belongs to the word it was about; a failure is about a save the user believes
+  // made, and it came late: it stays for its time, Retry and all.
+  if (!failureToast_) clearToast();
   source_.focus(word_, nowMs);
   syncWord();
   return true;
 }
 
-void CardController::showToast(std::string text, const unsigned long nowMs, const bool undo) {
+void CardController::showToast(std::string text, const unsigned long nowMs, const bool tappable,
+                               const unsigned long durationMs) {
   state_.toast = std::move(text);
-  state_.toastUndo = undo;
-  toastUntilMs_ = nowMs + config::kToastMs;
-  if (!undo) undoWord_ = -1;
+  state_.toastUndo = tappable;
+  toastUntilMs_ = nowMs + durationMs;
+  if (!tappable) undoWord_ = -1;
+  retries_.clear();  // a new toast replaces a Retry (levelFailed keeps the list it adds to)
+  failureToast_ = false;
 }
 
 void CardController::clearToast() {
   state_.toast.clear();
   state_.toastUndo = false;
   undoWord_ = -1;
+  retries_.clear();
+  failureToast_ = false;
 }
 
 Outcome CardController::tap(const Hit* hit, const unsigned long nowMs) {
@@ -102,6 +109,7 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs) {
       return o;
     }
     case Target::ToastUndo: {  // a new save is removed; a level change goes back (popup-ui.md §3.2)
+      if (!retries_.empty()) return retry(nowMs);
       if (undoWord_ != word_) return {};
       const Level restored = undoLevel_;
       if (restored == Level::None) {
@@ -160,11 +168,43 @@ Outcome CardController::setLevel(const Level level, const char* toastPrefix, con
   return o;
 }
 
-void CardController::levelFailed(const int word, const Level level, const unsigned long nowMs) {
+void CardController::levelFailed(const int word, const Level level, const unsigned long nowMs, const WriteFailure why,
+                                 const Level wanted, const uint32_t retryInS) {
   if (word < 0 || word >= static_cast<int>(levels_.size())) return;
   for (const int same : source_.sameWord(word)) levels_[same] = level;
   if (hasWord()) state_.level = levels_[word_];
-  showToast(strings_.saveFailed, nowMs);  // even when the card moved on: the user thinks it's saved
+  // Said even when the card moved on: the user thinks it's saved (offline-and-errors.md §3).
+  if (why == WriteFailure::KeyRejected) {
+    showToast(strings_.keyRejected, nowMs, false, config::kFailureToastMs);
+    failureToast_ = true;
+    return;
+  }
+  std::string text = why == WriteFailure::RateLimited
+                         ? std::string(strings_.rateLimitedTryIn) + std::to_string(retryInS) + strings_.seconds
+                         : std::string(strings_.saveFailed);
+  std::vector<Failed> retries = std::move(retries_);  // the toast's Retry keeps every failure it covers
+  retries.push_back({word, wanted, nowMs + retryInS * 1000UL});
+  showToast(text + strings_.retrySuffix, nowMs, true, config::kFailureToastMs);  // it came late: longer
+  retries_ = std::move(retries);
+  failureToast_ = true;
+}
+
+Outcome CardController::retry(const unsigned long nowMs) {
+  // Sent now (the user asked twice), or when a rate limit's back-off has passed: every call is refused
+  // before then, so the latest back-off among the failures covers all of them.
+  unsigned long readyAt = nowMs;
+  for (const Failed& f : retries_) {
+    if (timing::before(readyAt, f.notBeforeMs)) readyAt = f.notBeforeMs;
+  }
+  Outcome o{Effect::Redraw, false, {}};
+  for (const Failed& f : retries_) {
+    const LevelChange change{f.word, levels_[f.word], f.wanted, readyAt};
+    for (const int same : source_.sameWord(f.word)) levels_[same] = f.wanted;
+    if (change.from != change.to) o.changes.push_back(change);
+  }
+  if (hasWord()) state_.level = levels_[word_];
+  showToast(strings_.retrying, nowMs);  // clears retries_
+  return o;
 }
 
 Outcome CardController::home() {
