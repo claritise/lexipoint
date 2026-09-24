@@ -202,7 +202,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   runs **one network call per loop pass**: `LiveSource::fetch()` makes it outside the render lock and
   changes nothing `render()` reads; `apply()` takes the answer under the lock; the render task draws it
   before the next call starts (`CardSession::shouldFetch`). Order: `analyze/text` (phase A), then the word on screen's
-  `dictionary/lookup` (phase B), then queued saves.
+  `dictionary/lookup` (phase B), then queued saves. Phase A is always drawn before B is asked for, so the ~300 ms A/B merge of popup-ui.md §2 is the
+  bench's only: a live B costs its own partial refresh (about 0.5 s).
 - **The lookup is split** (`lookup::analyzeTap` → `cardFor` → `completeCard`): the sentence is analyzed
   once, every word-like occurrence becomes a phase-A card without asking again, and Left/Right re-run only
   `dictionary/lookup` for a word not yet looked up (§6). A phase-B failure still shows the word (no meaning,

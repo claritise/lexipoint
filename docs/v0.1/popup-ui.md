@@ -167,7 +167,7 @@ can't render an exact size, use the nearest size and **log it in the P4 ledger n
 Save is **enabled from phase A**. If it's pressed before phase B, the save waits for B
 (the translation is part of the payload), and the button shows `Saving…`.
 
-**Measured on claritise's X4 Pro (UC8279 panel, 2026-09-24): a partial refresh takes ~0.49 s, a full one ~1.34 s.** So each progressive phase and each side-button word step costs about half a second on screen. Merge phases A and B into one refresh when B arrives within ~300 ms of A.
+**Measured on claritise's X4 Pro (UC8279 panel, 2026-09-24): a partial refresh takes ~0.49 s, a full one ~1.34 s.** So each progressive phase and each side-button word step costs about half a second on screen. Merge phases A and B into one refresh when B arrives within ~300 ms of A. (The bench does. The live card draws A before it asks for B, since a call blocks the loop while it runs and the screen mustn't change under a tap: `lookup-flow.md` §5b.)
 
 **Refresh policy:** every phase uses a partial refresh. On dismiss, redraw the page with a partial
 refresh, and schedule a **full refresh after every 5th card**, the same way the reader counts page
