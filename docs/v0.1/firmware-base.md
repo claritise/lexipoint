@@ -54,8 +54,9 @@ cherry-pick it and note it in §5.
 - Host tests: `cmake -S test -B build/test && cmake --build build/test && ctest --test-dir build/test`
   (gtest via FetchContent, see `test/README`). Anything we write that is pure logic (sentence
   building, offset mapping, response parsing, config parsing) gets a suite here.
-- The build flag **`-DLEXIRISE=1`** gates every hook. With it off, the fork builds byte-for-byte the
-  same behavior as upstream. That makes upstream-regression checks easy.
+- The build flag **`-DLEXIRISE=1`** gates the Lexirise hooks. With it off, the fork behaves like
+  upstream except for two deliberate, ungated changes (§3): the file manager's hidden-path guard,
+  and the nav script tag that 404s harmlessly.
 
 ## 3. Where our code lives
 
@@ -63,38 +64,48 @@ Our code goes in **new files wherever possible**. Upstream files only get small,
 
 ```
 src/lexirise/
-  LexiriseSettings.{h,cpp}      /.lexirise/config.ini store: every setting, atomic save (settings.md)
-  LexiriseSettingsActivity.{h,cpp}  Settings → System → Lexirise (UiListActivity)
-  Kana.{h,cpp}                  romaji → kana (languages.md §3a)
-  LexiriseWeb.{h,cpp}           the /lexirise web page handlers (settings.md §1a)
-  html/LexirisePage.html        the web page, embedded like upstream's pages
-  LexiriseClient.{h,cpp}        esp_http_client session, 3 endpoints (lexirise-client.md)
-  LexiriseResponses.{h,cpp}     StreamingJsonParser handlers → small structs
-  SentenceBuilder.{h,cpp}       page → sentence + tap offset (sentence-extraction.md)
-  LookupProvider.h              the seam (lookup-flow.md §4)
-  LexiriseLookupProvider.{h,cpp}
-  StarDictLookupProvider.{h,cpp}  thin wrapper over util/Dictionary
-  LexiriseCardActivity.{h,cpp}  the card (popup-ui.md)
-  WifiSession.{h,cpp}           on-demand connect + idle teardown (D10)
+  LexiriseConfig.h              every Lexirise constant (paths, limits, timeouts)
+  LexiriseService.{h,cpp}       the one session: settings → WiFi → verified TLS → client (P1)
+  settings/Settings.{h,cpp}     settings model + INI parse/serialise, field validators (pure)
+  settings/SettingsStore.{h,cpp}  crash-safe save of /.lexirise/config.ini, snapshot reads (settings.md §3)
+  settings/SettingsFilesHal.cpp  the SD card adapter for the store
+  settings/SettingsPatch.{h,cpp}  validated web edits (pure)
+  net/Http.{h,cpp}              base URL, request serialiser, bounded response parser (pure)
+  net/JsonWriter.{h,cpp}        request bodies (pure)
+  net/JsonReader.{h,cpp}        strict path-reporting reader for response bodies (pure)
+  net/Connection.h              the byte pipe the client talks over (fake in host tests)
+  net/TlsConnection.{h,cpp}     wolfSSL, ISRG roots pinned, hostname checked (lexirise-client.md §1)
+  net/TrustAnchors.h            ISRG Root X1 + X2
+  net/WifiLease.h / WifiSession.{h,cpp}  on-demand connect + idle teardown (D10)
+  api/LexiriseClient.{h,cpp}    keep-alive, stale-session retry, error mapping
+  api/Requests.{h,cpp} / Responses.{h,cpp} / KeyCheck.{h,cpp}  endpoints (pure)
+  web/LexiriseWeb.{h,cpp}       /lexirise page + /api/lexirise (settings.md §1a)
+  web/LexirisePage.html, LexiriseNav.js  embedded by scripts/build_html.py like upstream's pages
+  web/HiddenPath.h, Origin.h    file-manager and cross-site guards (pure)
+  dev/                          the USB dev harness (dev-harness.md), x4pro dev env only
+  (P2+) SentenceBuilder, LookupProvider + Lexirise/StarDict providers, the card, Kana,
+        the device settings activity
 test/lexirise_*/                host gtest suites
+scripts/lexipoint/lxctl.py      host side of the dev harness (+ test_lxctl.py)
 ```
 
-**Upstream files we expect to touch** (each hook is wrapped in `#if LEXIRISE` and a
-`// LEXIPOINT:` comment, so `git grep LEXIPOINT` lists every one):
+**Upstream files we touch.** Each hook carries a `// LEXIPOINT` comment, so `git grep LEXIPOINT`
+lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 
 | File | Hook |
 |---|---|
-| `src/activities/reader/DictionaryWordSelectActivity.{h,cpp}` | `performLookup()` goes to the provider chain instead of calling `Dictionary` directly. Adds a touch long-press → immediate lookup |
-| `src/activities/reader/EpubReaderActivity.cpp` | Touch long-press on the page → open word select pre-positioned at the touch point (`lookup-flow.md` §1) |
-| `src/main.cpp` | Load `LexiriseSettings` at boot |
-| `src/SettingsList.h` | The `Lexirise` ACTION row (device only, `settings.md` §0) |
-| `src/network/CrossPointWebServer.cpp` | Register `/lexirise`, `/api/lexirise`, `/api/lexirise/test`, delegating to `src/lexirise/LexiriseWeb.cpp` |
-| `src/network/html/{Home,Files,Fonts,Settings}Page.html` | One `Lexirise` link in each page's menu |
-| `src/activities/settings/SettingsActivity.{h,cpp}` | `SettingAction::Lexirise` and its dispatch to `LexiriseSettingsActivity` |
-| `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases, not upstream's (§6) |
-| `src/network/WebDAVHandler.cpp` (only if needed) | Hide `/.lexirise/` from WebDAV. The file browser already hides dot folders; P1 checks WebDAV |
-| `lib/I18n/translations/english.yaml` (+ `japanese.yaml` if it exists) | New `STR_LEXI_*` strings |
-| `platformio.ini` | `-DLEXIRISE=1` in `[env:x4pro]` (or a `platformio.local.ini` extra config) |
+| `src/main.cpp` | Load the settings store at boot; `service().tick()` in the loop (WiFi idle teardown). Dev harness hooks (`LEXIPOINT_DEV_HARNESS`) |
+| `src/network/CrossPointWebServer.cpp` | Register the `/lexirise` routes; collect the `Origin` header. **Not gated:** the file manager refuses any path with a hidden segment (`web/HiddenPath.h`) at all 8 entry points. Upstream only checked the last segment, so `/download?path=/.lexirise/config.ini` served the key |
+| `src/network/html/{Home,Files,Fonts,Settings}Page.html` | **Not gated:** one `<script src="/lexirise/nav.js">` line. Lexirise builds serve it and it adds the nav link; other builds 404 it and nothing changes |
+| `lib/hal/HalGPIO.{h,cpp}` | Dev harness input overlay (`LEXIPOINT_DEV_HARNESS`) |
+| `platformio.ini` | A `[lexirise]` section (`-DLEXIRISE=1` plus wolfSSL SHA-384/P-384, lexirise-client.md §1) referenced by the three X4 Pro envs; the harness flag in `[env:x4pro]` only. `test_lxctl.py` guards both |
+| `test/CMakeLists.txt` | The `lexirise_*` suites |
+| (P3) `src/activities/reader/DictionaryWordSelectActivity.{h,cpp}`, `EpubReaderActivity.cpp` | Provider chain; touch long-press → lookup (`lookup-flow.md` §1) |
+| (P6) `src/SettingsList.h`, `src/activities/settings/SettingsActivity.{h,cpp}` | The device `Lexirise` settings row |
+| (P8) `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases (§6) |
+| (P3+) `lib/I18n/translations/english.yaml` | `STR_LEXI_*` strings |
+
+WebDAV needed no hook: `WebDAVHandler::isProtectedPath` already refuses every dot segment.
 
 Anything that needs more than a few lines in an upstream file is a smell. Move the logic into
 `src/lexirise/` and call it from there.

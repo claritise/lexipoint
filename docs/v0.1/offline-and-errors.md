@@ -21,7 +21,9 @@ never fails silently: it either succeeds visibly or leaves a retry on screen.
 | WiFi not configured | `WifiCredentialStore` empty | `Unavailable` | StarDict |
 | WiFi connect fails or takes > 6 s | `WifiSession::ensureUp` | `Unavailable` | StarDict, with the `offline` mark on its title |
 | TLS pre-flight fails (low internal heap) | `MIN_TLS_FREE_HEAP` check | `Unavailable` | StarDict. Logged with heap numbers |
-| Timeout (connect or read) | `esp_http_client` | `Unavailable` | StarDict, `offline` |
+| Timeout (connect, handshake or read, 6 s each) | `TlsConnection` / `LexiriseClient` | `Unavailable` | StarDict, `offline` |
+| Clock not set (no NTP answer within 5 s) | `TlsConnection` | `Unavailable` | StarDict, `offline` |
+| Certificate or hostname verification fails | `TlsConnection` | `Unavailable` | StarDict. Logged with the wolfSSL error code |
 | **401 / 403** | Status | `Unavailable` **and the provider disables itself until reboot** | `Lexirise key rejected` once, then StarDict |
 | **429** | Status | `Unavailable`, with a back-off of `Retry-After` (or 60 s) during which Lexirise isn't tried | `Rate limited`, then StarDict |
 | 5xx | Status | `Unavailable` | StarDict, `offline` |

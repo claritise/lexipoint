@@ -21,18 +21,36 @@ StarDict. Don't crash.
 
 ## 1. Transport
 
-- **`esp_http_client`**, configured like `HttpDownloader::fetchUrl`:
-  `crt_bundle_attach = esp_crt_bundle_attach`, `keep_alive_enable = true`, `timeout_ms = 6000`.
-  **Certificate verification is on. Never `setInsecure()`.**
-- **Manual request path:** `open(content_length)` → `write(body)` → `fetch_headers` → `read`
-  loop, not `perform()`. This mirrors `HttpDownloader`'s open/fetch/read, so the body streams
-  straight into the parser.
-- **One session per lookup.** `analyze/text` and `dictionary/lookup` reuse the handle (same host,
-  keep-alive), then `cleanup()`. Save opens its own session.
-- Headers: `Authorization: Bearer <key>`, `Content-Type: application/json`,
-  `Accept: application/json`, `User-Agent: Lexipoint/<ver> CrossPoint/<ver>`.
-- **Request bodies are built into a fixed PSRAM buffer** with manual JSON string escaping (a
-  sentence can contain `"` and `\`). There is no JSON library for writing.
+**Revised in P1** (D7). The original plan here (`esp_http_client` with the CA bundle, like
+`HttpDownloader`) doesn't exist in this build: the X4 Pro envs use wolfSSL (`FREEINK_NET_WOLFSSL`), which
+compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no certificate verification at all
+(every CrossPoint caller uses `setInsecure()`, and it never checks the hostname). So:
+
+- **`net/TlsConnection`**: a small wolfSSL client of our own, over `WiFiClient`.
+  - **Trust:** only ISRG Root X1 and X2 (`net/TrustAnchors.h`, fingerprints in the header).
+    `WOLFSSL_VERIFY_PEER`, `wolfSSL_check_domain_name`, SNI. **Never `setInsecure()`.**
+  - **Crypto:** api.lexirise.app's chain (LE YE2 → ISRG Root YE → ISRG Root X2, with X2 cross-signed
+    by X1) is ECDSA P-384 / SHA-384 end to end, and this wolfSSL build had neither. The `[lexirise]`
+    section of `platformio.ini` adds `WOLFSSL_SHA384`, `HAVE_ECC384`, `WOLFSSL_SP_384` (SP math, heap-light)
+    for the X4 Pro envs. Cost: ~30KB flash.
+  - **Heap:** the SDK's measures are copied: an X25519 key share (P-256 keygen OOMs at reading-session heap)
+    and a 2KB max fragment (no ~17KB receive buffer). Pre-flight: `HttpDownloader::MIN_TLS_FREE_HEAP` /
+    `MIN_TLS_MAX_ALLOC`; below them the call fails `LowMemory` before any allocation.
+  - **Clock:** certificate dates need a real clock, and the X4 Pro boots at 1970. If `time()` is before
+    2026 the connection first waits (≤5 s) for SNTP (`pool.ntp.org`, `time.nist.gov`); otherwise the
+    call fails `ClockNotSet`. The RTC (HalClock) is not touched.
+  - Every wait feeds the task watchdog (`net/Wait.h`): calls run on the main loop task.
+- **`api/LexiriseClient`**: one request at a time over a `net::Connection`, **keep-alive reused**
+  while the server allows it. A reused session that fails before any response byte (the server
+  dropped it while idle) is reopened and the request sent once more; nothing else is retried.
+  Timeouts: 6 s for connect, handshake and each read.
+- **`net/Http`**: the request serialiser and a bounded incremental response parser
+  (Content-Length, chunked or close-delimited; 8KB of headers, 1KB lines, 64KB body).
+- Headers: `Authorization: Bearer <key>`, `Accept: application/json`, `Content-Type: application/json`
+  with `Content-Length` on bodies, `User-Agent: Lexipoint/<ver> CrossPoint/<ver>`.
+- **Request bodies** are built by `net/JsonWriter`: escaping, and invalid UTF-8 replaced, so the body is
+  always valid JSON.
+- **The key is never logged.** Log lines carry the method, path, status and error name only.
 
 ## 2. Endpoints
 
@@ -84,29 +102,28 @@ Keep only the HTTP status, plus the created ID if one is returned (so a v0.2 car
 
 ## 4. Parsing
 
-`lib/JsonParser/StreamingJsonParser` is already in the tree and has host tests
-(`test/streaming_json_parser`). Write one handler per endpoint that builds these:
+**Revised in P1.** Bodies are buffered (the 64KB cap makes that safe, and the buffer lands in PSRAM),
+then read by **`net/JsonReader`**, a strict path-reporting reader: `occurrences[3].word` arrives as a path
+plus a value. `lib/JsonParser/StreamingJsonParser` wasn't a fit: it silently drops tokens over 512 bytes
+(a dropped key hands its value to the previous key), doesn't decode `\u` escapes, and accepts malformed or
+truncated JSON. Each endpoint has a visitor in `api/Responses` that builds a small struct:
 
 ```cpp
-struct Occ {                 // ~24 B + string refs
-  uint32_t entryId, lemmaEntryId;
-  uint16_t charStart, charEnd;
-  uint16_t word, lemma, reading;   // offsets into a per-response string arena
-  bool wordLike;
-};
-struct EntryInfo { uint32_t id; uint16_t reading, pos; int32_t savedId; uint8_t prof; uint16_t seen; };
+struct Occurrence { std::string word, lemma, reading; uint32_t entryId, lemmaEntryId, charStart, charEnd; bool wordLike; };
+struct AnalyzeResult { std::vector<Occurrence> occurrences; bool morphoPending; };
+struct MeInfo { std::string name, plan; uint32_t rateLimitMax, rateLimitWindowMs; };  // never the email
 ```
 
-Strings go into **one PSRAM arena per response** (bump allocator, freed as one block). This avoids
-heap churn from many small `std::string`s, which is the same fragmentation the StarDict code works
-hard to avoid (`Dictionary.h` `LookupSession` comment).
+P2/P3 add `entryMetaById` / `stateByEntryId` / lookup to the same visitor pattern. The per-response
+arena from the original plan is deferred until measurements show the `std::string`s fragmenting
+anything (they're few, small and short-lived).
 
-**Key order.** If `occurrences` streams before `entryMetaById` / `stateByEntryId` (P0 checks
-this), a single pass is enough. If not, keep all entries (the §6 v0.1 choice does anyway), so key
-order doesn't matter. **Default: keep all. Key order is never a correctness dependency.**
+**Key order.** Visitors keep everything they need whatever the key order (tested). **Key order is
+never a correctness dependency.**
 
-Hard limits (so a hostile or broken response can't exhaust memory): 128 occurrences, a 16KB arena,
-and a 64KB body. Anything over a limit aborts the parse and returns `Unavailable`.
+Hard limits (so a hostile or broken response can't exhaust memory): 128 occurrences, 256 bytes per
+word/lemma/reading, a 64KB body, and 32 levels of nesting. Anything over a limit is `OverLimit`/`Malformed`,
+and the provider returns `Unavailable`.
 
 ## 4a. Undocumented fields degrade quietly
 
@@ -131,16 +148,17 @@ stardict_ja=jmdict
 stardict_zh=cedict
 tags=xteink
 enabled=1
-# base_url=https://api.lexirise.app   (override, for a local proxy)
+# base_url=https://api.lexirise.app   (override: https only, for a staging server)
 ```
 
 - The dot folder keeps it out of the file browser, the same way `/.dictionaries/` works.
-- The `base_url` override lets a **local plain-HTTP proxy** (the brief's fallback idea) be used
-  without code changes. It isn't needed on the S3, but costs nothing to support.
+- The `base_url` override is **https only**, and the server must chain to an ISRG root. The brief's
+  local plain-HTTP proxy idea is dropped: it would send the key in clear, and the S3 doesn't need it.
+  Changing the server from the web page requires pasting the key again (`settings.md` §2).
 - **Key hygiene:** the key is never logged (not even a prefix), never drawn on screen, never
-  served by the on-device web server's file listing (check `CrossPointWebServer`: dot folders
-  **are** listed or downloadable over WebDAV. If so, exclude `/.lexirise/`, and note it in
-  `firmware-base.md` §3 as a hook), and never written anywhere but the config.
+  served by the on-device web server (checked in P1: WebDAV already refused dot paths, but the file
+  manager's `/download` only checked the last path segment and served `/.lexirise/config.ini`. That's
+  fixed by the hidden-path hook in `firmware-base.md` §3), and never written anywhere but the config.
 - **Key check:** on the first WiFi-up of each boot, call `GET /v1/me` once. A 401 disables the provider before the user's first lookup ever waits on it. The response's rate-limit metadata is logged (counts only).
 - **Key entry** is from the settings panel (`settings.md` §2): pasted on the phone web page, or typed on the device.
 - A missing or empty key means the Lexirise provider is disabled, and lookups go straight to

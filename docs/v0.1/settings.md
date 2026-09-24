@@ -97,12 +97,14 @@ same URL shown for uploading books).
 
 - **Styling:** it copies the Fonts and Settings pages' own markup and CSS classes, so it looks like
   the rest of CrossPoint's web UI. No new visual language.
-- **Status line:** `Connected as <user> (Pro)` / `Key rejected` / `Not checked` / `No internet`, from the
-  cached `/v1/me` result. `Test connection` re-runs it.
+- **Status line:** `Connected as <name> (<plan>)` / `Key rejected` / `Not checked` / `No internet` /
+  `Could not connect`, from the cached `/v1/me` result (`api/KeyCheck`). `Test connection` re-runs it.
+  The name and plan are shown on this page only, never logged; the email is never read.
 - **Save:** a pasted key is validated client-side (`lx_` prefix, no spaces), saved, and tested straight
   away. The page never receives the full key back (§2).
-- **The whole page is one form** that posts to `/api/lexirise`. Settings apply at once, and the device's
-  own screen shows the same values.
+- **Every control posts its own change** to `/api/lexirise` (a partial JSON update, validated as a whole by
+  `SettingsPatch` before anything is saved). Settings apply at once, and the device's own screen shows
+  the same values. The response is the page's full state, so the page always shows what was saved.
 
 ## 2. The API key
 
@@ -116,14 +118,23 @@ same URL shown for uploading books).
 - **Anyone on the same WiFi can open the page while network mode is on.** That's true of all of
   CrossPoint's web UI, which has no login. They can replace the key but never read it. The user docs
   say to use network mode on trusted networks.
+- **Other websites can't use the page** (P1). CrossPoint allows every origin (`enableCORS`), so without a
+  guard any page open in the user's browser could POST new settings to the device. Every `/api/lexirise`
+  call is refused (403) when it carries an `Origin` that isn't the device itself. Browsers always send
+  `Origin` cross-site; curl and the dev harness send none and are allowed (`web/Origin.h`).
+- **A new server needs the key pasted again** (P1). Pointing `base_url` somewhere else is only accepted
+  in the same save as a pasted key (or with the key removed), so no edit can redirect the stored key
+  to another server (`SettingsPatch`, error field `apiKeyForServer`). The page says so under Advanced.
 - A newly entered key is **checked straight away** with `GET /v1/me` if WiFi is up (`Connected as …` /
   `Key rejected`). Otherwise it's checked at the next WiFi-up.
 - It's stored in `/.lexirise/config.ini` on the SD card, **in plain text**, the same as upstream's
   WiFi and KOReader credentials. The user docs say so: anyone with the SD card has the key, and a lost
   card means rotating the key.
-- **The web file browser already hides `/.lexirise/`**: `CrossPointWebServer` skips every item whose name
-  starts with `.` (checked 2026-09-24), so there's no hook for the file browser. **P1 still checks WebDAV
-  separately** (`WebDAVHandler` may list dot folders), and adds a hook only if it does.
+- **The web file manager can't reach `/.lexirise/`** (corrected in P1). Its listing hides dot items, but
+  `/download`, upload, rename, move and delete only checked the last path segment, so
+  `/download?path=/.lexirise/config.ini` served the key and delete + upload could replace the file. A
+  hook now refuses any path with a hidden segment at every entry point (`firmware-base.md` §3). WebDAV
+  already refused dot paths (`isProtectedPath`), so it needed nothing.
 - **Never logged**, and not written anywhere else (unchanged from D8).
 
 ## 3. The file
