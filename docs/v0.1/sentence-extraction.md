@@ -26,7 +26,7 @@ and `getRubyTexts()`. Tokens are the layout's units:
   and the builder decides spaces by script: **a space only between two non-CJK tokens** (Latin words),
   never next to a CJK character, and none after a Latin hyphen at a line break. Paragraph starts come
   from line geometry (`text/ParagraphBreaks.h`: the previous line ended ≥ 2 em short of the column, the
-  gap grew ≥ 1.3× the usual advance (less the furigana height a ruby line adds), a first-line indent
+  gap grew > 1.3× the usual advance (the smallest gap on the page, each gap less the furigana height a ruby line adds), a first-line indent
   (not a hanging one), a leading `　` (unless the line before ended in `？！?!`: a `？　` pause that
   wrapped to a line start is not an indent), or a block-style change).
 - **One laid-out token can hold two sentences**: CrossPoint never splits two non-CJK characters, so
