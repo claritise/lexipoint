@@ -71,7 +71,7 @@ downstream deals with units.
 ```cpp
 // src/lexirise/LookupProvider.h
 struct LookupRequest {
-  std::string_view sentence;   // UTF-8, ≤ 120 codepoints (D5)
+  std::string_view sentence;   // UTF-8, ≤ 120 UTF-16 units (D5)
   uint16_t tapOffset;          // in Lexirise's charStart unit
   uint16_t tapLen;
   std::string_view tapToken;   // the raw tapped token, for StarDict

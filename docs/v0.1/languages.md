@@ -38,7 +38,7 @@ book**, in this order:
    | `zh-TW`, `zh-HK`, `zh-MO`, `zh-Hant`, `zh-Hant-*` | **Traditional**. Treat as `zh` only if H8 says Lexirise handles it. Otherwise it goes straight to StarDict |
    | anything else | the provider is disabled for this book, so StarDict answers |
 2. **Missing or bogus metadata** (common in scanned or converted books, where `en` or `und` is
-   stamped on a Japanese novel): scan the **current sentence**. **Any kana (U+3040–U+30FF) → `ja`.**
+   stamped on a Japanese novel): scan the **current sentence**. **Any kana (hiragana/katakana letters; not `・` or `ー`) → `ja`.**
    Otherwise, if it's all Han with no kana → the config's `default_language`.
 3. A **per-book override** stored in `/.lexirise/books.ini` (`<bookId>=zh`), set from the card
    with a long-press on the language badge. It's for the rare book where both of the above guess
@@ -53,7 +53,8 @@ stamped `en` still gets `ja`); a sentence with no CJK at all (a real English boo
 so StarDict answers. `zh-TW`/`zh-HK`/`zh-MO`/`zh-Hant` go to StarDict while H8 is parked. A language
 switched off in settings (or Lexirise off) isn't sent, even with an override, but stays `detected`, so
 the sentence is still cut with its punctuation. "Kana" means real hiragana/katakana: `・` and `ー` also
-appear in Chinese transliterated names (哈利・波特) and don't count.
+appear in Chinese transliterated names (哈利・波特) and don't count. Traditional (`zh-TW`, `zh-Hant`) is
+not sent while H8 is parked, but is `detected` as Chinese for its punctuation.
 
 Config (superseded by the per-language sections in `settings.md` §3; the flat keys below are still read and migrated):
 
@@ -72,7 +73,7 @@ Extend `sentence-extraction.md` §2 rules 2–3:
 
 | | Japanese | Simplified Chinese |
 |---|---|---|
-| Terminators | `。！？` `!?` `．` | `。！？` `!?` plus `；` **only** as a fallback cut when the sentence would pass the 120-codepoint cap |
+| Terminators | `。！？` `!?` `．` | `。！？` `!?` plus `；` **only** as a fallback cut when the sentence would pass the 120-unit (UTF-16) cap |
 | Ellipsis | `…` `……` | `……` (two U+2026, as standard) |
 | Closers kept after a terminator | `」』）】` | `”’）】》` |
 | Openers (the left walk stops *before* these only if a terminator precedes them) | `「『（【` | `“‘（【《` |

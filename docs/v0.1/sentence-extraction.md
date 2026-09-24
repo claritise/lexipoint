@@ -63,12 +63,15 @@ sentence is first cut with Japanese rules, the language read off it, then recut 
    with a paragraph start) stop the walk. This matters for dialogue-heavy novels, where each 「…」
    is its own paragraph with no 。. **Also** (P2): a closer followed by an opener (」「) is a break
    even on one line, and in Japanese a closed quote followed by the quotative と / って continues the
-   sentence (「行こう。」と彼は言った。 is one sentence, not two).
+   sentence (「行こう。」と彼は言った。 is one sentence, not two), as does と after an unbracketed
+   `？！` (本当に!?と思った。); after `。` a と starts a new sentence (。とにかく). Runs of terminators and
+   closers stay together (`！？」`, `？！”`), a Latin `...` is an ellipsis, and a full stop inside a Latin
+   word (`3.50`, `example.com`) never ends a sentence.
 4. **Page bounded.** The walk stops at the page's first and last line and sets `truncated*`. v0.1
    doesn't read the neighbouring page. Chapter files are parsed per section, and loading the
    previous page costs an SD read and a layout pass, for a sentence that is only a little more
    complete. Revisit if field testing shows many truncated sentences.
-5. **Cap at `MAX_SENTENCE_CP = 120` codepoints**, centred on the tap as far as the boundaries allow.
+5. **Cap at `kMaxSentenceUnits = 120` UTF-16 units** (the server's unit; the same as codepoints except for non-BMP characters), centred on the tap as far as the boundaries allow.
    Japanese sentences in fiction are mostly under 60. The cap guards against unpunctuated run-ons
    and poetry.
 6. **Ruby is excluded.** `getRubyTexts()` is annotation, not text. Sending 漢字(かんじ) inline
@@ -98,7 +101,7 @@ Build fake `Page`s from strings (with the layout split applied), then assert tex
 - A plain sentence in the middle of a line; a sentence spanning three lines.
 - A tap on the terminator itself, and a tap on a closing bracket.
 - Dialogue: 「…」 as its own paragraph with no 。.
-- Truncation at the top and bottom of the page, and the 120-codepoint cap on an unpunctuated
+- Truncation at the top and bottom of the page, and the 120-unit (UTF-16) cap on an unpunctuated
   run-on.
 - A ruby line, where the reading is not in the output.
 - Mixed text: 彼はiPhoneを買った。, where Latin tokens join without extra spaces.
