@@ -65,6 +65,13 @@ constexpr uint32_t kWifiConnectMs = 6000;
 constexpr uint32_t kWifiPollMs = 50;
 constexpr unsigned long kMsPerMinute = 60UL * 1000UL;
 
+// Sentence extraction (sentence-extraction.md §2).
+constexpr size_t kMaxSentenceCodepoints = 120;  // cap, centred on the tap as far as the boundaries allow
+// Paragraph starts, read off line geometry (the laid-out page doesn't mark them): text/ParagraphBreaks.h.
+constexpr float kParagraphShortLineEm = 2.0f;  // the line before stops at least this far from the right edge
+constexpr float kParagraphGapFactor = 1.3f;    // or the gap to this line is this much above the usual line advance
+constexpr float kParagraphIndentEm = 0.5f;     // or this line is indented (and the one before wasn't)
+
 // Response limits (lexirise-client.md §4): past these a response is treated as malformed.
 constexpr size_t kMaxOccurrences = 128;
 constexpr size_t kMaxTokenBytes = 256;        // one word / lemma / reading

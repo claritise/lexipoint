@@ -1,0 +1,31 @@
+#pragma once
+
+// Per-language punctuation for sentence extraction (sentence-extraction.md §2, languages.md §2).
+// Pure. Tests: test/lexirise_sentence.
+
+#include <cstddef>
+#include <cstdint>
+
+namespace lexipoint::text {
+
+// Which punctuation rules a page follows: the book's Lexirise language, or Latin for anything else.
+enum class Script { Japanese, Chinese, Latin };
+
+struct Punctuation {
+  // Ends a sentence: 。！？!?． (ja), 。！？!? (zh), .!? (Latin).
+  static bool isTerminator(uint32_t cp, Script script);
+  // "…": ends a sentence only when a closer follows or the paragraph ends.
+  static bool isEllipsis(uint32_t cp);
+  // Kept with the sentence right after its terminator: 」』）】 (ja), ”’）】》 (zh), "')”’ (Latin).
+  static bool isCloser(uint32_t cp, Script script);
+  // Opens a quote or bracket: 「『（【 (ja), “‘（【《 (zh). A closer followed by an opener (」「) is a
+  // sentence break even without a terminator: consecutive lines of dialogue.
+  static bool isOpener(uint32_t cp, Script script);
+  // Chinese "；": a cut used only when a sentence would pass the codepoint cap.
+  static bool isFallbackCut(uint32_t cp, Script script);
+  // Japanese quotative と / って right after a closed quote (「行こう。」と言った): the quote is part of
+  // the sentence, not a sentence of its own. `next` is the token after the closer.
+  static bool continuesQuote(const uint32_t* next, size_t count, Script script);
+};
+
+}  // namespace lexipoint::text
