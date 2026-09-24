@@ -149,6 +149,12 @@ same URL shown for uploading books).
   `Tolkien ~ The Hobbit.epub` keep working. This applies to the file manager and to WebDAV (which only
   checked typed names, and whose `PROPFIND` listed hidden folders), and it also closes the same hole
   for upstream's `/.crosspoint` (saved WiFi passwords). `websmoke.py` probes it.
+  **As SdFat opens it** (P1 review round 4): SdFat skips a segment's leading spaces and trims trailing
+  dots/spaces, so `/ .lexirise` *is* `/.lexirise`. Paths and newly created names (mkdir, rename, move,
+  upload, WebDAV) are checked after that same trimming, so a hidden folder can neither be reached nor
+  planted (a planted `/.lexirise/config.ini` with its own `base_url` would otherwise receive the key the
+  user pastes next).
+- **The key card says where the key goes** whenever `base_url` isn't Lexirise's own server.
 - **Never logged**, and not written anywhere else (unchanged from D8).
 
 ## 3. The file
