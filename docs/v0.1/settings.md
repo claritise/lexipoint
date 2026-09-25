@@ -56,13 +56,21 @@ its own group, with the same rows where they apply. Only settings that span lang
 **Lookups** is Off, its group collapses to that one toggle. Turning it back on brings its rows back,
 with their values kept (turning a language off never clears its settings). The same applies to the
 master **Lexirise lookups** toggle: when it's Off, everything below the Account group is hidden.
+**Except each language's Offline dictionary (P13, claritise 2026-09-25: "what is functionally correct"):**
+it answers that language's taps whenever Lexirise doesn't (Lexirise off, the language's Lookups off, no
+WiFi), so it always shows: with Lexirise off the screen is the Account group and the two dictionaries; a
+language that's off collapses to its Lookups toggle and its Offline dictionary. The web page shows both
+dictionaries always too (Readings still follows Japanese, the default language still needs both on).
 **"Language when a book doesn't say"** only shows while **two or more** languages are on. With one
 language on, that language is the fallback, and there's nothing to choose (as built, P7:
 `Settings::fallbackLanguage()`, which `BookLanguage` uses for Han-only text; code that spans languages loops
 over `kLanguages`, so a new language is added there and in `Settings::language()`; the stored choice is kept for
 when both are on again). A consequence to know: with only Japanese on, Han-only sentences of an untagged
 Chinese book are read as Japanese (sent to Lexirise as Japanese, or to the Japanese offline dictionary);
-tag the book (or set its language on the card, later) to keep them Chinese.
+tag the book, or set its **Lookup language** in the reader menu (P9), to keep them Chinese. **Kept
+(claritise, 2026-09-25: "what is the reasonable answer?"):** with one language on, a Han-only sentence is
+almost always that language (Japanese headings, short lines, kanji compounds), so sending it elsewhere would
+take lookups away from the common case to protect a rare one that a book's Lookup language now fixes.
 - **Device:** `LexiriseSettingsActivity::buildScreen()` simply skips those rows, and a toggle triggers
   a rebuild, as `KOReaderSettingsActivity` does. There's no upstream change.
 - **Web page:** it's our own page (`LexirisePage.html`), so it applies **the same rules** in its JS.
