@@ -69,10 +69,14 @@ struct Settings {
     for (const Language l : kLanguages) count += language(l).enabled ? 1 : 0;
     return count;
   }
-  // "Language when a book doesn't say" as it applies (settings.md §1): with one language on, that one (the
-  // row is hidden then); otherwise the chosen one.
+  // Whether "Language when a book doesn't say" is what Han-only text uses, so its row shows (settings.md §1):
+  // not while Lexirise is on with just one language on, which is the answer then. With Lexirise off only the
+  // offline dictionaries answer and the per-language switches don't apply (P13); with Lexirise on and no
+  // language on, the offline dictionaries answer too, by this choice.
+  bool defaultLanguageApplies() const { return !enabled || enabledLanguageCount() != 1; }
+  // The language Han-only text is read as: the chosen one while it applies, else the one language on.
   Language fallbackLanguage() const {
-    if (enabledLanguageCount() == 1) {
+    if (!defaultLanguageApplies()) {
       for (const Language l : kLanguages) {
         if (language(l).enabled) return l;
       }

@@ -67,6 +67,12 @@ TEST(StarDictChoice, AnyStarDictFollowsTheBooksKnownLanguage) {
   EXPECT_TRUE(anyStarDict(s, "", untagged));      // its sentences decide
   EXPECT_TRUE(anyStarDict(s, "", english));       // as for Lexirise: a CJK novel stamped "en"
   EXPECT_FALSE(anyStarDict(s, "", BookLanguage("zh", lexipoint::Language::Japanese)));  // the override wins
+  // P13: the choice counts with Lexirise off and with the language's own lookups off (its row shows then):
+  // word select still opens for it.
+  s.enabled = false;
+  EXPECT_TRUE(anyStarDict(s, "", chinese));
+  s.chinese.enabled = false;
+  EXPECT_TRUE(anyStarDict(s, "", chinese));
 }
 
 TEST(StarDictChoice, OpensTheFolderElseTheFallbackAndReopensOnlyForAnotherChoice) {

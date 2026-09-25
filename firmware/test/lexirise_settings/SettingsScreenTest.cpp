@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <vector>
 
 #include "lexirise/settings/SettingsScreen.h"
@@ -32,21 +33,56 @@ TEST(SettingsScreen, AllRowsShowWithDefaults) {
                                                   Row::ZhDictionary, Row::DefaultLanguage, Row::Tags, Row::WifiIdle}));
 }
 
-TEST(SettingsScreen, LexiriseOffLeavesOnlyTheAccountGroup) {
+TEST(SettingsScreen, LexiriseOffLeavesTheAccountGroupAndWhatTheOfflineDictionariesUse) {
+  // P13 (claritise): the offline dictionaries answer every tap while Lexirise is off, so they stay, and so
+  // does the language for Han-only text, which picks between them.
   Settings s;
   s.enabled = false;
-  EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection}));
+  const std::vector<Row> off = {Row::Lookups,      Row::ApiKey,       Row::Account,        Row::TestConnection,
+                                Row::JaDictionary, Row::ZhDictionary, Row::DefaultLanguage};
+  EXPECT_EQ(rowsOf(s), off);
+  s.japanese.enabled = false;  // a language's own switch doesn't matter then
+  EXPECT_EQ(rowsOf(s), off);
 }
 
-TEST(SettingsScreen, ALanguageOffCollapsesToItsToggleAndHidesTheDefaultLanguage) {
+TEST(SettingsScreen, ALanguageOffCollapsesToItsToggleAndDictionaryAndHidesTheDefaultLanguage) {
   Settings s;
   s.chinese.enabled = false;
   EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
-                                         Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::Tags, Row::WifiIdle}));
+                                         Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary,
+                                         Row::Tags, Row::WifiIdle}));
   s.chinese.enabled = true;
   s.japanese.enabled = false;
+  EXPECT_EQ(rowsOf(s),
+            (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
+                              Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::Tags, Row::WifiIdle}));
+  s.chinese.enabled = false;  // none on: StarDict answers Han-only text by the default language, so it shows
   EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
-                                         Row::ZhLookups, Row::ZhDictionary, Row::Tags, Row::WifiIdle}));
+                                         Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::DefaultLanguage,
+                                         Row::Tags, Row::WifiIdle}));
+}
+
+TEST(SettingsScreen, EverySwitchCombinationShowsSevenToTwelveRows) {
+  // lxctl's SETTINGS_ROWS_MIN / MAX (settings-smoke) are these bounds; test_lxctl pins them to the Row list.
+  size_t fewest = screen::kRowCount, most = 0;
+  for (int bits = 0; bits < 8; bits++) {
+    Settings s;
+    s.enabled = bits & 1;
+    s.japanese.enabled = bits & 2;
+    s.chinese.enabled = bits & 4;
+    const auto rows = rowsOf(s);
+    fewest = std::min(fewest, rows.size());
+    most = std::max(most, rows.size());
+    // The offline dictionaries always show (P13), and the default language whenever Han-only text uses it:
+    // everywhere but Lexirise on with one language on, where that language is the answer.
+    EXPECT_EQ(std::count(rows.begin(), rows.end(), Row::JaDictionary), 1) << bits;
+    EXPECT_EQ(std::count(rows.begin(), rows.end(), Row::ZhDictionary), 1) << bits;
+    EXPECT_EQ(std::count(rows.begin(), rows.end(), Row::DefaultLanguage),
+              s.enabled && s.enabledLanguageCount() == 1 ? 0 : 1)
+        << bits;
+  }
+  EXPECT_EQ(fewest, 7u);
+  EXPECT_EQ(most, screen::kRowCount);
 }
 
 TEST(SettingsScreen, TurningALanguageOffAndOnKeepsItsValues) {
@@ -151,13 +187,13 @@ TEST(SettingsScreen, AccountLineFollowsTheKeyCheck) {
 
 TEST(SettingsScreen, ATapMapsThroughTheRowsThatWereDrawn) {
   // A tap during the refresh after Japanese was switched off lands on the rows that were built with it:
-  // index 5 is Readings there, and never the Chinese toggle that index 5 is now.
+  // index 5 is Readings there, and never Japanese's offline dictionary that index 5 is now.
   Settings before;
   const auto drawn = screen::visibleRows(before);
   Settings after = before;
   after.japanese.enabled = false;
   EXPECT_EQ(screen::rowAt(drawn, 5), Row::JaReading);
-  EXPECT_EQ(screen::rowAt(screen::visibleRows(after), 5), Row::ZhLookups);
+  EXPECT_EQ(screen::rowAt(screen::visibleRows(after), 5), Row::JaDictionary);
   EXPECT_FALSE(screen::rowAt(drawn, -1).has_value());
   EXPECT_FALSE(screen::rowAt(drawn, static_cast<int>(drawn.count)).has_value());
 }

@@ -709,12 +709,15 @@ class SettingsSmoke(unittest.TestCase):
         self.assertRegex(f"SWIPE {lxctl.EDGE_INSET} 400 240 400", usages["SWIPE"])
 
     def test_row_bounds_match_the_screen(self):
-        """SETTINGS_ROWS_MAX is every settings_screen::Row; MIN the Account group (visibleRows, Lexirise off)."""
+        """SETTINGS_ROWS_MAX is every settings_screen::Row; MIN Lexirise off (visibleRows: the Account group, the
+        two offline dictionaries and the default language)."""
         with open(os.path.join(REPO, "src/lexirise/settings/SettingsScreen.h"), encoding="utf-8") as f:
             body = re.search(r"enum class Row : uint8_t \{(.*?)\};", f.read(), re.S).group(1)
         rows = re.findall(r"^\s*(\w+),", body, re.M)
         self.assertEqual(lxctl.SETTINGS_ROWS_MAX, len(rows))
-        self.assertEqual(rows[:lxctl.SETTINGS_ROWS_MIN], ["Lookups", "ApiKey", "Account", "TestConnection"])
+        account = rows.index("TestConnection") + 1  # the Account group: Lookups .. TestConnection
+        self.assertEqual(rows[:account], ["Lookups", "ApiKey", "Account", "TestConnection"])
+        self.assertEqual(lxctl.SETTINGS_ROWS_MIN, account + len(["JaDictionary", "ZhDictionary", "DefaultLanguage"]))
 
 
 class ReleaseVersioning(unittest.TestCase):

@@ -39,6 +39,25 @@ TEST(WebApiState, KeyIsOnlyEverMasked) {
   EXPECT_NE(stateJson(none, KeyStatus(), {}).find(R"("hasKey":false,"key":"")"), std::string::npos);
 }
 
+TEST(WebApiState, SaysWhichRowsShowByTheDeviceScreensRule) {
+  // The page hides its data-when rows by these (test_lexirise_page.py pins the keys); the rule is
+  // settings_screen::visibleRows (SettingsScreenTest).
+  Settings s;
+  EXPECT_NE(stateJson(s, KeyStatus(), {})
+                .find(R"("shows":{"jaLookups":true,"jaReading":true,"zhLookups":true,"defaultLanguage":true,)"
+                      R"("tags":true,"wifiIdle":true})"),
+            std::string::npos);
+  s.enabled = false;  // P13: the offline dictionaries answer; the default language picks for Han-only text
+  EXPECT_NE(stateJson(s, KeyStatus(), {})
+                .find(R"("shows":{"jaLookups":false,"jaReading":false,"zhLookups":false,"defaultLanguage":true,)"
+                      R"("tags":false,"wifiIdle":false})"),
+            std::string::npos);
+  s.enabled = true;
+  s.chinese.enabled = false;  // one language on: it is the answer
+  EXPECT_NE(stateJson(s, KeyStatus(), {}).find(R"("jaReading":true,"zhLookups":true,"defaultLanguage":false,)"),
+            std::string::npos);
+}
+
 TEST(WebApiState, CarriesSettingsChoicesAndStatus) {
   Settings s;
   s.japaneseReading = Reading::Romaji;

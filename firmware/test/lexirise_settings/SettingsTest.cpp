@@ -169,6 +169,24 @@ TEST(Settings, FallbackLanguageIsTheOnlyOneOnElseTheChosenOne) {
   EXPECT_EQ(s.fallbackLanguage(), lexipoint::Language::Japanese);  // one on: that one
   s.japanese.enabled = false;
   EXPECT_EQ(s.fallbackLanguage(), lexipoint::Language::Chinese);  // none on: the choice
+  // P13: Lexirise off: only the offline dictionaries answer, the per-language switches don't apply, the
+  // choice (its row shows then) does.
+  s.japanese.enabled = true;
+  s.enabled = false;
+  EXPECT_EQ(s.fallbackLanguage(), lexipoint::Language::Chinese);
+}
+
+TEST(Settings, TheDefaultLanguageAppliesUnlessOneLanguageIsTheAnswer) {
+  // Its row shows exactly then (settings_screen::visibleRows).
+  lexipoint::Settings s;
+  EXPECT_TRUE(s.defaultLanguageApplies());  // both on
+  s.chinese.enabled = false;
+  EXPECT_FALSE(s.defaultLanguageApplies());  // one on
+  s.japanese.enabled = false;
+  EXPECT_TRUE(s.defaultLanguageApplies());  // none on: StarDict answers Han-only text by the choice
+  s.japanese.enabled = true;
+  s.enabled = false;
+  EXPECT_TRUE(s.defaultLanguageApplies());  // Lexirise off
 }
 
 TEST(Settings, EveryLanguageIsListedOnceWithItsOwnGroup) {

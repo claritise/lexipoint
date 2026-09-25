@@ -58,24 +58,32 @@ Rows visibleRows(const Settings& settings) {
   add(Row::ApiKey);
   add(Row::Account);
   add(Row::TestConnection);
-  if (!settings.enabled) return out;
-
-  add(Row::JaLookups);
-  if (settings.japanese.enabled) {
-    add(Row::JaReading);
-    add(Row::JaDictionary);
+  // Each language's offline dictionary always shows: it answers that language's taps whenever Lexirise
+  // doesn't (Lexirise off, the language's lookups off, offline), so it matters most exactly when the
+  // Lexirise rows are hidden (P13, claritise). "Language when a book doesn't say" shows whenever Han-only text
+  // uses it, Lexirise off included (Settings::defaultLanguageApplies). The rest is Lexirise's.
+  const bool lexirise = settings.enabled;
+  if (lexirise) add(Row::JaLookups);
+  if (lexirise && settings.japanese.enabled) add(Row::JaReading);
+  add(Row::JaDictionary);
+  if (lexirise) add(Row::ZhLookups);
+  add(Row::ZhDictionary);
+  if (settings.defaultLanguageApplies()) add(Row::DefaultLanguage);
+  if (lexirise) {
+    add(Row::Tags);
+    add(Row::WifiIdle);
   }
-  add(Row::ZhLookups);
-  if (settings.chinese.enabled) add(Row::ZhDictionary);
-  if (settings.enabledLanguageCount() >= 2) add(Row::DefaultLanguage);
-  add(Row::Tags);
-  add(Row::WifiIdle);
   return out;
 }
 
 std::optional<Row> rowAt(const Rows& rows, const int index) {
   if (index < 0 || static_cast<size_t>(index) >= rows.count) return std::nullopt;
   return rows[static_cast<size_t>(index)];
+}
+
+bool shows(const Rows& rows, const Row row) {
+  const auto end = rows.rows.begin() + static_cast<std::ptrdiff_t>(rows.count);
+  return std::find(rows.rows.begin(), end, row) != end;
 }
 
 bool startsGroup(const Rows& rows, const size_t i) {

@@ -7,6 +7,7 @@
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/net/JsonReader.h"
 #include "lexirise/net/JsonWriter.h"
+#include "lexirise/settings/SettingsScreen.h"
 
 namespace lexipoint::web {
 namespace {
@@ -15,6 +16,27 @@ using json::Path;
 using json::Type;
 
 const char* readingName(const Reading reading) { return reading == Reading::Romaji ? "romaji" : "kana"; }
+
+// The page's rows that can hide, by their data-when value (test_lexirise_page.py pins the two lists). A new
+// row that can hide is one line here and its data-when there.
+struct PageRow {
+  const char* key;
+  settings_screen::Row row;
+};
+constexpr PageRow kPageRows[] = {
+    {"jaLookups", settings_screen::Row::JaLookups}, {"jaReading", settings_screen::Row::JaReading},
+    {"zhLookups", settings_screen::Row::ZhLookups}, {"defaultLanguage", settings_screen::Row::DefaultLanguage},
+    {"tags", settings_screen::Row::Tags},           {"wifiIdle", settings_screen::Row::WifiIdle},
+};
+
+// Which of them show: the device screen's own (settings_screen::visibleRows), so the page has no rule of its
+// own to drift (P13).
+net::JsonObject shownJson(const Settings& s) {
+  const settings_screen::Rows rows = settings_screen::visibleRows(s);
+  net::JsonObject out;
+  for (const PageRow& pageRow : kPageRows) out.add(pageRow.key, settings_screen::shows(rows, pageRow.row));
+  return out;
+}
 
 // Collects the top-level and one-level-nested ("ja"/"zh") scalars into the patch.
 class PatchVisitor final : public json::Visitor {
@@ -190,6 +212,7 @@ std::string stateJson(const Settings& s, const api::KeyStatus& status, const std
       .add("status", statusJson(status))
       .add("settingsReset", settingsReset)
       .add("checkTimeoutS", static_cast<int>((config::kMaxCallMs + 999) / 1000))
+      .add("shows", shownJson(s))
       .str();
 }
 

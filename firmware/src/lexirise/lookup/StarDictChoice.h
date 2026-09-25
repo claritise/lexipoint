@@ -21,7 +21,7 @@
 namespace lexipoint::lookup {
 
 // The dictionary a tap opens, and the one it falls back on when that can't be opened (the language's own
-// folder was removed from the card, say, while its row is hidden): CrossPoint's, when it's another one.
+// folder was removed from the card, say): CrossPoint's, when it's another one.
 struct StarDictChoice {
   std::string folder;    // empty: no dictionary
   std::string fallback;  // empty: none

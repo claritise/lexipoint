@@ -131,6 +131,19 @@ TEST(BookLanguage, WithOneLanguageOnHanOnlyTextIsThatLanguage) {
   EXPECT_FALSE(BookLanguage("", std::nullopt).decide("学生", s).language);
 }
 
+TEST(BookLanguage, WithLexiriseOffHanOnlyTextIsTheChosenLanguage) {
+  // P13: the offline dictionary for Han-only text follows "Language when a book doesn't say" (shown then),
+  // not the per-language switches (hidden then): nothing is sent, but `detected` picks the dictionary.
+  Settings s;
+  s.enabled = false;
+  s.chinese.enabled = false;  // only Japanese's switch on, from before
+  s.defaultLanguage = Language::Chinese;
+  const auto han = BookLanguage("", std::nullopt).decide("我是学生。", s);
+  EXPECT_EQ(han.detected, Language::Chinese);
+  EXPECT_EQ(han.dictionaryLanguage(), Language::Chinese);
+  EXPECT_FALSE(han.language);  // Lexirise off: nothing to send
+}
+
 TEST(BookLanguage, MayUseLexiriseWhileAnyLanguageIsOn) {
   Settings s;
   s.chinese.enabled = false;  // one on

@@ -59,9 +59,10 @@ struct Rows {
   Row operator[](const size_t i) const { return rows[i]; }
 };
 
-// The rows that show (settings.md §1): with Lexirise lookups off, only the Account group; a language
-// that's off collapses to its Lookups toggle; "Language when a book doesn't say" only while two or more
-// languages are on. Hidden rows keep their values.
+// The rows that show (settings.md §1): with Lexirise lookups off, the Account group, each language's Offline
+// dictionary and "Language when a book doesn't say" (P13: they decide every tap then); a language that's off
+// collapses to its Lookups toggle and its Offline dictionary; "Language when a book doesn't say" whenever
+// Han-only text uses it (Settings::defaultLanguageApplies). Hidden rows keep their values.
 Rows visibleRows(const Settings& settings);
 
 // Taps wait for the frame an edit asked for. The list lays out its new rows and touch targets before the
@@ -85,6 +86,9 @@ class TapGate {
 
 // The row at a list index (a tap's), nullopt past the end.
 std::optional<Row> rowAt(const Rows& rows, int index);
+
+// Whether `row` is among `rows` (the web page's rows follow the screen's: web::stateJson "shows").
+bool shows(const Rows& rows, Row row);
 
 // Whether row i opens a group (it gets the group's heading).
 bool startsGroup(const Rows& rows, size_t i);

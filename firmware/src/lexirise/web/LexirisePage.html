@@ -119,21 +119,21 @@
     </div>
     <div class="setting-row">
       <span class="setting-name">Japanese</span>
-      <span class="setting-control" data-toggle="ja.enabled"></span>
+      <span class="setting-control" data-toggle="ja.enabled" data-when="jaLookups"></span>
     </div>
-    <div class="setting-row sub" data-when="ja.enabled">
+    <div class="setting-row sub" data-when="jaReading">
       <span class="setting-name">Readings</span>
       <span class="setting-control"><select data-field="ja.reading"><option value="kana">Kana</option><option value="romaji">Romaji</option></select></span>
     </div>
-    <div class="setting-row sub" data-when="ja.enabled">
+    <div class="setting-row sub">
       <span class="setting-name">Offline dictionary</span>
       <span class="setting-control"><select data-field="ja.stardict" data-dictionaries></select></span>
     </div>
     <div class="setting-row">
       <span class="setting-name">Chinese (Simplified)</span>
-      <span class="setting-control" data-toggle="zh.enabled"></span>
+      <span class="setting-control" data-toggle="zh.enabled" data-when="zhLookups"></span>
     </div>
-    <div class="setting-row sub" data-when="zh.enabled">
+    <div class="setting-row sub">
       <span class="setting-name">Offline dictionary</span>
       <span class="setting-control"><select data-field="zh.stardict" data-dictionaries></select></span>
     </div>
@@ -141,15 +141,15 @@
 
   <div class="card">
     <h2>General</h2>
-    <div class="setting-row" data-when="both">
+    <div class="setting-row" data-when="defaultLanguage">
       <span class="setting-name">Language when a book doesn't say</span>
       <span class="setting-control"><select data-field="defaultLanguage"><option value="ja">Japanese</option><option value="zh">Chinese</option></select></span>
     </div>
-    <div class="setting-row">
+    <div class="setting-row" data-when="tags">
       <span class="setting-name">Tags on saved words</span>
       <span class="setting-control"><input type="text" data-field="tags" placeholder="xteink" /></span>
     </div>
-    <div class="setting-row">
+    <div class="setting-row" data-when="wifiIdle">
       <span class="setting-name">Keep WiFi on after a lookup</span>
       <span class="setting-control"><select data-field="wifiIdleMin" data-number></select></span>
     </div>
@@ -237,11 +237,10 @@
         if (el.tagName === 'INPUT') el.value = get(s, el.dataset.field) || '';
         else if (!el.hasAttribute('data-dictionaries') && el.dataset.field !== 'wifiIdleMin') el.value = get(s, el.dataset.field);
       });
-      // Language rows only while their language is on; the default language only while both are.
+      // The device says which rows show (settings_screen::visibleRows, sent as `shows`): the offline
+      // dictionaries and the language names have no data-when, so they always do.
       document.querySelectorAll('[data-when]').forEach(row => {
-        const when = row.dataset.when;
-        const on = when === 'both' ? (s.ja.enabled && s.zh.enabled) : !!get(s, when);
-        row.classList.toggle('hidden', !on);
+        row.classList.toggle('hidden', !s.shows[row.dataset.when]);
       });
     }
 
