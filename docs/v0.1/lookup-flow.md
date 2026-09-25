@@ -35,12 +35,14 @@ Two facts shape everything below:
 New: **touch long-press on the reading page** (`MappedInputManager::wasScreenLongPress(x, y)`,
 already implemented, unused by the reader) opens `DictionaryWordSelectActivity` with an
 **initial touch point**. On entry, word select picks `wordAt(x, y)` and **looks it up straight
-away**, with no second tap. If the press lands on no word, it opens as normal with the highlight at
-the nearest word.
+away**, with no second tap. ~~If the press lands on no word, it opens as normal with the highlight at
+the nearest word.~~ (Superseded: a press on no word doesn't open word select (P9, §5e) and does nothing
+(P10, §5f).)
 
 **On the X4 Pro this is the primary entry point** (D15): the device has no Confirm button, so the
 upstream "hold Confirm" entry doesn't exist there. The other existing entry points (reader menu →
-Look Up, the Home action) still work and go through the same provider chain.
+Look Up, the Home action) still work and go through the same provider chain. (P10: both removed with
+LEXIRISE, the long-press is the only way in: §5g.)
 
 Needs a constructor overload (`initialTouch`) and a branch in `EpubReaderActivity::loop()`, where
 screen long-press is checked before the page-turn tap zones. Watch out for conflicts with existing
@@ -164,7 +166,7 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
   `LookupCard::headword()` / `plainText()`). Phase A/B rendering arrives with the card (P4/P5).
 - **Long-press (§1)**: `EpubReaderActivity::loop()`, before link taps, peeks at the long-press
   (`MappedInputManager::peekScreenLongPress`, its touch-down point, as the page-turn zones use), then
-  `takeLongPress()`: the lookup owns that zone (`lookupOwnsLongPress()`), and only then is
+  `takeLongPress()` (P10: `longPressUse()`, §5f): the lookup owns that zone (`lookupOwnsLongPress()`), and only then is
   `lookupsAvailable()` (which reads the settings) asked. Only then is it consumed (`wasScreenLongPress`). With
   CrossPoint's `longPressButtonBehavior` on in a tap mode (normal or inverted: a hold of ≥ 700 ms on a
   page-turn zone, acted on at release), the outer zones (`ReaderUtils::pageTurnZoneWidth`, shared)
@@ -177,7 +179,7 @@ What P3 shipped, where it differs from the plan above (code: `src/lexirise/looku
   opens word select. `wasScreenLongPress` suppresses the rest of the contact, so the
   finger lift doesn't tap word select. Word select takes the point through `setInitialTouch(x, y)`
   (a setter, not a constructor overload), selects `wordAt(x, y)` and looks it up on its first
-  `loop()` after the first render. A press on no word opens word select as usual.
+  `loop()` after the first render. ~~A press on no word opens word select as usual.~~ (P9/P10: §5e, §5f.)
 - Word select now **opens without a StarDict dictionary** when Lexirise is usable (enabled and a key
   set, `lookup::lexiriseConfigured()`). If Lexirise then has no answer, word select shows "No dictionary
   set" (not a dictionary error).
@@ -302,8 +304,9 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   reports its lift as a tap and CrossPoint handles it as before (the centre opens the menu, the sides turn
   the page). Tests: `LongPress.TakenOnlyWhenFiredOwnedAvailableAndOnAWord`, `APressOffTheTextStaysCrossPoints`,
   `WordBoxesTest`; on the device `lxctl reader-longpress` (the reader logs `[LXLP] long-press x y taken|left`).
-  Device check owed: long-press a margin, the gap between paragraphs and an image (the menu or a page turn,
-  nothing highlighted); long-press a word (the card, as before); a word at a line's end and the first line.
+  Device check owed: ~~long-press a margin, the gap between paragraphs and an image (the menu or a page turn,
+  nothing highlighted)~~ (P10: nothing at all, §5f); long-press a word (the card, as before); a word at a
+  line's end and the first line.
 - **Found on the device after the fix (2026-09-25):** "the menu still won't open" was CrossPoint's own **Home-pad
   hold**, not a page long-press: the Home pad sits at the bottom middle, and its hold runs Settings → Controls →
   **Long-press Menu**, which on claritise's reader is set to Dictionary: word select with the middle word
@@ -325,7 +328,28 @@ unchanged (the menu in the middle, page turns at the sides). Two cases still lea
 Lexipoint: nothing to look words up with (no key and no offline dictionary: a slow tap), and CrossPoint's
 own hold action's zones (Long-press Behavior on, in a tap mode: the outer thirds). Tests:
 `LongPress.UsedOnlyWhenFiredOwnedAndAvailable`, `APressOffTheTextDoesNothing`, `LogNames`; on the device
-`lxctl reader-longpress` (the margin must be `ignored`, the word `taken`).
+`lxctl reader-longpress` (the bottom and left margins must be `ignored` with nothing opened and no page
+redrawn; the left margin is skipped while CrossPoint's hold action owns the sides; the word `taken`). Also
+changed by it: in swipe mode, a long-press off the text followed by a drag is dropped with it (the whole
+contact is consumed), and with touch controls off a slow tap in the middle no longer opens the menu (a quick
+tap still does). Device check owed: with Long-press Behavior off and on, long-press the gap between
+paragraphs, an image, the side margins and the bottom margin (nothing; with it on, a side hold still does its
+action); with no key and no offline dictionary, a slow tap still opens the menu or turns the page; a word
+(and a link) still opens the card; quick taps unchanged.
+
+### 5g. As built (P10): no lookup mode
+
+claritise (2026-09-25), after word select ("lookup mode", which a Home-pad hold set to Dictionary opened)
+left a highlight behind and was hard to leave: "maybe we should get rid of lookup mode since we have hold to
+look up". With LEXIRISE: the reader menu has no **Look Up** row (its place holds **Lookup language**; the
+`DICTIONARY` action stays for upstream builds), and Settings → Controls → **Long-press Menu** doesn't offer
+**Dictionary** (`settings/LongPressMenu.h`: the setting keeps upstream's stored values, so its file stays
+compatible; the screens show KOReader Sync / Disabled / Bookmark / Reader Menu (Reader Menu with a Home key
+only), a `DynamicEnum` saved by `CrossPointSettings::toJson`/`fromJson`; a stored Dictionary loads as Reader
+Menu, or Disabled without a Home key, and the file is rewritten). Word select itself stays: a long-press
+lookup runs in it, with its highlight only under the card. Tests: `LongPressMenuTest`. Device check owed: a
+reader that had Long-press Menu = Dictionary shows Reader Menu after the update and a Home-pad hold opens the
+menu; the menu (list and More panel) has no Look Up; the web settings page shows the same four choices.
 
 ### 5c. As built (P7)
 
