@@ -15,7 +15,10 @@ Everything CrossPoint does keeps working the same way. Lexipoint only adds the l
    `github.com/claritise/crosspoint-reader`.
 2. Flash it the way CrossPoint documents (its README, *Install firmware*): the web installer's
    **Custom .bin** option, or `esptool.py --chip esp32s3 ... write_flash 0x10000 <file>.bin`.
-   Read CrossPoint's warning about USB-locked units first.
+   Read CrossPoint's warning about USB-locked units first. **After an over-the-air update** the device
+   boots its second firmware slot, so a plain `write_flash 0x10000` would be ignored: erase the boot record
+   too (`esptool.py --chip esp32s3 ... erase_region 0xe000 0x2000`), or use the web installer or
+   CrossPoint's SD-card firmware update.
 3. Later updates arrive **over the air**: Settings → System → *Check for updates* offers the next
    Lexipoint release (`…-lexi.<n+1>`). It never offers upstream CrossPoint's releases, which would remove
    Lexipoint. To go back to stock CrossPoint, flash its release the same way.
@@ -38,7 +41,7 @@ until you add one. What works (tested on an X4 Pro):
    8, 10 and 18.
 3. Copy the `NotoSerifCJK` folder to `/fonts/` on the SD card (USB Drive mode or the file manager).
    **Eject before unplugging**: an unplug mid-copy truncates the files.
-4. On the reader: **Settings → Reader → Font Family → NotoSerifCJK**.
+4. On the reader: **Settings → Reader → Text Settings → Reader Font Family → NotoSerifCJK**.
 
 Rare characters outside the main CJK block (Extension A, and a few like 𠮟) still show as boxes.
 A Japanese font can lack some Simplified characters (这, 们, 说 …): if a Chinese book shows boxes, use
@@ -46,13 +49,13 @@ the `sc` font for it.
 
 ## 3. WiFi and your Lexirise key
 
-1. **WiFi:** Settings → System → *WiFi Networks*, as in CrossPoint. Lexipoint joins it for a lookup and
+1. **WiFi:** Settings → System → *Wi-Fi Networks*, as in CrossPoint. Lexipoint joins it for a lookup and
    lets it go after *Keep WiFi on after a lookup* (5 minutes by default).
 2. **A key:** create an API key in your Lexirise account (API keys need a **Pro** plan). Keys look like
    `lx_…`.
 3. **Paste it from a phone or laptop**, not the e-ink keyboard: on the reader, open **File Transfer**
    (CrossPoint's network mode), then open the address it shows in a browser on the same WiFi and choose **Lexirise** in
-   the menu (Home · Files · Fonts · Settings · Lexirise). Paste the key and save: the page tests it at once
+   the menu (Home · File Manager · Settings · Fonts · Lexirise). Paste the key and save: the page tests it at once
    (`Connected as <you> (<plan>)`, `Key rejected`, or `No internet`).
 4. The device shows the same settings under **Settings → System → Lexirise**: the key (masked,
    `lx_••••••••abc`), the account, *Test connection*, each language's switches, and the rest (§6). You can
