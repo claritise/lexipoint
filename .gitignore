@@ -31,3 +31,7 @@ sd-card/
 *.lexi.json
 _ocr/
 api-cache/
+
+# Local research workspace: manga volumes, OCR output, spike results, cached API responses, research notes
+# and the OCR venv. Private; never committed (docs/v0.2/manga.md §3).
+/research/

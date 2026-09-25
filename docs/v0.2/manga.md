@@ -135,7 +135,9 @@ block. The JSON above is the spike's inspection format only.
 
 Requirements: Python 3 with Pillow and NumPy; mokuro in its own venv (`pip install mokuro`, ~1.4 GB
 with PyTorch; the OCR model downloads on first run); a Lexirise key in `~/.lexirise_key` for
-`wordboxes.py` (read, never printed). **Keep volumes and every output outside this repo.**
+`wordboxes.py` (read, never printed). **Volumes and every output go in `research/`** at the repo root,
+which is gitignored (`research/manga/` for volumes, `research/spike/` for outputs,
+`research/.venv-ocr/` for mokuro); never anywhere tracked.
 
 ```
 mokuro "<volume folder>" --disable_confirmation=true         # writes "<volume folder>.mokuro"
