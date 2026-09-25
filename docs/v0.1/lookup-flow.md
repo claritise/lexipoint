@@ -250,20 +250,20 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   changed nothing there; the device check is owed.
 - **Back by entry point** (`popup-ui.md` §3): word select remembers a long-press on a word opened it
   (`touchEntry`). Then any close of the card (Back, Home, ✕, a tap or swipe down outside it) goes straight
-  back to the reader (`card::AfterCard::BackToReader`), and so does closing StarDict's definition. Opened
+  back to the reader (`card::closeStep` → `CloseStep::BackToReader`), and so does closing StarDict's definition. Opened
   from the menu, the card closes to word select, as before. A long-press on no word still opens word
   select as usual, and it behaves as menu-opened. For a touch-opened word select, a lookup that ends in a
   notice instead (Not found, No dictionary set, a dictionary error) also goes back to the reader once the
   notice has been read.
 - **A long-press on another word while the card is open** (`popup-ui.md` §3.2): in card view, a
   long-press on the page outside the card closes it with that point (`Outcome::lookUpAt` →
-  `LiveOutcome::lookUpAt` → `AfterCard::LookUpAt`), and word select looks up the word there on its next
+  `LiveOutcome::lookUpAt` → `CloseStep::LookUp`), and word select looks up the word there on its next
   `loop()`. The card writes its queued saves first, as on any close. On the card itself or over the detail
   view (which covers the page) a long-press does nothing, and so it does when the reader's page isn't
   drawn under the card (a landscape book, whose page is laid out in other coordinates) and on the bench.
   The card always takes (consumes) a long-press, so the finger's lift is never also a tap on it. A long-press on
   no word closes the card as a tap outside would. An unsent save is said first (`UnsentSave`), and then
-  the close carries on (`card::afterClosed`: the long-pressed word, or back to the reader).
+  the close finishes (`card::AfterPopup::finishClose`: the long-pressed word, or back to the reader).
 - **Swipes** (`popup-ui.md` §3.2, deferred from P4): `CardController::swipe`: up on the card opens the
   detail view (not before the word has arrived: phase 0 has no detail view, only a swipe down means
   something then), down goes back to the card and from the card closes it, left / right step the detail view's
