@@ -133,7 +133,7 @@ TEST(DevProtocol, UnknownAndMalformed) {
 
 TEST(DevProtocol, LegacyScreenshot) {
   EXPECT_EQ(parse("CMD:SCREENSHOT").verb, Verb::LegacyScreenshot);
-  EXPECT_EQ(parse("CMD: SCREENSHOT ").verb, Verb::LegacyScreenshot);  // upstream trimmed too
+  EXPECT_EQ(parse("CMD: SCREENSHOT ").verb, Verb::LegacyScreenshot);  // CrossPoint trimmed too
   EXPECT_EQ(parse("CMD:OTHER").verb, Verb::None);
   EXPECT_EQ(parse("CMD:OTHER").error, nullptr);
 }

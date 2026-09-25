@@ -89,7 +89,7 @@ Command parseLine(const char* rawLine) {
     while (*rest == ' ') rest++;
     Command c;
     if (std::strcmp(rest, "SCREENSHOT") == 0) c.verb = Verb::LegacyScreenshot;
-    return c;  // other upstream CMD: lines: ignored, as upstream does
+    return c;  // CrossPoint's other CMD: lines: ignored, as CrossPoint does
   }
   if (std::strncmp(line, "LX:", 3) != 0) return Command{};
 

@@ -12,9 +12,16 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/TaskWatchdog.h"
+#if LEXIRISE
+#include "lexirise/LexiriseConfig.h"  // LEXIPOINT
+#endif
 
 namespace {
+#if LEXIRISE
+constexpr const char* HOSTNAME = lexipoint::config::kMdnsHostname;  // LEXIPOINT: the product's name (D22)
+#else
 constexpr const char* HOSTNAME = "crosspoint";
+#endif
 }  // namespace
 
 void CalibreConnectActivity::onEnter() {

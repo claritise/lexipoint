@@ -46,7 +46,7 @@ One command per line on the USB serial port (115200), prefixed `LX:`. Replies ar
   corrupted by interleaved log output is rejected, not saved.
 - **Screen tracking:** CrossPoint already logs `[ACT] Entering activity: <Name>` on every screen change.
   `lxctl.py wait "<text>" <secs>` blocks on it.
-- The legacy upstream `CMD:SCREENSHOT` keeps working, answered by the harness. In harness builds, upstream's own serial reader is compiled out, so it can't block for 1 s and swallow half of an `LX:` line.
+- CrossPoint's legacy `CMD:SCREENSHOT` keeps working, answered by the harness. In harness builds, the base's own serial reader is compiled out, so it can't block for 1 s and swallow half of an `LX:` line.
 - **Replies:** each command's reply is `LX:OK <VERB>` (HOME HOLD answers `LX:OK HOME`). `lxctl.py` matches replies to the command that sent them, so stale ones are skipped.
 - **All tunables** live in `src/lexirise/dev/DevConfig.h`. `lxctl.py`'s timeouts are kept in step with them.
 
@@ -69,7 +69,7 @@ One command per line on the USB serial port (115200), prefixed `LX:`. Replies ar
   the lease (or always, after `LX:AWAKE 1`, which is what an unattended build session uses while the
   device stays on the cable).
 
-## 3. Host tool: `scripts/lexipoint/lxctl.py` (firmware repo)
+## 3. Host tool: `scripts/lexipoint/lxctl.py`
 
 Needs `pyserial`. Examples: `lxctl.py ping`, `lxctl.py tap 240 400`, `lxctl.py swipe 240 600 240 200`,
 `lxctl.py btn next`, `lxctl.py home`, `lxctl.py shot out.png`, `lxctl.py log 10`,
@@ -84,7 +84,7 @@ resets the ESP32-S3.
   gesture frame sequences and the all-or-nothing queue, the overlay (one-frame promotion, every query's
   mapping, the suppress latch, the held-time latch including suppressed releases, moved fingers), and
   timing (the lease incl. no-host and millis() wrap, button presses incl. the min-samples floor and busy) (39 tests).
-- `scripts/lexipoint/test_lxctl.py` (`python3 -m unittest discover -s scripts/lexipoint`): PNG rotation,
+- `scripts/lexipoint/test_lxctl.py` (`cd firmware && python3 -m unittest discover -s scripts/lexipoint`): PNG rotation,
   reply matching against a fake serial port (log noise, stale replies, errors, CRC mismatch, short write),
   and a **release guard** that follows `extends` and `build_src_flags`: no `*release*` env defines the
   harness, a synthetic sneaky env is caught, and no built release binary contains it (11 tests).

@@ -1,5 +1,9 @@
 # CrossPoint × Lexirise Plugin: Context Brief (original)
 
+> **Predates D21 and D22 (phase M, 2026-09-26).** The brief speaks of a plugin or fork of CrossPoint.
+> Lexipoint is now its own repo (`github.com/claritise/lexipoint`), firmware for the X4 Pro built on
+> CrossPoint; see `standalone-repo.md` and `00-overview.md`. The text below is unchanged.
+>
 > **Kept for the record, 2026-09-24.** This is the brief the project started from, unedited
 > below the line. Several of its hardware and firmware claims are out of date against CrossPoint
 > `main` as of 2026-09-24. **`00-overview.md` § "What the brief got wrong" wins wherever the two

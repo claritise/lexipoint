@@ -74,7 +74,7 @@ Chapter-level extras (same data, no inline drawing):
 
 - **Overlay, don't reflow.** A1, A4 and A8's superscripts are drawn **after** the page renders, from
   our code, using word boxes (the same `WordBox` geometry as word select). Nothing inside
-  `ParsedText` or the layout changes. That keeps the rebase cost low, as in v0.1.
+  `ParsedText` or the layout changes. That keeps the edits to base files small, as in v0.1.
 - **Map spans to glyphs:** each occurrence's `[charStart, charEnd)` (UTF-16) is mapped back to page
   `(line, token)` ranges. It's the inverse of `SentenceBuilder`, shares its unit conversion, and gets
   host tests with the same fixtures.

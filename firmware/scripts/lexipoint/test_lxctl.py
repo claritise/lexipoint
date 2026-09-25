@@ -19,6 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 import lxctl  # noqa: E402
+import release_tag  # noqa: E402
 
 W, H = 800, 480  # panel-native
 
@@ -721,7 +722,7 @@ class SettingsSmoke(unittest.TestCase):
 
 
 class ReleaseVersioning(unittest.TestCase):
-    """firmware-base.md §6: the fork's releases are <upstream>-lexi.<n>, the X4 Pro only."""
+    """firmware-base.md §6: Lexipoint's releases are <base>-lexi.<n>, the X4 Pro only."""
 
     def ini(self):
         cp = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
@@ -738,24 +739,48 @@ class ReleaseVersioning(unittest.TestCase):
                           flags, env)
 
     def test_release_workflow_builds_the_x4pro_only(self):
-        with open(os.path.join(REPO, ".github/workflows/release.yml"), encoding="utf-8") as f:
+        with open(release_tag.RELEASE_WORKFLOW, encoding="utf-8") as f:
             text = f.read()
         self.assertEqual(re.findall(r"^\s+device: (\S+)", text, re.M), ["x4pro"])
         self.assertIn("python3 scripts/lexipoint/release_tag.py check", text)
 
-    def test_ota_reads_the_forks_releases(self):
+    def test_ota_reads_lexipoints_releases(self):
         with open(os.path.join(REPO, "src/lexirise/LexiriseConfig.h"), encoding="utf-8") as f:
-            self.assertIn("api.github.com/repos/claritise/crosspoint-reader/releases/latest", f.read())
+            self.assertIn("api.github.com/repos/claritise/lexipoint/releases/latest", f.read())
 
 
 class X4ProEnvsBuildLexirise(unittest.TestCase):
     def test_every_x4pro_env_has_lexirise(self):
         with open(os.path.join(REPO, "platformio.ini")) as f:
             cfg = load_ini(f.read())
-        x4pro = [s for s in cfg.sections() if s.startswith("env:x4pro")]
+        # Every one but the Lexirise-off build, which proves the hooks compile out.
+        x4pro = [s for s in cfg.sections() if s.startswith("env:x4pro") and s != "env:x4pro-lexirise-off"]
         self.assertGreaterEqual(len(x4pro), 3)  # dev, release, release candidate
+        self.assertNotRegex(resolved_build_flags("env:x4pro-lexirise-off", cfg), LEXIRISE_FLAG)
         for env in x4pro:
             self.assertRegex(resolved_build_flags(env, cfg), LEXIRISE_FLAG, env)
+
+
+class LexiriseOffIsTheReleaseBuildWithoutLexirise(unittest.TestCase):
+    """x4pro-lexirise-off proves the LEXIRISE hooks compile out only while it is the release build minus [lexirise].
+    Resolved by this file's model of PlatformIO (`extends`, `${section.key}`), not pio itself: CI's lexipoint job
+    has no pio. M checked the model against `pio project config` when it made [x4pro_board]."""
+
+    @staticmethod
+    def flag_set(text: str) -> set[str]:
+        lines = (line.split(";")[0].strip() for line in text.splitlines())
+        return {line for line in lines if line and not line.startswith("-DCROSSPOINT_VERSION=")}
+
+    def test_it_matches_the_release_build(self):
+        with open(os.path.join(REPO, "platformio.ini")) as f:
+            cfg = load_ini(f.read())
+        release = self.flag_set(resolved_build_flags("env:x4pro-gh_release", cfg))
+        off = self.flag_set(resolved_build_flags("env:x4pro-lexirise-off", cfg))
+        lexirise = self.flag_set(_expand(cfg.get("lexirise", "build_flags"), cfg))
+        self.assertTrue(lexirise and lexirise <= release)
+        self.assertEqual(off, release - lexirise)
+        # The board keys come from the same sections.
+        self.assertEqual(cfg.get("env:x4pro-lexirise-off", "extends"), cfg.get("env:x4pro-gh_release", "extends"))
 
 
 HARNESS_FLAG = re.compile(r"-D\s*LEXIPOINT_DEV_HARNESS\b")

@@ -51,7 +51,7 @@ enum class Swipe : uint8_t { Up, Down, Left, Right };
 
 class CardController {
  public:
-  CardController(CardSource& source, ReadingMode reading, CardStrings strings = {});
+  CardController(CardSource& source, ReadingMode reading, const CardStrings& strings = {});
 
   void open(unsigned long nowMs);  // phase 0 on the source's start word
   bool tick(unsigned long nowMs);  // the source's phases and the toast's end; true: redraw

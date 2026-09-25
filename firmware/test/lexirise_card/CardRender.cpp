@@ -33,7 +33,7 @@ using namespace lexipoint::card;
 
 namespace {
 
-// The NotoSerifCJK files' metrics (their headers; ~/Projects/lexipoint/sd-card/fonts/NotoSerifCJK).
+// The NotoSerifCJK files' metrics (their headers; sd-card/fonts/NotoSerifCJK at the repo root, gitignored).
 struct ReaderSize {
   int lineHeight;
   int ascender;

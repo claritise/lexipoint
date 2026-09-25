@@ -1,7 +1,8 @@
 # Contributing Docs
 
-This section is a lightweight contributor guide for CrossPoint Reader.
-It is written for software developers who may be new to embedded development.
+A guide to the firmware Lexipoint is built on (CrossPoint Reader's code), for developers who may be new
+to embedded development. Lexipoint's own design and workflow are in the repo's `docs/` (start with
+`docs/v0.1/00-overview.md`).
 
 - [Getting Started](./getting-started.md)
 - [Architecture Overview](./architecture.md)

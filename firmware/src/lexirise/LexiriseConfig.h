@@ -2,7 +2,7 @@
 
 #include <iterator>
 
-// Lexirise feature constants in one place (docs/v0.1 in the lexipoint repo). Tunables of the dev harness
+// Lexirise feature constants in one place (docs/v0.1). Tunables of the dev harness
 // live separately in src/lexirise/dev/DevConfig.h.
 
 #include <cstddef>
@@ -48,13 +48,20 @@ constexpr uint16_t kHttpsPort = 443;
 // One whole request (the stale-session retry included) once a connection is open. Opening is bounded
 // separately (NTP kNtpWaitMs + TCP and handshake kHttpTimeoutMs each): see kMaxCallMs below.
 constexpr uint32_t kRequestDeadlineMs = 15000;
-// An idle TLS session is closed after this, so it never sits on internal heap that upstream TLS users
+// An idle TLS session is closed after this, so it never sits on internal heap that CrossPoint's TLS users
 // (KOSync, fonts, OTA) pre-flight for. Keep-alive still covers a lookup's back-to-back calls.
 constexpr unsigned long kTlsIdleCloseMs = 30000;
 constexpr const char* kUserAgentProduct = "Lexipoint";
-// The OTA updater's release feed: the fork's own releases (firmware-base.md §6), never upstream's, whose
-// firmware would uninstall Lexipoint. Assets are named crosspoint-<tag>-x4pro.bin (.github/workflows/release.yml).
-constexpr const char* kReleasesLatestUrl = "https://api.github.com/repos/claritise/crosspoint-reader/releases/latest";
+// What the reader calls itself on the network (D22): File Transfer's hotspot, http://lexipoint.local/, and the
+// name routers list it under (the prefix, then the WiFi MAC: "Lexipoint-AABBCCDDEEFF").
+constexpr const char* kHotspotSsid = "Lexipoint";
+constexpr const char* kMdnsHostname = "lexipoint";
+constexpr char kDhcpHostnamePrefix[] = "Lexipoint-";
+// The OTA updater's release feed: Lexipoint's own releases (firmware-base.md §6), never CrossPoint's, whose
+// firmware would uninstall Lexipoint. Assets are named lexipoint-<tag>-x4pro.bin (.github/workflows/release.yml,
+// scripts/lexipoint/release_tag.py ASSET_PREFIX).
+constexpr const char* kReleasesLatestUrl = "https://api.github.com/repos/claritise/lexipoint/releases/latest";
+constexpr const char* kReleaseAssetPrefix = "lexipoint-";
 #ifdef LEXIPOINT_VERSION
 constexpr const char* kLexipointVersion = LEXIPOINT_VERSION;  // platformio.ini [lexirise]
 #else

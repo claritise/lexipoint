@@ -429,7 +429,7 @@ Each removal gets a line in the "Taken from CrossPoint" record M sets up, so wha
 
 **Added 2026-09-25.** People in the Lexirise community are already asking about buying an X4 Pro for this.
 Before anyone outside can use it:
-- **A tagged release** with a prebuilt firmware file (no release exists yet; M changes the release URL).
+- **A tagged release** with a prebuilt firmware file (no release exists yet; since M, releases go on `claritise/lexipoint` as `lexipoint-<tag>-x4pro.bin`).
 - **Flashing steps and a "what you need" section** in `../user-guide.md`: the X4 Pro specifically (not the
   X4 / X3), a Lexirise Pro key, WiFi, and for manga a Mac (C18).
 - **5–10 beta testers from the Discord.** Watch where setup fails and whether they still read with it
@@ -562,7 +562,7 @@ reference doesn't say); a card reviewed on the phone before the device syncs an 
 ("applied oldest first" should order them, confirm); only fetched cards can be reviewed offline.
 
 **The device's clock (checked in the code, 2026-09-25):**
-- The X4 Pro's RTC is a **BM8563** (PCF8563-compatible) at I²C 0x51 (`freeink-sdk/docs/xteink-x4pro-support.md`).
+- The X4 Pro's RTC is a **BM8563** (PCF8563-compatible) at I²C 0x51 (`firmware/freeink-sdk/docs/xteink-x4pro-support.md`).
   It stores the full date and time, in **UTC** (the status bar's time zone is only a display offset,
   `clockUtcOffsetQ`), which is what `reviewedAt` needs.
 - **The time can be checked.** The chip flags a stopped oscillator (low voltage, or never set), and the
@@ -590,8 +590,8 @@ reference doesn't say); a card reviewed on the phone before the device syncs an 
 **Firmware cost:** a new top-level activity (a Home menu entry) and a card activity. `study/summary`
 gives the due count for the menu, so the vocab mirror isn't needed for it.
 
-**Scope note:** upstream `SCOPE.md` rules out "interactive apps". That never bound the fork, and after
-phase M there's no upstream to rebase onto, so it no longer costs anything.
+**Scope note:** CrossPoint's `SCOPE.md` rules out "interactive apps". That never bound Lexipoint, and since
+phase M Lexipoint doesn't follow CrossPoint (D21), so it costs nothing.
 
 ## Open, to confirm
 

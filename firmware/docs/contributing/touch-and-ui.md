@@ -136,7 +136,7 @@ As with all input: never call the SDK `InputManager` or read GPIO directly. The 
 
 ## Building and testing on non-Xteink devices
 
-Each MCU family is its own binary: X3/X4 are ESP32-C3, Sticky and LilyGo T5 are ESP32-S3, M5Paper v1.1 is a classic ESP32. The Sticky env ships in `platformio.ini` (`pio run -e sticky`). Envs for other devices go in **`platformio.local.ini`**, a gitignored file that PlatformIO merges over `platformio.ini` (see `extra_configs`). Create it next to `platformio.ini`; personal envs, ports, and debug flags live there and never get committed.
+Lexipoint builds for the X4 Pro only (the repo's `docs/v0.1/standalone-repo.md`, D20); a touch device the SDK supports may be added later. Each MCU family is its own binary: X3/X4 are ESP32-C3, Sticky and LilyGo T5 are ESP32-S3, M5Paper v1.1 is a classic ESP32. Envs for other devices go in **`platformio.local.ini`**, a gitignored file that PlatformIO merges over `platformio.ini` (see `extra_configs`). Create it next to `platformio.ini`; personal envs, ports, and debug flags live there and never get committed.
 
 Both envs below extend the repo's `[base]`, so they build against the `freeink-sdk` submodule with all the normal deps and scripts.
 

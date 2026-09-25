@@ -13,6 +13,10 @@ fi
 
 set -euo pipefail
 
+# LEXIPOINT: run from firmware/ wherever it's called from: the paths below are relative to it, and the
+# Lexipoint repo's root holds docs/ and tools/ too.
+cd "$(dirname "$0")/.."
+
 GIT_LS_FILES_FLAGS=""
 # -g scopes formatting to tracked files currently modified in git status.
 if [[ "${1:-}" == "-g" ]]; then

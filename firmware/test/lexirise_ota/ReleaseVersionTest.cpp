@@ -1,4 +1,4 @@
-// firmware-base.md §6: the fork's `<upstream>-lexi.<n>` versions, and which release the OTA updater offers.
+// firmware-base.md §6: Lexipoint's `<base>-lexi.<n>` versions, and which release the OTA updater offers.
 
 #include <gtest/gtest.h>
 
@@ -18,7 +18,7 @@ TEST(ReleaseVersion, Parses) {
   EXPECT_EQ(parseReleaseVersion("v1.6.5-lexi.12")->lexi, 12);
   EXPECT_EQ(parseReleaseVersion("1.6.5-lexi.1-x4pro")->lexi, 1);  // a dev build
   EXPECT_TRUE(parseReleaseVersion("1.6.5-lexi.1-rc+abc1234")->rc);
-  EXPECT_EQ(parseReleaseVersion("1.6.6")->lexi, 0);  // upstream's
+  EXPECT_EQ(parseReleaseVersion("1.6.6")->lexi, 0);  // CrossPoint's
   EXPECT_TRUE(parseReleaseVersion("1.6.5rc")->rc);
   for (const char* bad : {"", "v", "1.6", "1..5", "x.y.z", "lexi.1", "99999999.1.1"}) {
     EXPECT_FALSE(parseReleaseVersion(bad).has_value()) << bad;
@@ -28,14 +28,14 @@ TEST(ReleaseVersion, Parses) {
 TEST(ReleaseVersion, TheForksNextReleaseIsOffered) {
   EXPECT_TRUE(isNewerRelease("1.6.5-lexi.2", "1.6.5-lexi.1"));
   EXPECT_TRUE(isNewerRelease("1.6.5-lexi.10", "1.6.5-lexi.9"));  // numbers, not text
-  EXPECT_TRUE(isNewerRelease("1.7.0-lexi.1", "1.6.5-lexi.4"));   // rebased onto a newer upstream
+  EXPECT_TRUE(isNewerRelease("1.7.0-lexi.1", "1.6.5-lexi.4"));   // built on a newer CrossPoint version
   EXPECT_TRUE(isNewerRelease("v1.6.5-lexi.2", "1.6.5-lexi.1-x4pro"));
   EXPECT_FALSE(isNewerRelease("1.6.5-lexi.1", "1.6.5-lexi.1"));
   EXPECT_FALSE(isNewerRelease("1.6.5-lexi.1", "1.6.5-lexi.2"));
   EXPECT_FALSE(isNewerRelease("1.6.5-lexi.9", "1.7.0-lexi.1"));
 }
 
-TEST(ReleaseVersion, UpstreamsReleasesAreNeverOffered) {
+TEST(ReleaseVersion, CrossPointsReleasesAreNeverOffered) {
   EXPECT_FALSE(isNewerRelease("1.6.6", "1.6.5-lexi.1"));  // would uninstall Lexipoint
   EXPECT_FALSE(isNewerRelease("2.0.0", "1.6.5-lexi.1"));
   EXPECT_FALSE(isNewerRelease("1.6.5-lexi.2-rc", "1.6.5-lexi.1"));  // candidates aren't offered either

@@ -11,7 +11,7 @@
 namespace lexipoint::web {
 
 // origin: the request's Origin header ("" when absent). host: its Host header ("192.168.1.5",
-// "crosspoint.local:80"). A request is allowed with no Origin, or when Origin is http://<host>.
+// "lexipoint.local:80"). A request is allowed with no Origin, or when Origin is http://<host>.
 inline bool isSameOriginRequest(std::string_view origin, std::string_view host) {
   if (origin.empty()) return true;
   constexpr std::string_view kHttp = "http://";

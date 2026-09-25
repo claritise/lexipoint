@@ -2,7 +2,7 @@
 
 // LEXIPOINT: the web file manager's and WebDAV's "is this path off limits" rule. Pure and header-only
 // (host-tested in test/lexirise_net/HiddenPathTest.cpp); HiddenPathHal.cpp supplies the SD card lookup.
-// Not LEXIRISE-gated: upstream code uses it in every build.
+// Not LEXIRISE-gated: CrossPoint's code uses it in every build.
 //
 // A path is hidden if any segment is: its name starts with '.'. "Its name" is what SdFat opens, not
 // what was typed: SdFat skips a segment's leading spaces and trims trailing dots and spaces (FatFile /

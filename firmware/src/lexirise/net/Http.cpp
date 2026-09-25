@@ -180,7 +180,7 @@ size_t ResponseParser::feed(const char* data, const size_t len) {
       fail(Failure::HeadersTooLarge);
       return static_cast<size_t>(p - data);
     }
-    headerBytes_ += static_cast<size_t>(p - start);
+    headerBytes_ += static_cast<size_t>(p - start);  // cppcheck-suppress duplicateExpression ; takeLine moved p
     if (headerBytes_ > config::kHttpMaxHeaderBytes) {
       fail(Failure::HeadersTooLarge);
       return static_cast<size_t>(p - data);

@@ -77,7 +77,7 @@ StrId labelFor(const Row row) {
 const char* onOff(const bool on) { return on ? tr(STR_STATE_ON) : tr(STR_STATE_OFF); }
 
 std::string dictionaryValue(const std::string& folder) {
-  return folder.empty() ? tr(STR_LEXI_SET_SAME_AS_CROSSPOINT) : folder;
+  return folder.empty() ? tr(STR_LEXI_SET_SAME_AS_READER) : folder;
 }
 
 std::string accountValue(const bool hasKey, const api::KeyStatus& status) {

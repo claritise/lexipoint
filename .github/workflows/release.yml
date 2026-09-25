@@ -1,9 +1,9 @@
 name: Compile Release
 
 # Build and attach firmware only after a release is published. The release tag
-# supplies both the source revision and the version in each asset name.
-# LEXIPOINT: the fork releases the X4 Pro build only (firmware-base.md §6), tagged
-# <upstream>-lexi.<release> (platformio.ini [crosspoint] version, [lexirise] release),
+# supplies both the source revision and the version in the asset name.
+# Lexipoint releases the X4 Pro build only (firmware-base.md §6), tagged
+# <base>-lexi.<release> (firmware/platformio.ini [crosspoint] version, [lexirise] release),
 # with -rc for a prerelease; the device's OTA updater reads this repo's latest release.
 
 on:
@@ -12,6 +12,10 @@ on:
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    working-directory: firmware
 
 jobs:
   build-release:
@@ -34,8 +38,8 @@ jobs:
           python-version: '3.13'
 
       - name: Validate release version
-        # LEXIPOINT: scripts/lexipoint/release_tag.py (tested): the tag is <upstream>-lexi.<n>[-rc] as
-        # platformio.ini says, fits the OTA updater, and is newer than the fork's previous release.
+        # scripts/lexipoint/release_tag.py (tested): the tag is <base>-lexi.<n>[-rc] as platformio.ini
+        # says, fits the OTA updater, and is newer than the previous release.
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
@@ -65,7 +69,7 @@ jobs:
             "cryptography>=45.0.3" "certifi>=2025.8.3" "ecdsa>=0.19.1" "bitstring>=4.3.1" \
             "reedsolo>=1.5.3,<1.8" "esp-idf-size>=2.0.0" "esp-coredump>=1.14.0"
 
-      - name: Build CrossPoint
+      - name: Build Lexipoint
         env:
           PIO_ENV: ${{ github.event.release.prerelease && matrix.rc_env || matrix.release_env }}
         run: CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e "$PIO_ENV" -j1
@@ -77,7 +81,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           version="${RELEASE_TAG#v}"
-          asset="crosspoint-${version}-${{ matrix.device }}.bin"
+          asset="lexipoint-${version}-${{ matrix.device }}.bin"
           cp ".pio/build/${PIO_ENV}/firmware.bin" "$asset"
           echo "name=$asset" >> "$GITHUB_OUTPUT"
 
@@ -85,7 +89,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.asset.outputs.name }}
-          path: ${{ steps.asset.outputs.name }}
+          path: firmware/${{ steps.asset.outputs.name }}
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -95,12 +99,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    defaults:
+      run:
+        working-directory: .  # no checkout: only the downloaded assets
     steps:
       - name: Download firmware assets
         uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: crosspoint-*.bin
+          pattern: lexipoint-*.bin
           merge-multiple: true
 
       - name: Attach firmware assets
@@ -109,15 +116,15 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           version="${RELEASE_TAG#v}"
-          for device in x4pro; do  # LEXIPOINT: the X4 Pro only
-            test -f "dist/crosspoint-${version}-${device}.bin"
+          for device in x4pro; do  # the X4 Pro only (D20)
+            test -f "dist/lexipoint-${version}-${device}.bin"
           done
-          test "$(find dist -maxdepth 1 -type f -name 'crosspoint-*.bin' | wc -l)" -eq 1
-          gh release upload "$RELEASE_TAG" dist/crosspoint-*.bin \
+          test "$(find dist -maxdepth 1 -type f -name 'lexipoint-*.bin' | wc -l)" -eq 1
+          gh release upload "$RELEASE_TAG" dist/lexipoint-*.bin \
             --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Check devices will see it
-        # LEXIPOINT: the OTA updater reads /releases/latest (firmware-base.md §6): a full release must be it
+        # The OTA updater reads /releases/latest (firmware-base.md §6): a full release must be it
         # (not unticked as latest, not an older commit), with its asset.
         if: ${{ !github.event.release.prerelease }}
         env:
@@ -129,4 +136,4 @@ jobs:
           latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name)"
           test "$latest" = "$RELEASE_TAG" || { echo "latest release is $latest, not $RELEASE_TAG"; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q '.assets[].name' \
-            | grep -qxF "crosspoint-${RELEASE_TAG}-x4pro.bin"
+            | grep -qxF "lexipoint-${RELEASE_TAG}-x4pro.bin"

@@ -12,7 +12,7 @@ sources (UI) and the Mac's Mincho/Songti (CJK), a stand-in for the device's Noto
 deviation 2). The binding check is still the on-device screenshot pair (01-build-order.md, the Design
 conformance gate).
 
-  python3 scripts/lexipoint/cardshots.py --out <dir> [--docs ~/Projects/lexipoint/docs/v0.1] [--only ja-card]
+  python3 scripts/lexipoint/cardshots.py --out <dir> [--docs <repo>/docs/v0.1] [--only ja-card]
 
 Needs: the host tool (cmake --build build/test --target LexiriseCardRender), Pillow, Google Chrome.
 """
@@ -157,7 +157,7 @@ def compose(device: pathlib.Path, ref: pathlib.Path, out: pathlib.Path, title: s
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", required=True, type=pathlib.Path)
-    ap.add_argument("--docs", type=pathlib.Path, default=pathlib.Path.home() / "Projects/lexipoint/docs/v0.1")
+    ap.add_argument("--docs", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[3] / "docs/v0.1")
     ap.add_argument("--only", help="states whose name contains this")
     args = ap.parse_args()
     if not TOOL.exists():

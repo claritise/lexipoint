@@ -72,7 +72,7 @@ std::optional<StarDictState> prepareStarDict(const StarDictChoice& wanted, std::
   opened = wanted;
   StarDictState state;
   state.from = openStarDict(wanted, open);
-  // needsIndex() opens and validates the sidecar: asked once per open, as upstream does.
+  // needsIndex() opens and validates the sidecar: asked once per open, as CrossPoint does.
   state.needsIndex = state.ok() && needsIndex();
   return state;
 }

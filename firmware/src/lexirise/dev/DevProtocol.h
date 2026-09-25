@@ -1,7 +1,7 @@
 #pragma once
 
 // LEXIPOINT dev harness wire protocol: line assembly and command parsing (pure, host-testable).
-// One command per line, "LX:<VERB> [args]". See docs/v0.1/dev-harness.md in the lexipoint repo.
+// One command per line, "LX:<VERB> [args]". See docs/v0.1/dev-harness.md.
 // Tests: test/lexirise_dev/DevProtocolTest.cpp.
 
 #include <cstddef>
@@ -27,7 +27,7 @@ enum class Verb {
   Awake,
   Reboot,
   Lexi,              // LX:LEXI ME | ANALYZE ja|zh | SOAK n: the Lexirise client (P1); CARD ja|zh [LOW]: the bench (P4)
-  LegacyScreenshot,  // upstream "CMD:SCREENSHOT", kept working
+  LegacyScreenshot,  // CrossPoint's "CMD:SCREENSHOT", kept working
 };
 
 enum class ButtonName { Left, Right, Power };

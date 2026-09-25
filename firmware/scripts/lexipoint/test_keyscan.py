@@ -46,7 +46,8 @@ class KeyScan(unittest.TestCase):
         repo = os.path.join(here, "..", "..")
         from_root = keyscan.key_shaped_lines(repo)
         self.assertEqual(keyscan.key_shaped_lines(here), from_root)
-        self.assertTrue(any(line.startswith("test/") for line in from_root))  # outside this folder
+        # Outside this folder, and paths from the Lexipoint repo's root (firmware/, docs/, tools/ ...).
+        self.assertTrue(any(line.startswith("firmware/test/") for line in from_root))
 
     def test_the_repo_is_clean(self):
         repo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")

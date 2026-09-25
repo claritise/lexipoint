@@ -340,7 +340,7 @@ std::unique_ptr<Page> EpubReaderActivity::pageWithWordAt(const int x, const int 
 }
 #endif
 
-// LEXIPOINT: where word select draws the page, shared with the long-press check (not gated: upstream uses it).
+// LEXIPOINT: where word select draws the page, shared with the long-press check (not gated: CrossPoint uses it).
 void EpubReaderActivity::wordSelectOrigin(int& left, int& top) const {
   int right = 0;
   int bottom = 0;

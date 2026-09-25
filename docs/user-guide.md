@@ -1,43 +1,46 @@
 # Lexipoint: setup guide
 
-Lexipoint is CrossPoint (the open e-reader firmware) for the **Xteink X4 Pro**, plus **Lexirise** lookups
+Lexipoint is e-reader firmware for the **Xteink X4 Pro** that adds **Lexirise** lookups
 for **Japanese and Simplified Chinese** books: long-press a word and a card shows its reading, meaning and
 frequency, and one tap saves it to your Lexirise account at the level you choose. Without WiFi (or without a
 key) the offline StarDict dictionaries you put on the SD card answer instead.
 
-Everything CrossPoint does keeps working the same way. Lexipoint only adds the lookup.
+Lexipoint is built on CrossPoint Reader, and everything the reader does (books, fonts, File Transfer, the
+dictionary) works the way CrossPoint's does. Lexipoint adds the lookup.
 
 ---
 
 ## 1. Install
 
-1. Download `crosspoint-<version>-lexi.<n>-x4pro.bin` from the **Releases** page of
-   `github.com/claritise/crosspoint-reader`.
-2. Flash it the way CrossPoint documents (its README, *Install firmware*): the web installer's
-   **Custom .bin** option, or `esptool.py --chip esp32s3 ... write_flash 0x10000 <file>.bin`.
-   Read CrossPoint's warning about USB-locked units first. **After an over-the-air or SD-card update** the
+1. Download `lexipoint-<version>-x4pro.bin` (for example `lexipoint-1.6.5-lexi.1-x4pro.bin`) from the
+   **Releases** page of `github.com/claritise/lexipoint`. (There's no release yet.)
+2. Flash it with CrossPoint's web installer (`crosspointreader.com/#flash-tools`, **Custom .bin**), or
+   `esptool.py --chip esp32s3 ... write_flash 0x10000 <file>.bin`.
+   Read the *USB-locked devices* warning in CrossPoint's README (`github.com/crosspoint-reader/crosspoint-reader`)
+   first. **After an over-the-air or SD-card update** the
    device may boot its second firmware slot, so a plain `write_flash 0x10000` could be ignored: erase the boot record
    too (`esptool.py --chip esp32s3 ... erase_region 0xe000 0x2000`), or use the web installer or
-   CrossPoint's SD-card firmware update.
+   the reader's SD-card firmware update.
 3. Later updates arrive **over the air**: Settings → System → *Check for updates* offers the newest
-   Lexipoint release. It never offers upstream CrossPoint's releases, which would remove
+   Lexipoint release. It never offers CrossPoint's own releases, which would remove
    Lexipoint. To go back to stock CrossPoint, flash its release the same way.
 
 ## 2. A font that has Japanese and Chinese
 
-CrossPoint's own fonts have no CJK characters, so Japanese and Chinese books (and the card) show boxes
+The reader's built-in fonts have no CJK characters, so Japanese and Chinese books (and the card) show boxes
 until you add one. What works (tested on an X4 Pro):
 
 1. Get **`NotoSerifCJKjp-Regular.otf`** from `github.com/notofonts/noto-cjk` (`Serif/OTF/Japanese/`). It
    holds every CJK ideograph, with Japanese letterforms that read fine in Chinese books too. (For mainland
    letterforms, convert `NotoSerifCJKsc` the same way and switch fonts per book.)
-2. Convert it with the firmware's script (`pip install freetype-py fonttools`, about 40 s):
+2. Convert it with the firmware's script, from a checkout of the Lexipoint repo
+   (`pip install freetype-py fonttools`, about 40 s):
    ```
-   python3 lib/EpdFont/scripts/fontconvert_sdcard.py NotoSerifCJKjp-Regular.otf \
+   python3 firmware/lib/EpdFont/scripts/fontconvert_sdcard.py NotoSerifCJKjp-Regular.otf \
      --intervals latin-ext,punctuation,cjk --sizes 8,10,12,14,16,18 \
      --style regular --name NotoSerifCJK --output-dir ./NotoSerifCJK/
    ```
-   Keep sizes 8, 10 and 12: CrossPoint draws CJK book titles in its menus with them, and the card uses
+   Keep sizes 8, 10 and 12: the reader draws CJK book titles in its menus with them, and the card uses
    8, 10 and 18.
 3. Copy the `NotoSerifCJK` folder to `/fonts/` on the SD card (USB Drive mode or the file manager).
    **Eject before unplugging**: an unplug mid-copy truncates the files.
@@ -49,12 +52,13 @@ the `sc` font for it.
 
 ## 3. WiFi and your Lexirise key
 
-1. **WiFi:** Settings → System → *Wi-Fi Networks*, as in CrossPoint. Lexipoint joins it for a lookup and
+1. **WiFi:** Settings → System → *Wi-Fi Networks*. Lexipoint joins it for a lookup and
    lets it go after *Keep WiFi on after a lookup* (5 minutes by default).
 2. **A key:** create an API key in your Lexirise account (API keys need a **Pro** plan). Keys look like
    `lx_…`.
 3. **Paste it from a phone or laptop**, not the e-ink keyboard: on the reader, open **File Transfer**
-   (CrossPoint's network mode), then open the address it shows in a browser on the same WiFi and choose **Lexirise** in
+   (the reader's network mode: join your WiFi, or *Create Hotspot* for a network called `Lexipoint`), then open
+   the address it shows (or `http://lexipoint.local/`) in a browser on the same network and choose **Lexirise** in
    the menu (Home · File Manager · Settings · Fonts · Lexirise). Paste the key and save: the page tests it at once
    (`Connected as <you> (<plan>)`, `Key rejected`, or `No internet`).
 4. The device shows the same settings under **Settings → System → Lexirise**: the key (masked,
@@ -63,15 +67,16 @@ the `sc` font for it.
 
 ## 4. Offline dictionaries (optional, recommended)
 
-When Lexirise can't answer (no WiFi, no key, a switched-off language), CrossPoint's StarDict dictionary
+When Lexirise can't answer (no WiFi, no key, a switched-off language), the reader's StarDict dictionary
 does, and its title says `· offline`. Put StarDict dictionaries in folders under `/dictionaries/` on the
-card (CrossPoint's `docs/dictionary.md` lists sources; JMdict for Japanese and CC-CEDICT for Chinese work
+card (`firmware/docs/dictionary.md` lists sources; JMdict for Japanese and CC-CEDICT for Chinese work
 well). Then either:
 
-- choose one for everything in CrossPoint's **Settings → Reader → Dictionary**, or
+- choose one for everything in **Settings → Reader → Dictionary**, or
 - give each language its own: **Settings → System → Lexirise → Japanese / Chinese → Offline dictionary**.
   A Japanese or Chinese word then uses its language's dictionary, and any other word (an English word in a
-  Japanese book, say) still uses CrossPoint's. Traditional Chinese books always use CrossPoint's.
+  Japanese book, say) still uses the reader's. Traditional Chinese books always use the reader's.
+  *Same as reader* (the default) means the one in Settings → Reader → Dictionary.
 
 The first lookup in a new dictionary builds its index once (`Indexing dictionary...`).
 
@@ -120,11 +125,11 @@ address is on the web page only (under Advanced), for a local proxy; changing it
   (`api.lexirise.app`) over TLS, which the device verifies. Saving sends the word, its meaning, your level, the tags you set, and the sentence (as the saved word's
   note, so you see where you met it).
   Nothing else about your books or reading is sent.
-- **The key** is stored in `/.lexirise/config.ini` on the SD card **in plain text**, like CrossPoint's
+- **The key** is stored in `/.lexirise/config.ini` on the SD card **in plain text**, like the reader's
   WiFi passwords. Anyone with the SD card has it: if you lose the card, revoke the key in your Lexirise
   account and make a new one. The web file manager can't read or replace that folder, and the key is never
   shown in full or logged.
-- **Use File Transfer on networks you trust.** CrossPoint's web pages have no login: anyone on the same
+- **Use File Transfer on networks you trust.** File Transfer's web pages have no login: anyone on the same
   WiFi can open them while File Transfer is on. They can replace your key, never read it. Other websites
   open in your browser can't change it.
 

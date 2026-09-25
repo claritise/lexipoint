@@ -1,4 +1,4 @@
-# CrossPoint Reader: project skills
+# Firmware skills
 
 On-demand Agent Skills for this repository. Compatible agents load one when the
 task matches its `description`; you do not invoke them by hand. They encode how
@@ -20,7 +20,6 @@ Each skill is a directory containing `SKILL.md` whose `name` matches the directo
 | `heap-discipline` | allocating memory: new/malloc/vector/string, buffers, caches |
 | `control-flow-clarity` | writing branching logic, state flags, modes, if/else ladders |
 | `hal-and-abstractions` | touching storage, input, display, settings, i18n, rendering |
-| `scope-discipline` | adding a feature, activity, lib, setting, or dependency |
 | `refactor-for-review` | refactoring, cleaning up, or preparing a change for PR |
 
 Each skill ends with a self-review checklist the agent runs against its own

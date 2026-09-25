@@ -26,7 +26,7 @@ and behaves like the rest of Settings, with no new UI components.
 | `LexiriseSettings` store (`src/lexirise/LexiriseSettings.{h,cpp}`) | Owns `/.lexirise/config.ini`. It loads at boot and saves **atomically** (write `config.ini.tmp`, then rename). It replaces the separate `LexiriseConfig` reader and `state.ini`: **one file holds everything**, including the kana/romaji choice |
 | Device entry | System tab → **`Lexirise`** row (`SettingType::ACTION`, new `SettingAction::Lexirise`) → `LexiriseSettingsActivity` (`UiListActivity`), same as `KOReaderSync` |
 | **Web page (revised 2026-09-24, claritise)** | **Its own page in the web UI menu: Home · Files · Fonts · Settings · Lexirise.** It's served by the same web server used to upload books (file transfer / network mode), and it's where the API key is pasted. It's modelled on the Fonts page (`FontsPage.html` + `/api/fonts*`): `LexirisePage.html` at `/lexirise`, plus `/api/lexirise` (GET: masked settings and status; POST: save) and `/api/lexirise/test` (POST: runs `/v1/me`). **Lexirise entries are not added to the generic Settings page**, so there's one place for them, and no `SettingsList.h` web entries |
-| Upstream hooks | `SettingsList.h` (the one ACTION row), `SettingsActivity.{h,cpp}` (the `SettingAction` value and its dispatch), `CrossPointWebServer.cpp` (register the `/lexirise` routes, delegating to `src/lexirise/LexiriseWeb.cpp`), **one `Lexirise` link in the menu of each of the 4 existing pages** (`HomePage`, `FilesPage`, `FontsPage`, `SettingsPage`), and `I18n` strings. All marked `// LEXIPOINT:` / `<!-- LEXIPOINT -->` (`firmware-base.md` §3) |
+| Hooks in base files | `SettingsList.h` (the one ACTION row), `SettingsActivity.{h,cpp}` (the `SettingAction` value and its dispatch), `CrossPointWebServer.cpp` (register the `/lexirise` routes, delegating to `src/lexirise/LexiriseWeb.cpp`), **one `Lexirise` link in the menu of each of the 4 existing pages** (`HomePage`, `FilesPage`, `FontsPage`, `SettingsPage`), and `I18n` strings. All marked `// LEXIPOINT:` / `<!-- LEXIPOINT -->` (`firmware-base.md` §3) |
 
 ## 1. The settings (v0.1)
 
@@ -38,7 +38,7 @@ and behaves like the rest of Settings, with no new UI components.
 | | Test connection | action | — | ✓ | — | Brings WiFi up, calls `/v1/me`, then shows `Connected as …`, `Key rejected`, or `No network` |
 | **Japanese** | Lookups | On / Off | On | ✓ | ✓ | Off means Japanese books use StarDict only |
 | | Readings | Kana / Romaji | Kana | ✓ | ✓ | **The same value** the card's reading-line tap switches (`popup-ui.md` §1). Changing it in either place changes both |
-| | Offline dictionary | StarDict folders found, or None | the global dictionary | ✓ | ✓ | Listed like the upstream Dictionary setting (`DictionaryRegistry`) |
+| | Offline dictionary | StarDict folders found, or None | the global dictionary | ✓ | ✓ | Listed like the reader's Dictionary setting (`DictionaryRegistry`) |
 | **Chinese (Simplified)** | Lookups | On / Off | On | ✓ | ✓ | Off means Chinese books use StarDict only |
 | | Offline dictionary | same | the global dictionary | ✓ | ✓ | |
 | **General** | Language when a book doesn't say | Japanese / Chinese | Japanese | ✓ | ✓ | `languages.md` §1 step 2. It spans both languages, so it lives here |
@@ -79,9 +79,9 @@ tag the book, or set its **Lookup language** in the reader menu (P9), to keep th
 almost always that language (Japanese headings, short lines, kanji compounds), so sending it elsewhere would
 take lookups away from the common case to protect a rare one that a book's Lookup language now fixes.
 - **Device:** `LexiriseSettingsActivity::buildScreen()` simply skips those rows, and a toggle triggers
-  a rebuild, as `KOReaderSettingsActivity` does. There's no upstream change.
+  a rebuild, as `KOReaderSettingsActivity` does. There's no change to base code.
 - **Web page:** it's our own page (`LexirisePage.html`). It has no rules of its own: it hides the rows
-  the device's `shows` says are hidden (P13; before, it repeated the rules in its JS). No upstream change.
+  the device's `shows` says are hidden (P13; before, it repeated the rules in its JS). No change to base code.
 
 **Deliberately not settings:** anything about the card's look or layout (it's binding,
 `popup-ui.md`), the level saved by a tap (you pick it every time with T L F K), and timeouts.
@@ -140,13 +140,13 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
 `UiListActivity`, as `KOReaderSettingsActivity`).
 
 - **The row** is appended in `SettingsActivity.cpp` with the other device-only ACTION rows (`WiFi Networks`,
-  `KOReader Sync`, …), right after `KOReader Sync`. Upstream builds those there, not in `SettingsList.h`.
+  `KOReader Sync`, …), right after `KOReader Sync`. CrossPoint builds those there, not in `SettingsList.h`.
 - **Groups** are the list's stock section headings (`ListItem::sectionHeading`, as the library list uses
   them): Account, Japanese, Chinese (Simplified), General. The hiding rules are §1's.
 - **Every edit is a `SettingsPatch`** through `applyPatch`, the web page's own validation, then
   `SettingsStore::update`. A toggle flips; Readings flips Kana ⇄ Romaji; the language fallback flips
   Japanese ⇄ Chinese; *Keep WiFi on* steps through Off / 1 / 2 / 5 / 10 min; *Offline dictionary* steps
-  through **Same as CrossPoint** (the global dictionary) and then each StarDict folder on the card whose
+  through **Same as reader** (the global dictionary; *Same as CrossPoint* until M) and then each StarDict folder on the card whose
   name a setting can hold (`settings_screen::offeredDictionaries`: a plain name of up to 64 bytes).
 - **API key:** the keyboard's password mode, starting empty (the device never shows the stored key; an
   empty entry keeps it). A value that isn't a key shows `Not a Lexirise key` on the key row until the next
@@ -197,7 +197,7 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
   to another server (`SettingsPatch`, error field `apiKeyForServer`). The page says so under Advanced.
 - A newly entered key is **checked straight away** with `GET /v1/me` if WiFi is up (`Connected as …` /
   `Key rejected`). Otherwise it's checked at the next WiFi-up.
-- It's stored in `/.lexirise/config.ini` on the SD card, **in plain text**, the same as upstream's
+- It's stored in `/.lexirise/config.ini` on the SD card, **in plain text**, the same as the base's
   WiFi and KOReader credentials. The user docs say so: anyone with the SD card has the key, and a lost
   card means rotating the key.
 - **The web file manager can't reach `/.lexirise/`** (corrected in P1). Its listing hides dot items, but
@@ -210,7 +210,7 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
   A `~` name that doesn't exist is allowed (it can't be an alias), and ordinary `~` names like
   `Tolkien ~ The Hobbit.epub` keep working. This applies to the file manager and to WebDAV (which only
   checked typed names, and whose `PROPFIND` listed hidden folders), and it also closes the same hole
-  for upstream's `/.crosspoint` (saved WiFi passwords). `websmoke.py` probes it.
+  for the base's `/.crosspoint` (saved WiFi passwords). `websmoke.py` probes it.
   **As SdFat opens it** (P1 review round 4): SdFat skips a segment's leading spaces and trims trailing
   dots/spaces, so `/ .lexirise` *is* `/.lexirise`. Paths and newly created names (mkdir, rename, move,
   upload, WebDAV) are checked after that same trimming, so a hidden folder can neither be reached nor

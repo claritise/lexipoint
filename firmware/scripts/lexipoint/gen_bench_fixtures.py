@@ -3,9 +3,9 @@
 
 The card bench (P4) shows exactly the reference's words: reference/card-reference.html's B (the two
 books, their words and saved levels) and FILL (the "Low on page" lines) tables are read and written out
-as C++. Synthetic data, already public in the docs repo.
+as C++. Synthetic data, already public in docs/v0.1.
 
-  python3 scripts/lexipoint/gen_bench_fixtures.py [--docs ~/Projects/lexipoint/docs/v0.1] [--check]
+  python3 scripts/lexipoint/gen_bench_fixtures.py [--docs <repo>/docs/v0.1] [--check]
 
 --check exits non-zero when the committed file differs (the fixtures drifted from the reference).
 """
@@ -18,7 +18,8 @@ import pathlib
 import re
 import sys
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
+REPO = pathlib.Path(__file__).resolve().parents[2]  # firmware/
+DOCS = REPO.parent / "docs/v0.1"  # the Lexipoint repo's docs, next to firmware/
 OUT = REPO / "src/lexirise/card/BenchFixtures.cpp"
 LEVELS = {0: "Level::Tracked", 1: "Level::Learning", 2: "Level::Fresh", 3: "Level::Known"}
 
@@ -131,7 +132,7 @@ const BenchBook& benchChinese() {
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--docs", type=pathlib.Path, default=pathlib.Path.home() / "Projects/lexipoint/docs/v0.1")
+    ap.add_argument("--docs", type=pathlib.Path, default=DOCS)
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args()
     text = generate((args.docs / "reference/card-reference.html").read_text())

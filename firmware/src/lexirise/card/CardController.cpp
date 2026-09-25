@@ -10,7 +10,7 @@
 
 namespace lexipoint::card {
 
-CardController::CardController(CardSource& source, const ReadingMode reading, CardStrings strings)
+CardController::CardController(CardSource& source, const ReadingMode reading, const CardStrings& strings)
     : source_(source), strings_(strings) {
   state_.reading = reading;
 }

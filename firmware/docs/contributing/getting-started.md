@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide helps you build and run CrossPoint locally.
+This guide helps you build and run Lexipoint's firmware locally. Commands run in `firmware/`.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ This guide helps you build and run CrossPoint locally.
 - Python 3.8+
 - `clang-format` 21+ in your `PATH` (CI uses clang-format 21)
 - USB-C cable
-- Xteink X4 device for hardware testing
+- Xteink X4 Pro device for hardware testing
 
 If `./bin/clang-format-fix` fails with either of these errors, install clang-format 21:
 
@@ -43,8 +43,8 @@ The reported major version must be 21 or newer.
 ## Clone and initialize
 
 ```sh
-git clone --recursive https://github.com/crosspoint-reader/crosspoint-reader
-cd crosspoint-reader
+git clone --recursive https://github.com/claritise/lexipoint
+cd lexipoint/firmware
 ```
 
 If you already cloned without submodules:
@@ -56,7 +56,7 @@ git submodule update --init --recursive
 Enable the repository-managed Git hooks (required once per clone):
 
 ```sh
-git config core.hooksPath .githooks
+git config core.hooksPath firmware/.githooks
 chmod +x .githooks/pre-commit
 ```
 
@@ -72,13 +72,9 @@ pio run
 pio run --target upload
 ```
 
-## First checks before opening a PR
+## First checks before merging
 
-```sh
-./bin/clang-format-fix
-pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
-pio run
-```
+See [Development Workflow](./development-workflow.md).
 
 ## What to read next
 

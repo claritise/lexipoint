@@ -13,15 +13,16 @@ For each phase, in order:
 
 1. **Read the ledger** (bottom). Find the first phase not `done`. If the one before it isn't
    `done`, stop and fix or report it.
-2. **Read the listed specs** in full, then the CrossPoint code the phase touches.
-3. **Build** in `~/Projects/crosspoint-reader` on a branch: `git checkout -B lexi/<phase-id> lexipoint`.
+2. **Read the listed specs** in full, then the code the phase touches (Lexipoint's and the CrossPoint base's).
+3. **Build** in `~/Projects/lexipoint` on a branch: `git checkout -B lexi/<phase-id> main`. The firmware is in
+   `firmware/`, and firmware paths in this doc (`src/…`, `test/…`, `scripts/…`) are relative to it.
 4. **Run the gate** (the uniform gate plus the phase's own list). If it still fails after real fix
    attempts, mark the phase `blocked` in the ledger with a precise diagnosis, commit that, and
    **stop**.
-5. **Land it:** merge `lexi/<phase-id>` **directly** into the fork's `lexipoint` branch (**no pull
-   requests**, claritise 2026-09-24), push, and commit the ledger row in this repo (`lexipoint`). Keep
-   hook edits to upstream files in **their own commits**, separate from new files, so rebases stay
-   readable. Report the result to claritise. Sign-offs they give in chat (e.g. the design conformance
+5. **Land it:** squash `lexi/<phase-id>` and merge it **directly** into `main` (**no pull requests**,
+   claritise 2026-09-24), with the ledger row in the same history. Pushing needs claritise's OK. Keep hook
+   edits to base files in **their own commits**, separate from new files (kept for now, see the global
+   rules). Report the result to claritise. Sign-offs they give in chat (e.g. the design conformance
    screenshots) are quoted with their date in the ledger note.
 
 One phase = one branch = one gate = one ledger row.
@@ -45,43 +46,52 @@ One phase = one branch = one gate = one ledger row.
   > everything implemented in the cleanest, least spaghetti code possible, clean and robust and extensible for
   > future? if you need to ask about whether to make a refactor for testing purposes, the answer is yes, you
   > dont even need to ask
-- Then merge, push, finish the ledger row, and start the next phase without asking.
+- Then merge, finish the ledger row, and start the next phase without asking. Pushing waits for claritise's OK.
 
 ## Global rules
 
-- **Every upstream-file change** is wrapped in `#if LEXIRISE` and marked `// LEXIPOINT:`
+Some of these rules were made to keep rebases onto CrossPoint cheap: the `LEXIRISE` gate and markers, leaving
+`util/Dictionary*` alone, the Lexirise-off build, and hooks in their own commits. Lexipoint no longer rebases
+(D21), but they stay for now (`standalone-repo.md` §6). Relaxing them is part of the v0.2 slimming
+(`../v0.2/slimming.md`).
+
+- **Every base-file change** is wrapped in `#if LEXIRISE` and marked `// LEXIPOINT:`
   (`firmware-base.md` §3). New logic goes in `src/lexirise/`.
 - **The key never appears** in logs, screens, test fixtures or commits. Fixtures use `lx_TEST`.
 - **Pure logic gets host tests** (`test/lexirise_*`). Hardware-only behavior gets a written manual
   check in the ledger note.
-- **Don't modify `util/Dictionary*`.** StarDict is the fallback, and it must keep merging cleanly
-  from upstream.
+- **Don't modify `util/Dictionary*`.** StarDict is the fallback, and its code stays CrossPoint's
+  (`standalone-repo.md` §6).
 - **The card design is binding and pixel-perfect** (`popup-ui.md` banner, §1.1,
   `reference/card-reference.html`). No phase may change its look or behaviour without claritise's
   sign-off recorded in the ledger. "It looked better this way" is not a reason.
-- **This repo is public, and so is the fork.** Never commit API keys, Lexirise user IDs, saved-expression
+- **This repo is public.** Never commit API keys, Lexirise user IDs, saved-expression
   IDs, emails or raw API responses (fixtures are synthetic). The owner is "claritise" in docs.
 - **The dev key** lives in `~/.lexirise_key` on the build Mac: fine for API calls from there, never
   printed, never committed. Nobody types keys or passwords into the device or any form on claritise's
   behalf: claritise pastes the key into the `/lexirise` page and joins WiFi.
-- **Pushing:** the fork's `lexipoint` branch is pushed at each merge. This docs repo is committed locally
-  and pushed only with claritise's OK. No releases, tags or rebases of `lexipoint` without it either.
+- **Pushing:** this repo is committed locally and pushed only with claritise's OK. No releases or tags
+  without it either.
 - **The device** (on USB at the build Mac): every new serial connection reboots it, so run a whole check in
   one `lxctl` session (`lxctl.Harness`), and never connect while claritise is reading on it.
-- **Needs-human items (H1–H10 in `00-overview.md`) are never guessed.** If a phase depends on one
+- **Needs-human items (H1–H13 in `00-overview.md`) are never guessed.** If a phase depends on one
   that's still open, it stops.
 
 ## The uniform gate
 
+Run it from `firmware/` (`cd firmware` first).
+
 1. `pio run -e x4pro` builds with no new warnings in `src/lexirise/`.
-2. `pio run -e x4pro` **with `LEXIRISE` undefined** builds too (the upstream-parity check).
+2. `pio run -e x4pro-lexirise-off` builds too: the X4 Pro **with `LEXIRISE` undefined**, so every hook in a
+   base file must compile out.
 3. The host suite passes: `cmake -S test -B build/test && cmake --build build/test -j6 && ctest --test-dir build/test -j6`,
    and so do the script tests: `cd scripts/lexipoint && python3 -m unittest discover -p 'test_*.py'`. The
-   `x4pro-gh_release` and `x4c` environments build too (the release build must never contain the dev harness).
+   `x4pro-gh_release` environment builds too (the release build must never contain the dev harness).
 4. Flashed to the device, it boots and opens a book, and the phase's manual check passes.
-5. `python3 scripts/lexipoint/keyscan.py` is clean: no key-shaped `lx_…` string in the tracked files except
-   the tests' obviously synthetic ones (P8; the plain `git grep -n "lx_[A-Za-z0-9]\{8,\}"` also lists those).
-   Locally, also `git grep -qF "$(cat ~/.lexirise_key)"` finds nothing.
+5. `python3 scripts/lexipoint/keyscan.py` is clean: no key-shaped `lx_…` string in the tracked files of the
+   whole repo (firmware, docs and tools) except the tests' obviously synthetic ones (P8; the plain
+   `git grep -n "lx_[A-Za-z0-9]\{8,\}" -- :/` also lists those). Locally, also
+   `git grep -qF "$(cat ~/.lexirise_key)" -- :/` finds nothing (`:/` is the whole repo, even from `firmware/`).
 6. Formatting is CI's: `PATH=<clang-format 21 venv>/bin:$PATH bin/clang-format-fix`, then `git diff --exit-code`
    (`pip install clang-format==21.*` into a venv; it doesn't reflow comments, so keep lines ≤ 120 by hand).
 
@@ -91,6 +101,10 @@ One phase = one branch = one gate = one ledger row.
 P0 pre-flight ─► P1 config+client ─► P2 sentence ─► P3 provider+analyze ─► P5 save ─► P6 errors ─► P7 long-press ─► P8 closeout
                                           P4 card bench (after P0, parallel with P1–P3) ──┘
 ```
+
+P0 to P13 ran on the fork (`claritise/crosspoint-reader`, branch `lexipoint`), before M. Their text below is
+kept as it was written: where it says fork, upstream or rebase, that was true then. Since M there are no rebases
+(D21), and releases are on `claritise/lexipoint`.
 
 ## P0: Pre-flight
 
@@ -159,7 +173,7 @@ with a tap on さ resolves to 食べる. 我们在学习中文 with a tap on 习
 (serial log).
 **Also (from P1):** Lexipoint keeps its WiFi while a reader activity is on screen or under it, which is
 only safe if nothing that uses WiFi is ever *pushed* over the reader (KOSync replaces it). Re-check the
-reader's `startActivityForResult` targets, including the new card, and after every upstream sync.
+reader's `startActivityForResult` targets, including the new card, and after any change taken from CrossPoint.
 
 ## P4: Card bench (can run alongside P1–P3 once P0 is done)
 
@@ -252,6 +266,9 @@ don't block. Pushing, enabling Actions and archiving the old fork are claritise'
 
 Device runs and their results: `device-checks.md` (2026-09-25: P1, P4–P10 checks through the USB harness).
 
+Commits in rows before M are the fork's SHAs; `../reference/firmware-commit-map.md` gives each one's SHA here.
+The `lexi/P*-wip-archive` branches they name are in the old local clone, `~/Projects/crosspoint-reader`.
+
 | Phase | Status | Commit | Host tests | Note |
 |---|---|---|---|---|
 | P0 | **done** | fork `lexipoint` @ `a1ceb63` (tag 1.6.5rc) | upstream baseline **330/330** | 2026-09-24: fork created and cloned. Device confirmed as an **ESP32-S3 (QFN56) rev v0.2, 8 MB embedded PSRAM, 16 MB flash**, USB 303A:1001, MAC 44:bd:8d:7c:48:88. It was running an earlier CrossPoint x4pro build. **Full 16 MB backup** at `~/Projects/x4pro-firmware-backup/` (SHA-256 `c100d8be…eb2376`, outside both repos). Stock `x4pro` build of 1.6.5rc: OK (4 min 48 s), **flashed and verified**, boots as `1.6.5-x4pro`. Boot log on the Home screen: internal heap **223,168 / 293,260 B free, max alloc 172,020**. PSRAM **8,276,232 / 8,388,608 free**. **Panel: UltraChip UC8279** (not SSD1677): full refresh ~1.34 s, partial ~0.49 s. CJK font built and installed (`languages.md` §5.1). Japanese and Chinese both render (claritise, 2026-09-24). **With a book open: internal heap ~193 KB free (min 165,732, max alloc 139,252), PSRAM ~8.2 MB free.** Plenty for TLS (~40 KB). `[SCT] Deserialization failed` after a font change is the layout cache rebuilding, which is benign. Most API questions answered live (see the API notes). **Deferred, not blocking:** GitHub Actions on the fork (claritise to decide), secret scanning (claritise's repo setting) |
@@ -269,4 +286,4 @@ Device runs and their results: `device-checks.md` (2026-09-25: P1, P4–P10 chec
 | P11 | **done (host); on-device checks pending** (claritise, 2026-09-25: "yes" to fixing the device run's findings) | fork `lexipoint` @ `d58ded3c` (squashed from 5 review rounds; wip history on local `lexi/P11-wip-archive`) | 868 host, 86 Python, 25 goldens | **From `device-checks.md`:** (1) the card view's strip highlights a whole glued token (话。); (2) the bench page drops tokens past its right padding (P9 R20), losing the looked-up word in `ja-card-saved`; (3) WiFi joins spend ~3.5 s scanning every channel against a 6 s limit, and twice ran out. **Built:** (1) `StripLine::activeStartCp/activeEndCp`, `CardLayout::stripLine` inverts only the word's characters (`popup-ui.md` as built P11; tests `CardLayout.TheStripInvertsOnlyTheWordInAGluedToken`, `ReaderScene.PartOfATokenAndPhaseZerosFirstCharacter`); (2) `bench::wrapLines` (tests `BenchPage.*`; the goldens unchanged, nothing wraps at the reference's metrics); (3) `net/WifiHint.h`, a direct join then the scan, limits 3 s + 8 s (`offline-and-errors.md` §5 as built P11). **Review loop:** R1 → 1 must (the hint was only recorded by Lexipoint's own joins, so the first lookup after File Transfer still scanned → `WifiSession::tick` notices every new connection, `ConnectionWatch`) + 5 should (a direct attempt waited its full 3 s when the access point wasn't there → gives up at once; it gave up on a slow DHCP after associating → waits for the address; the join sequence untested → pure `net::join` / `net::attemptStep`, tested; wrapped bench rows could run below the panel → not drawn, still counted; more strip tests: two glued tokens, scrolled) + 4 nits (an `optional` for the strip's range, a long token's first character, `kBssidLength`, `test_lxctl` evaluates header sums). R2 → no must; 3 should (a direct attempt's late event from the WiFi task could disturb the scan straight after `disconnect` → `stopRadio` waits for the stopped status, `kWifiStopWaitMs`, also on teardown; two clocks let a join overrun its budget by the radio's start-up and `lxctl`'s wait had no margin → one clock from the join's start, `kWifiRadioSlackMs` in `kMaxCallMs` (45 s), `lxctl` waits 50 s with a tested 5 s margin; the give-up → out-of-time mapping was device-only → `attemptStep` returns the outcome, `join` takes the restart as a callback, both tested) + 2 nits (the watch's "every loop pass" wording; a stale 38 s comment). R3 → 1 should, text only (the driver treats the hinted channel as where to start and scans on for the BSSID, so a moved router still joins directly and a missing access point usually costs the whole 3 s: the comments, a test comment and §5's device check said otherwise → corrected; the limits already allowed it) + 2 nits (`stopRadio` silent when its wait runs out → logged; two docs still said 6 s → `kMaxCallMs`). Optional taken: the status mapping is pure and tested (`linkStateOf`, `wl::` values `static_assert`ed against `wl_status_t`). R4: **NO CHANGES NEEDED** (optional, not taken: the bench copies ReaderScene's grow-the-box code, a shared `united()` would do; `rememberConnection` reads three driver calls, one `esp_wifi_sta_get_ap_info` record would be atomic; no bench test for a phase-0 highlight across a broken word; watch the device log for direct joins failing because the 3 s includes the radio's start-up). R5: **NO CHANGES NEEDED** (the same optional items; `CardLayout.cpp` gets `std::pair` through other headers). **Checked on the device (2026-09-25, `device-checks.md`):** direct rejoins 1.1–1.2 s (were 3.5 s), a lookup after File Transfer joins directly, no slow radio stop, the strip on 话。. **Still owed:** a router on a new channel; away from the saved network |
 | P12 | **done; checked on the device (18 pt, `device-checks.md`)** (claritise, 2026-09-25, with a photo: "when font size is bigger, the row in the thing doesn't expand bigger with it") | fork `lexipoint` @ `4f416e26` (squashed from 4 review rounds; wip history on local `lexi/P12-wip-archive`) | 872 host, 25 goldens (unchanged) | **Cause:** both strips are set in the reader's page font at the reader's size, but the card view's strip row was a fixed 51 px (`kCardStripHeight`) and the detail view's strip a fixed 80 px band above a fixed-height card, so a bigger size ran the line over the row's borders. **Built:** each strip is at least its reference height and at least the page line plus `kStripTextPadV` (4 px) above and below (`CardLayout::stripLineBox`, `cardStripHeight`, `expandedCardTop`: the detail card starts lower and its body shrinks). `popup-ui.md` as built P12 and §1.1's two strip rows. Tests `CardLayout.TheStripsGrowWithABigReaderFont`, `TheDefaultSizeKeepsTheApprovedStrips`, `TheRowGrowsJustWhenTheLineAndItsAirOutgrowIt`, `EveryPageLineHeightStaysOnScreen`. **Review loop:** R1 → 1 must (with 7 px of air the row grew at the device's default 14 pt too, NotoSerifCJK's 42 px line + 14 = 56: the approved card moved 5 px, and the docs said it didn't: the goldens render at 12 pt so they missed it → 4 px of air, 42 + 8 ≤ 51, pinned by a test) + 2 should (§1.1 still gave fixed heights → both rows say "at least"; one made-up size tested → the default-size pin and a sweep over every line height a font file can have, 1–255 px) + 2 nits (the tests' loops could pass checking nothing → counted; the sum written twice → `stripLineBox`). Not taken: a golden at 18 pt (the renderer has one page size; the sweep pins the geometry). R2 → code: nothing; 1 should (this row hadn't taken R1: an edit that silently didn't match → rewritten) + 2 nits (the built-in fonts' sizes in the as-built note; a bare 200 in a test → commented). **Owed on device:** NotoSerifCJK and the built-in font at 16 and 18 pt, a word low on the page so the card covers it: the strip row holds the line with air above and below, its divider below the text, `line n/m` clear; the detail view unchanged; a tap on T L F K still lands. R3: **NO CHANGES NEEDED** (nits taken: `kExpandedCardHeight`'s comment says "at most"; a test at the threshold, 43 → 51, 44 → 52; this row's wording). R4: **NO CHANGES NEEDED** (doc nits taken). |
 | P13 | **done** (claritise, 2026-09-25, P7's questions: "1 what is functionally correct. 2. what is the reasonable answer?") | merged as `62d8d739` (pushed; wip on `lexi/P13-wip-archive`) | 876 host, 89 Python | **(1) Built:** each language's Offline dictionary row always shows on the device screen and the web page (`settings_screen::visibleRows`, `LexirisePage.html`): it answers that language's taps whenever Lexirise doesn't, so hiding it with Lexirise off (or the language's Lookups off) hid a setting in use. Tests `SettingsScreen.LexiriseOffLeavesTheAccountGroupAndWhatTheOfflineDictionariesUse`, `ALanguageOffCollapsesToItsToggleAndDictionaryAndHidesTheDefaultLanguage`. **R1** (no must-fix; all "should"s and nits taken): the web page hid rows by the per-language switches alone, not the master switch: now named rules (`WHEN`: lexirise, readings, defaultLanguage) mirroring `visibleRows`, pinned by the new `test_lexirise_page.py`; with Lexirise off, Han-only text picked its dictionary by per-language switches whose rows were hidden: `Settings::fallbackLanguage()` now ignores them then and "Language when a book doesn't say" shows (`lxctl settings-smoke`'s minimum is 7 rows; tests `Settings.FallbackLanguageIsTheOnlyOneOnElseTheChosenOne`, `BookLanguage.WithLexiriseOffHanOnlyTextIsTheChosenLanguage`, `StarDictChoice.AnyStarDictFollowsTheBooksKnownLanguage`); `settings.md` §1/§1a/§1b/§5 brought in line; a stale `StarDictChoice.h` comment. **R2** (one should, nits taken): `docs/user-guide.md` §5/§6 were stale; the web page's two dictionary rows lost their language names with Lexirise off (the names now stay, only the toggles hide; pinned); a nit that the device cursor keeps its index, not its row, if a web edit shows or hides rows above it (fixed with `settings_screen::indexAfter`, then removed in R3); Lexirise on with no language on also hid the default language that picks Han-only text's dictionary: one rule now, `Settings::defaultLanguageApplies()` (shows unless Lexirise is on with one language on), used by `fallbackLanguage`, `visibleRows` and the page; tests `EverySwitchCombinationShowsSevenToTwelveRows`, `Settings.TheDefaultLanguageAppliesUnlessOneLanguageIsTheAnswer`. **R3** (one should, nits taken): the cursor fix guarded a case that can't happen (the web page is served only from File Transfer, which replaces the settings screen; the screen's own edits only show or hide rows below the one tapped), so `indexAfter` and its test are gone; the page still repeated the rule in JS, so the device now sends `shows` (`web::stateJson`, from `visibleRows`) and each `data-when` names a row (`jaLookups`, `jaReading`, `zhLookups`, `defaultLanguage`, `tags`, `wifiIdle`); tests `WebApiState.SaysWhichRowsShowByTheDeviceScreensRule` and `test_lexirise_page.py` (every `data-when` is a key the device sends). **R4** (one should, nits taken): `settings.md` §1 still said the page applies the rules in its JS, and §5's P7 step said Chinese's rows hide; the page's keys are one table now (`web::kPageRows`: key and row). **R5 clean** (nits taken: `settings_screen::shows` reads plainer, the page test names a missing `kPageRows`, `lookup-flow.md` lost the same stale "while its row is hidden"). **Owed on device:** `settings.md` §5's P13 step. **(2) Kept, no change:** with one language on, Han-only sentences of an untagged book stay that language (`settings.md` §1: the common case is Japanese kanji-only lines; the rare mis-tagged Chinese book has its Lookup language). **R6 clean** (a test names its switch combinations). Flashed 2026-09-26 (`verify_flash` digest matched). On the device 2026-09-26: §5's P13 step passes (10 / 11 / 12 / 7 rows as expected; `device-checks.md`) |
-| M | **not started** (decided by claritise 2026-09-25; runs after P10) | — | — | Spec: `standalone-repo.md` (D20 X4 Pro only, D21 one standalone repo, D22 rebrand). Open with defaults: H11 license, H12 version scheme, H13 the "Same as CrossPoint" wording. Checked 2026-09-25: no release on `claritise/crosspoint-reader` yet, so the OTA URL and asset names can change at no cost |
+| M | **done (host); the device gate owed** (claritise, 2026-09-26: "lets do the reposityory restructure now") | merged into `main`: the history import (`239f0990`) and one squashed commit (wip on `lexi/M-wip-archive`) | 876 host, 100 Python (P13's 89, + the release asset name, + 9 rebrand, + 1 env parity), cppcheck on `x4pro` | **Built** (`standalone-repo.md` "As built"): the fork `lexipoint` @ `62d8d739` under `firmware/` with its history (`git filter-repo`: every commit has a new SHA, `../reference/firmware-commit-map.md`; P13 is `ffa121f9`); the SDK submodule at the root; envs `x4pro`, `x4pro-gh_release`, `x4pro-gh_release_rc` and `x4pro-lexirise-off` (the Lexirise-off build, for `x4c`); `RequiresTouch.cpp`; CI at the root running in `firmware/`, CrossPoint's project workflows gone; releases and OTA on `claritise/lexipoint` as `lexipoint-<tag>-x4pro.bin` (tag limit 27); Lexipoint on the boot and sleep screens, the hotspot and `lexipoint.local`, the USB name, the web pages' title and heading; "Same as reader" (H13's default); `README.md`, `NOTICE`; CrossPoint's project files out of `firmware/`, `AGENTS.md` rewritten; every doc rebranded (§5). **Found on the way:** cppcheck had never checked Lexipoint's code (the `default` env didn't build it): 105 low findings, 36 places; 2 fixed (`CardStrings` by const reference, a const reference in `LiveSource`), 2 false positives suppressed inline, the style-only hints (`useStlAlgorithm`, `shadowFunction`, `variableScope`) suppressed for `src/lexirise/` only; the base commit in the spec was wrong (`54337e6` is the last commit shared with CrossPoint's `master`; Lexipoint branched from tag `1.6.5rc`, `a1ceb633`, `24516d4c` here): corrected in `NOTICE`, the spec and D21; a serial log (`device.log`) committed at the docs root by an earlier session: removed and ignored; the formatter and the pre-commit hook assumed they ran at the repo root: they run in `firmware/` now. **R1** (no must; 3 should, nits taken): CrossPoint's firmware docs still named `crosspoint.local` and the `CrossPoint-Reader` hotspot, and one a deleted `sticky` env → renamed; the name routers list was still `CrossPoint-Reader-<MAC>` → `config::kDhcpHostnamePrefix` (hooked in `WifiSelectionActivity`); the four X4 Pro envs repeated the same board and flags, so the Lexirise-off env could drift from the release env → one `[x4pro_board]` section (every env's resolved flags checked identical before and after) and a parity test; nits: `nav.js` renames the title's last part only (a folder named like the product stays) and the footers too, pinned by `test_rebrand.py`; D1 marked as ended by D21; the cppcheck suppressions tracked in `../v0.2/slimming.md`. **R2** (no must; 1 should, nits taken): the title observer saw `nav.js`'s own write and renamed again, so a folder named "CrossPoint Reader" became "Lexipoint" too (R1's claim was wrong) → the script skips the title it wrote; `test_rebrand.py` now runs `nav.js` under node against a stub page (the old script fails it); the router hostname's buffer is sized from its prefix and the MAC; `test_lxctl` reads `release.yml` through `release_tag.RELEASE_WORKFLOW` and says its PlatformIO model was checked against `pio project config`. **R3 clean** (nits taken: the stub page reads the title back as a browser does, the real page order is a test case, the node tests can't skip in CI). **R4 clean** (nits taken: the remaining CrossPoint names other software matches on are listed in the spec's As built; the asset-name test covers every name `release.yml` spells. Not taken: pulling the hostname and asset-name formatting into tested functions, a shared product-name constant). **Open for claritise:** H11–H13, CrossPoint's logo on the boot and sleep screens (not covered by the spec). **Gate (§7) on the host:** history (1), fresh `git clone --recursive` builds all four envs with no warnings (2), the touch `#error` (3), counts (4), envs (5), no stale paths (6), the docs' remaining "fork" is history (7), key scan (9); CI waits for Actions on `claritise/lexipoint` (10). **Next:** flash, the device gate (8), and claritise's push |

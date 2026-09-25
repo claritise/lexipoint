@@ -3,6 +3,8 @@
 Checks run on claritise's X4 Pro over the USB dev harness (`lxctl`, one serial session; `dev-harness.md`),
 against the firmware named in each section. Results only: no screenshots are committed (they show book pages).
 Each phase's ledger row in `01-build-order.md` links here for what was checked and what's still owed.
+Sections from before phase M name the fork's branch `lexipoint` and its SHAs; `../reference/firmware-commit-map.md`
+gives each one's SHA in `firmware/` here.
 
 ## 2026-09-25, `lexipoint` @ `9c316fbc` (P10), `1.6.5-lexi.1-x4pro` dev build
 

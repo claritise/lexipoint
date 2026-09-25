@@ -212,7 +212,5 @@ When editing related source assets, regenerate via normal build steps/scripts.
 
 ## Scope guardrails
 
-Before implementing larger ideas, check:
-
-- [SCOPE.md](../../SCOPE.md)
-- [GOVERNANCE.md](../../GOVERNANCE.md)
+Before implementing larger ideas, check Lexipoint's scope and decisions in the repo's
+`docs/v0.1/00-overview.md` and `docs/v0.2/00-overview.md`.

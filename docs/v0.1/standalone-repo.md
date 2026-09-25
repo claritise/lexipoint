@@ -1,7 +1,7 @@
 # Standalone repo: Lexipoint for the Xteink X4 Pro
 
-**Status:** decided 2026-09-25 by claritise, not started. This is phase **M** in `01-build-order.md`, and it
-runs after P10 lands. Decisions D20, D21 and D22 in `00-overview.md`. Once M lands, it supersedes D2, D19 and
+**Status:** decided 2026-09-25 by claritise; built 2026-09-26 on branch `lexi/M` (see "As built" at the end and
+the M row in `01-build-order.md`). This is phase **M** in `01-build-order.md`, and it ran after P13 landed. Decisions D20, D21 and D22 in `00-overview.md`. Once M lands, it supersedes D2, D19 and
 the fork parts of `firmware-base.md` (§0, §1, §1a, §4, §5).
 
 Written for the agent that builds M. Where this doc gives a default, use it unless claritise says otherwise.
@@ -19,7 +19,7 @@ claritise's reasons (2026-09-25):
 
 - **Lexipoint only supports touch devices.** CrossPoint's own work is mostly for devices without touch
   (the X4, X3 and X4 Classic, all buttons only). Merging it is cost with nothing gained, and the fork had
-  already grown apart: 57 commits and about 36.6k lines added over 490 files, on base `54337e6`
+  already grown apart: 57 commits and about 36.6k lines added over 490 files, on base `54337e6` (the last commit shared with CrossPoint's `master`; the fork itself branched from tag `1.6.5rc`, `a1ceb633`, on its `develop`: corrected in M)
   (tag `1.6.5rc`). Upstream was only 2 commits ahead, both empty merges, so nothing is lost by stopping.
 - **One repo, one history.** A phase's code and its ledger row land in the same commit, instead of a docs
   commit that says "merged as `<sha>`" in another repo.
@@ -54,7 +54,7 @@ where a doc explains code that came from it). The words "fork", "upstream sync",
 ```
 lexipoint/                   github.com/claritise/lexipoint (public)
   README.md                  what Lexipoint is, the X4 Pro, install (points at docs/user-guide.md), credits
-  NOTICE                     built on CrossPoint Reader (MIT, © 2025 Dave Allie) @ 54337e6 (1.6.5rc); FreeInk SDK
+  NOTICE                     built on CrossPoint Reader (MIT, © 2025 Dave Allie) @ a1ceb633 (1.6.5rc); FreeInk SDK
   .gitmodules                firmware/freeink-sdk → https://github.com/Free-Ink/freeink-sdk.git (same pinned commit)
   .github/workflows/         moved from the firmware, running in firmware/ (§4 step 5)
   firmware/                  was ~/Projects/crosspoint-reader @ lexipoint, with history
@@ -141,7 +141,7 @@ Work on branch `lexi/M` in the `lexipoint` repo. Commit as you go. The gate is i
 9. **Root files.** `README.md`: what Lexipoint is (Lexirise lookups on an e-ink reader), the X4 Pro as the
    supported device, and that other touch devices may follow (D20). It links to `docs/user-guide.md`, says
    how to build (`cd firmware && pio run -e x4pro`), and ends with credits. `NOTICE`: CrossPoint Reader
-   (MIT, © 2025 Dave Allie, base commit `54337e6`, tag `1.6.5rc`) and the FreeInk SDK (its own license, in
+   (MIT, © 2025 Dave Allie, base commit `a1ceb633`, tag `1.6.5rc`) and the FreeInk SDK (its own license, in
    the submodule). Don't put a root `LICENSE` for Lexipoint's own code until claritise picks one (§9).
 10. **CrossPoint's project files in `firmware/`.** Delete the ones that speak for CrossPoint's project or send
     people there: `GOVERNANCE.md`, `ROADMAP.md`, `SCOPE.md`, `USER_GUIDE.md` (Lexipoint has its own user
@@ -259,3 +259,34 @@ blocks M.
 | H11 | **License for Lexipoint's own code.** The repo root has no license today. | No root `LICENSE`. CrossPoint's MIT `LICENSE` stays in `firmware/` |
 | H12 | **Version scheme.** Keep `<upstream>-lexi.<n>` (e.g. `1.6.5-lexi.1`), or switch to Lexipoint's own (`0.1.0`, as `LEXIPOINT_VERSION` already says) before the first release? Switching changes `ota::isNewerRelease`, `release_tag.py` and their tests. | Keep `<upstream>-lexi.<n>` in M. If switching, do it as its own phase before the first release |
 | H13 | **Wording that replaces "Same as CrossPoint"** in settings. | "Same as reader" |
+
+## As built (M, 2026-09-26)
+
+Built as §4 says, with these additions and differences (the ledger's M row has the rest):
+
+- **SHAs.** `git filter-repo` gives every commit a new SHA, so the ledger's fork SHAs don't resolve here:
+  `../reference/firmware-commit-map.md` maps them (the full map is in `research/`, locally). The history was
+  fetched from a local path, not through an added remote.
+- **The base** is CrossPoint's tag `1.6.5rc`, `a1ceb633` (`24516d4c` here), not `54337e6` as §0 and §2 first
+  said: `54337e6` is only the last commit shared with CrossPoint's `master`. `NOTICE` and D21 say `a1ceb633`.
+- **The Lexirise-off build** is its own env, `x4pro-lexirise-off` (CI only). The four X4 Pro envs share one
+  `[x4pro_board]` section, and a test checks the Lexirise-off env is the release env minus `[lexirise]`.
+- **cppcheck on `x4pro`** checked Lexipoint's code for the first time: two findings fixed, two false positives
+  suppressed inline, and the style-only hints (`useStlAlgorithm`, `shadowFunction`, `variableScope`)
+  suppressed for `src/lexirise/` only. Rewriting those 27 raw loops is left for later.
+- **What users see (step 8)** also covers the hotspot's name (`Lexipoint`), `http://lexipoint.local/` (File
+  Transfer and calibre), the name routers list (`Lexipoint-<MAC>`), and the USB device name
+  (`Lexipoint_X4_Pro`). The web pages' title, heading and footer are renamed by `LexiriseNav.js`, which
+  already ran on every CrossPoint page, so the base HTML is unchanged; `test_rebrand.py` pins the base texts it
+  renames and the network names. Still CrossPoint, on purpose: the file browser's conversion-log header, and
+  the names other software matches on (KOSync's device name `CrossPoint`, the discovery reply `crosspoint (on
+  …)` that calibre's plugin looks for, and that reply's fallback when the hostname is empty).
+  CrossPoint's logo stays on the boot and sleep screens: nothing here covers a logo (a question for claritise).
+- **The release asset prefix** is one constant (`LexiriseConfig.h` `kReleaseAssetPrefix`), used by the updater
+  and pinned to `release.yml` and `release_tag.py` by a test. The tag limit follows from it: 27 characters.
+- **Step 10** also removed the `scope-discipline` skill (CrossPoint's product scope, which closes network
+  connectors), the script that built an EPUB from `USER_GUIDE.md`, and a dangling skills symlink.
+  `firmware/docs/contributing/` stays, its workflow page pointing at `01-build-order.md`. `bin/clang-format-fix`
+  and `.githooks/pre-commit` now run in `firmware/` from anywhere.
+- **Cleanup:** a serial log (`device.log`) committed at the docs root by an earlier session is removed and
+  ignored.

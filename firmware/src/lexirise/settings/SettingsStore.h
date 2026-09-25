@@ -1,6 +1,6 @@
 #pragma once
 
-// Lexirise settings persistence (settings.md §3 in the lexipoint repo). Owns the in-memory Settings and
+// Lexirise settings persistence (docs/v0.1/settings.md §3). Owns the in-memory Settings and
 // the crash-safe save of /.lexirise/config.ini (SafeFile.h). The file I/O goes through SettingsFiles so the
 // save and recovery logic is host-testable (test/lexirise_settings/SettingsStoreTest.cpp); the SD card adapter
 // lives in SettingsFilesHal.cpp.

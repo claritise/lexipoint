@@ -1,45 +1,22 @@
 # Development Workflow
 
-This page defines the expected local workflow before opening a pull request.
+Lexipoint's workflow is in the repo's `docs/v0.1/01-build-order.md` ("How to run"): each phase on a
+`lexi/<phase-id>` branch, reviewed until clean, then merged into `main` together with its ledger row.
 
-## 1) Fork and create a focused branch
+## Local checks
 
-- Fork the repository to your own GitHub account
-- Clone your fork locally and add the upstream repository if needed
-- Enable repo hooks once per clone: `git config core.hooksPath .githooks && chmod +x .githooks/pre-commit`
-
-- Branch from `develop`
-- Keep each PR focused on one fix or feature area
-
-## 2) Implement with scope in mind
-
-- Confirm your idea is in project scope: [SCOPE.md](../../SCOPE.md)
-- Prefer incremental changes over broad refactors
-
-## 3) Run local checks
+From `firmware/`:
 
 ```sh
 ./bin/clang-format-fix
-pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
-pio run
+pio check -e x4pro --fail-on-defect low --fail-on-defect medium --fail-on-defect high
+pio run -e x4pro
+pio run -e x4pro-gh_release
+pio run -e x4pro-lexirise-off
+cmake -S test -B build/test && cmake --build build/test -j && ctest --test-dir build/test -j
+python3 -m unittest discover -s scripts/lexipoint -p 'test_*.py'
+python3 scripts/lexipoint/keyscan.py
 ```
 
-CI enforces formatting, static analysis, and build checks.
-Use clang-format 21+ locally to match CI.
+CI (`.github/workflows/ci.yml` at the repo root) runs the same. Use clang-format 21+ locally to match CI.
 If `clang-format` is missing or too old locally, see [Getting Started](./getting-started.md).
-
-## 4) Open the PR
-
-- Target `develop` (the repository's default branch)
-- Use a semantic title (example: `fix: avoid crash when opening malformed epub`)
-- Fill out `.github/PULL_REQUEST_TEMPLATE.md`
-- Describe the problem, approach, and any tradeoffs
-- Include reproduction and verification steps for bug fixes
-
-## 5) Review etiquette
-
-- Be explicit and concise in responses
-- Keep discussions technical and respectful
-- Assume good intent and focus on code-level feedback
-
-For community expectations, see [GOVERNANCE.md](../../GOVERNANCE.md).

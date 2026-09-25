@@ -15,8 +15,8 @@ namespace {
 constexpr int kPanelWidth = 800;   // X4 Pro panel-native width
 constexpr int kPanelHeight = 480;  // X4 Pro panel-native height
 
-// Reference copy of GfxRenderer::tapToLogical() as of upstream 1.6.5rc
-// (lib/GfxRenderer/GfxRenderer.cpp). If upstream changes that mapping, this copy and DevCoords.h
+// Reference copy of GfxRenderer::tapToLogical() as of CrossPoint 1.6.5rc
+// (lib/GfxRenderer/GfxRenderer.cpp). If that mapping changes, this copy and DevCoords.h
 // must change together; LX:SELFTEST on the device catches a drift this test can't see.
 void referenceTapToLogical(const Orientation orientation, const float nx, const float ny, int& outX, int& outY) {
   int phyX = static_cast<int>(nx * kPanelWidth);

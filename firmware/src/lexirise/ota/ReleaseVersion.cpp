@@ -10,7 +10,7 @@ namespace {
 constexpr std::string_view kLexiMarker = "-lexi.";  // scripts/lexipoint/release_tag.py LEXI_MARKER
 constexpr int kMaxVersionComponent = 1000000;       // past this it isn't a version number
 
-// A release candidate: "rc" right after the numbers (upstream's "1.6.5rc") or as a "-rc" part
+// A release candidate: "rc" right after the numbers (CrossPoint's "1.6.5rc") or as a "-rc" part
 // ("-lexi.2-rc+abc1234"), never inside another word ("-src").
 bool isCandidate(const std::string_view rest) {
   return rest.substr(0, 2) == "rc" || rest.find("-rc") != std::string_view::npos;
@@ -53,7 +53,7 @@ std::optional<ReleaseVersion> parseReleaseVersion(std::string_view text) {
 
 bool isNewerRelease(const std::string_view latest, const std::string_view current) {
   const auto l = parseReleaseVersion(latest);
-  if (!l || l->lexi == 0 || l->rc) return false;  // upstream's, or not a release: never offered
+  if (!l || l->lexi == 0 || l->rc) return false;  // CrossPoint's, or not a release: never offered
   const auto c = parseReleaseVersion(current);
   if (!c) return true;  // an unversioned build: any release is newer
   const auto key = [](const ReleaseVersion& v) { return std::tie(v.major, v.minor, v.patch, v.lexi); };

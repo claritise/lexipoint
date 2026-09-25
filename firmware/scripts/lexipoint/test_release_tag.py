@@ -1,4 +1,4 @@
-"""release_tag.py: the fork's release tags (firmware-base.md §6), as release.yml checks them."""
+"""release_tag.py: Lexipoint's release tags (firmware-base.md §6), as release.yml checks them."""
 
 import os
 import re
@@ -26,7 +26,7 @@ class ReleaseTag(unittest.TestCase):
         self.assertTrue(release_tag.check("v1.6.5-lexi.2", "1.6.5", "2", False))
 
     def test_a_tag_not_newer_than_the_latest_is_refused(self):
-        # A rebase that kept the upstream version and reset the release to 1.
+        # A release number reset to 1 on the same [crosspoint] version.
         self.assertTrue(release_tag.check("1.6.5-lexi.1", "1.6.5", "1", False, latest="1.6.5-lexi.3"))
         self.assertTrue(release_tag.check("1.6.5-lexi.3", "1.6.5", "3", False, latest="1.6.5-lexi.3"))
 
@@ -40,7 +40,7 @@ class ReleaseTag(unittest.TestCase):
         self.assertTrue(release_tag.check("1.6.5-lexi.2-rc", "1.6.5", "2", False))
 
     def test_tags_fit_the_updaters_buffers(self):
-        self.assertEqual(release_tag.MAX_TAG_LENGTH, 26)
+        self.assertEqual(release_tag.MAX_TAG_LENGTH, 27)
         self.assertLessEqual(len("1.6.5-lexi.12-rc"), release_tag.MAX_TAG_LENGTH)
         self.assertTrue(release_tag.check("1000.1000.1000-lexi.100000-rc", "1000.1000.1000", "100000", True))
 
@@ -55,8 +55,21 @@ class ReleaseTag(unittest.TestCase):
         self.assertEqual(release_tag.previous_release(["nightly", "1.6.5-lexi.1"], "1.6.5-lexi.2"), "1.6.5-lexi.1")
 
     def test_the_workflow_lists_enough_releases(self):
-        with open(os.path.join(REPO, ".github/workflows/release.yml"), encoding="utf-8") as f:
+        with open(release_tag.RELEASE_WORKFLOW, encoding="utf-8") as f:
             self.assertIn(f"--limit {release_tag.RELEASE_LIST_LIMIT}", f.read())
+
+    def test_the_asset_name_agrees_everywhere(self):
+        # The workflow names the asset, the updater looks for it: both from one prefix.
+        with open(release_tag.RELEASE_WORKFLOW, encoding="utf-8") as f:
+            workflow = f.read()
+        self.assertIn(f'asset="{release_tag.ASSET_PREFIX}${{version}}-${{{{ matrix.device }}}}.bin"', workflow)
+        self.assertNotIn("crosspoint-", workflow)
+        # Every asset name the workflow spells (build, upload, the devices-will-see-it check) uses the prefix.
+        names = re.findall(r"([a-z]+)-(?:\$\{[^}]+\}|\*)[^\s\"']*\.bin", workflow)
+        self.assertGreaterEqual(len(names), 5)
+        self.assertEqual(set(names), {release_tag.ASSET_PREFIX.rstrip("-")})
+        with open(os.path.join(REPO, "src/lexirise/LexiriseConfig.h"), encoding="utf-8") as f:
+            self.assertIn(f'kReleaseAssetPrefix = "{release_tag.ASSET_PREFIX}";', f.read())
 
     def test_the_command_reads_the_releases_list(self):
         import io

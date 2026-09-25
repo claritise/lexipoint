@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lexirise - CrossPoint Reader</title>
+  <title>Lexirise - Lexipoint</title>
   <!-- LEXIPOINT: settings.md §1a. Markup and CSS follow SettingsPage.html so it looks like the rest of the UI. -->
   <style>
     :root {
@@ -78,7 +78,7 @@
   </style>
 </head>
 <body>
-  <h1>📚 CrossPoint Reader</h1>
+  <h1>📚 Lexipoint</h1>
 
   <div class="nav-links">
     <a href="/">Home</a>
@@ -229,7 +229,7 @@
         const current = get(s, sel.dataset.field) || '';
         const names = s.choices.dictionaries.slice();
         if (current && !names.includes(current)) names.push(current);
-        fillSelect(sel, [['', 'Same as CrossPoint']].concat(names.map(n => [n, n])), current);
+        fillSelect(sel, [['', 'Same as reader']].concat(names.map(n => [n, n])), current);
       });
       const idle = document.querySelector('select[data-field="wifiIdleMin"]');
       fillSelect(idle, s.choices.wifiIdleMin.map(m => [m, m === 0 ? 'Off' : m + ' min']), s.wifiIdleMin);

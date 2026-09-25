@@ -6,7 +6,7 @@
 // only env:x4pro does. Release environments never contain it.
 //
 // Host side: scripts/lexipoint/lxctl.py. Protocol: one command per line, prefixed "LX:", answered
-// with "LX:OK <command>" or "LX:ERR <reason>". See docs/v0.1/dev-harness.md in the lexipoint repo.
+// with "LX:OK <command>" or "LX:ERR <reason>". See docs/v0.1/dev-harness.md.
 
 #if LEXIPOINT_DEV_HARNESS
 

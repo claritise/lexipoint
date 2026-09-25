@@ -40,14 +40,14 @@ the nearest word.~~ (Superseded: a press on no word doesn't open word select (P9
 (P10, §5f).)
 
 **On the X4 Pro this is the primary entry point** (D15): the device has no Confirm button, so the
-upstream "hold Confirm" entry doesn't exist there. The other existing entry points (reader menu →
+base's "hold Confirm" entry doesn't exist there. The other existing entry points (reader menu →
 Look Up, the Home action) still work and go through the same provider chain. (P10: both removed with
 LEXIRISE, the long-press is the only way in: §5g.)
 
 Needs a constructor overload (`initialTouch`) and a branch in `EpubReaderActivity::loop()`, where
 screen long-press is checked before the page-turn tap zones. Watch out for conflicts with existing
-touch gestures (tap zones for page turns, a long-press that might already mean something in a
-future upstream). Check `wasScreenLongPress` for suppression of the release that follows it, the
+touch gestures (tap zones for page turns, a long-press that might already mean something in the
+base code). Check `wasScreenLongPress` for suppression of the release that follows it, the
 way `wasLongPressed` does for buttons.
 
 ## 2. Selection → tapped character
@@ -310,7 +310,7 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
 - **Found on the device after the fix (2026-09-25):** "the menu still won't open" was CrossPoint's own **Home-pad
   hold**, not a page long-press: the Home pad sits at the bottom middle, and its hold runs Settings → Controls →
   **Long-press Menu**, which on claritise's reader is set to Dictionary: word select with the middle word
-  highlighted and nothing looked up (upstream behaviour, `LP_MENU_DICTIONARY`; Lexipoint never changed that
+  highlighted and nothing looked up (CrossPoint's behaviour, `LP_MENU_DICTIONARY`; Lexipoint never changed that
   setting, whose default is Disabled). The reader menu is on **Long-press Menu → Reader Menu**, or **Show Reader
   Menu → Tap** (a tap in the screen's middle third) / **Swipe Up**; the top-edge swipe is the frontlight panel.
   With Lexipoint the Dictionary choice is redundant (a long-press on a word looks it up). After the P9 flash the
@@ -342,8 +342,8 @@ action); with no key and no offline dictionary, a slow tap still opens the menu 
 claritise (2026-09-25), after word select ("lookup mode", which a Home-pad hold set to Dictionary opened)
 left a highlight behind and was hard to leave: "maybe we should get rid of lookup mode since we have hold to
 look up". With LEXIRISE: the reader menu has no **Look Up** row (its place holds **Lookup language**; the
-`DICTIONARY` action stays for upstream builds), and Settings → Controls → **Long-press Menu** doesn't offer
-**Dictionary** (`settings/LongPressMenu.h`: the setting keeps upstream's stored values, so its file stays
+`DICTIONARY` action stays for Lexirise-off builds), and Settings → Controls → **Long-press Menu** doesn't offer
+**Dictionary** (`settings/LongPressMenu.h`: the setting keeps the base's stored values, so its file stays
 compatible; the screens show KOReader Sync / Disabled / Bookmark / Reader Menu (Reader Menu with a Home key
 only), a `DynamicEnum` saved by `CrossPointSettings::toJson`/`fromJson`; a stored Dictionary loads as Reader
 Menu, or Disabled without a Home key, and the file is rewritten). Word select itself stays: a long-press
@@ -430,7 +430,7 @@ Device check owed, with a card open:
   language's folder can't be opened (removed from the card, say), CrossPoint's
   own dictionary answers instead. One settings copy serves the whole lookup (gate, sentence, card). The tap is
   only described (sentence and language) when Lexirise is asked or a language has its own dictionary, so
-  a plain StarDict lookup stays upstream's. A language's own dictionary makes the long-press a lookup
+  a plain StarDict lookup stays CrossPoint's. A language's own dictionary makes the long-press a lookup
   (`lookup::anyStarDict`) unless the book's override or metadata names the other language; an untagged
   or non-CJK-tagged book counts, as it does for Lexirise.
 

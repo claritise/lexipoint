@@ -7,10 +7,9 @@
 >
 > Written 2026-09-24 against CrossPoint `main` @ `0f01106` (v1.6.5, 2026-09-24).
 >
-> **Repo layout (D19):** two sibling repos in `~/Projects`. **`lexipoint`** (this one) holds `docs/` at
-> the root. **`crosspoint-reader`** is the firmware: a GitHub fork (`claritise/crosspoint-reader`,
-> branch **`lexipoint`**, based on upstream tag **`1.6.5rc`**). Source paths in these docs (`src/…`,
-> `lib/…`, `platformio.ini`) are **relative to the firmware repo**.
+> **Repo layout (D21, since phase M):** one repo, **`lexipoint`** (`github.com/claritise/lexipoint`).
+> `docs/` is at the root, and the firmware is in **`firmware/`**, built on CrossPoint Reader tag **`1.6.5rc`**
+> (`NOTICE`). Source paths in these docs (`src/…`, `lib/…`, `platformio.ini`) are **relative to `firmware/`**.
 
 ## Thesis
 
@@ -63,8 +62,8 @@ only changed by a new decision from claritise.
 
 | # | Decision | Default |
 |---|---|---|
-| D1 | **Fork base** (confirmed; the fork was created 2026-09-24) | Fork **upstream `crosspoint-reader/crosspoint-reader`** (its default branch is **`develop`**; releases are tags), not the ++ fork. **Base: tag `1.6.5rc`** (2026-09-14, the newest tag, a release candidate), then rebase onto `1.6.5` when it ships. Upstream is where X4 Pro support lands first. The ++ TLS fixes target C3 heap limits, which the S3 + PSRAM doesn't have. Keep our changes in as few files as possible (a `src/lexirise/` directory plus small hooks) so rebasing onto upstream stays cheap. Rebase monthly, or when an upstream release touches `activities/reader/Dictionary*` or `network/` (`firmware-base.md`) |
-| D2 | **Target** *(superseded by D20 once phase M lands: devices without touch, the X4 Classic included, are out for good)* | **`env:x4pro` only.** X4 Classic (`env:x4c`, S3, no touch, more buttons) is a later target. It needs its own button-only input path, since the X4 Pro design is touch-first (D15). X4/X3 (C3) are **out of scope**: their TLS budget is a separate project |
+| D1 | **Fork base** (confirmed; the fork was created 2026-09-24) *(the base stays history; the rebasing it describes ended with D21 in phase M: CrossPoint changes are taken one at a time, `firmware-base.md` §4)* | Fork **upstream `crosspoint-reader/crosspoint-reader`** (its default branch is **`develop`**; releases are tags), not the ++ fork. **Base: tag `1.6.5rc`** (2026-09-14, the newest tag, a release candidate), then rebase onto `1.6.5` when it ships. Upstream is where X4 Pro support lands first. The ++ TLS fixes target C3 heap limits, which the S3 + PSRAM doesn't have. Keep our changes in as few files as possible (a `src/lexirise/` directory plus small hooks) so rebasing onto upstream stays cheap. Rebase monthly, or when an upstream release touches `activities/reader/Dictionary*` or `network/` (`firmware-base.md`) |
+| D2 | **Target** *(superseded by D20 in phase M: devices without touch, the X4 Classic included, are out for good)* | **`env:x4pro` only.** X4 Classic (`env:x4c`, S3, no touch, more buttons) is a later target. It needs its own button-only input path, since the X4 Pro design is touch-first (D15). X4/X3 (C3) are **out of scope**: their TLS budget is a separate project |
 | D3 | **Lexirise sits beside StarDict, not in place of it** | A `LookupProvider` seam inside the existing word-select flow. The **Lexirise** provider runs first, and **StarDict** is the fallback (`lookup-flow.md` §4). StarDict code stays unmodified, so upstream dictionary fixes keep merging cleanly |
 | D4 | **The word comes from the server** | The device sends the **sentence plus the tapped character's offset**. The word is the `occurrences[]` entry whose `[charStart, charEnd)` contains that offset. The device never segments Japanese itself (no MeCab or deinflection on-device). After the response, the highlight grows from the character to the whole word |
 | D5 | **Sentence = page-bounded, base text only** | Built from the current page's `TextBlock`s. It is cut at `。！？!?` and at a paragraph end, keeps closing brackets (`」』）`), is **capped at 120 UTF-16 units** around the tap, and **excludes ruby text**. It doesn't cross a page boundary in v0.1 (`sentence-extraction.md`) |
@@ -76,14 +75,14 @@ only changed by a new decision from claritise.
 | D11 | **Timeouts** | Connect + TLS: 6 s. Each request: 6 s. If it is over budget, **fall back to StarDict** (D3) and show a small "offline" mark on the card. We don't retry automatically |
 | D12 | **Card style and input: ⛔ BINDING, PIXEL-PERFECT** (approved 2026-09-24, claritise) | **Build exactly `reference/card-reference.html`, to the device-pixel measurements in `popup-ui.md` §1.1. No restyling. Deviations need claritise's sign-off first.** The clean framed card: small T L F K top right, and the rank row as the bottom row, with no button legend (`popup-ui.md` §1). **Tap T/L/F/K saves at that level** (with Undo). The whole **rank row** is the toggle for the detail view, marked only by an arrow (`▼` / `▲`, no text), with **✕** at its end to close. Tapping the page also closes. The detail view is the same card, taller, with tabs just above the rank row. X4 Pro inputs are in D15 |
 | D13 | **Proficiency labels** | 0 `unknown` · 1 `tracked` · 2 `learning` · 3 `fresh` · 4 `known`. New saves are 1 |
-| D15 | **X4 Pro inputs first** (2026-09-24, claritise) | Design for **touch + the two side page buttons + the Home pad**. Entry is a **touch long-press** on a word (built in P3, not P7). On the card: every action is a tap; **Home closes** the card (as it exits anywhere on Home-key boards); the **side buttons step to the previous/next word** in the sentence. No button legend on screen. Button-rich boards (X4 Classic) are a later target, with their own input table |
+| D15 | **X4 Pro inputs first** (2026-09-24, claritise) | Design for **touch + the two side page buttons + the Home pad**. Entry is a **touch long-press** on a word (built in P3, not P7). On the card: every action is a tap; **Home closes** the card (as it exits anywhere on Home-key boards); the **side buttons step to the previous/next word** in the sentence. No button legend on screen. Button-rich boards (X4 Classic) are a later target, with their own input table *(that last part superseded by D20: devices without touch are out)* |
 | D16 | **Stepping past the end of a sentence** (2026-09-24, claritise) | v0.1: the side buttons **stop at the sentence's first and last word** (only that sentence is analyzed). Once page analysis exists (v0.2 C12), they **carry on into the next and previous sentence on the page**, stopping at the page's first and last word. They never turn the page while the card is open |
 | D17 | **Tapped word under the card** (approved 2026-09-24, claritise, **in the binding reference**; the strip text clip, which also applies to the expanded view's strip, was approved the same day) | The page never moves. If the card would cover the active word, the card gains **the context strip as its top row**: the same line-of-the-page with the word inverted that the expanded view uses, clipped before the `line n/m` marker and scrolled so the word is always visible. The translation stays. It's re-evaluated on every step: the strip appears and disappears as the active word moves under or out from under the card (`popup-ui.md` §0, §1.1) |
 | D18 | **A Lexirise settings panel** (2026-09-24, claritise) | One `LexiriseSettings` store owns `/.lexirise/config.ini` (atomic writes; it replaces `state.ini`). It's surfaced **the way CrossPoint does KOReader sync**: Settings → System → **Lexirise** on the device (stock list UI), and **its own `Lexirise` page in the web UI** (next to Files, Fonts and Settings, served by the same web server used to upload books), where the **API key is pasted from a browser**. The key is always masked, and never served over the LAN or listed in the file browser. Full list: `settings.md` |
-| D19 | **Repo layout** (2026-09-24, claritise: docs at the root, fork in `~/Projects`) *(superseded by D21 once phase M lands)* | Two sibling repos. `lexipoint` = project home with `docs/` at the root. `crosspoint-reader` = the firmware fork (`github.com/claritise/crosspoint-reader`, branch `lexipoint`), cloned at `~/Projects/crosspoint-reader`. There's no submodule. Docs refer to firmware paths relative to that repo. Build commands run there |
+| D19 | **Repo layout** (2026-09-24, claritise: docs at the root, fork in `~/Projects`) *(superseded by D21 in phase M: one repo, the firmware in `firmware/`)* | Two sibling repos. `lexipoint` = project home with `docs/` at the root. `crosspoint-reader` = the firmware fork (`github.com/claritise/crosspoint-reader`, branch `lexipoint`), cloned at `~/Projects/crosspoint-reader`. There's no submodule. Docs refer to firmware paths relative to that repo. Build commands run there |
 | D14 | **Simplified Chinese is a v0.1 language** | `zh` next to `ja`. The language is chosen **per book** from EPUB `dc:language`, then a kana check on the sentence, then `default_language`. Pinyin with tone marks as the reading. A StarDict fallback folder per language. Traditional waits on H8 (`languages.md`) |
 | D20 | **Device scope: the X4 Pro only, touch always** (2026-09-25, claritise) | The **Xteink X4 Pro** is the only primary target: the only device built, tested and released. Other FreeInk devices with touchscreens (`FREEINK_CAP_TOUCH`) **may** be supported later. Devices without touch never will be. The build fails without touch (`#error`). Built in phase M (`standalone-repo.md` §1) |
-| D21 | **One standalone repo, not a fork** (2026-09-25, claritise) | `claritise/lexipoint` holds `firmware/` (the fork's history, kept), `sd-card/` and `docs/`. CrossPoint Reader (MIT) is the code Lexipoint started from (`54337e6`, tag `1.6.5rc`), credited in `NOTICE`. There are no upstream syncs or rebases. A later upstream change is a recorded one-off cherry-pick. The old fork gets archived. Built in phase M (`standalone-repo.md`) |
+| D21 | **One standalone repo, not a fork** (2026-09-25, claritise) | `claritise/lexipoint` holds `firmware/` (the fork's history, kept), `sd-card/` and `docs/`. CrossPoint Reader (MIT) is the code Lexipoint started from (`a1ceb633`, tag `1.6.5rc`; `24516d4c` here), credited in `NOTICE`. There are no upstream syncs or rebases. A later upstream change is a recorded one-off cherry-pick. The old fork gets archived. Built in phase M (`standalone-repo.md`) |
 | D22 | **Rebrand: Lexipoint for the X4 Pro** (2026-09-25, claritise) | The docs, the README, release assets (`lexipoint-<tag>-x4pro.bin`) and what users see (boot and sleep screens) say **Lexipoint**. CrossPoint is named only as the base (credits, and where a doc explains base code). Fork, upstream and rebase framing goes, except in recorded history. Built in phase M (`standalone-repo.md` §5) |
 
 ## Needs-human (never guess)
@@ -101,16 +100,17 @@ only changed by a new decision from claritise.
 | ~~H9~~ | ~~Is the JLPT/HSK level exposed?~~ **Resolved 2026-09-24: yes, `dictionary/lookup` `system_tags` (`JLPT-N3`, `HSK-4`, `HSK-7+`), using HSK 3.0** | — |
 | ~~H10~~ | ~~Japanese readings come back in romaji~~ **Resolved 2026-09-24 (claritise): convert on the device.** Lexirise romanizes native words losslessly (long vowels spelled out: `toukyou`, `ookii`, and `'` after ん: `kin'youbi`), so a table-driven converter gives exact hiragana. Katakana words (macrons: `kōhī`) show their own surface form. The only errors are Lexirise's own bad readings (一緒 → `ichiitoguchi`), which get reported to them. See `languages.md` §3a. A Lexirise kana field would still be welcome, but it no longer blocks anything | — |
 | H11 | **License for Lexipoint's own code** (the repo root has none) | Nothing in M (default: no root `LICENSE`; `standalone-repo.md` §9) |
-| H12 | **Version scheme:** keep `<upstream>-lexi.<n>`, or switch to Lexipoint's own before the first release? | The first release, if switching (default: keep; `standalone-repo.md` §9) |
-| H13 | **Wording that replaces "Same as CrossPoint"** in settings | M's sign-off on that string (default "Same as reader") |
+| H12 | **Version scheme:** keep `<base>-lexi.<n>` (e.g. `1.6.5-lexi.1`, the CrossPoint version it's built on), or switch to Lexipoint's own before the first release? | The first release, if switching (default: keep; `standalone-repo.md` §9) |
+| H13 | **Wording that replaces "Same as CrossPoint"** in settings | claritise's sign-off on that string. M built the default: the offline dictionary's default option reads "Same as reader", pending that sign-off |
 
 ## Doc index
 
 | Piece | Doc |
 |---|---|
 | The brief as received, with corrections noted | `context-brief.md` |
-| Fork strategy, upstream sync, build envs, where our code lives | `firmware-base.md` |
-| **Leaving the fork:** one standalone repo, the X4 Pro only, the rebrand (phase M) | `standalone-repo.md` |
+| Firmware base: what Lexipoint is built on and where our code lives (layout, build envs, hooks in base files, releases) | `firmware-base.md` |
+| **Phase M:** one standalone repo, the X4 Pro only, the rebrand | `standalone-repo.md` |
+| The fork's commit SHAs (in ledger rows before M) and the same commits here | `../reference/firmware-commit-map.md` |
 | Long-press → tapped character → sentence → word → card, and the provider seam | `lookup-flow.md` |
 | **⛔ The approved card design (binding, pixel-perfect)** | **`reference/card-reference.html`** + `popup-ui.md` §1.1 |
 | Building the sentence and the tap offset from a rendered page | `sentence-extraction.md` |
@@ -137,4 +137,4 @@ Carried from the brief, each with a note on what it would need:
 - **Offline save queue.** An append-only file on SD, flushed when WiFi next comes up
   (`offline-and-errors.md` §4).
 - **Book-title tag.** `EpubReaderActivity` knows the title. Slug it into `tags`.
-- **X4 Classic.** Buttons only, same S3. It's nearly free once the button path works (D2).
+- **X4 Classic.** Buttons only, same S3. It's nearly free once the button path works (D2). *(Ruled out by D20.)*

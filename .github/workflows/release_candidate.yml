@@ -3,6 +3,10 @@ name: Compile Release Candidate
 on:
   workflow_dispatch:
 
+defaults:
+  run:
+    working-directory: firmware
+
 jobs:
   build-release-candidate:
     if: startsWith(github.ref_name, 'release/')
@@ -10,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # LEXIPOINT: the fork builds the X4 Pro only (firmware-base.md §6).
+        # The X4 Pro only (D20, firmware-base.md §6).
         include:
           - pio_env: x4pro-gh_release_rc
             asset: firmware-x4pro.bin
@@ -44,7 +48,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
           restore-keys: pio-${{ runner.os }}-
 
       - name: Extract env
@@ -52,7 +56,7 @@ jobs:
           echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
           echo "BRANCH_SUFFIX=${GITHUB_REF_NAME#release/}" >> $GITHUB_ENV
 
-      - name: Build CrossPoint Release Candidate
+      - name: Build Lexipoint Release Candidate
         env:
           CROSSPOINT_RC_HASH: ${{ env.SHORT_SHA }}
         run: pio run -e ${{ matrix.pio_env }} -j1
@@ -67,10 +71,10 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: CrossPoint-RC-${{ env.BRANCH_SUFFIX }}-${{ matrix.pio_env }}
+          name: Lexipoint-RC-${{ env.BRANCH_SUFFIX }}-${{ matrix.pio_env }}
           path: |
-            .pio/build/${{ matrix.pio_env }}/bootloader.bin
-            .pio/build/${{ matrix.pio_env }}/${{ matrix.asset }}
-            .pio/build/${{ matrix.pio_env }}/firmware.elf
-            .pio/build/${{ matrix.pio_env }}/firmware.map
-            .pio/build/${{ matrix.pio_env }}/partitions.bin
+            firmware/.pio/build/${{ matrix.pio_env }}/bootloader.bin
+            firmware/.pio/build/${{ matrix.pio_env }}/${{ matrix.asset }}
+            firmware/.pio/build/${{ matrix.pio_env }}/firmware.elf
+            firmware/.pio/build/${{ matrix.pio_env }}/firmware.map
+            firmware/.pio/build/${{ matrix.pio_env }}/partitions.bin

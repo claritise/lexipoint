@@ -177,7 +177,7 @@ void WebDAVHandler::handlePropfind(WebServer& s) {
 
   LOG_DBG("DAV", "PROPFIND %s depth=%d", path.c_str(), depth);
 
-  // LEXIPOINT: upstream listed hidden folders here (the other methods already refused them): refuse
+  // LEXIPOINT: CrossPoint listed hidden folders here (the other methods already refused them): refuse
   // /.lexirise, /.crosspoint and their FAT short names like every other WebDAV method.
   if (isProtectedPath(path)) {
     s.send(403, "text/plain", "Forbidden");

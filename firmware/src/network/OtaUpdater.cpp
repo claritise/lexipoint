@@ -24,7 +24,7 @@
 
 namespace {
 #if LEXIRISE
-// LEXIPOINT: the fork's releases (firmware-base.md §6): upstream's would uninstall Lexipoint.
+// LEXIPOINT: Lexipoint's releases (firmware-base.md §6): CrossPoint's would uninstall Lexipoint.
 constexpr const char* latestReleaseUrl = lexipoint::config::kReleasesLatestUrl;
 #else
 constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
@@ -57,7 +57,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
       releaseParser.feed(reinterpret_cast<const char*>(data + offset), 1);
       offset++;
       if (releaseParser.foundTag()) {
+#if LEXIRISE
+        // LEXIPOINT: lexipoint-<tag>-x4pro.bin (LexiriseConfig.h kReleaseAssetPrefix).
+        snprintf(assetName, sizeof(assetName), "%s%s%s.bin", lexipoint::config::kReleaseAssetPrefix,
+                 releaseParser.getTagName(), assetSuffix);
+#else
         snprintf(assetName, sizeof(assetName), "crosspoint-%s%s.bin", releaseParser.getTagName(), assetSuffix);
+#endif
         releaseParser.setFirmwareAssetName(assetName);
         assetNameSet = true;
       }
@@ -99,7 +105,7 @@ bool OtaUpdater::isUpdateNewer() const {
     return false;
   }
 #if LEXIRISE
-  // LEXIPOINT: `<upstream>-lexi.<n>` versions: the fork's next release is newer, upstream's never is.
+  // LEXIPOINT: `<base>-lexi.<n>` versions: Lexipoint's next release is newer, CrossPoint's never is.
   return lexipoint::ota::isNewerRelease(latestVersion, CROSSPOINT_VERSION);
 #else
 

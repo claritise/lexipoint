@@ -171,7 +171,7 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
     f.card = cards_[due];
     f.saveRetry = f.card.complete;                                // it ran before and failed: this is the save's retry
     f.error = lookup::completeCard(api_, f.card, &f.unreadable);  // a failure still completes it
-  } else if (loading && !closing) {
+  } else if (loading && !closing) {  // cppcheck-suppress knownConditionTrueFalse ; nullopt when nothing loads
     return analysis(*loading);
   } else if (writeReady(nowMs, closing)) {
     f.kind = Fetched::Kind::Write;
@@ -211,7 +211,7 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
       error_ = fetched.error;
       const LevelChange change = writes_.front();
       writes_.pop_front();
-      lookup::LookupCard& card = cards_[change.word];
+      const lookup::LookupCard& card = cards_[change.word];
       const std::vector<int> same = sameWord(change.word);
       if (fetched.error != api::ApiError::None) {
         // Later changes to this entry (any of its occurrences) were built on this one: drop them, and

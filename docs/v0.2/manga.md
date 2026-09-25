@@ -194,7 +194,7 @@ Findings that changed the design:
 - **Saving:** unchanged (D9): the lemma, the translation, `notes` = the bubble text.
 - **Highlight:** the word's boxes, inverted, on the strip as drawn.
 - **Memory:** a 2-bit page needs one 96 KB buffer. P0 measured ~8.2 MB PSRAM free with a book open on
-  our fork, so the upstream 1.6.x PSRAM bug (research §3) doesn't apply. The sidecar for one page is
+  Lexipoint's X4 Pro build, so the PSRAM bug in a CrossPoint 1.6.x RC (research §3) doesn't apply. The sidecar for one page is
   a few KB.
 - **Offline:** without WiFi the card can still show the word, lemma and reading from the sidecar
   (no meaning; StarDict by lemma is the fallback, as D3).
@@ -209,8 +209,8 @@ Findings that changed the design:
    your sign-off; **(c)** a compact card for strips only (word, reading, meaning, T L F K).
 2. **1-bit or 2-bit by default.** 2-bit looks better in previews and memory allows it; XTC is half the
    size and turns pages faster. Decide on the panel after the readability check (§7 step 1).
-3. **Where the tools live after phase M** (`../v0.1/standalone-repo.md`): `tools/manga/` at the root
-   for now; `firmware/scripts/lexipoint/manga/` is the other choice.
+3. **Where the tools live** (`../v0.1/standalone-repo.md` §2): phase M left them in `tools/manga/` at the
+   root; `firmware/scripts/lexipoint/manga/` is the other choice.
 
 ## 7. Suggested order
 

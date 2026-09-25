@@ -1,0 +1,15 @@
+Lexipoint
+
+This product is built on:
+
+CrossPoint Reader
+  https://github.com/crosspoint-reader/crosspoint-reader
+  Copyright (c) 2025 Dave Allie
+  MIT License (firmware/LICENSE)
+  Lexipoint started from CrossPoint's commit a1ceb633 (tag 1.6.5rc), 24516d4c in this repo's history,
+  which keeps CrossPoint's history under firmware/.
+
+FreeInk SDK
+  https://github.com/Free-Ink/freeink-sdk
+  Copyright (c) 2026 FreeInk
+  MIT License (firmware/freeink-sdk/LICENSE; its own attributions in firmware/freeink-sdk/NOTICE)

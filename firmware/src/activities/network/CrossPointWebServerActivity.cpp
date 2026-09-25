@@ -18,12 +18,24 @@
 #include "fontIds.h"
 #include "util/QrUtils.h"
 #include "util/TaskWatchdog.h"
+#if LEXIRISE
+#include "lexirise/LexiriseConfig.h"  // LEXIPOINT
+#endif
 
 namespace {
 // AP Mode configuration
+#if LEXIRISE
+// LEXIPOINT: the product's name on the network (D22).
+constexpr const char* AP_SSID = lexipoint::config::kHotspotSsid;
+#else
 constexpr const char* AP_SSID = "CrossPoint-Reader";
+#endif
 constexpr const char* AP_PASSWORD = nullptr;  // Open network for ease of use
+#if LEXIRISE
+constexpr const char* AP_HOSTNAME = lexipoint::config::kMdnsHostname;  // LEXIPOINT
+#else
 constexpr const char* AP_HOSTNAME = "crosspoint";
+#endif
 constexpr uint8_t AP_CHANNEL = 1;
 constexpr uint8_t AP_MAX_CONNECTIONS = 4;
 constexpr int QR_CODE_WIDTH = 198;

@@ -3,7 +3,7 @@
 **Status:** proposed 2026-09-24. Decisions D6, D7, D8, D9, D11 in `00-overview.md`.
 
 Related: `lookup-flow.md` §5 (call sequence), `offline-and-errors.md` (status handling),
-<https://lexirise.app/api-reference> (upstream contract; `context-brief.md` has the examples).
+<https://lexirise.app/api-reference> (the server's contract; `context-brief.md` has the examples).
 
 ---
 
@@ -56,8 +56,8 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
 - **wolfSSL scope:** the SHA-384/P-384 flags apply to every wolfSSL user in the X4 Pro builds. OTA,
   OPDS, KOSync and font downloads now also offer those suites; P1's on-device list re-tests them.
 - **Clock source:** NTP only for now. Seeding the system clock from the RTC (so a network that blocks
-  NTP still works, and the first call after boot skips the wait) needs a HalClock date accessor, an
-  upstream change; tracked for P8 (it only matters on NTP-blocking networks).
+  NTP still works, and the first call after boot skips the wait) needs a HalClock date accessor, a
+  change to base code; tracked for P8 (it only matters on NTP-blocking networks).
 - **`net/Http`**: the request serialiser and a bounded incremental response parser
   (Content-Length, chunked or close-delimited; 8KB of headers, 1KB lines, 64KB body).
 - Headers: `Authorization: Bearer <key>`, `Accept: application/json`, `Content-Type: application/json`

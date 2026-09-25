@@ -147,13 +147,13 @@ comes out こんにちわ.
 
 ## 4. StarDict fallback per language
 
-The upstream Dictionary setting is **one global dictionary**. A reader with both languages needs
+CrossPoint's Dictionary setting is **one global dictionary**. A reader with both languages needs
 JMdict for Japanese and CC-CEDICT for Chinese. `StarDictLookupProvider` opens the folder named by
 `stardict_<lang>` (`Dictionary::open(folderName)` already takes a folder, so there's **no change to
-the upstream code**). If that isn't set, it uses the global setting. Longest-prefix matching
+the base code**). If that isn't set, it uses the global setting. Longest-prefix matching
 (`lookup-flow.md` §4) works the same for Chinese.
 
-CC-CEDICT is available as StarDict (see `docs/dictionary.md`'s source list upstream). Note it in
+CC-CEDICT is available as StarDict (see the source list in `docs/dictionary.md`, CrossPoint's doc in `firmware/`). Note it in
 the user docs at P8.
 
 ## 5. Fonts
@@ -161,7 +161,7 @@ the user docs at P8.
 A book's text only renders if the user already has an SD font with Chinese coverage, so the card
 (which reuses the reader font) inherits that coverage. The one trap is **Japanese fonts**: many
 JIS-based fonts lack common Simplified characters (这, 们, 说, 过 …). A user reading Chinese with
-their Japanese font sees replacement boxes in the book itself, which is an upstream setup issue,
+their Japanese font sees replacement boxes in the book itself, which is a font setup issue,
 not ours. Note it in the user docs.
 
 ### 5.1 Building the CJK font (verified 2026-09-24 on claritise's X4 Pro)
@@ -176,6 +176,7 @@ boxes. What works:
    convert `NotoSerifCJKsc` the same way and switch fonts per book.
 2. Convert it with the firmware's own script (`pip install freetype-py fonttools`). It takes ~40 s:
    ```
+   cd firmware
    python3 lib/EpdFont/scripts/fontconvert_sdcard.py NotoSerifCJKjp-Regular.otf \
      --intervals latin-ext,punctuation,cjk --sizes 8,10,12,14,16,18 \
      --style regular --name NotoSerifCJK --output-dir ./NotoSerifCJK/

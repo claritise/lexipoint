@@ -2,15 +2,16 @@
 
 set -euo pipefail
 
-# Run formatter from repository root regardless of current directory.
+# Run formatter from the firmware folder regardless of current directory (LEXIPOINT: the firmware is
+# firmware/ in the Lexipoint repo).
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd "${REPO_ROOT}"
+cd "${REPO_ROOT}/firmware"
 
 # Capture the files already staged for commit so we only re-stage those
 # paths after formatting.
 staged_files=()
 while IFS= read -r -d '' file; do
-  staged_files+=("${file}")
+  staged_files+=(":/${file}")  # from the repo's root: the hook runs in firmware/
 done < <(git diff --cached --name-only -z --diff-filter=ACMR)
 
 # Intentionally format all currently modified tracked C/C++ files.

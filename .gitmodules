@@ -1,4 +1,4 @@
-[submodule "freeink-sdk"]
-	path = freeink-sdk
+[submodule "firmware/freeink-sdk"]
+	path = firmware/freeink-sdk
 	url = https://github.com/Free-Ink/freeink-sdk.git
 	branch = main

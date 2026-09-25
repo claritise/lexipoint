@@ -1,14 +1,16 @@
-# CrossPoint Reader Development Guide
+# Lexipoint Firmware Development Guide
 
-Project: Open-source e-reader firmware for Xteink X4 (ESP32-C3)
-Mission: Provide a lightweight, high-performance reading experience focused on EPUB rendering on constrained hardware.
+Project: Lexipoint, e-reader firmware for the Xteink X4 Pro (ESP32-S3, touch) with Lexirise lookups. It is built
+on CrossPoint Reader's code; this guide keeps that code's conventions. Lexipoint's own design, decisions and
+workflow are in the repo's `docs/` (start with `docs/v0.1/00-overview.md` and `docs/v0.1/01-build-order.md`).
+Mission: A lightweight, high-performance reading experience on constrained hardware, with a word looked up in one tap.
 
 ## AI Agent Identity and Cognitive Rules
 
 * Role: Senior Embedded Systems Engineer (ESP-IDF/Arduino-ESP32 specialized).
-* Primary Constraint: 380KB RAM is the hard ceiling. Stability is non-negotiable.
+* Primary Constraint: internal RAM is the ceiling (the ESP32-S3's 512KB SRAM; TLS, the WiFi stack and the framebuffer need it, PSRAM doesn't replace it). Stability is non-negotiable.
 * Evidence-Based Reasoning: Before proposing a change, you MUST cite the specific file path and line numbers that justify the modification.
-* Anti-Hallucination: Do not assume the existence of libraries or ESP-IDF functions. If you are unsure of an API's availability for the ESP32-C3 RISC-V target, check the freeink-sdk source or the FreeInk SDK docs (https://freeink.org/llms.txt for an LLM-readable index) first.
+* Anti-Hallucination: Do not assume the existence of libraries or ESP-IDF functions. If you are unsure of an API's availability for the ESP32-S3 target, check the freeink-sdk source or the FreeInk SDK docs (https://freeink.org/llms.txt for an LLM-readable index) first.
 * No Unfounded Claims: Do not claim performance gains or memory savings without explaining the technical mechanism (e.g., DRAM vs IRAM usage).
 * Resource Justification: You must justify any new heap allocation (new, malloc, std::vector) or explain why a stack/static alternative was rejected.
 * Verification: After suggesting a fix, instruct the user on how to verify it (e.g., monitoring heap via Serial or checking a specific cache file).
@@ -48,18 +50,19 @@ Never invoke or probe `clang-format` directly. The repository wrapper is the onl
 
 ### Hardware Specs
 
-* MCUs: ESP32-C3 (single-core RISC-V @ 160MHz) and ESP32-S3 (`sticky`, dual-core Xtensa LX7)
-* RAM: ~380KB usable on ESP32-C3 (VERY LIMITED - primary project constraint)
-  * **NO PSRAM on C3**.
+* Device: Xteink X4 Pro, the only target (D20). The build requires a touchscreen (`src/lexirise/RequiresTouch.cpp`).
+* MCU: ESP32-S3 (dual-core Xtensa LX7)
+* RAM: 512KB internal SRAM (the primary constraint) + 8MB PSRAM (`BOARD_HAS_PSRAM`, `dio_opi`)
   * **Single Buffer Mode**: Only ONE 48KB framebuffer (not double-buffered)
 * Flash: 16MB (Instruction storage and static data)
-* Display: 800x480 E-Ink (Slow refresh, monochrome, 1-2s full update)
+* Display: 480x800 portrait E-Ink (UltraChip UC8279 or SSD1677, detected at boot; slow refresh, monochrome)
   * Framebuffer: 48,000 bytes (800 × 480 ÷ 8)
-* Storage: SD Card (Used for books and aggressive caching)
+* Input: GT911 touchscreen, capacitive Home key, two side buttons, power button; frontlight
+* Storage: SD Card over native SDMMC (Used for books and aggressive caching)
 
 ### The Resource Protocol
 
-1. Stack Safety: Limit local function variables to < 256 bytes. The ESP32-C3 default stack is small; use std::unique_ptr or static pools for larger buffers.
+1. Stack Safety: Limit local function variables to < 256 bytes. Task stacks are small; use std::unique_ptr or static pools for larger buffers.
 2. Heap Fragmentation: Avoid repeated new/delete in loops. Allocate buffers once during onEnter() and reuse them.
 3. Flash Persistence: Large constant data (UI strings, lookup tables) MUST be marked static const to stay in Flash (Instruction Bus), freeing DRAM.
 4. String Policy: Prohibit std::string and Arduino String in hot paths. Use std::string_view for read-only access and snprintf with fixed char[] buffers for construction.
@@ -108,10 +111,10 @@ Never invoke or probe `clang-format` directly. The repository wrapper is the onl
 * **Standard**: C++20 (`-std=c++2a`). No Exceptions, No RTTI.
 * **Logging**: ALWAYS use `LOG_INF`, `LOG_DBG`, or `LOG_ERR` from `Logging.h`. Raw Serial output is deprecated.
 * **Environments** (in `platformio.ini`):
-  * `default`: Development (LOG_LEVEL=2, serial enabled)
-  * `gh_release`: Production (LOG_LEVEL=0)
-  * `gh_release_rc`: Release candidate (LOG_LEVEL=1)
-  * `slim`: Minimal build (no serial logging)
+  * `x4pro`: Development (LOG_LEVEL=2, serial enabled, the dev harness `LEXIPOINT_DEV_HARNESS`)
+  * `x4pro-gh_release`: Production (LOG_LEVEL=1, no dev harness)
+  * `x4pro-gh_release_rc`: Release candidate (LOG_LEVEL=1)
+  * `x4pro-lexirise-off`: CI only: proves every `LEXIRISE` hook in a base file compiles out
 
 ### Critical Build Flags
 
@@ -222,7 +225,7 @@ if (Storage.openFileForRead("MODULE", "/path/to/file.bin", file)) {
 * Smart Pointers: Prefer std::unique_ptr. 
 * RAII: Use destructors for cleanup. Call `vTaskDelete()` explicitly for deterministic task release. Do NOT call `file.close()` on local `FsFile` variables — `DESTRUCTOR_CLOSES_FILE=1` handles it at scope exit (see Critical Build Flags).
 
-### ESP32-C3 Platform Pitfalls
+### ESP32 Platform Pitfalls
 
 #### `std::string_view` and Null Termination
 
@@ -271,9 +274,9 @@ static DRAM_ATTR uint32_t isrEventFlags = 0;
 | Task → task                     | `xSemaphoreTake()` / mutex                         |
 | Simple flag (single writer ISR) | `volatile bool` + `portENTER_CRITICAL_ISR()`       |
 
-#### RISC-V Alignment
+#### Alignment
 
-ESP32-C3 faults on unaligned multi-byte loads. Never cast a `uint8_t*` buffer to a wider pointer type and dereference it directly. Use `memcpy` for any unaligned read:
+The ESP32-C3 this code was first written for faults on unaligned multi-byte loads; keep the rule on the S3 too. Never cast a `uint8_t*` buffer to a wider pointer type and dereference it directly. Use `memcpy` for any unaligned read:
 
 ```cpp
 // WRONG — faults if buf is not 4-byte aligned:
@@ -566,14 +569,14 @@ renderer.drawText(FONT_UI_MEDIUM, x, y, "Hello", true);
 **Via CLI**:
 
 ```bash
-# Build firmware (default environment)
+# Build firmware (default environment: x4pro)
 pio run
 
 # Build and upload to device
-pio run -t upload
+pio run -e x4pro -t upload
 
 # Build specific environment
-pio run -e gh_release
+pio run -e x4pro-gh_release
 
 # Clean build artifacts
 pio run -t clean
@@ -669,105 +672,13 @@ Do not run raw `clang-format` or probe it with `command -v`; use the wrapper eve
 
 ---
 
-## Git Workflow and Repository Awareness
+## Git Workflow
 
-### Repository Detection Protocol
-
-**CRITICAL**: ALWAYS verify repository context before git operations. This could be:
-
-- A **fork** with `origin` pointing to personal repo, `upstream` to main repo
-- A **direct clone** with `origin` pointing to main repo
-- Multiple collaborator remotes
-
-**Verification Commands** (run at session start):
-
-```bash
-# Check current branch
-git branch --show-current
-
-# Check all remotes
-git remote -v
-
-# Check working tree status
-git status --short
-```
-
-**Example Output** (forked repository):
-
-```text
-origin      https://github.com/<your-username>/crosspoint-reader.git (fetch/push)
-upstream    https://github.com/crosspoint-reader/crosspoint-reader.git (fetch/push)
-```
-
-### Git Operation Rules
-
-1. Integration branches and PR comparisons target `develop`, not `master` or the remote's symbolic HEAD.
-2. Never push to any remote or open/close a PR without explicit user approval. Complete local work and any requested local commit, then stop.
-3. If the user explicitly approves a push, inspect remotes again and use `fork` for the feature branch unless the user specifies otherwise.
-4. Never add Claude, Codex, or assistant self-attribution as a commit co-author or generated-by trailer.
-5. When a change supersedes or adapts another person's PR, verify the original human author from Git/GitHub and add that person as `Co-Authored-By`; skip bot authors.
-
-### Branch Naming Convention
-
-**For feature/fix branches**:
-
-```text
-feature/<short-description>       # New features
-fix/<issue-number>-<description>  # Bug fixes
-refactor/<component-name>         # Code refactoring
-docs/<topic>                      # Documentation updates
-```
-
-**Examples**:
-
-- `feature/sd-download-progress`
-- `fix/123-orientation-crash`
-- `refactor/hal-storage`
-
-### Commit Message Format
-
-**Pattern**:
-
-```text
-<type>: <short summary (50 chars max)>
-
-<optional detailed description>
-```
-
-**Types**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`
-
-**Example**:
-
-```text
-feat: add real-time SD download progress bar
-
-Implements progress tracking for book downloads using
-UITheme progress bar component with heap-safe updates.
-
-Tested in all 4 orientations with 5MB+ files.
-```
-
-### When to Commit
-
-**DO commit when**:
-
-- User explicitly requests: "commit these changes"
-- Feature is complete and tested on device
-- Bug fix is verified working
-- Refactoring preserves all functionality
-- All tests pass (`pio run` succeeds)
-
-**DO NOT commit when**:
-
-- Changes are untested on actual hardware
-- Build fails or has warnings
-- Experimenting or debugging in progress
-- User hasn't explicitly requested commit
-- Files excluded by `.gitignore` would be included — always run `git status` and cross-check against `.gitignore` before staging (e.g., `*.generated.h`, `.pio/`, `compile_commands.json`, `platformio.local.ini`)
-
-**Rule**: **If uncertain, ASK before committing.**
-
----
+Lexipoint's workflow is in the repo's `docs/v0.1/01-build-order.md` ("How to run"): one repo
+(`claritise/lexipoint`) holding `firmware/`, `docs/` and `tools/`; each phase on a `lexi/<phase-id>` branch,
+reviewed until clean, squashed and merged into `main` with its ledger row. Never push without the owner's OK.
+The repo is public: never commit API keys, account IDs or raw API responses (`scripts/lexipoint/keyscan.py`
+checks every tracked file).
 
 ## Generated Files and Build Artifacts
 
@@ -857,7 +768,7 @@ renderer.drawText(FONT_UI, x, y, tr(STR_LOADING), true);
 
 ```ini
 # platformio.local.ini (gitignored)
-[env:default]
+[env:x4pro]
 upload_port = COM7              # Windows: COMx, Linux: /dev/ttyUSBx
 monitor_port = COM7
 
@@ -901,19 +812,18 @@ build_flags =
 
 ### CI/CD Pipeline Awareness
 
-**GitHub Actions** run automatically on pull requests:
+**GitHub Actions** (in the repo root's `.github/workflows/`, running in `firmware/`) run on pushes to `main` and
+`lexi/**`:
 
-| Workflow      | File                                        | Purpose                |
-| ------------- | ------------------------------------------- | ---------------------- |
-| Build Check   | `.github/workflows/ci.yml`                  | Verifies code compiles |
-| Format Check  | `.github/workflows/pr-formatting-check.yml` | Validates clang-format |
-| Release Build | `.github/workflows/release.yml`             | Production releases    |
-| RC Build      | `.github/workflows/release_candidate.yml`   | Release candidates     |
+| Workflow      | File                                      | Purpose                                                  |
+| ------------- | ----------------------------------------- | -------------------------------------------------------- |
+| CI            | `.github/workflows/ci.yml`                | Format, cppcheck, the X4 Pro builds, host tests, key scan |
+| Release Build | `.github/workflows/release.yml`           | Production releases                                      |
+| RC Build      | `.github/workflows/release_candidate.yml` | Release candidates                                       |
 
 **Rules**:
 
-- **Fix CI failures BEFORE** requesting review
-- CI runs on: Push to PR, PR updates
+- **Fix CI failures BEFORE** merging
 - Format check fails → Run `./bin/clang-format-fix -g`
 - Build check fails → Fix compile errors
 

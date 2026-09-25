@@ -5,8 +5,8 @@
 working. This doc also absorbs M's planned follow-up cleanup, "M2" (`standalone-repo.md` §6), and C22 "One font
 for everything" (`00-overview.md`).
 
-Written for the agent that builds it. Defaults here apply unless claritise says otherwise. The items under
-"Needs claritise" (§7) are never guessed.
+Written for the agent that builds it. Firmware paths (`lib/…`, `src/…`) are relative to `firmware/`. Defaults
+here apply unless claritise says otherwise. The items under "Needs claritise" (§7) are never guessed.
 
 ---
 
@@ -61,7 +61,7 @@ can't attribute ahead of time.
 
 ## 2. How to cut
 
-- **Delete, don't `#if` out.** After M there's no upstream to stay mergeable with, so dead code goes, along with
+- **Delete, don't `#if` out.** Since M, Lexipoint doesn't merge from CrossPoint (D21), so dead code goes, along with
   its settings keys, strings, tests and web routes. A cut feature must not leave a menu entry, a settings row,
   or a web page behind.
 - **Settings files on existing SD cards:** when a removed setting's key is in `settings.bin` or `settings.json`,
@@ -69,12 +69,17 @@ can't attribute ahead of time.
   serializes before deleting fields. If it's positional, keep a placeholder.
 - **The `LEXIRISE` gate and `// LEXIPOINT:` markers (from M2):** once the base code is being deleted, the
   Lexirise-off build no longer means anything. Default: remove the gate (Lexirise is always on) and the
-  Lexirise-off CI build, in the **last** step of this phase, so the gate still helps while features are being cut.
+  Lexirise-off build (the `x4pro-lexirise-off` env in `firmware/platformio.ini`, and its CI build), in the
+  **last** step of this phase, so the gate still helps while features are being cut.
   The markers stay where they say *why* a base file was edited, and go where they only said "our code".
-- **The global rule "don't modify `util/Dictionary*`"** exists for merging from upstream. It ends with M.
-  StarDict is still kept.
-- **Record every removal** in M's "Taken from CrossPoint" record (`../v0.1/firmware-base.md`, after M), so
+- **The global rule "don't modify `util/Dictionary*`"** existed for merging from CrossPoint. M kept it
+  (`../v0.1/standalone-repo.md` §6), and this phase ends it. StarDict is still kept.
+- **Record every removal** in the "Taken from CrossPoint" record M set up (`../v0.1/firmware-base.md`), so
   what was dropped, and at which commit, stays findable (C23).
+- **cppcheck's style hints in Lexipoint's code (from M):** M moved cppcheck to `x4pro`, which checked
+  `src/lexirise/` for the first time, and suppressed three style-only checks there (`useStlAlgorithm`,
+  `shadowFunction`, `variableScope`; `firmware/platformio.ini` `check_flags`). Rewrite those places (27 raw
+  loops, a few names and one scope) and drop the suppressions, so Lexipoint's code meets the base's bar.
 - **Also keep** (C23): ruby and furigana, sleep and battery, and the dev harness.
 - **One cut, one commit**, each building and passing the host suite on its own, so a bad cut is easy to
   revert.
@@ -102,9 +107,11 @@ can't attribute ahead of time.
 
 ## 5. Gate
 
-1. `pio run -e x4pro`, `x4pro-gh_release` and `x4pro-gh_release_rc` build with no new warnings. The host suite
-   and the Python script tests pass. Tests of removed features are removed, not skipped, and the ledger
-   records the count before and after.
+Run from `firmware/` (`cd firmware` first).
+
+1. `pio run -e x4pro`, `x4pro-gh_release` and `x4pro-gh_release_rc` build with no new warnings, and so does
+   `x4pro-lexirise-off` until step 7 removes it. The host suite and the Python script tests pass.
+   Tests of removed features are removed, not skipped, and the ledger records the count before and after.
 2. **Size:** the release build's size before and after, per step (§3), in the ledger. The target is at least
    2 MB saved if C22 lands in this phase.
 3. **Heap:** free internal heap and PSRAM on the Home screen and with a book open, before and after (the P0
@@ -113,8 +120,8 @@ can't attribute ahead of time.
    settings and walk every screen. The web UI: upload a book, open `/lexirise`. An SD card whose settings
    were written by the previous build still boots with every surviving setting kept.
 5. **The card** matches the design conformance gate (`../v0.1/01-build-order.md`), unchanged.
-6. `git grep -n -i -e koreader -e opds -e calibre -e webdav` finds only history (ledger, dated notes)
-   and the removal notes.
+6. `git grep -n -i -e koreader -e opds -e calibre -e webdav -- :/` finds only history (ledger, dated notes
+   in `docs/`) and the removal notes.
 7. The key scan is clean.
 
 ## 6. After this
