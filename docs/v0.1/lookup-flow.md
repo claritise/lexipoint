@@ -266,7 +266,7 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   back-off costs no request: the service refuses calls until it has passed (P6 `AccessPolicy`). The
   tapped sentence failing still closes the card as before (P5).
 - The analysis blocks the loop (~1 s) and buttons are only read between passes: a press made and released
-  during it is never seen; one still held when it returns is first seen just after the jump (~5-15 ms).
+  during it is never seen; one still held when it returns is first seen just after the jump (~20-30 ms: two debounced polls, 10 ms apart).
   A step keeps when its press was first seen, and a forward one within `config::kStepAfterJumpGraceMs`
   (100 ms) of the jump is dropped (`CardController::step`'s `pressedAtMs`), so it can't skip the new
   sentence's first word; a real new press comes after the new frame's refresh.
