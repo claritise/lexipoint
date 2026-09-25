@@ -90,8 +90,7 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
 - **Readings:** tap the reading line (Japanese) to switch kana ⇄ romaji; it's remembered.
 - **Another word:** tap it (or long-press it) on the page while the card is open.
 - **Close:** ✕, Home, the Back swipe from the left edge, swipe down on the card, or tap the page away from
-  the words. You're
-  back on the page you were reading.
+  the words. You're back on the page you were reading.
 
 Languages: a book's `<dc:language>` decides; a book that doesn't say is read by its text (kana means
 Japanese; Han-only text uses **Language when a book doesn't say**, or the only language you have on).
