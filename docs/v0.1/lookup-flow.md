@@ -311,7 +311,7 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   setting, whose default is Disabled). The reader menu is on **Long-press Menu → Reader Menu**, or **Show Reader
   Menu → Tap** (a tap in the screen's middle third) / **Swipe Up**; the top-edge swipe is the frontlight panel.
   With Lexipoint the Dictionary choice is redundant (a long-press on a word looks it up). After the P9 flash the
-  reader stopped answering on USB (no log, no `PING`, esptool couldn't connect): unexplained so far; replug owed.
+  reader stopped answering on USB for a while (no log, no `PING`, esptool couldn't connect); it answered again later without a replug, and `esptool verify-flash` matched the P9 build (booting `ota_0`), so the flash had landed. Likely asleep at the time.
 - **Each book's lookup language** (`languages.md` §1, step 3): see there.
 
 ### 5c. As built (P7)
