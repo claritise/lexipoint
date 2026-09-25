@@ -2,6 +2,10 @@
 
 **Status:** proposed 2026-09-24. Decisions D1, D2 in `00-overview.md`.
 
+> **Being replaced (2026-09-25, D20–D22):** phase M makes Lexipoint one standalone repo for the X4 Pro only,
+> with CrossPoint as its base rather than an upstream. Until M lands, this doc describes the fork as it is.
+> M rewrites §0, §1, §1a, §2, §4, §5 and §6 as `standalone-repo.md` §5 says.
+
 Related: `lookup-flow.md` (the hooks this doc allows), `lexirise-client.md` (the one new network
 path).
 
