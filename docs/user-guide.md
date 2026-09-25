@@ -15,8 +15,8 @@ Everything CrossPoint does keeps working the same way. Lexipoint only adds the l
    `github.com/claritise/crosspoint-reader`.
 2. Flash it the way CrossPoint documents (its README, *Install firmware*): the web installer's
    **Custom .bin** option, or `esptool.py --chip esp32s3 ... write_flash 0x10000 <file>.bin`.
-   Read CrossPoint's warning about USB-locked units first. **After an over-the-air update** the device
-   boots its second firmware slot, so a plain `write_flash 0x10000` would be ignored: erase the boot record
+   Read CrossPoint's warning about USB-locked units first. **After an over-the-air or SD-card update** the
+   device may boot its second firmware slot, so a plain `write_flash 0x10000` could be ignored: erase the boot record
    too (`esptool.py --chip esp32s3 ... erase_region 0xe000 0x2000`), or use the web installer or
    CrossPoint's SD-card firmware update.
 3. Later updates arrive **over the air**: Settings → System → *Check for updates* offers the newest
