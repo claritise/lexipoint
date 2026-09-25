@@ -95,12 +95,12 @@ size. Colours are **exactly black or white**, never grey (see the deviations bel
 | Filled bars | ⌈frequency_score × 5⌉, min 1 | same |
 | ✕ cell width / glyph | 44 / 15 | **62 / 21** |
 | ▼ / ▲ glyph (right end of the rank row, before ✕), no text | 12 | **17** |
-| **Expanded view:** context strip height = card top offset | 50 | **71** |
+| **Expanded view:** context strip height = card top offset | 50 | **71** (built 80; P12: at least that, and at least the page line + 4 above and below) |
 | Strip text | the page's own reader font and size | same (follows the user's settings) |
 | Strip line marker (`line 2/5`): text / right / top | 10 / 8 / 4 | **14 / 11 / 6** |
 | Strip text clip: ends before the marker (both strips) | 40 from the right padding edge | **56** |
 | Strip auto-scroll (the card view's strip, and the detail view's before its word is known; P9's detail strip starts at the word and doesn't scroll): if the active word is past the clip, shift the line left so the word ends 8 px (**11**) inside the clip | — | — |
-| **Card-view strip (D17)**, the card's first row, only when the word is covered: height / h-padding / divider under it | 36 / 12 / 1 | **51 / 17 / 1** |
+| **Card-view strip (D17)**, the card's first row, only when the word is covered: height / h-padding / divider under it | 36 / 12 / 1 | **51 / 17 / 1** (P12: at least 51, and at least the page line + 4 above and below) |
 | Card-view strip text / marker text / marker right / marker top | reader font (17 in the reference) / 10 / 6 / 2 | **reader font** / **14 / 8 / 3** |
 | Tab row: text / v-padding | 11 / 8 | **16 / 11** |
 | `⋯` tab: width / glyph | 30 / 14 | **42 / 20** |
@@ -211,9 +211,12 @@ it's a stretch, the fallback is to let the rank row carry the level control inst
 
 **As built (P12):** the strips grow with the reader's font size (claritise: the card's strip row didn't
 expand with a bigger size). Each is set in the reader's page font; the card view's strip row is at least its
-reference 51 px and at least the line plus 7 px above and below it, so the card grows upward; the detail view's
-strip band is at least its 80 px likewise, and the detail card below it starts lower (its body shorter). At the
-default size nothing moves.
+reference 51 px and at least the line plus `kStripTextPadV` (4 px) above and below it, so the card grows
+upward; the detail view's strip band is at least its 80 px likewise, and the detail card below it starts lower
+(its body shorter). At the device's default 14 pt (NotoSerifCJK's line is 42 px: 50 ≤ 51) nothing moves;
+16 pt (48 px line) makes the row 56, 18 pt (54) 62; the detail view grows only past a 72 px line (an SD font
+of ~24 pt). Every line height a font file can have (1–255 px) keeps the card on screen, its targets inside
+it and the detail view's tabs clear of its header (`CardLayout.EveryPageLineHeightStaysOnScreen`).
 
 **As built (P11):** a strip's word is inverted by its own characters, not the whole token it sits in
 (the reader glues a word to its punctuation: 话。); the bench page wraps its lines at the panel instead of
