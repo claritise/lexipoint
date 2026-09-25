@@ -137,7 +137,9 @@ Requirements: Python 3 with Pillow and NumPy; mokuro in its own venv (`pip insta
 with PyTorch; the OCR model downloads on first run); a Lexirise key in `~/.lexirise_key` for
 `wordboxes.py` (read, never printed). **Volumes and every output go in `research/`** at the repo root,
 which is gitignored (`research/manga/` for volumes, `research/spike/` for outputs,
-`research/.venv-ocr/` for mokuro); never anywhere tracked.
+`research/.venv-ocr/` for mokuro); never anywhere tracked. **Never run `git clean -x` / `-X` in this repo:** it
+deletes `research/`, and with it the volumes, the OCR output and the cached API responses. Research notes
+(which hold nothing copyrighted or private) are tracked, in `../reference/manga-research-notes/`.
 
 ```
 mokuro "<volume folder>" --disable_confirmation=true         # writes "<volume folder>.mokuro"

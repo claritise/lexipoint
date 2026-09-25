@@ -62,6 +62,8 @@ lexipoint/                   github.com/claritise/lexipoint (public)
     platformio.ini, src/, lib/, test/, scripts/, freeink-sdk/ (submodule) …
   sd-card/                   unchanged
   docs/                      unchanged location; content rebranded (§5)
+  tools/manga/               the manga converter (`../v0.2/manga.md`); unchanged
+  research/                  gitignored local workspace (manga volumes, OCR, spike output, the OCR venv): leave it alone
 ```
 
 Lexipoint's own code is already separate from the base code: `src/lexirise/`, `test/lexirise_*/`,
@@ -76,6 +78,10 @@ fascia/Tendon work depends on it (§8).
   No device in the field reads the fork's release URL, so the OTA URL, versions and asset names can all
   change now at no cost. Check again before starting. If a release has appeared since, stop and ask
   claritise: a device on it would need one last release on the fork that points at the new repo.
+- **Never `git clean -x` / `-X` (or `-fdx`) in `~/Projects/lexipoint`.** Gitignored folders hold local data
+  that can't be recreated from the repo: `research/` (manga volumes, OCR output that took minutes to make,
+  cached API responses, the OCR venv; `../v0.2/manga.md` §3) and `sd-card/` (the SD-card staging area).
+  Plain `git clean -fd` spares ignored files, but check with `-n` first.
 - Leave the local clone `~/Projects/crosspoint-reader` untouched. It holds the local-only
   `lexi/P*-wip-archive` branches, and it is the fallback if M goes wrong. Only claritise deletes it.
 

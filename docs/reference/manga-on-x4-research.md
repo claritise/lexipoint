@@ -1,6 +1,7 @@
 # Manga on the Xteink X4 / X4 Pro: what others do
 
-> Desk research, **2026-09-25**, for `../v0.2/manga.md`. Sources: GitHub repos, issues and PRs, tool
+> Desk research, **2026-09-25**, for `../v0.2/manga.md`. The four research notes behind it (more detail,
+> same sources) are in `manga-research-notes/`. Sources: GitHub repos, issues and PRs, tool
 > READMEs, blog posts and reviews, linked inline. Reddit, Discord and video content could only be seen
 > through search summaries, so first-hand user reports are thin. No source measured furigana
 > legibility, screentone rendering or 1-bit vs 2-bit side by side. Some of the "Implications" in §6
