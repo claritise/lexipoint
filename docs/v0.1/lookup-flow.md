@@ -362,12 +362,17 @@ ms, at)`, `Outcome::lookUpAt`), as a long-press always did: word select looks up
 touch-opened now, §5g). The long-press still works. Where the page under the card isn't word select's (the
 bench, a landscape book) the point is dropped and a tap just closes (`card::pagePressLooksUp`, applied at the
 close for both). The detail view covers the page, so a tap there does nothing, as before. Tapping the word
-already on the card does nothing: the word's highlight counts as the card (`composeFrame` adds a
-`Target::Card` hit over it, behind the card's own; R3, 11 goldens gained that hit, nothing drawn changed), so
-it doesn't close and reopen the same card. The point is kept at the close by `card::lookUpOnClose`. Tests: `CardController.ATapOnThePageClosesToLookUpTheWordThere`,
+already on the card does nothing: each piece of the word's highlight is a `Target::OwnWord` hit
+(`PageScene::wordPieces`, one box per piece, so a word broken over two lines doesn't cover both lines'
+other words; `composeFrame`, behind the card's own hits; 11 goldens gained them, nothing drawn changed). A
+tap or long-press there does nothing, a swipe that starts there isn't the card's, and a step waiting on the
+next sentence keeps waiting (R3, R4), so it doesn't close and reopen the same card. The point is kept at the close by `card::lookUpOnClose`. Tests: `CardController.ATapOnThePageClosesToLookUpTheWordThere`,
 `CardLongPress.ATapOnThePageDoesWhatALongPressDoes`, `LiveSaving.ATapOnTheWordsOwnHighlightDoesNothingAndElsewhereLooksUp`;
+`ReaderScene.AWordAcrossTokensAndLinesCoversThemAll` (per-piece boxes),
+`LiveSaving.TheCardsOwnWordTakesNoSwipeAndKeepsAWaitingStep`, `LiveSteps.ATapOnTheCardsOwnWordKeepsTheWait`;
 on the device `lxctl reader-longpress` taps the page above the card it opened (`retap`: another card, or back
-to the reader when no word is there). Device check owed: with a card open, tap another word
+to the reader when no word is there; skipped when StarDict answered). Device check owed also: a word broken
+over two lines, then a tap on another word on either line (looks it up). Device check owed: with a card open, tap another word
 (its card), tap blank page (closes to the reader), tap in the detail view's strip (nothing), a landscape
 book (a tap closes).
 
