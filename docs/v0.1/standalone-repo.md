@@ -204,7 +204,9 @@ Several global rules in `01-build-order.md` exist only to keep rebases cheap:
 **M doesn't change them.** Changing them while every path moves makes M harder to check. M only swaps the
 `x4c` Lexirise-off build for an `x4pro` one. Relaxing them is the first follow-up, not part of M:
 
-- **Follow-up M2, cleanup (not scheduled):** decide whether the `LEXIRISE` gate and markers stay. They still
+- **Follow-up M2 is now part of the v0.2 slimming** (`../v0.2/slimming.md`, approved 2026-09-25), which does
+  the cleanup below together with the feature cuts. Kept here for the reasoning:
+- **Follow-up M2, cleanup:** decide whether the `LEXIRISE` gate and markers stay. They still
   show which base files we edited, which will matter for fascia coverage (§8). Delete code for devices
   without touch that no env builds any more: the X3/X4 key maps in `MappedInputManager`, the button-legend UI,
   and the C3-only paths. Pull X4 Pro constants (480×800 panel, thumb zones, the Home pad, UC8279 refresh
