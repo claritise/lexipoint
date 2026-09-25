@@ -29,13 +29,13 @@ number. Filters take either the number or the label.
 | Question | Answer |
 |---|---|
 | H6: does `/v1/vocabulary` take `notes`? | **Yes.** Resolved |
-| "Already exists" on save | **Upsert** ("creates or updates"). There's no 409 path. ⚠ Whether re-saving *replaces* or *merges* `tags` / `notes` / `proficiency` isn't stated. Never re-POST a word that's already saved (v0.1 doesn't) |
-| H7: Chinese code | **`zh`**, used in the reference's own examples (`vocabulary` sentence, `uploads/series`). The site also lists Chinese, Japanese and Korean. Pinyin format is still unverified |
+| "Already exists" on save | **Upsert** ("creates or updates"). There's no 409 path. Re-saving **replaces** `tags`, `notes`, the custom translation and `proficiency` (tested 2026-09-24, "Account write tests" below). Never re-POST a word that's already saved (v0.1 doesn't). Use `PATCH` |
+| H7: Chinese code | **`zh`**, used in the reference's own examples (`vocabulary` sentence, `uploads/series`). The site also lists Chinese, Japanese and Korean. Pinyin format verified 2026-09-24: tone marks, space-separated ("Verified against the live API" below) |
 | Proficiency on save | 1–4 (0 isn't accepted on create). Our default of 1 is valid |
 | Deck ID on save | **No.** `POST /v1/vocabulary` has no deck field. **Dynamic tag decks exist**, which is better for C4 (see v0.2) |
 | Vocab count | **Yes**: `totalCount` / `languageCount` on the list response. One request with `limit=1` |
 | Server-side analysis of uploaded books, fetchable by the device | **No such endpoint.** Upload status only reports ingest progress |
-| Sentence translation if `translation` is omitted | **Not stated.** "Custom" implies Lexirise has its own. Verify in P0 |
+| Sentence translation if `translation` is omitted | Not stated in the reference. **Tested 2026-09-24: Lexirise translates it straight away**, and a sentence saved without `proficiency` defaults to 2 ("Account write tests" below) |
 
 ## Verified against the live API (2026-09-24)
 
