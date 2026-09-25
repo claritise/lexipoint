@@ -296,11 +296,12 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   image) opened word select with a word highlighted and nothing looked up, and the reader menu (text size and
   the rest) could no longer be reached that way. Cause: since P3 `takeLongPress` took any long-press in the
   lookup's zone, and word select opened on the middle word when none was under the finger. Fix: the reader
-  asks `DictionaryWordSelectActivity::pressOnWord` (the same word boxes and slop as its `wordAt`, measured
-  under the render lock, only for the lines under the press) last, after the zone and "can anything
+  asks `DictionaryWordSelectActivity::pressOnWord` (the same word boxes and slop as its `wordAt`: one rule
+  in `activities/reader/WordBoxes.h`, measured under the render lock, only for the lines under the press) last, after the zone and "can anything
   answer"; the page it loaded is handed to word select. A long-press anywhere else isn't consumed, so the SDK
   reports its lift as a tap and CrossPoint handles it as before (the centre opens the menu, the sides turn
-  the page). Tests: `LongPress.TakenOnlyWhenFiredOwnedAvailableAndOnAWord`, `APressOffTheTextStaysCrossPoints`.
+  the page). Tests: `LongPress.TakenOnlyWhenFiredOwnedAvailableAndOnAWord`, `APressOffTheTextStaysCrossPoints`,
+  `WordBoxesTest`; on the device `lxctl reader-longpress` (the reader logs `[LXLP] long-press x y taken|left`).
   Device check owed: long-press a margin, the gap between paragraphs and an image (the menu or a page turn,
   nothing highlighted); long-press a word (the card, as before); a word at a line's end and the first line.
 - **Each book's lookup language** (`languages.md` §1, step 3): see there.

@@ -40,9 +40,9 @@ book**, in this order:
 2. **Missing or bogus metadata** (common in scanned or converted books, where `en` or `und` is
    stamped on a Japanese novel): scan the **current sentence**. **Any kana (hiragana/katakana letters; not `・` or `ー`) → `ja`.**
    Otherwise, if it's all Han with no kana → the config's `default_language`.
-3. A **per-book override** stored in `/.lexirise/books.ini` (`<bookId>=zh`), set from the card
-   with a long-press on the language badge. It's for the rare book where both of the above guess
-   wrong.
+3. A **per-book override** ~~stored in `/.lexirise/books.ini` (`<bookId>=zh`), set from the card
+   with a long-press on the language badge~~ (as built in P9: set from the reader menu, keyed by the book's
+   path; see "As built (P9)" below). It's for the rare book where both of the above guess wrong.
 
 **As built (P9, claritise 2026-09-25: "we need to be able to set which language dictionary we use per book,
 right now it's using Japanese even for Chinese books"):** a Chinese book whose `<dc:language>` is missing or
@@ -51,11 +51,15 @@ override is now set from the **reader menu**, not the card: a **Lookup language*
 Chinese (Simplified), cycled in place, in the list menu and the toolbar's More panel), since the reader menu
 is where per-book settings live and the card's design is binding. It's kept in `/.lexirise/books.ini` as
 `<ja|zh>=<book path>` lines, newest last (Auto removes the line; `config::kBookLanguagesMax` books, the
-oldest forgotten; saved crash-safely like `config.ini`: `settings/SafeFile.h`). The path is the key, so a
+oldest forgotten, sooner for long paths: `kBookLanguagesMaxBytes`; saved crash-safely like `config.ini`:
+`settings/SafeFile.h`). The cycle is Auto, then `kLanguages` in settings order, so a new language joins it
+by being added there. If the card can't be written, the row just keeps its value (the serial log says why;
+no notice, as with CrossPoint's own menu toggles). The path is the key, so a
 moved or renamed book starts at Auto again. The override decides the language sent to Lexirise and the
 offline dictionary's language (`LanguageDecision::dictionaryLanguage`). Code: `settings/BookLanguages.h`
 (`BookLanguageStore`, `BookLanguageRow`), `lookup::bookLanguageFor`. Tests: `BookLanguagesTest.cpp`.
-Device check owed: set a Chinese book to Chinese, look a word up (sent as `zh`), reboot (still Chinese),
+The book-language row isn't scripted in `lxctl` (where it sits depends on the menu style and on which rows
+the page shows), so it's a manual check: set a Chinese book to Chinese, look a word up (sent as `zh`), reboot (still Chinese),
 Auto again (back to the default); the row in both menu styles.
 
 The decision is made once, when the book is opened, and cached for the reading session. The
