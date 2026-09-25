@@ -82,3 +82,19 @@ Still owed for P11: a router on a new channel; away from the saved network (the 
 | Check | Result |
 |---|---|
 | The card view's strip row at claritise's size (NotoSerifCJK 18 pt, 54 px line) | **pass**: the row measures 62 px (54 + 2 × 4) where P11 drew 51 with the line over its borders; the card starts 11 px higher, the rest of the card unchanged (its dividers at the same y) |
+
+## 2026-09-26, `lexipoint` @ `62d8d739` (P13), flashed and verify-flash matched
+
+`settings.md` §5's P13 step, on Settings → System → Lexirise over serial; every switch put back as it was
+(all on).
+
+| Check | Result |
+|---|---|
+| Japanese's Lookups off | **pass**: 10 rows; Readings and "Language when a book doesn't say" hide, Japanese's Offline dictionary stays, the cursor stays on the toggle |
+| Chinese's Lookups off too (Lexirise on, no language on) | **pass**: 11 rows; "Language when a book doesn't say" shows again |
+| Both back on | **pass**: 12 rows, values kept (Kana, the dictionaries, Japanese) |
+| Lexirise lookups off | **pass**: 7 rows: the Account group, each language heading with its Offline dictionary, and "Language when a book doesn't say"; back on: 12 |
+| Harness note | Turning Chinese back on hid a row near the end of the list, so the list scrolled back up by a row and a tap aimed by the old screenshot opened the API key editor. Nothing was typed; the Back swipe left it with the key unchanged (an empty entry keeps the key). Take a screenshot after every tap that shows or hides rows |
+
+Not run: the web page's rows (needs File Transfer's WiFi; host tests cover `shows`), and a Han-only tap
+with Lexirise off (covered by `BookLanguage` and `StarDictChoice` tests).
