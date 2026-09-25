@@ -88,8 +88,9 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
 - **Next and previous word:** the side page buttons step through the sentence while the card is open, and
   on into the page's next sentence at its end.
 - **Readings:** tap the reading line (Japanese) to switch kana ⇄ romaji; it's remembered.
-- **Another word:** long-press it on the page while the card is open.
-- **Close:** ✕, Home, the Back swipe from the left edge, swipe down on the card, or tap the page. You're
+- **Another word:** tap it (or long-press it) on the page while the card is open.
+- **Close:** ✕, Home, the Back swipe from the left edge, swipe down on the card, or tap the page away from
+  the words. You're
   back on the page you were reading.
 
 Languages: a book's `<dc:language>` decides; a book that doesn't say is read by its text (kana means

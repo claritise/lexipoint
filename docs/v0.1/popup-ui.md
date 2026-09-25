@@ -204,9 +204,9 @@ it's a stretch, the fallback is to let the rank row carry the level control inst
 | **Tap T / L / F / K** | **Saves the word at that level** (new word: `POST`), or **sets the level** (saved word: `PATCH`). One tap. A 2 s `Saved as learning · Undo` toast. Tapping Undo reverts it: for a new save, `DELETE`, then `PATCH {notes: null, customTranslation: null, tags: []}`, because Lexirise only resets dictionary words to *unknown* and keeps their notes and tags (tested 2026-09-24). For a level change, `PATCH` back to the old level |
 | **Swipe up** on the card, or tap the rank row (`▼`) | Open the detail view |
 | **Swipe down** on the detail view, or tap the rank row (`▲`) | Back to the card |
-| Tap **`✕`** (either view), press **Home** or swipe **Back** (the left edge, as everywhere in CrossPoint: the detail view goes back to the card first), **swipe down** on the card, or tap the page outside the card | Close the dictionary |
+| Tap **`✕`** (either view), press **Home** or swipe **Back** (the left edge, as everywhere in CrossPoint: the detail view goes back to the card first), **swipe down** on the card, or tap the page outside the card where there's no word (P10) | Close the dictionary |
 | **Tap a tab**, or **swipe left/right** across the content | Change tab (the only way to change tabs, since the side buttons step words in both views) |
-| **Long-press another word** on the page | Replace the card with a new lookup |
+| **Tap** (P10, claritise 2026-09-25: "changing words when the dictionary is open should be tap instead of hold") or long-press **another word** on the page | Replace the card with a new lookup |
 | **Tap the reading line** (Japanese only) | Switch all readings kana ⇄ romaji, with a toast. Remembered across lookups and reboots |
 
 **As built (P7, `lookup-flow.md` §5c):** every row above works; the swipes need a start on the card, and a

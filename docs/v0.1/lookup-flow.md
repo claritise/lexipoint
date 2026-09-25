@@ -349,7 +349,23 @@ only), a `DynamicEnum` saved by `CrossPointSettings::toJson`/`fromJson`; a store
 Menu, or Disabled without a Home key, and the file is rewritten). Word select itself stays: a long-press
 lookup runs in it, with its highlight only under the card. Tests: `LongPressMenuTest`. Device check owed: a
 reader that had Long-press Menu = Dictionary shows Reader Menu after the update and a Home-pad hold opens the
-menu; the menu (list and More panel) has no Look Up; the web settings page shows the same four choices.
+menu; the menu (list and More panel) has no Look Up; the web settings page shows the same four choices. (The
+web API reports and takes a choice's position, as the device screen does: Reader Menu is 3 there and 4 in the
+file.)
+
+### 5h. As built (P10): tap another word to change the card
+
+claritise (2026-09-25): "changing words when the dictionary is open should be tap instead of hold". In card
+view, a **tap** on the page outside the card now closes it with the tap's point (`CardController::tap(hit,
+ms, at)`, `Outcome::lookUpAt`), as a long-press always did: word select looks up the word there
+(`card::closeStep` → `LookUp`), or, with no word there, goes back to the reader (every word select is
+touch-opened now, §5g). The long-press still works. Where the page under the card isn't word select's (the
+bench, a landscape book) the point is dropped and a tap just closes (`card::pagePressLooksUp`, applied at the
+close for both). The detail view covers the page, so a tap there does nothing, as before. Tapping the word
+already on the card looks it up again. Tests: `CardController.ATapOnThePageClosesToLookUpTheWordThere`,
+`CardLongPress.ATapOnThePageDoesWhatALongPressDoes`. Device check owed: with a card open, tap another word
+(its card), tap blank page (closes to the reader), tap in the detail view's strip (nothing), a landscape
+book (a tap closes).
 
 ### 5c. As built (P7)
 
@@ -387,7 +403,8 @@ menu; the menu (list and More panel) has no Look Up; the web settings page shows
   (the detail view goes back to the card, not to the previous tab) and a swipe that starts off the card
   (nothing), and a long-press on the page (the bench drops it, and its lift must not tap the page). A
   long-press, like Home, is never dropped from a full input queue. Word select's side is pure too (`card/WordSelectFlow.h`): `closeStep` (where a close goes),
-  `AfterPopup` / `afterNotice` (what follows a notice); and `card::longPressReplacesCard`.
+  `AfterPopup` / `afterNotice` (what follows a notice); and `card::longPressReplacesCard` (P10:
+  `card::pagePressLooksUp`, for taps too).
 - **Each language's own offline dictionary** (`settings.md` §1b): `lookup::chooseStarDict`. If the
   language's folder can't be opened (removed from the card while its row is hidden, say), CrossPoint's
   own dictionary answers instead. One settings copy serves the whole lookup (gate, sentence, card). The tap is
