@@ -93,7 +93,8 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
   the words. You're back on the page you were reading.
 
 Languages: a book's `<dc:language>` decides; a book that doesn't say is read by its text (kana means
-Japanese; Han-only text uses **Language when a book doesn't say**, or the only language you have on).
+Japanese; Han-only text uses **Language when a book doesn't say**, or, with Lexirise lookups on, the only
+language you have on).
 If a book gets it wrong (a Chinese book looked up as Japanese), open the reader menu and set **Lookup
 language** to that book's language; it's remembered for that book (Auto goes back to the rule above).
 
@@ -105,9 +106,11 @@ language** to that book's language; it's remembered for that book (Auto goes bac
 | | API key, Account, Test connection | §3 |
 | Japanese | Lookups · Readings (kana / romaji) · Offline dictionary | |
 | Chinese (Simplified) | Lookups · Offline dictionary | |
-| General | Language when a book doesn't say (with both languages on) · Tags · Keep WiFi on after a lookup | |
+| General | Language when a book doesn't say (unless Lexirise is on with just one language on) · Tags · Keep WiFi on after a lookup | |
 
-A language's rows hide while its Lookups are off, and come back with their values. **Tags** are added to
+A language's rows hide while its Lookups are off (its Offline dictionary stays: it answers that language's
+taps then), and come back with their values. With Lexirise lookups off, the screen keeps the Account group,
+both Offline dictionaries and Language when a book doesn't say. **Tags** are added to
 every word you save (default `xteink`); Lexirise can't delete tags, so choose them with care. The server
 address is on the web page only (under Advanced), for a local proxy; changing it asks for the key again.
 

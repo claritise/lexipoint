@@ -62,9 +62,12 @@ WiFi), so it always shows: with Lexirise off the screen is the Account group, th
 "Language when a book doesn't say" (below); a language that's off collapses to its Lookups toggle and its
 Offline dictionary. The web page shows the same rows by the same rules (`LexirisePage.html`'s `WHEN`
 table, pinned by `scripts/lexipoint/test_lexirise_page.py`).
-**"Language when a book doesn't say"** only shows while **two or more** languages are on, or while
-Lexirise is off: then only the offline dictionaries answer, the per-language switches don't apply, and
-this choice picks the dictionary for Han-only text (P13 review). With one
+**"Language when a book doesn't say"** shows whenever Han-only text uses it: always, except while Lexirise is
+on with just one language on (`Settings::defaultLanguageApplies()`). With Lexirise off only the offline
+dictionaries answer and the per-language switches don't apply; with Lexirise on and no language on, the
+offline dictionaries answer too; either way this choice picks the dictionary for Han-only text (P13 review).
+The web page's language names stay while Lexirise is off (only their toggles hide), so each Offline
+dictionary keeps its heading, as on the device. With one
 language on, that language is the fallback, and there's nothing to choose (as built, P7:
 `Settings::fallbackLanguage()`, which `BookLanguage` uses for Han-only text; code that spans languages loops
 over `kLanguages`, so a new language is added there and in `Settings::language()`; the stored choice is kept for
@@ -105,7 +108,7 @@ same URL shown for uploading books).
  Chinese (Simplified)        [on]
    Offline dictionary        cedict ▾
  General
-   Language when a book doesn't say   Japanese ▾   (only while 2+ languages are on, or Lexirise is off)
+   Language when a book doesn't say   Japanese ▾   (hidden while Lexirise is on with one language on)
    Tags                      [ xteink ]
    Keep WiFi on after a lookup        5 min ▾
  Advanced ▸  Server  [ https://api.lexirise.app ]
@@ -270,4 +273,7 @@ extra to keep pixel-perfect here beyond "uses the stock components".
   all three outcomes, turn Chinese off and on again (its rows hide and come back with values kept), and the reading setting and card tap staying in sync across a reboot.
 - On device (P13): turn Japanese off: Readings hides, its Offline dictionary stays; turn Lexirise off: the
   screen is the Account group, both dictionaries and "Language when a book doesn't say" (7 rows,
-  `lxctl settings-smoke`'s minimum), and the web page shows the same rows.
+  `lxctl settings-smoke`'s minimum), and the web page shows the same rows. Toggle Lexirise from the web
+  page with the device screen open and the cursor on "Language when a book doesn't say": the cursor stays
+  on it. Upgrade note: Lexirise off with only Chinese's switch on and the default at Japanese now reads
+  Han-only text of an untagged book with the Japanese dictionary (the row shows, so it's visible).
