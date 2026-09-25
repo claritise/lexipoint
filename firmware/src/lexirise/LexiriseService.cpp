@@ -85,6 +85,11 @@ api::ApiResponse LexiriseService::analyze(const Language language, const std::st
   return send(api::analyzeRequest(language, text));
 }
 
+api::ApiResponse LexiriseService::analyzeWords(const Language language, const std::string_view text) {
+  LOG_INF(kLogTag, "analyze: the word-level split (fast), after a refined answer");  // tells the two calls apart
+  return send(api::analyzeWordsRequest(language, text));
+}
+
 api::ApiResponse LexiriseService::lookup(const Language language, const std::string_view lemma) {
   return send(api::lookupRequest(language, lemma));
 }

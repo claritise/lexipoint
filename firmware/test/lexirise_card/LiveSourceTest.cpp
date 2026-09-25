@@ -1423,3 +1423,124 @@ TEST(LiveSteps, TheSameEntryIdInTheOtherLanguageIsAnotherWord) {
   ASSERT_TRUE(c.step(+1, 6000));
   EXPECT_EQ(c.state().level, Level::None);  // no level carried over from the Japanese word
 }
+
+// v0.2 V1: a sentence Lexirise returns already refined (its words cut into morphemes) is shown word by word,
+// from its word-level answer (lookup/WholeWords.h).
+namespace {
+
+struct Refined {
+  Rig rig;
+  explicit Refined(std::vector<std::string> tokens) {
+    TextLine line;
+    line.tokens = std::move(tokens);
+    line.startsParagraph = true;
+    rig.model.lines = {line};
+    ReaderLine drawn{100, {}};
+    int x = 20;
+    for (const std::string& t : rig.model.lines[0].tokens) {
+      drawn.tokens.push_back({t, x, 26});
+      x += 26;
+    }
+    rig.page.lines = {drawn};
+  }
+};
+
+// 小さな声。 refined: 小さ · な · 声, and word-level: 小さな (ranked) · 声.
+constexpr const char* kSmallRefined =
+    R"({"occurrences":[{"word":"小さ","isWordLike":true,"charStart":0,"charEnd":2,"entryId":7,"lemmaEntryId":7},)"
+    R"({"word":"な","isWordLike":true,"charStart":2,"charEnd":3,"entryId":8},)"
+    R"({"word":"声","isWordLike":true,"transliteration":"koe","charStart":3,"charEnd":4,"entryId":9},)"
+    R"({"word":"。","isWordLike":false,"charStart":4,"charEnd":5}],"morphoPending":false})";
+constexpr const char* kSmallWords =
+    R"({"occurrences":[{"word":"小さな","isWordLike":true,"transliteration":"chiisana","charStart":0,"charEnd":3,)"
+    R"("entryId":10},{"word":"声","isWordLike":true,"transliteration":"koe","charStart":3,"charEnd":4,"entryId":9},)"
+    R"({"word":"。","isWordLike":false,"charStart":4,"charEnd":5}],)"
+    R"("entryMetaById":{"10":{"transliteration":"chiisana","rank":2398}},"morphoPending":false})";
+
+}  // namespace
+
+TEST(LiveWholeWords, ARefinedSentenceIsShownWordByWord) {
+  Refined r({"小さな", "声", "。"});
+  r.rig.api.analyzeReplies = {apiOk(kSmallRefined)};
+  r.rig.api.wordsReplies = {apiOk(kSmallWords)};
+  r.rig.api.lookupReplies = {apiOk(R"({"word":"小さな","translations":[{"translation":"small"}]})")};
+  LiveSource source(r.rig.api, r.rig.tap(0, 0), r.rig.page);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);  // A
+  c.sourceChanged(0);
+  EXPECT_EQ(r.rig.api.analyzedWords, std::vector<std::string>{"小さな声。"});
+  EXPECT_EQ(c.currentWord().word, "小さな");  // not 小さ
+  EXPECT_EQ(source.scene(c.word(), true, kMetrics, c.highlightCodepoints()).page.commands.at(1).text, "小さな");
+  source.advance();  // B
+  EXPECT_EQ(r.rig.api.looked, std::vector<std::string>{"小さな"});
+  ASSERT_TRUE(c.step(+1, 0));
+  EXPECT_EQ(c.currentWord().word, "声");  // one step, not two
+  EXPECT_FALSE(c.step(+1, 0));
+}
+
+TEST(LiveWholeWords, TheNextSentenceAsksForItsOwnWords) {
+  TwoSentences rig;
+  const std::string firstPass = std::string(kAnalyze).insert(std::string(kAnalyze).size() - 1, R"(,"morphoPending":true)");
+  rig.api.analyzeReplies = {apiOk(firstPass),
+                            apiOk(R"({"occurrences":[{"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,)"
+                                  R"("entryId":11},{"word":"が","isWordLike":true,"charStart":1,"charEnd":2,"entryId":12},)"
+                                  R"({"word":"降","isWordLike":true,"charStart":2,"charEnd":3,"entryId":14},)"
+                                  R"({"word":"る","isWordLike":true,"charStart":3,"charEnd":4,"entryId":15},)"
+                                  R"({"word":"。","isWordLike":false,"charStart":4,"charEnd":5}],"morphoPending":false})")};
+  rig.api.wordsReplies = {apiOk(R"({"occurrences":[)"
+                                R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+                                R"({"word":"が","isWordLike":true,"charStart":1,"charEnd":2,"entryId":12},)"
+                                R"({"word":"降る","isWordLike":true,"charStart":2,"charEnd":4,"entryId":13},)"
+                                R"({"word":"。","isWordLike":false,"charStart":4,"charEnd":5}],)"
+                                R"("entryMetaById":{"13":{"rank":900}}})")};
+  rig.api.lookupReplies = {apiOk(kLookupYomu), apiOk(R"({"word":"雨"})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  EXPECT_TRUE(rig.api.analyzedWords.empty());  // the tapped sentence was a first-pass answer
+  EXPECT_FALSE(c.step(+1, 1000));
+  source.advance();
+  c.sourceChanged(1200);
+  EXPECT_EQ(rig.api.analyzedWords, std::vector<std::string>{"雨が降る。"});
+  ASSERT_TRUE(c.step(+1, 2000));
+  ASSERT_TRUE(c.step(+1, 2100));
+  EXPECT_EQ(c.currentWord().word, "降る");  // whole
+  EXPECT_FALSE(c.step(+1, 2200));
+}
+
+TEST(LiveWholeWords, AWholeWordTwiceInASentenceIsOneEntry) {
+  // 一边吃饭一边。 refined as 一 · 边 · 吃饭 · 一 · 边: both 一边 are entry 20 again, so a level set on the first
+  // is the second's too (the same-word rule, by the whole word's own entry: it has no lemma).
+  Refined r({"一边", "吃饭", "一边", "。"});
+  r.rig.api.analyzeReplies = {apiOk(
+      R"({"occurrences":[{"word":"一","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11,"lemmaEntryId":11},)"
+      R"({"word":"边","isWordLike":true,"charStart":1,"charEnd":2,"entryId":12},)"
+      R"({"word":"吃饭","isWordLike":true,"charStart":2,"charEnd":4,"entryId":13},)"
+      R"({"word":"一","isWordLike":true,"charStart":4,"charEnd":5,"entryId":11,"lemmaEntryId":11},)"
+      R"({"word":"边","isWordLike":true,"charStart":5,"charEnd":6,"entryId":12},)"
+      R"({"word":"。","isWordLike":false,"charStart":6,"charEnd":7}],"morphoPending":false})")};
+  r.rig.api.wordsReplies = {apiOk(
+      R"({"occurrences":[{"word":"一边","isWordLike":true,"charStart":0,"charEnd":2,"entryId":20},)"
+      R"({"word":"吃饭","isWordLike":true,"charStart":2,"charEnd":4,"entryId":13},)"
+      R"({"word":"一边","isWordLike":true,"charStart":4,"charEnd":6,"entryId":20},)"
+      R"({"word":"。","isWordLike":false,"charStart":6,"charEnd":7}],"entryMetaById":{"20":{"rank":1092}}})")};
+  r.rig.api.lookupReplies = {apiOk(R"({"word":"一边","translations":[{"translation":"while"}]})")};
+  r.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":5}})"), apiOk("{}")};
+  LiveSource source(r.rig.api, r.rig.tap(0, 0), r.rig.page);
+  CardController c(source, ReadingMode::Kana);
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session(c, targets, input, &source);
+  c.open(0);
+  session.apply(session.fetch(1), 1);
+  session.apply(session.fetch(2), 2);
+  ASSERT_EQ(c.currentWord().word, "一边");
+  const Hit fresh{Target::Level, 2, {}};
+  for (const LevelChange& ch : c.tap(&fresh, 3).changes) source.queue(ch);
+  while (session.hasWork(10000)) session.apply(session.fetch(10000), 10000);
+  c.step(+1, 11000);
+  c.step(+1, 12000);  // the second 一边
+  EXPECT_EQ(c.currentWord().word, "一边");
+  EXPECT_EQ(c.state().level, Level::Fresh);
+}

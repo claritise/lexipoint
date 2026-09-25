@@ -44,7 +44,8 @@ inline bool asksLexirise(const text::TapContext& tap, const bool usable) {
   return usable && tap.sentence && tap.language.language;
 }
 
-// ① analyze the sentence and ② match the tap. On Card, `out` holds the sentence and `word` the tapped
+// ① analyze the sentence (and, when the answer came back already refined, its word-level split: wholeWords)
+// and ② match the tap. On Card, `out` holds the sentence and `word` the tapped
 // word's index in out.words; NotFound: no word in it; Unavailable: no answer (report.error says why).
 // Needs a sentence and a language to send (TapContext): without them Lexirise isn't asked at all.
 LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, AnalyzedSentence& out, size_t& word);

@@ -28,15 +28,21 @@ inline api::ApiResponse apiFailure(const api::ApiError error) {
 class FakeApi final : public api::LexiriseApi {
  public:
   std::deque<api::ApiResponse> analyzeReplies;
+  std::deque<api::ApiResponse> wordsReplies;  // analyzeWords: none scripted = offline (the refined answer stands)
   std::deque<api::ApiResponse> lookupReplies;
   std::deque<api::ApiResponse> writeReplies;
   std::vector<std::string> analyzed;  // the sentences
+  std::vector<std::string> analyzedWords;
   std::vector<std::string> looked;    // the headwords
   std::vector<net::Request> written;
 
   api::ApiResponse analyze(Language, const std::string_view sentence) override {
     analyzed.emplace_back(sentence);
     return next(analyzeReplies);
+  }
+  api::ApiResponse analyzeWords(Language, const std::string_view sentence) override {
+    analyzedWords.emplace_back(sentence);
+    return next(wordsReplies);
   }
   api::ApiResponse lookup(Language, const std::string_view lemma) override {
     looked.emplace_back(lemma);

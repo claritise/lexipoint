@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "Match.h"
+#include "WholeWords.h"
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/text/Utf8Prefix.h"
 
@@ -27,6 +28,15 @@ LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, Anal
     report.error = api::ApiError::Malformed;
     report.bodyHead = bodyHead(analyzed.body);
     return report;
+  }
+  // An answer that came back already refined has cut the sentence's words into morphemes: its word-level
+  // split puts them back together (v0.2 V1). If that call fails, the refined answer stands.
+  if (!sentence.analysis.morphoPending) {
+    const api::ApiResponse words = api.analyzeWords(language, tap.sentence->text);
+    api::AnalyzeResult wordLevel;
+    if (words.ok() && api::parseAnalyze(words.body, wordLevel) == api::ParseStatus::Ok) {
+      sentence.analysis = wholeWords(sentence.analysis, std::move(wordLevel));
+    }
   }
 
   // ② the occurrence under the tap

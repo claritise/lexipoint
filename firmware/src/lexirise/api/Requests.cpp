@@ -14,14 +14,26 @@ constexpr const char* kVocabularyPath = "/v1/vocabulary";
 
 net::Request meRequest() { return {net::Method::Get, "/v1/me", ""}; }
 
-net::Request analyzeRequest(const Language language, const std::string_view text) {
-  net::Request request{net::Method::Post, "/v1/analyze/text",
-                       net::JsonObject()
-                           .add("text", utf8Prefix(text, config::kMaxAnalyzeTextBytes))
-                           .add("language", languageCode(language))
-                           .str()};
+namespace {
+
+// analyze/text, the full analysis or (`fast`) the word-level one.
+net::Request analyze(const Language language, const std::string_view text, const bool fast) {
+  net::JsonObject body;
+  body.add("text", utf8Prefix(text, config::kMaxAnalyzeTextBytes)).add("language", languageCode(language));
+  if (fast) body.add("fast", true);
+  net::Request request{net::Method::Post, "/v1/analyze/text", body.str()};
   request.idempotent = true;  // read-only analysis: a repeat is harmless
   return request;
+}
+
+}  // namespace
+
+net::Request analyzeRequest(const Language language, const std::string_view text) {
+  return analyze(language, text, false);
+}
+
+net::Request analyzeWordsRequest(const Language language, const std::string_view text) {
+  return analyze(language, text, true);
 }
 
 net::Request lookupRequest(const Language language, const std::string_view lemma) {

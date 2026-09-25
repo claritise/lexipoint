@@ -5,6 +5,7 @@
 
 using lexipoint::Language;
 using lexipoint::api::analyzeRequest;
+using lexipoint::api::analyzeWordsRequest;
 using lexipoint::api::meRequest;
 using lexipoint::net::Method;
 
@@ -22,6 +23,19 @@ TEST(Requests, AnalyzeBodyIsEscapedJson) {
   EXPECT_EQ(r.body, R"({"text":"他说：\"走\"","language":"zh"})");
   EXPECT_TRUE(r.retryable());
   EXPECT_NE(analyzeRequest(Language::Japanese, "x").body.find(R"("language":"ja")"), std::string::npos);
+}
+
+TEST(Requests, TheWordLevelAnalyzeIsTheSameWithFast) {
+  // v0.2 V1: the same text and language, plus fast: true (the word-level split, no lemmas).
+  const auto full = analyzeRequest(Language::Chinese, "这首歌深深地打动了我。");
+  const auto words = analyzeWordsRequest(Language::Chinese, "这首歌深深地打动了我。");
+  EXPECT_EQ(words.method, Method::Post);
+  EXPECT_EQ(words.path, full.path);
+  EXPECT_TRUE(words.retryable());
+  EXPECT_NE(words.body.find(R"("fast":true)"), std::string::npos);
+  EXPECT_EQ(full.body.find("fast"), std::string::npos);  // the full analysis never sends it: it needs lemmas
+  EXPECT_NE(words.body.find(R"("language":"zh")"), std::string::npos);
+  EXPECT_NE(words.body.find("深深"), std::string::npos);
 }
 
 TEST(Requests, AnalyzeTextIsCutAtACharacterBoundary) {

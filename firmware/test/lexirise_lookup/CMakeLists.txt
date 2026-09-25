@@ -5,7 +5,9 @@ add_executable(LexiriseLookupTest
   StarDictCandidatesTest.cpp
   LongPressTest.cpp
   StarDictChoiceTest.cpp
+  WholeWordsTest.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LexiriseLookup.cpp
+  ${REPO_ROOT}/src/lexirise/lookup/WholeWords.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LookupCard.cpp
   ${REPO_ROOT}/src/lexirise/api/Responses.cpp
   ${REPO_ROOT}/src/lexirise/net/JsonReader.cpp

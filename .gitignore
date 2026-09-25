@@ -38,3 +38,7 @@ api-cache/
 
 # Serial logs from the dev harness
 device.log
+
+# Python caches
+__pycache__/
+*.pyc

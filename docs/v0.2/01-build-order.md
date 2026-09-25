@@ -47,7 +47,7 @@ built (2026-09-26):
 
 | Phase | What | Candidates | Blocked on |
 |---|---|---|---|
-| V1 | The refined word: the second `analyze/text` call | C19 (pulled forward) | — |
+| V1 | Whole words, not refined fragments (re-planned after measuring) | C19 (pulled forward) | — |
 | V2 | Book tags on every save | C2 | — |
 | V3 | A deck per book | C4 | V2 |
 | V4 | Met before, and the conjugation | C14, C16 | — |
@@ -62,22 +62,34 @@ built (2026-09-26):
 | — | A release (milestone) | C24 | claritise |
 | v0.3 | Reviews on the device | C11 | — |
 
-## V1: The refined word (the second `analyze/text` call)
+## V1: Whole words, not refined fragments
 
-**Goal:** the card is built on Lexirise's refined split, not the first "fast tokens only" answer.
-**Read:** `00-overview.md` C19 (the pulled-forward part) and Open #4, #5, #8; `../v0.1/lexirise-client.md` §2
-(`morphoPending` is parsed and ignored, `api/Responses.cpp`); `../v0.1/lookup-flow.md` (the phases A / B / B′);
-`../reference/lexirise-api-notes.md` (tokenizer notes, the とびら sentence).
-**Measure first:** from the Mac, call `analyze/text` on a few sentences (the とびら sentence among them) and
-repeat after increasing delays: how soon the second answer stops saying `morphoPending: true`, and what changes
-(the split, entries, `grammar[]`'s shape for V11). Record it in the reference.
-**Build:** after an answer with `morphoPending: true`, call again (the measured delay; a bounded retry), then:
-if the tapped word's span or entry changed, replace the card's word (one refresh) and look up the new one; if
-not, nothing visible changes. Never block the card on it; offline or out of time, the first answer stands. The
-retry policy and its limits in `LexiriseConfig.h`.
-**Gate:** the uniform gate; host tests of the policy (unchanged / changed span / changed entry / still pending
-at the limit / offline); the measurement in the reference; on the device, the とびら sentence and one sentence
-whose split doesn't change. Per Open #8, とびら is reported to Lexirise only if it's still split after v0.2.
+**Re-planned 2026-09-26 after measuring** (`../reference/lexirise-api-notes.md`, "The second `analyze/text`
+pass, measured"; claritise chose "rejoin over-split words"). Lexirise's refined pass takes 35–80 s, is cached,
+and cuts words into grammatical morphemes (深深 → 深 · 深, 一边 → 一 · 边, 小さな → 小さ · な, 长得 → 长 · 得).
+Any sentence it has refined before reaches the card that way on the first call, which is why 深深 showed as 深.
+Swapping to the refined word would make cards worse, so the card never does; the refined pass is used only for
+grammar (V11).
+**Goal:** the card shows the whole word the reader tapped, even when Lexirise's answer came back refined.
+**Read:** the measurement above; `../v0.1/lookup-flow.md` (①, the phases); `lookup/LexiriseLookup.cpp`,
+`api/Responses.*`.
+**How:** `analyze/text` with `fast: true` still returns the word-level split for a refined sentence, with each
+word's entry, reading, part of speech, rank and saved state (not its lemma). So when ① answers with
+`morphoPending: false` (already refined), `analyzeTap` sends one more, `fast` ① for the same text, and
+`lookup::wholeWords` merges the two for the **whole sentence** (so stepping goes word by word, and the strip
+shows whole words): for each word-level token, the refined token with exactly its span (it keeps the lemma);
+else the word-level token if Lexirise ranks it (a dictionary word the refined pass cut up: 深深, 一边, 小さな);
+else the refined pieces that tile it (the refined pass split a bad token: 一日中雨 → 一日中 · 雨, which has no
+rank); else the word-level token. States and facts come from both, the word-level answer's first (the refined
+one can be cached). A whole word has no lemma: the card uses its own entry, as v0.1 does when a lemma is
+missing. If the extra call fails (offline, 429, unreadable), ①'s answer stands.
+**Cost:** one more call (~1 s before phase A) for each analysis that comes back refined. Lexirise caches
+refined answers for everyone, so over time that's most sentences: measure the tap-to-card time on the device,
+and watch the rate limit when stepping through many sentences (each is two analyze calls then).
+**Gate:** the uniform gate; host tests (a refined answer with a longer fast word → swapped; a refined answer
+where the fast word is the same → not; a first-pass answer → no second call; the fast call failing → ①'s token;
+a tap on a token the fast answer splits differently at both ends); on the device, 这首歌深深地打动了我。 shows 深深,
+and 他一边吃饭一边看电视。 shows 一边.
 
 ## V2: Book tags on every save
 
@@ -160,7 +172,7 @@ decision on Open #16 (the save uses the contextual reading), and Lexirise's answ
 
 ## V11: Grammar on the card
 
-C19's grammar part, once V1 has read a live `grammar[]`. **Needs:** claritise's placement sign-off.
+C19's grammar part, once V1 has read a live `grammar[]` (its shape is in `../reference/lexirise-api-notes.md`). Map grammar to words by its `anchors` (character spans), not `indices`: V1's merge renumbers the occurrences. **Needs:** claritise's placement sign-off.
 
 ## V12: Difficulty preview
 
@@ -170,7 +182,7 @@ C5, on V7's page analysis and mirror.
 
 | Phase | Status | Branch / commit | Tests | Notes |
 |---|---|---|---|---|
-| V1 | not started | — | — | — |
+| V1 | **done (host); device check owed** (claritise, 2026-09-26: "Rejoin over-split words") | merged into `main` (wip on `lexi/V1-wip-archive`) | 893 host (+17: `WholeWords` ×9, `WholeWordsLookup` ×4, `LiveWholeWords` ×3, a request), 115 Python | Measured first (`tools/lexirise/probe_morpho.py`, `probe_refine.py`): the refined pass over-splits and is cached, so the phase's premise (take the refined word) was dropped; `fast: true` recovers the whole word. Reported to Lexirise by claritise (draft in chat, 2026-09-26). **Built:** `api::analyzeWordsRequest` (`fast: true`) and `LexiriseApi::analyzeWords`; `lookup::wholeWords` (a pure merge: each word-level token, or the refined token with the same span for its lemma; facts and states from both); `analyzeTap` asks for it only when ① came back with `morphoPending: false`, and keeps ①'s answer if it fails. The whole sentence is merged, so stepping between words goes word by word. **R1** (no must; 6 should): the build order said only the tapped word was swapped (the code merges the sentence) → rewritten; merging the whole sentence brought back 一日中雨, the one bad token the refined pass fixes → a whole word is taken only when Lexirise ranks it (the bad merge has no rank; measured), else the refined pieces; the notes still said "use the default everywhere" and didn't record that `fast` carries saved state → recorded (checked live); the cached refined state overwrote the fresher word-level one → the word-level answer's wins; missing tests (a crossing split, 一日中雨, a kept lemma, the card: a refined tapped sentence, the next sentence's own second call, the same whole word twice) → added; the cost (most sentences, over time) → stated, to measure on the device. Nits: stale comments, a shared request builder. **R2 clean** (nits taken: the merge's branches flattened; the word-level answer alone decides whether its own words are saved, so a word unsaved since the refined answer was cached isn't shown saved; the extra call is logged apart; a note for V11 to map grammar by anchors). **R3 clean** (nits taken: a saved lemma's state pinned through the merge; the ranked-inflected-form risk noted in the reference). **Host gate passed; owed on the device:** 这首歌深深地打动了我。 shows 深深 and 他一边吃饭一边看电视。 shows 一边, stepping word by word; tap-to-card time on a refined sentence |
 | V2 | not started | — | — | — |
 | V3 | not started | — | — | — |
 | V4 | not started | — | — | — |

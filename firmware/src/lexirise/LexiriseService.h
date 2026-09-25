@@ -49,9 +49,11 @@ class LexiriseService final : public api::LexiriseApi {
   // The block the reader hasn't been told about yet (then it has): word select shows its notice.
   api::AccessPolicy::Block takeUnannouncedBlock() { return access_.takeUnannounced(clock_()); }
 
-  // POST /v1/analyze/text and /v1/dictionary/lookup (raw responses; api::parseAnalyze / parseLookup
-  // read them). Both share the keep-alive session, so a lookup's two calls cost one handshake.
+  // POST /v1/analyze/text (and its word-level form) and /v1/dictionary/lookup (raw responses;
+  // api::parseAnalyze / parseLookup read them). All share the keep-alive session, so a lookup's calls cost one
+  // handshake.
   api::ApiResponse analyze(Language language, std::string_view text) override;
+  api::ApiResponse analyzeWords(Language language, std::string_view text) override;
   api::ApiResponse lookup(Language language, std::string_view lemma) override;
   // A /v1/vocabulary write. One that isn't safe to resend (the save's POST, an upsert) starts on a fresh
   // session (lookup-flow.md §7): a reused keep-alive session that turned stale would fail it unretried.

@@ -11,6 +11,7 @@
 using lexipoint::Language;
 using lexipoint::api::ApiError;
 using lexipoint::api::ApiResponse;
+using lexipoint::lookup::AnalyzedSentence;
 using lexipoint::lookup::LookupCard;
 using lexipoint::lookup::LookupOutcome;
 using lexipoint::lookup::lookupWithLexirise;
@@ -22,13 +23,23 @@ namespace {
 class FakeApi final : public lexipoint::api::LexiriseApi {
  public:
   ApiResponse analyzeReply;
+  ApiResponse wordsReply = [] {  // analyzeWords: offline unless a test scripts it (the refined answer stands)
+    ApiResponse r;
+    r.error = lexipoint::api::ApiError::Network;
+    return r;
+  }();
   ApiResponse lookupReply;
   std::vector<std::string> analyzed;
+  std::vector<std::string> analyzedWords;
   std::vector<std::string> looked;
 
   ApiResponse analyze(Language, std::string_view sentence) override {
     analyzed.emplace_back(sentence);
     return analyzeReply;
+  }
+  ApiResponse analyzeWords(Language, std::string_view sentence) override {
+    analyzedWords.emplace_back(sentence);
+    return wordsReply;
   }
   ApiResponse lookup(Language, std::string_view lemma) override {
     looked.emplace_back(lemma);
@@ -232,6 +243,98 @@ TEST(LexiriseLookup, AnEmptyLemmaLooksUpTheSurface) {
   ASSERT_EQ(lookupWithLexirise(api, tap(0), card).outcome, LookupOutcome::Card);
   EXPECT_EQ(api.looked, std::vector<std::string>{"猫"});
   EXPECT_EQ(card.headword(), "猫");
+}
+
+namespace {
+
+// v0.2 V1: 这首歌深深地打动了我。 as Lexirise returns it refined (深深 cut into 深 · 深) and word-level (fast).
+TapContext zhTap(const uint32_t offset) {
+  TapContext t = tap(offset, Language::Chinese);
+  t.sentence->text = "这首歌深深地打动了我。";
+  return t;
+}
+
+std::string zhAnalyze(const bool pending) {
+  return std::string(R"({"occurrences":[{"word":"这","isWordLike":true,"charStart":0,"charEnd":1,"entryId":1},)"
+                     R"({"word":"首","isWordLike":true,"charStart":1,"charEnd":2,"entryId":2},)"
+                     R"({"word":"歌","isWordLike":true,"charStart":2,"charEnd":3,"entryId":3},)"
+                     R"({"word":"深","isWordLike":true,"charStart":3,"charEnd":4,"entryId":58,"lemmaEntryId":58},)"
+                     R"({"word":"深","isWordLike":true,"charStart":4,"charEnd":5,"entryId":58,"lemmaEntryId":58},)"
+                     R"({"word":"地","isWordLike":true,"charStart":5,"charEnd":6,"entryId":5},)"
+                     R"({"word":"。","isWordLike":false,"charStart":10,"charEnd":11}],)"
+                     R"("entryMetaById":{"58":{"transliteration":"shēn","rank":512}},"stateByEntryId":{},)"
+                     R"("morphoPending":)") +
+         (pending ? "true}" : "false}");
+}
+
+constexpr const char* kZhWords =
+    R"({"occurrences":[{"word":"这","isWordLike":true,"charStart":0,"charEnd":1,"entryId":1},)"
+    R"({"word":"首","isWordLike":true,"charStart":1,"charEnd":2,"entryId":2},)"
+    R"({"word":"歌","isWordLike":true,"charStart":2,"charEnd":3,"entryId":3},)"
+    R"({"word":"深深","isWordLike":true,"transliteration":"shēnshēn","charStart":3,"charEnd":5,"entryId":146},)"
+    R"({"word":"地","isWordLike":true,"charStart":5,"charEnd":6,"entryId":5},)"
+    R"({"word":"。","isWordLike":false,"charStart":10,"charEnd":11}],)"
+    R"("entryMetaById":{"146":{"transliteration":"shēnshēn","partOfSpeech":["adverb"],"rank":4180}},)"
+    R"("stateByEntryId":{"146":{"saved_expression_id":7,"proficiency":2}},"morphoPending":false})";
+
+}  // namespace
+
+TEST(WholeWordsLookup, ARefinedAnswerGetsTheWholeWordBack) {
+  FakeApi api;
+  api.analyzeReply = body(zhAnalyze(false));
+  api.wordsReply = body(kZhWords);
+  AnalyzedSentence sentence;
+  size_t word = 0;
+  ASSERT_EQ(lexipoint::lookup::analyzeTap(api, zhTap(4), sentence, word).outcome, LookupOutcome::Card);
+  EXPECT_EQ(api.analyzedWords, std::vector<std::string>{"这首歌深深地打动了我。"});
+  const LookupCard card = lexipoint::lookup::cardFor(sentence, word);
+  EXPECT_EQ(card.surface, "深深");  // not 深
+  EXPECT_EQ(card.headword(), "深深");
+  EXPECT_EQ(card.entryId, 146u);
+  EXPECT_EQ(card.lemmaEntryId, 146u);
+  EXPECT_EQ(card.charStart, 3u);
+  EXPECT_EQ(card.charEnd, 5u);
+  EXPECT_EQ(card.reading, "shēnshēn");
+  EXPECT_EQ(card.partOfSpeech, "adverb");
+  EXPECT_EQ(card.rank, 4180u);
+  EXPECT_TRUE(card.saved);  // the whole word's own saved state
+  EXPECT_EQ(sentence.words.size(), 5u);  // stepping goes word by word: 这 首 歌 深深 地
+}
+
+TEST(WholeWordsLookup, AFirstPassAnswerAsksNothingMore) {
+  FakeApi api;
+  api.analyzeReply = body(zhAnalyze(true));  // morphoPending: the fast split already
+  api.wordsReply = body(kZhWords);
+  AnalyzedSentence sentence;
+  size_t word = 0;
+  ASSERT_EQ(lexipoint::lookup::analyzeTap(api, zhTap(4), sentence, word).outcome, LookupOutcome::Card);
+  EXPECT_TRUE(api.analyzedWords.empty());
+  EXPECT_EQ(lexipoint::lookup::cardFor(sentence, word).surface, "深");
+}
+
+TEST(WholeWordsLookup, WithoutTheWordLevelAnswerTheRefinedOneStands) {
+  for (const ApiResponse& reply : {failure(ApiError::Network), failure(ApiError::RateLimited), body("{not json")}) {
+    FakeApi api;
+    api.analyzeReply = body(zhAnalyze(false));
+    api.wordsReply = reply;
+    AnalyzedSentence sentence;
+    size_t word = 0;
+    ASSERT_EQ(lexipoint::lookup::analyzeTap(api, zhTap(3), sentence, word).outcome, LookupOutcome::Card);
+    EXPECT_EQ(api.analyzedWords.size(), 1u);
+    EXPECT_EQ(lexipoint::lookup::cardFor(sentence, word).surface, "深");
+  }
+}
+
+TEST(WholeWordsLookup, EitherPieceOfTheWordFindsIt) {
+  for (const uint32_t offset : {3u, 4u}) {
+    FakeApi api;
+    api.analyzeReply = body(zhAnalyze(false));
+    api.wordsReply = body(kZhWords);
+    AnalyzedSentence sentence;
+    size_t word = 0;
+    ASSERT_EQ(lexipoint::lookup::analyzeTap(api, zhTap(offset), sentence, word).outcome, LookupOutcome::Card);
+    EXPECT_EQ(lexipoint::lookup::cardFor(sentence, word).surface, "深深") << offset;
+  }
 }
 
 TEST(LookupCard, HeadwordIsTheLemmaElseTheSurface) {

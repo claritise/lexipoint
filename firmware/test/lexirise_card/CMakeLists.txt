@@ -13,6 +13,7 @@ add_executable(LexiriseCardTest
   ${REPO_ROOT}/src/lexirise/card/LiveSource.cpp
   ${REPO_ROOT}/src/lexirise/card/CardSession.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LexiriseLookup.cpp
+  ${REPO_ROOT}/src/lexirise/lookup/WholeWords.cpp
   ${REPO_ROOT}/src/lexirise/api/Responses.cpp
   ${REPO_ROOT}/src/lexirise/net/JsonReader.cpp
   ${REPO_ROOT}/src/lexirise/net/JsonWriter.cpp

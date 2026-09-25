@@ -161,12 +161,43 @@ this API. `dictionary/lookup` gives every sense in a fixed order. See v0.2 C10 f
   - Lemmas were right on inflected forms (めがけて → めがける, 落ちて来た → 落ちる, 早く → 早い).
   - Latency ~1–5 s per call for a manga page's text (a few hundred characters).
 
+## The second `analyze/text` pass, measured (2026-09-26, v0.2 V1)
+
+`tools/lexirise/probe_morpho.py` and `probe_refine.py` (dev key; raw responses in `research/v02-morpho/`):
+15 sentences (10 Japanese, 5 Chinese), each sent once, then polled until `morphoPending` was false.
+
+- **Timing:** refined 35–80 s after the first call (most by ~48 s at 15 s polling; one Chinese sentence was
+  still pending at 69 s in the first run). Far longer than a card is usually open. The first call starts it;
+  polling doesn't speed it up.
+- **Cached server-side:** text Lexirise has refined before comes back refined on the **first** call
+  (`morphoPending: false`, grammar filled). The とびら sentence did: so the device's cards already use the
+  refined split for any sentence seen before.
+- **What refining does to the split: it cuts into grammatical morphemes.** 6 of 11 splits changed:
+  一日中雨 → 一日中 · 雨 (better: the known bad token), but also 深深 → 深 · 深, 一边 → 一 · 边,
+  小さな → 小さ · な, 长得 → 长 · 得, 一気に → 一気 · に (worse for looking a word up: the dictionary word is the
+  whole one). とびら stays と · びら in the refined answer too. **So the refined split is not a better word
+  split,** and the v0.1 card showing 深 for 深深 (`../v0.1/device-checks.md`, the save/Undo leftover) is this cache.
+- **Grammar arrives with it,** well filled: ～ている, ので, ～てしまう, ても, と (conditional), 受身形, the
+  得 degree complement, 了, verb reduplication, 地… Each item: `slug`, `title`, `level` (e.g. JLPT N4),
+  `subtitle`, `indices` (occurrence indices) and `anchors` (`start`/`end` in characters, `token`).
+  ～ことにした still isn't detected (reported, Open #6). `grammarStates` was `{}` for this account.
+- **`fast: true` on an already-refined sentence still returns the word-level split** (tested 2026-09-26 on
+  深深, 一边, 小さな, 长得, 一気に: all whole), with each word's `entryId`, `entryMetaById` (reading, part of
+  speech, rank) and `stateByEntryId` (saved words' state), but no `lemmaEntryId`. ~1.0 s, like the default.
+  Real words the refined pass cut up all have a `rank`; the bad merge 一日中雨 has none (and an unusually large
+  entry id), so the rank tells them apart (v0.2 V1, `lookup::wholeWords`). **Watch:** some inflected forms carry
+  a rank of their own (言った, ついた); if the refined pass ever cut one, the whole word would come back without its
+  lemma (looked up and saved as 言った). Not seen in the samples: none cut an inflected word.
+- **For Lexirise (claritise's call when to report):** the refined pass over-splits words learners look up
+  (深深, 一边, 小さな, 长得) and the cached refined answer then replaces the good first split for everyone;
+  とびら is split in both passes. Examples above.
+
 ## Tested live, 2026-09-24 (second round)
 
 | Question | Answer |
 |---|---|
 | **Traditional Chinese (H8)** | Sent as `zh`, 到了最後…選擇 **is understood**: it maps to the Simplified entries (最後 → `最后` id 636, 選擇 → `选择` id 1504), and occurrences come back **in Simplified**. `zh-TW` / `zh-Hant` return 200 with near-empty bodies, and `zh_TW` returns 500. **Parked: Simplified first (claritise, 2026-09-24).** |
-| **`fast: true`** | ~1.0 s vs ~1.3 s for the default, same segmentation, but **no lemmas** (煩わしくて stays 煩わしくて, not 煩わしい). **Use the default everywhere.** Lookups need the lemma, and page marks need it to match inflected words to saved lemmas. Oddly, the default reports `morphoPending: true` even though its lemmas are present |
+| **`fast: true`** | ~1.0 s vs ~1.3 s for the default, same segmentation, but **no lemmas** (煩わしくて stays 煩わしくて, not 煩わしい). **The default is the lookup's call:** lookups need the lemma, and page marks need it to match inflected words to saved lemmas. **Since v0.2 V1, `fast` is asked as well when the default answer came back already refined:** it still returns the word-level split (below, "The second `analyze/text` pass, measured"). The default reports `morphoPending: true` on a first pass even though its lemmas are present |
 | **Maximum `text` length** | **No limit hit up to 20,000 characters** (HTTP 200, 5.8 s). The response is **~70 bytes per character** (20k chars → 1.4 MB), so a ~300-character page is ~20 KB. That's fine to stream into PSRAM |
 | **Latency** | Every call took **~1.0–1.3 s** from here, even tiny ones. A lookup is two calls, so expect ~2–3 s plus WiFi and TLS. Phase 0 of the card (instant feedback) matters |
 

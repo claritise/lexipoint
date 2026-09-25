@@ -142,7 +142,8 @@ void LexiriseCardActivity::logWord(const SmokeState& shown, const bool hadInput)
 }
 
 void LexiriseCardActivity::fetchAnswer() {
-  LiveSource::Fetched fetched = session_.fetch(millis());  // blocking: WiFi, TLS, one request
+  LiveSource::Fetched fetched = session_.fetch(millis());  // blocking: WiFi, TLS, one request (two for an analysis
+                                                           // that came back refined: lookup::wholeWords)
   CardSession::Answer answer;
   SmokeState shown;
   {
