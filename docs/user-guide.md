@@ -107,7 +107,8 @@ address is on the web page only (under Advanced), for a local proxy; changing it
 ## 7. Privacy and safety
 
 - **What's sent:** for each lookup, the sentence around the tapped word and its language, to Lexirise
-  (`api.lexirise.app`) over TLS, which the device verifies. Saving sends the word and the tags you set.
+  (`api.lexirise.app`) over TLS, which the device verifies. Saving sends the word, its meaning, your level, the tags you set, and the sentence (as the saved word's
+  note, so you see where you met it).
   Nothing else about your books or reading is sent.
 - **The key** is stored in `/.lexirise/config.ini` on the SD card **in plain text**, like CrossPoint's
   WiFi passwords. Anyone with the SD card has it: if you lose the card, revoke the key in your Lexirise
