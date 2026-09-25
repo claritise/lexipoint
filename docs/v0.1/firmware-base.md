@@ -95,7 +95,7 @@ src/lexirise/
   api/AccessPolicy.h                  401 off until a new key, 429 back-off (P6), pure
   text/Kana, Utf8Prefix, Utf8Units    romaji → kana; UTF-8 / UTF-16 helpers, pure
   card/                               the card (P4-P6): CardMetrics, CardModel, DisplayList, CardLayout, TextRuns,
-                                      ShapeGeometry, CardController, CardInput, ShownTargets, CardSession,
+                                      ShapeGeometry, CardController, CardInput, ShownTargets, CardSession, WordSelectFlow,
                                       CardSource (BenchSource, LiveSource), LiveWord, ReaderScene, CardFrame (pure);
                                       CardPainter, ReaderPageFor, CardStringsI18n, LexiriseCardActivity (device)
   util/Timing.h                       wrap-safe millis() comparisons

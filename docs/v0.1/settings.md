@@ -59,7 +59,9 @@ master **Lexirise lookups** toggle: when it's Off, everything below the Account 
 **"Language when a book doesn't say"** only shows while **two or more** languages are on. With one
 language on, that language is the fallback, and there's nothing to choose (as built, P7:
 `Settings::fallbackLanguage()`, which `BookLanguage` uses for Han-only text; the stored choice is kept for
-when both are on again).
+when both are on again). A consequence to know: with only Japanese on, Han-only sentences of an untagged
+Chinese book are read as Japanese (sent to Lexirise as Japanese, or to the Japanese offline dictionary);
+tag the book (or set its language on the card, later) to keep them Chinese.
 - **Device:** `LexiriseSettingsActivity::buildScreen()` simply skips those rows, and a toggle triggers
   a rebuild, as `KOReaderSettingsActivity` does. There's no upstream change.
 - **Web page:** it's our own page (`LexirisePage.html`), so it applies **the same rules** in its JS.
@@ -140,9 +142,11 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
 - **Test connection** runs the check there and then (the Account row shows `Checking...` first; a slow
   network blocks the screen for up to one call), then gives back any WiFi Lexipoint brought up: Settings
   isn't reading (`offline-and-errors.md` §5).
-- **A tap means the row that was drawn at it**: `listCount()` and taps read the rows of the last built
-  frame (`drawnRows_`, published by `buildScreen` on the render task under a mutex), so a second tap
-  while a toggle's rows collapse never lands on the row that moved up (`settings_screen::rowAt`).
+- **A tap means the row the user saw**: `listCount()` and taps read the rows of the last built frame
+  (`drawnRows_`, published by `buildScreen` on the render task under a mutex, `settings_screen::rowAt`),
+  and taps wait while an edit's frame is on its way (`settings_screen::TapGate`: the list lays out its new
+  rows before the panel refresh, so during it a tap would hit a row that moved). A tap then is dropped:
+  tap again once the screen has settled.
 - **Offline dictionary** (`lookup/StarDictChoice.h`): a tap on a Japanese/Chinese word (kana, Han, ー, 々)
   uses its language's own folder when one is chosen, else CrossPoint's Dictionary setting; any other word (an
   English word in a Japanese book) goes to CrossPoint's, as before. The language is what the tapped text is
