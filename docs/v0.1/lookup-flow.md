@@ -256,10 +256,16 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   its word (no detail view of nothing, P9 review) and `syncWord` moves it to the new sentence's first word
   when the analysis lands (a new step, so a touch on the old frame is dropped). Stepping back meanwhile
   cancels the move (the words still arrive, and the next forward step goes straight to them). If the
-  analysis finds no word (only punctuation), the sentence after is tried; no answer gives a toast
-  (`nextSentenceFailed`, or the key-rejected / rate-limited wording, `CardSource::extendFailure()`) and a later
-  press tries again; the page's end (or a sentence Lexirise can't be asked about) stops it quietly. The
+  analysis finds no word (only punctuation), the sentence after is tried, and a sentence with no language
+  (a line of dots or English in a book that doesn't say) is passed over without a call
+  (`LiveSource::nextAskable`); no answer gives a toast (`nextSentenceFailed`, or the key-rejected /
+  rate-limited wording: `CardSource::extendFailure()`, a `CallFailure` shared with the save toasts), unless a
+  save's Retry or Undo toast is up, and a later press tries again; the page's end stops it quietly. The
   tapped sentence failing still closes the card as before (P5).
+- The calls' order: the tapped sentence's analysis, then the word on screen's lookup (and a save's), then a
+  next sentence the card waits for, then ready writes.
+- `NextSentence` reads word select's own page model (the card never outlives it), with copies of the book
+  language and settings.
 - `buildSentenceAfter` after a sentence the cap cut (over `kMaxSentenceUnits`) starts right after it and
   runs up to the cap (`Builder::buildFrom`), never overlapping what was shown.
 - A word already on the card from an earlier sentence (the same entry) passes its level and saved state to
