@@ -471,6 +471,34 @@ class SettingsSmoke(unittest.TestCase):
         self.assertEqual(rows[:lxctl.SETTINGS_ROWS_MIN], ["Lookups", "ApiKey", "Account", "TestConnection"])
 
 
+class ReleaseVersioning(unittest.TestCase):
+    """firmware-base.md §6: the fork's releases are <upstream>-lexi.<n>, the X4 Pro only."""
+
+    def ini(self):
+        cp = configparser.ConfigParser(interpolation=None, strict=False, inline_comment_prefixes=(";",))
+        cp.read(os.path.join(REPO, "platformio.ini"))
+        return cp
+
+    def test_lexirise_envs_carry_the_lexi_version(self):
+        cp = self.ini()
+        self.assertTrue(cp["lexirise"]["release"].isdigit())
+        for env, suffix in (("x4pro", "-x4pro"), ("x4pro-gh_release", ""),
+                            ("x4pro-gh_release_rc", "-rc+${sysenv.CROSSPOINT_RC_HASH}")):
+            flags = cp[f"env:{env}"]["build_flags"]
+            self.assertIn('-DCROSSPOINT_VERSION=\\"${crosspoint.version}-lexi.${lexirise.release}' + suffix + '\\"',
+                          flags, env)
+
+    def test_release_workflow_builds_the_x4pro_only(self):
+        with open(os.path.join(REPO, ".github/workflows/release.yml"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertEqual(re.findall(r"^\s+device: (\S+)", text, re.M), ["x4pro"])
+        self.assertIn("python3 scripts/lexipoint/release_tag.py check", text)
+
+    def test_ota_reads_the_forks_releases(self):
+        with open(os.path.join(REPO, "src/lexirise/LexiriseConfig.h"), encoding="utf-8") as f:
+            self.assertIn("api.github.com/repos/claritise/crosspoint-reader/releases/latest", f.read())
+
+
 class X4ProEnvsBuildLexirise(unittest.TestCase):
     def test_every_x4pro_env_has_lexirise(self):
         with open(os.path.join(REPO, "platformio.ini")) as f:

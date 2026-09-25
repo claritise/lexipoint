@@ -17,9 +17,18 @@
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
+#if LEXIRISE
+#include "lexirise/LexiriseConfig.h"      // LEXIPOINT
+#include "lexirise/ota/ReleaseVersion.h"  // LEXIPOINT
+#endif
 
 namespace {
+#if LEXIRISE
+// LEXIPOINT: the fork's releases (firmware-base.md §6): upstream's would uninstall Lexipoint.
+constexpr const char* latestReleaseUrl = lexipoint::config::kReleasesLatestUrl;
+#else
 constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
+#endif
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
@@ -89,6 +98,10 @@ bool OtaUpdater::isUpdateNewer() const {
   if (!updateAvailable || latestVersion.empty() || latestVersion == CROSSPOINT_VERSION) {
     return false;
   }
+#if LEXIRISE
+  // LEXIPOINT: `<upstream>-lexi.<n>` versions: the fork's next release is newer, upstream's never is.
+  return lexipoint::ota::isNewerRelease(latestVersion, CROSSPOINT_VERSION);
+#else
 
   int currentMajor, currentMinor, currentPatch;
   int latestMajor, latestMinor, latestPatch;
@@ -126,6 +139,7 @@ bool OtaUpdater::isUpdateNewer() const {
   }
 
   return false;
+#endif
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }

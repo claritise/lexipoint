@@ -2,7 +2,7 @@ name: CI (build)
 
 on:
   push:
-    branches: [master]
+    branches: [master, lexipoint, 'lexi/**']  # LEXIPOINT: the fork's integration and phase branches
   pull_request:
 
 permissions:
@@ -92,6 +92,9 @@ jobs:
             asset: firmware-sticky.bin
           - env: x4pro
             asset: firmware-x4pro.bin
+          # LEXIPOINT: the build users get (no dev harness, release flags), so it never first breaks in release.yml.
+          - env: x4pro-gh_release
+            asset: firmware-x4pro-release.bin
           - env: x4c
             asset: firmware-x4c.bin
           - env: papermono
@@ -181,6 +184,27 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build/test --output-on-failure -j
 
+  # LEXIPOINT: the key-leak scan (01-build-order.md uniform gate 5) and the Lexipoint tooling's tests. The
+  # lexirise_* host suites (and the card goldens) run in unit-tests above; x4c is the LEXIRISE-off build.
+  lexipoint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive  # test_lxctl reads the FreeInkUI SDK's edge-gesture bands
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Key-leak scan
+        run: python3 scripts/lexipoint/keyscan.py
+
+      - name: Lexipoint script tests
+        working-directory: scripts/lexipoint
+        # Every test_*.py; test_gen_bench_fixtures skips here (it needs the docs repo's card reference).
+        run: python3 -m unittest discover -p 'test_*.py'
+
   # This job is used as the PR required actions check, allows for changes to other steps in the future without breaking
   # PR requirements.
   test-status:
@@ -190,6 +214,7 @@ jobs:
       - clang-format
       - cppcheck
       - unit-tests
+      - lexipoint
     if: always()
     runs-on: ubuntu-latest
     steps:

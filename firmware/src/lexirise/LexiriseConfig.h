@@ -45,6 +45,9 @@ constexpr uint32_t kRequestDeadlineMs = 15000;
 // (KOSync, fonts, OTA) pre-flight for. Keep-alive still covers a lookup's back-to-back calls.
 constexpr unsigned long kTlsIdleCloseMs = 30000;
 constexpr const char* kUserAgentProduct = "Lexipoint";
+// The OTA updater's release feed: the fork's own releases (firmware-base.md §6), never upstream's, whose
+// firmware would uninstall Lexipoint. Assets are named crosspoint-<tag>-x4pro.bin (.github/workflows/release.yml).
+constexpr const char* kReleasesLatestUrl = "https://api.github.com/repos/claritise/crosspoint-reader/releases/latest";
 #ifdef LEXIPOINT_VERSION
 constexpr const char* kLexipointVersion = LEXIPOINT_VERSION;  // platformio.ini [lexirise]
 #else

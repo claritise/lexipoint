@@ -2,6 +2,9 @@ name: Compile Release
 
 # Build and attach firmware only after a release is published. The release tag
 # supplies both the source revision and the version in each asset name.
+# LEXIPOINT: the fork releases the X4 Pro build only (firmware-base.md §6), tagged
+# <upstream>-lexi.<release> (platformio.ini [crosspoint] version, [lexirise] release),
+# with -rc for a prerelease; the device's OTA updater reads this repo's latest release.
 
 on:
   release:
@@ -17,42 +20,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - release_env: gh_release
-            rc_env: gh_release_rc
-            device: x3-x4
-          - release_env: sticky-gh_release
-            rc_env: sticky-gh_release_rc
-            device: sticky
           - release_env: x4pro-gh_release
             rc_env: x4pro-gh_release_rc
             device: x4pro
-          - release_env: x4c-gh_release
-            rc_env: x4c-gh_release_rc
-            device: x4c
-          - release_env: papermono-gh_release
-            rc_env: papermono-gh_release_rc
-            device: papermono
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
           submodules: recursive
 
-      - name: Validate release version
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          version="${RELEASE_TAG#v}"
-          configured_version="$(sed -n 's/^version = //p' platformio.ini | head -n1)"
-          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
-            test "$version" = "${configured_version}rc"
-          else
-            test "$version" = "$configured_version"
-          fi
-
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+
+      - name: Validate release version
+        # LEXIPOINT: scripts/lexipoint/release_tag.py (tested): the tag is <upstream>-lexi.<n>[-rc] as
+        # platformio.ini says, fits the OTA updater, and is newer than the fork's previous release.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A failing gh fails the step: the newer-than check must never be skipped silently.
+          tags="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 100 --json tagName -q '.[].tagName')"
+          printf '%s\n' "$tags" | python3 scripts/lexipoint/release_tag.py check "$RELEASE_TAG" --releases - \
+            ${{ github.event.release.prerelease && '--prerelease' || '' }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -115,9 +109,24 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           version="${RELEASE_TAG#v}"
-          for device in x3-x4 sticky x4pro x4c papermono; do
+          for device in x4pro; do  # LEXIPOINT: the X4 Pro only
             test -f "dist/crosspoint-${version}-${device}.bin"
           done
-          test "$(find dist -maxdepth 1 -type f -name 'crosspoint-*.bin' | wc -l)" -eq 5
+          test "$(find dist -maxdepth 1 -type f -name 'crosspoint-*.bin' | wc -l)" -eq 1
           gh release upload "$RELEASE_TAG" dist/crosspoint-*.bin \
             --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Check devices will see it
+        # LEXIPOINT: the OTA updater reads /releases/latest (firmware-base.md §6): a full release must be it
+        # (not unticked as latest, not an older commit), with its asset.
+        if: ${{ !github.event.release.prerelease }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name)"
+          test "$latest" = "$RELEASE_TAG" || { echo "latest release is $latest, not $RELEASE_TAG"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q '.assets[].name' \
+            | grep -qxF "crosspoint-${RELEASE_TAG}-x4pro.bin"
