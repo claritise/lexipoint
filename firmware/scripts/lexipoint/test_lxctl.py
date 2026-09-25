@@ -424,6 +424,149 @@ class CardGestures(unittest.TestCase):
             lxctl.card_gestures(FakeGestureHarness(states), sleep=lambda _s: None)
 
 
+class FakeSentenceHarness:
+    """The bench card's side of card-sentence: `n` words from `start`; past the last it stays until the next
+    SYNC after a sleep, then jumps to n (the "next sentence", n words again), and stops at 2n - 1."""
+
+    def __init__(self, n=6, start=2, jumps=True):
+        self.n, self.word, self.jumps = n, start, jumps
+        self.waiting = self.slept = self.closed = False
+        self.sent = []
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd == "BTN RIGHT":
+            if self.word == self.n - 1 and self.jumps:
+                self.waiting = True
+            elif self.word < 2 * self.n - 1 and self.word != self.n - 1:
+                self.word += 1
+        elif cmd == "SYNC" and seen is not None:
+            if self.waiting and self.slept:
+                self.waiting = False
+                self.word = self.n
+            seen.append(f"[1] [INF] [LXCARD] word {self.word} view card tab 0")
+        return "LX:OK"
+
+    def wait_for(self, pattern, timeout):
+        self.closed = self.closed or pattern.startswith("Exiting")
+        return pattern
+
+    def sleep(self, _s):
+        self.slept = self.waiting
+
+
+class FakeReaderHarness:
+    """The reader's side of reader-longpress: each LONG logs its decision from `takes` (x, y → taken), and a
+    taken one enters word select, which the first Back swipe (or `backs_needed`-th) closes."""
+
+    def __init__(self, takes, opens=None, backs_needed=1, logs=True):
+        self.takes, self.opens, self.backs_needed, self.logs = takes, opens, backs_needed, logs
+        self.pending: list[str] = []
+        self.backs = 0
+        self.open = False
+        self.sent: list[str] = []
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LONG "):
+            x, y = map(int, cmd.split()[1:])
+            taken = self.takes((x, y))
+            if self.logs:
+                self.pending.append(f"[1] [DBG] [LXLP] long-press {x} {y} {'taken' if taken else 'left'}")
+            if (self.opens or self.takes)((x, y)):
+                self.open = True
+                self.pending.append("[1] [INF] [ACT] Entering activity: DictionaryWordSelect")
+        elif cmd == "SYNC" and seen is not None:
+            seen.extend(self.pending)
+            self.pending = []
+        elif cmd.startswith("SWIPE ") and self.open:
+            self.backs += 1
+        return "LX:OK"
+
+    def wait_for(self, pattern, timeout):
+        if pattern.startswith("Exiting activity: DictionaryWordSelect") and self.backs >= self.backs_needed:
+            self.open = False
+            return pattern
+        raise TimeoutError(pattern)
+
+
+class ReaderLongPress(unittest.TestCase):
+    def test_the_margin_is_left_and_a_word_opens_word_select(self):
+        h = FakeReaderHarness(lambda p: p == lxctl.READER_ON_TEXT)
+        self.assertEqual(lxctl.reader_longpress(h), {"margin": False, "word": True})
+        self.assertFalse(h.open)
+
+    def test_a_word_press_not_taken_fails(self):
+        # The feature broken the other way: nothing is ever taken.
+        with self.assertRaisesRegex(RuntimeError, r"at \(240, 400\) wasn't taken"):
+            lxctl.reader_longpress(FakeReaderHarness(lambda p: False))
+
+    def test_the_word_can_be_given(self):
+        h = FakeReaderHarness(lambda p: p == (100, 200))
+        self.assertEqual(lxctl.reader_longpress(h, (100, 200)), {"margin": False, "word": True})
+        self.assertIn("LONG 100 200", h.sent)
+
+    def test_the_margin_taken_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "bottom margin was taken"):
+            lxctl.reader_longpress(FakeReaderHarness(lambda p: True))
+
+    def test_word_select_without_the_press_being_taken_fails(self):
+        # The P9 bug: word select opened with no word under the finger.
+        h = FakeReaderHarness(lambda p: False, opens=lambda p: p == lxctl.READER_ON_TEXT)
+        with self.assertRaisesRegex(RuntimeError, "taken=False but word select opened"):
+            lxctl.reader_longpress(h)
+
+    def test_no_decision_logged_means_no_book_open(self):
+        with self.assertRaisesRegex(RuntimeError, "is a book open"):
+            lxctl.reader_longpress(FakeReaderHarness(lambda p: False, logs=False))
+
+    def test_word_select_is_closed_with_up_to_three_backs(self):
+        h = FakeReaderHarness(lambda p: p == lxctl.READER_ON_TEXT, backs_needed=3)
+        lxctl.reader_longpress(h)
+        self.assertFalse(h.open)
+        with self.assertRaisesRegex(RuntimeError, "didn't close"):
+            lxctl.reader_longpress(FakeReaderHarness(lambda p: p == lxctl.READER_ON_TEXT, backs_needed=4))
+
+    def test_the_log_pattern_matches_the_firmware(self):
+        src = open(os.path.join(REPO, "src", "activities", "reader", "EpubReaderActivity.cpp")).read()
+        self.assertIn('LOG_DBG("LXLP", "long-press %d %d %s", pressX, pressY, taken ? "taken" : "left")', src)
+        self.assertTrue(lxctl.READER_LONGPRESS_LOG.search("[9] [DBG] [LXLP] long-press 240 796 left"))
+
+
+class CardSentence(unittest.TestCase):
+    def test_it_goes_on_into_the_next_sentence_and_stops_at_the_end(self):
+        h = FakeSentenceHarness()
+        words = lxctl.card_sentence(h, sleep=h.sleep)
+        self.assertEqual(words, [3, 4, 5, 6, 7, 8, 9, 10, 11])
+        self.assertTrue(h.closed)
+
+    def test_a_jump_read_with_the_press_counts(self):
+        # The last word's refresh held the SYNC past the jump: [n-1, n] arrive in one read.
+        class Late(FakeSentenceHarness):
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                if cmd == "SYNC" and seen is not None and self.waiting:
+                    self.waiting = False
+                    seen.append(f"[1] [INF] [LXCARD] word {self.word} view card tab 0")
+                    self.word = self.n
+                    seen.append(f"[1] [INF] [LXCARD] word {self.word} view card tab 0")
+                    self.sent.append(cmd)
+                    return "LX:OK"
+                return super().command(cmd, expect, timeout, seen)
+
+        h = Late()
+        self.assertEqual(lxctl.card_sentence(h, sleep=h.sleep), [3, 4, 5, 6, 7, 8, 9, 10, 11])
+
+    def test_a_card_that_never_goes_on_fails(self):
+        h = FakeSentenceHarness(jumps=False)
+        with self.assertRaises(RuntimeError):
+            lxctl.card_sentence(h, sleep=h.sleep)
+
+    def test_the_wait_outlasts_the_benchs_analysis(self):
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        for name in ("kBenchPhaseBMs", "kBenchNextSentenceMs"):  # card-smoke's wait, and card-sentence's
+            self.assertGreater(lxctl.CARD_PHASES_S * 1000, c[name] * 1.2, name)  # with some margin
+
+
 class SettingsSmoke(unittest.TestCase):
     class Fake:
         def __init__(self, rows):

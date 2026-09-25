@@ -59,6 +59,13 @@ struct BuiltSentence {
 // no text once zero-width characters are dropped.
 std::optional<BuiltSentence> buildSentence(const PageModel& page, TokenRef tap, Script script);
 
+// The sentence after `current` on the page (the card's side buttons step on into it, lookup-flow.md §6), built
+// as if its first piece were tapped. nullopt at the page end, or when `current` has no place on the page.
+std::optional<BuiltSentence> buildSentenceAfter(const PageModel& page, const BuiltSentence& current, Script script);
+// The sentence that starts at `first` (a character another script's cut found), cut with `script`: the next
+// sentence again once its own language is known, from the same place on the page.
+std::optional<BuiltSentence> buildSentenceFrom(const PageModel& page, const SentenceChar& first, Script script);
+
 // UTF-16 code units in a UTF-8 string (a non-BMP character counts 2), the unit of Lexirise offsets.
 uint32_t utf16Length(const std::string& utf8);
 

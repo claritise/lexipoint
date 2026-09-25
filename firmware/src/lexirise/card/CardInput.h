@@ -27,6 +27,8 @@ struct InputEvent {
   int direction = 0;  // Step: +1 next, -1 previous
   unsigned long ms = 0;
   Swipe swipe = Swipe::Up;  // Swipe
+  // Step: when the button was first seen down (a press held over a network call is old); none: not known.
+  std::optional<unsigned long> pressedMs = std::nullopt;
 };
 
 // Card swipes stay clear of CrossPoint's edge gestures (popup-ui.md §3.2: Back from the left edge, the
@@ -72,7 +74,11 @@ class PendingInput {
   // Oldest first; when full, the newest is dropped (a burst during one refresh), except that a Home or a
   // long-press always takes the last place: the way out (or to the next word) never goes missing.
   void tap(int x, int y, unsigned long ms) { push({InputEvent::Kind::Tap, x, y, 0, ms}); }
-  void step(int direction, unsigned long ms) { push({InputEvent::Kind::Step, 0, 0, direction, ms}); }
+  // `pressedMs`: when the button went down (the release is read at `ms`).
+  void step(int direction, unsigned long ms, std::optional<unsigned long> pressedMs) {
+    push({InputEvent::Kind::Step, 0, 0, direction, ms, Swipe::Up, pressedMs});
+  }
+  void step(int direction, unsigned long ms) { step(direction, ms, std::nullopt); }  // press time not known
   void home(unsigned long ms) { push({InputEvent::Kind::Home, 0, 0, 0, ms}); }
   void swipe(Swipe direction, int x, int y, unsigned long ms) {
     push({InputEvent::Kind::Swipe, x, y, 0, ms, direction});

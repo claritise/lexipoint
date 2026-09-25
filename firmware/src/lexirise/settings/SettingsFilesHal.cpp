@@ -1,10 +1,11 @@
 #if LEXIRISE
 
-// SD card adapter for SettingsStore, and the device-wide store instance.
+// SD card adapter for the stores (SafeFile.h), and the device-wide store instances.
 
 #include <HalStorage.h>
 #include <Logging.h>
 
+#include "BookLanguages.h"
 #include "SettingsStore.h"
 
 namespace lexipoint {
@@ -47,11 +48,20 @@ class HalSettingsFiles final : public SettingsFiles {
   bool ensureDir(const char* path) override { return Storage.ensureDirectoryExists(path); }
 };
 
+HalSettingsFiles& halFiles() {
+  static HalSettingsFiles files;
+  return files;
+}
+
 }  // namespace
 
 SettingsStore& settingsStore() {
-  static HalSettingsFiles files;
-  static SettingsStore store(files);
+  static SettingsStore store(halFiles());
+  return store;
+}
+
+BookLanguageStore& bookLanguageStore() {
+  static BookLanguageStore store(halFiles());
   return store;
 }
 

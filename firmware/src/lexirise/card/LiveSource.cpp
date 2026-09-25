@@ -25,8 +25,56 @@ const text::SentenceChar* tappedChar(const text::BuiltSentence& sentence) {
 
 }  // namespace
 
-LiveSource::LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage page, std::vector<std::string> tags)
-    : api_(api), tap_(std::move(tap)), page_(std::move(page)), tags_(std::move(tags)) {}
+LiveSource::LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage page, std::vector<std::string> tags,
+                       NextSentence next)
+    : api_(api), page_(std::move(page)), next_(std::move(next)), tags_(std::move(tags)) {
+  sentences_.push_back({std::move(tap), false});
+}
+
+std::optional<size_t> LiveSource::loadingSentence() const {
+  for (size_t i = 0; i < sentences_.size(); i++) {
+    if (!sentences_[i].analyzed) return i;
+  }
+  return std::nullopt;
+}
+
+const text::BuiltSentence& LiveSource::sentenceFor(const int index) const {
+  if (index >= 0 && index < wordCount()) return *sentences_[sentenceOf_[static_cast<size_t>(index)]].tap.sentence;
+  return *sentences_[loadingSentence().value_or(0)].tap.sentence;
+}
+
+CallFailure callFailure(const api::ApiError error) {
+  if (error == api::ApiError::Unauthorized) return CallFailure::KeyRejected;
+  if (error == api::ApiError::RateLimited) return CallFailure::RateLimited;
+  return CallFailure::Network;
+}
+
+std::optional<text::TapContext> LiveSource::nextAskable(const text::TapContext& current) const {
+  if (!next_) return std::nullopt;
+  // Lexirise can only be asked with a sentence and its language (a switched-off language, a non-CJK line).
+  // Each call moves on along the page, so this ends at its last sentence; the cap (one per token on the
+  // page) only guards against a builder that stopped moving on.
+  size_t limit = 1;
+  for (const ReaderLine& line : page_.lines) limit += line.tokens.size();
+  text::TapContext next = next_(current);
+  for (size_t i = 0; i < limit && next.sentence; i++) {
+    if (next.language.language) return next;
+    next = next_(next);
+  }
+  return std::nullopt;
+}
+
+bool LiveSource::extend(unsigned long) {
+  if (pageEnded_ || loadingSentence()) return false;
+  extendFailure_.reset();
+  std::optional<text::TapContext> next = nextAskable(resumeAfter_ ? *resumeAfter_ : sentences_.back().tap);
+  if (!next) {
+    pageEnded_ = true;  // nothing more on the page to ask about
+    return false;
+  }
+  sentences_.push_back({std::move(*next), false});
+  return true;
+}
 
 void LiveSource::queue(const LevelChange& change) {
   const std::vector<int> same = sameWord(change.word);
@@ -66,7 +114,7 @@ bool LiveSource::writeReady(const unsigned long nowMs, const bool closing) const
 }
 
 bool LiveSource::hasWork(const unsigned long nowMs) const {
-  return !analyzed_ || lookupDue(nowMs, false) >= 0 || writeReady(nowMs, false);
+  return loadingSentence().has_value() || lookupDue(nowMs, false) >= 0 || writeReady(nowMs, false);
 }
 
 std::optional<LiveSource::FailedWrite> LiveSource::takeFailedWrite() {
@@ -97,7 +145,7 @@ api::ApiResponse LiveSource::send(const LevelChange& change, const lookup::Looku
   const std::string headword = card.headword();
   word.text = headword;
   if (!card.senses.empty()) word.translation = card.senses.front().translation;
-  word.notes = tap_.sentence->text;
+  word.notes = sentenceFor(change.word).text;
   word.proficiency = proficiencyOf(change.to);
   word.tags = tags_;
   api::ApiResponse saved = api_.write(api::saveRequest(word));
@@ -109,17 +157,22 @@ api::ApiResponse LiveSource::send(const LevelChange& change, const lookup::Looku
 
 LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool closing) const {
   Fetched f;
-  if (!analyzed_) {
-    if (closing) return f;  // nothing shown, nothing queued
-    f.kind = Fetched::Kind::Analysis;
-    f.report = lookup::analyzeTap(api_, tap_, f.analysis, f.tapped);
-    f.unreadable = f.report.bodyHead;
-  } else if (const int due = lookupDue(nowMs, closing); due >= 0) {
+  // In order: the tapped sentence's analysis (nothing is shown before it); the word on screen's lookup (and a
+  // save's); a next sentence the card waits for (a step past the end); the next write that's ready. Closing:
+  // only what the queued writes need.
+  const std::optional<size_t> loading = loadingSentence();
+  if (loading == 0u) {
+    if (closing) return f;  // closing before the tapped sentence was analyzed: nothing shown, nothing queued
+    return analysis(0);
+  }
+  if (const int due = lookupDue(nowMs, closing); due >= 0) {
     f.kind = Fetched::Kind::Entry;
     f.index = due;
     f.card = cards_[due];
     f.saveRetry = f.card.complete;                                // it ran before and failed: this is the save's retry
     f.error = lookup::completeCard(api_, f.card, &f.unreadable);  // a failure still completes it
+  } else if (loading && !closing) {
+    return analysis(*loading);
   } else if (writeReady(nowMs, closing)) {
     f.kind = Fetched::Kind::Write;
     f.index = writes_.front().word;
@@ -130,23 +183,24 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
   return f;
 }
 
+LiveSource::Fetched LiveSource::analysis(const size_t sentence) const {
+  Fetched f;
+  f.kind = Fetched::Kind::Analysis;
+  f.sentence = sentence;
+  f.report = lookup::analyzeTap(api_, sentences_[sentence].tap, f.analysis, f.tapped);
+  f.unreadable = f.report.bodyHead;
+  return f;
+}
+
 LiveSource::Advance LiveSource::apply(Fetched fetched) {
   switch (fetched.kind) {
     case Fetched::Kind::None:
       return Advance::Idle;
     case Fetched::Kind::Analysis:
       error_ = fetched.report.error;
-      if (fetched.report.outcome == lookup::LookupOutcome::NotFound) return Advance::NotFound;
-      if (fetched.report.outcome != lookup::LookupOutcome::Card) return Advance::Unavailable;
-      analysis_ = std::move(fetched.analysis);
-      for (size_t i = 0; i < analysis_.words.size(); i++) {
-        cards_.push_back(lookup::cardFor(analysis_, i));
-        words_.push_back(cardWord(cards_.back()));
-      }
-      saveRetried_.assign(cards_.size(), false);
-      start_ = focused_ = static_cast<int>(fetched.tapped);
-      analyzed_ = true;
-      return Advance::Changed;
+      if (fetched.report.outcome == lookup::LookupOutcome::Card) return addWords(fetched);
+      if (fetched.sentence > 0) return laterSentenceFailed(fetched);
+      return fetched.report.outcome == lookup::LookupOutcome::NotFound ? Advance::NotFound : Advance::Unavailable;
     case Fetched::Kind::Entry:
       error_ = fetched.error;
       if (fetched.saveRetry) saveRetried_[fetched.index] = true;
@@ -195,11 +249,57 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
   return Advance::Idle;
 }
 
+LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
+  const int first = wordCount();
+  for (size_t i = 0; i < fetched.analysis.words.size(); i++) {
+    cards_.push_back(lookup::cardFor(fetched.analysis, i));
+    words_.push_back(cardWord(cards_.back()));
+    sentenceOf_.push_back(fetched.sentence);
+    saveRetried_.push_back(false);
+  }
+  sentences_[fetched.sentence].analyzed = true;
+  resumeAfter_.reset();
+  // An entry already on the card knows best whether it's saved (a save made here may be newer than this
+  // analysis): its later occurrences share that, so the next write for any of them is the right one.
+  for (int w = first; w < wordCount(); w++) {
+    for (const int e : sameWord(w)) {
+      if (e < first) {
+        cards_[w].saved = cards_[e].saved;
+        break;
+      }
+    }
+  }
+  // The tapped sentence opens on the tapped word; a later one on its first (where the card steps to).
+  if (fetched.sentence == 0) start_ = focused_ = first + static_cast<int>(fetched.tapped);
+  return Advance::Changed;
+}
+
+LiveSource::Advance LiveSource::laterSentenceFailed(const Fetched& fetched) {
+  const bool noWord = fetched.report.outcome == lookup::LookupOutcome::NotFound;
+  if (noWord) {  // only punctuation (……, a lone 」): go on to the sentence after
+    resumeAfter_ = sentences_[fetched.sentence].tap;
+    if (std::optional<text::TapContext> after = nextAskable(*resumeAfter_)) {
+      sentences_[fetched.sentence] = {std::move(*after), false};
+      return Advance::Idle;
+    }
+  }
+  sentences_.erase(sentences_.begin() + static_cast<long>(fetched.sentence), sentences_.end());
+  // No words left on the page: stop there, quietly. No answer: say why; the next step tries again.
+  pageEnded_ = noWord;
+  extendFailure_ = noWord ? std::nullopt : std::optional<CallFailure>(callFailure(fetched.report.error));
+  return Advance::Changed;
+}
+
 std::vector<int> LiveSource::sameWord(const int index) const {
   std::vector<int> same;
   const uint32_t entry = cards_[index].lemmaEntryId;
+  // One Lexirise entry: the same lemma in the same language (a card can hold sentences of both languages
+  // in a book that doesn't say, P9, and entry ids needn't be unique across them).
+  const Language language = cards_[index].language;
   for (int i = 0; i < wordCount(); i++) {
-    if (i == index || (entry != 0 && cards_[i].lemmaEntryId == entry)) same.push_back(i);
+    if (i == index || (entry != 0 && cards_[i].lemmaEntryId == entry && cards_[i].language == language)) {
+      same.push_back(i);
+    }
   }
   return same;
 }
@@ -209,7 +309,8 @@ Level LiveSource::savedLevel(const int index) const { return levelOf(cards_[inde
 Phase LiveSource::phase(const int index) const { return index < wordCount() ? phaseOf(cards_[index]) : Phase::Pending; }
 
 std::string LiveSource::pendingText() const {
-  const text::SentenceChar* c = tappedChar(*tap_.sentence);
+  // Phase 0 is only ever the tapped sentence's (a later one loads while the card stays on its word).
+  const text::SentenceChar* c = tappedChar(*sentences_.front().tap.sentence);
   if (!c || c->token.line >= page_.lines.size() || c->token.token >= page_.lines[c->token.line].tokens.size()) {
     return {};
   }
@@ -220,7 +321,7 @@ std::string LiveSource::pendingText() const {
 
 PageScene LiveSource::scene(const int index, const bool highlight, const TextMetrics& metrics,
                             const int highlightCodepoints) const {
-  const text::BuiltSentence& sentence = *tap_.sentence;
+  const text::BuiltSentence& sentence = sentenceFor(index);
   if (index >= wordCount() || highlightCodepoints > 0) {
     const text::SentenceChar* c = tappedChar(sentence);
     const uint32_t start = c ? c->start : sentence.tapOffset;

@@ -474,6 +474,23 @@ class Layout {
       out_.text(Font::Page, x, textTop, t.text, !active);
     }
   }
+  // The detail view's strip (claritise, 2026-09-25): the active word at the left edge, inverted, then as much
+  // of its sentence after it as fits. Stepping moves the text along; nothing before the word is shown, and
+  // nothing scrolls. Before the sentence is known (no mark), the page line as in card view.
+  void wordStrip(const int originX, const int clipRight, const int textTop) {
+    const MarkedText& s = s_.contextSentence;
+    if (s.markLength == 0 || s.markStart + s.markLength > s.text.size()) {
+      stripLine(originX, clipRight, textTop);
+      return;
+    }
+    const std::string word = fitText(m_, Font::Page, s.text.substr(s.markStart, s.markLength), clipRight - originX);
+    const int wordW = tw(Font::Page, word);
+    out_.fill({originX - m::kHighlightPadH, textTop, wordW + 2 * m::kHighlightPadH, lh(Font::Page)});
+    out_.text(Font::Page, originX, textTop, word, false);
+    const int restX = originX + wordW + m::kHighlightPadH;
+    const std::string rest = fitText(m_, Font::Page, s.text.substr(s.markStart + s.markLength), clipRight - restX);
+    if (!rest.empty() && restX + tw(Font::Page, rest) <= clipRight) out_.text(Font::Page, restX, textTop, rest);
+  }
   std::string marker() const {
     return std::string(str_.line) + " " + std::to_string(s_.strip.lineNumber) + "/" +
            std::to_string(s_.strip.lineCount);
@@ -522,10 +539,10 @@ class Layout {
   }
 
   void expanded() {
-    // The strip: the active word's page line, in the screen above the card.
+    // The strip: the active word and its sentence after it, in the screen above the card.
     const int cardTop = kCardBottom - m::kExpandedCardHeight;
     out_.fill({0, 0, m::kScreenWidth, cardTop}, false);
-    stripLine(m::kStripPadH, m::kScreenWidth - m::kStripPadH - m::kStripClip, centred(0, cardTop, lh(Font::Page)));
+    wordStrip(m::kStripPadH, m::kScreenWidth - m::kStripPadH - m::kStripClip, centred(0, cardTop, lh(Font::Page)));
     const std::string mk = marker();
     out_.text(Font::UiSmall, m::kScreenWidth - m::kStripMarkerRight - tw(Font::UiSmall, mk), m::kStripMarkerTop, mk);
 

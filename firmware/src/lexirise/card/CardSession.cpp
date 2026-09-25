@@ -13,12 +13,6 @@ Outcome CardSession::handleInput(const unsigned long nowMs) {
   return outcome;
 }
 
-CardController::WriteFailure writeFailure(const api::ApiError error) {
-  if (error == api::ApiError::Unauthorized) return CardController::WriteFailure::KeyRejected;
-  if (error == api::ApiError::RateLimited) return CardController::WriteFailure::RateLimited;
-  return CardController::WriteFailure::Network;
-}
-
 CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsigned long nowMs) {
   Answer answer;
   if (!live_) return answer;
@@ -35,13 +29,13 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
       answer.ended = LiveOutcome{LiveOutcome::Kind::Unavailable, live_->error()};
       return answer;
     case LiveSource::Advance::Changed:
-      answer.redraw = controller_.sourceChanged() || onScreen;
+      answer.redraw = controller_.sourceChanged(nowMs) || onScreen;
       break;
     case LiveSource::Advance::Idle:
       break;
   }
   if (const auto failed = live_->takeFailedWrite()) {  // Lexirise didn't take a level change: put it back
-    controller_.levelFailed(failed->back.word, failed->back.to, nowMs, writeFailure(failed->error), failed->back.from,
+    controller_.levelFailed(failed->back.word, failed->back.to, nowMs, callFailure(failed->error), failed->back.from,
                             failed->retryAfterS);
     answer.writeFailed = true;
     answer.redraw = true;

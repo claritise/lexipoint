@@ -24,7 +24,10 @@ Examples:
   lxctl.py card-smoke [outdir] [name]  # every reference card state on the device, a screenshot each (P4 gate);
                                        # upright portrait, default side buttons
   lxctl.py card-gestures              # the card's swipes (up, down, tabs) checked from the log (P7)
+  lxctl.py card-sentence              # the side button on into the next sentence, from the log (P9)
   lxctl.py settings-smoke [outdir]    # opens Settings → Lexirise, checks its rows, a screenshot (P7)
+  lxctl.py reader-longpress [x y]     # a book open, upright portrait: a long-press is taken only on a word (P9);
+                                      # x y: a point on a word (default the page's middle)
 """
 
 from __future__ import annotations
@@ -59,6 +62,8 @@ LEXI_SOAK_MAX = 50  # DevConfig kLexiSoakMax
 LEAK_BYTES_PER_CALL = 64  # a free-heap trend steeper than this, per call, fails the soak
 LEAK_MIN_SAMPLES = 5
 # card-smoke: the bench's phases end by config::kBenchPhaseBMs (900 ms); wait for them before tapping.
+# card-sentence also waits this long for the bench's "next sentence" (config::kBenchNextSentenceMs, 1000 ms).
+# test_lxctl checks it outlasts both.
 CARD_PHASES_S = 1.5
 CARD_HOME_PRESSES_MAX = 3  # Home: expanded → card → closed, plus one spare
 # A close redraws the reader, a half or full refresh on every 5th card (~1.34 s measured, popup-ui.md §2);
@@ -298,7 +303,7 @@ def check_stepped_word(log: list[str], expected: int, name: str) -> None:
     """The card's last "[LXCARD] word n" log line (smoke mode) must be the golden's word: the side buttons'
     direction follows the reader settings and orientation, so a mapped-the-other-way press is caught here
     instead of shooting the wrong word."""
-    words = [int(m.group(1)) for line in log if (m := CARD_WORD_LOG.search(line))]
+    words = logged_words(log)
     if not words:
         raise RuntimeError(f"{name}: the card logged no word after the side-button steps")
     if words[-1] != expected:
@@ -358,6 +363,106 @@ def card_smoke(h: Harness, outdir: str, only: str = "", sleep=time.sleep, shot=N
         raise RuntimeError(f"no golden state matches {only!r}")
     print(f"card-smoke OK: {len(done)} states, screenshots in {outdir}")
     return done
+
+
+CARD_SENTENCE_STEPS_MAX = 40  # side-button presses before card-sentence gives up (the bench has ~10 words)
+
+
+def logged_words(log: list[str]) -> list[int]:
+    """The card's "[LXCARD] word n" log lines (smoke mode), in order."""
+    return [int(m.group(1)) for line in log if (m := CARD_WORD_LOG.search(line))]
+
+
+def card_sentence(h: Harness, sleep=time.sleep) -> list[int]:
+    """P9 on the device: the side button past the bench card's last word goes on into its "next sentence" (the
+    bench's one sentence again, after the time an analysis takes). The card stays on the last word, then
+    jumps to the next sentence's first on its own, and stops at the page's end. Checked from the smoke log;
+    needs upright portrait and the default side buttons (as card-smoke). Returns the words it went through."""
+    h.command("LEXI CARD ja KANA", "LX:OK LEXI")
+    h.wait_for("Entering activity: LexiriseCard", ACTIVITY_WAIT_S)
+    sleep(CARD_PHASES_S)
+    seen: list[int] = []
+    jumped = False
+    for _ in range(CARD_SENTENCE_STEPS_MAX):
+        log: list[str] = []
+        h.command("BTN RIGHT", seen=log)
+        h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+        words = logged_words(log)
+        if not words:
+            raise RuntimeError("the card logged no word after a side-button press")
+        if seen and not jumped and words[-2:] == [seen[-1], seen[-1] + 1]:
+            jumped = True  # it stayed, and the jump came before this read ended (a slow refresh held the SYNC)
+        elif seen and words[-1] == seen[-1]:  # stayed: waiting for the next sentence, or the page's end
+            if jumped:
+                break
+            sleep(CARD_PHASES_S)  # the "analysis"
+            log = []
+            h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+            later = logged_words(log)
+            if not later or later[-1] != seen[-1] + 1:
+                raise RuntimeError(f"stayed on word {seen[-1]} but didn't go on to {seen[-1] + 1}")
+            jumped = True
+            words = later
+        seen.append(words[-1])
+    else:
+        raise RuntimeError(f"no end after {CARD_SENTENCE_STEPS_MAX} presses")
+    if not jumped:
+        raise RuntimeError("the card never went past its sentence's last word")
+    for _ in range(CARD_HOME_PRESSES_MAX):
+        h.command("HOME")
+        try:
+            h.wait_for("Exiting activity: LexiriseCard", CARD_CLOSE_WAIT_S)
+            break
+        except TimeoutError:
+            continue
+    print(f"card-sentence OK: words {seen}")
+    return seen
+
+
+# reader-longpress (lookup-flow.md §5e): the reader's "[LXLP] long-press x y taken|left" (EpubReaderActivity,
+# dev builds). The bottom margin's middle is never a word, and its lift is no page turn (the turn zones are
+# the outer thirds) nor the menu (the centre third); the page's middle is a word on a page of running text.
+READER_LONGPRESS_LOG = re.compile(r"\[LXLP\] long-press (-?\d+) (-?\d+) (taken|left)")
+READER_OFF_TEXT = (240, 796)
+READER_ON_TEXT = (240, 400)
+READER_BACKS_MAX = 3  # Back: the card or definition → the reader, plus spares
+
+
+def reader_longpress(h: Harness, on_text: tuple[int, int] = READER_ON_TEXT) -> dict[str, bool]:
+    """P9 on the device, with a book open in the reader (upright portrait): a long-press in the bottom margin
+    isn't taken (no word select, the bug was word select with nothing under the finger), and one on a word
+    (`on_text`) is, and opens word select. Anything opened is closed with the Back swipe. Returns whether each
+    press was taken."""
+    taken: dict[str, bool] = {}
+    for name, (x, y) in (("margin", READER_OFF_TEXT), ("word", on_text)):
+        log: list[str] = []
+        h.command(f"LONG {x} {y}", seen=log)
+        h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+        decisions = [m.group(3) for line in log if (m := READER_LONGPRESS_LOG.search(line))]
+        if not decisions:
+            raise RuntimeError(f"{name}: the reader logged no long-press (is a book open in the reader?)")
+        taken[name] = decisions[-1] == "taken"
+        opened = any("Entering activity: DictionaryWordSelect" in line for line in log)
+        if name == "margin" and taken[name]:
+            raise RuntimeError("a long-press in the bottom margin was taken")
+        if opened != taken[name]:
+            raise RuntimeError(f"{name}: taken={taken[name]} but word select {'opened' if opened else 'did not open'}")
+        if name == "word" and not taken[name]:
+            raise RuntimeError(f"a long-press at ({x}, {y}) wasn't taken: open a page with text there, or pass "
+                               "the point of a word")
+        if opened:
+            for _ in range(READER_BACKS_MAX):
+                h.command(f"SWIPE {EDGE_INSET} 400 240 400")  # Back
+                try:
+                    h.wait_for("Exiting activity: DictionaryWordSelect", CARD_CLOSE_WAIT_S)
+                    break
+                except TimeoutError:
+                    continue
+            else:
+                raise RuntimeError(f"{name}: word select didn't close")
+        print(f"{name} ({x}, {y}): {'taken' if taken[name] else 'left to the reader'}")
+    print("reader-longpress OK")
+    return taken
 
 
 def card_gestures(h: Harness, sleep=time.sleep) -> None:
@@ -530,6 +635,16 @@ def main() -> None:
                 settings_smoke(h, a.args[0] if a.args else "settings-shots")
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"settings-smoke FAILED: {e}")
+        elif c == "card-sentence":
+            try:
+                card_sentence(h)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"card-sentence FAILED: {e}")
+        elif c == "reader-longpress":
+            try:
+                reader_longpress(h, tuple(map(int, a.args[:2])) if len(a.args) >= 2 else READER_ON_TEXT)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"reader-longpress FAILED: {e}")
         elif c == "card-gestures":
             try:
                 card_gestures(h)

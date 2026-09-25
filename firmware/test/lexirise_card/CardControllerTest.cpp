@@ -42,7 +42,7 @@ TEST(CardController, APhaseBCloseBehindAIsMerged) {
   EXPECT_EQ(c.state().phase, Phase::Complete);
 }
 
-TEST(CardController, SideButtonsStepWordsAndStopAtTheEnds) {
+TEST(CardController, SideButtonsStepWordsAndStopAtTheStart) {
   BenchSource cSource(benchJapanese(), false);
   CardController c(cSource, ReadingMode::Kana);
   c.open(0);
@@ -63,9 +63,11 @@ TEST(CardController, SideButtonsStepWordsAndStopAtTheEnds) {
   EXPECT_EQ(c.state().phase, Phase::Complete);
   EXPECT_TRUE(c.step(+1, 6000));
   EXPECT_TRUE(c.step(+1, 6000));
-  EXPECT_FALSE(c.step(+1, 6000));  // the last word
+  EXPECT_FALSE(c.step(+1, 6000));  // the last word: the card waits there for the next sentence (P9)
   EXPECT_EQ(c.word(), 5);
+  EXPECT_TRUE(c.awaitingNext());
   for (int i = 0; i < 5; i++) c.step(-1, 7000);
+  EXPECT_FALSE(c.awaitingNext());  // stepping back cancelled it
   EXPECT_FALSE(c.step(-1, 7000));
   EXPECT_EQ(c.word(), 0);
 }
@@ -407,17 +409,17 @@ TEST(CardController, PhaseZeroHasNoWordUntilTheSourceAnswers) {
   const Hit level = hit(Target::Level, 1);
   EXPECT_EQ(c.tap(&level, 10).effect, Effect::None);  // nothing to save yet
   EXPECT_FALSE(c.nextDueMs());
-  EXPECT_FALSE(c.sourceChanged());
+  EXPECT_FALSE(c.sourceChanged(0));
 
   source.analyzed();  // the lookup answered: the card opens on the tapped word (start 2)
-  EXPECT_TRUE(c.sourceChanged());
+  EXPECT_TRUE(c.sourceChanged(0));
   EXPECT_EQ(c.state().phase, Phase::Analyzed);
   EXPECT_EQ(c.highlightCodepoints(), 0);
   // The word index the card opened on stays the source's start, set when the sentence arrived.
   source.phases[2] = Phase::Complete;
-  EXPECT_TRUE(c.sourceChanged());
+  EXPECT_TRUE(c.sourceChanged(0));
   EXPECT_EQ(c.state().phase, Phase::Complete);
-  EXPECT_FALSE(c.sourceChanged());  // nothing new
+  EXPECT_FALSE(c.sourceChanged(0));  // nothing new
 }
 
 TEST(CardController, StepsFocusTheSourceAndLevelsComeFromIt) {
@@ -618,7 +620,7 @@ TEST(CardController, ATabPastTheLanguagesLastIsBroughtBack) {
   const Hit far = hit(Target::Tab, 9);
   c.tap(&rank, 0);
   c.tap(&far, 0);
-  c.sourceChanged();
+  c.sourceChanged(0);
   EXPECT_EQ(c.state().tab, tabCount(c.currentWord().language) - 1);
 }
 
@@ -629,4 +631,32 @@ TEST(CardInput, ALongPressNeverTakesAHomesPlace) {
   in.longPress(5, 6, 60);  // full: the way out stays
   ASSERT_EQ(in.size(), static_cast<size_t>(config::kCardPendingInputMax));
   EXPECT_EQ(in[in.size() - 1].kind, InputEvent::Kind::Home);
+}
+
+// P9: the bench goes on into a canned "next sentence" (its own again), so card-sentence can drive it.
+TEST(CardController, TheBenchGoesOnIntoItsNextSentence) {
+  BenchSource source(benchJapanese(), false);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  c.tick(config::kBenchPhaseBMs);
+  const int n = source.wordCount();
+  while (c.step(+1, 5000)) {
+  }
+  ASSERT_EQ(c.word(), n - 1);
+  EXPECT_TRUE(c.awaitingNext());
+  // The loop wakes for whichever comes first: the last word's own phases, then the "next sentence".
+  ASSERT_TRUE(c.nextDueMs().has_value());
+  EXPECT_LT(*c.nextDueMs(), 5000 + config::kBenchNextSentenceMs);
+  c.tick(5000 + config::kBenchPhaseBMs);  // its phases done
+  EXPECT_EQ(c.nextDueMs(), 5000 + config::kBenchNextSentenceMs);
+  c.tick(5000 + config::kBenchNextSentenceMs - 1);  // the last word's own phases still play meanwhile
+  EXPECT_EQ(c.word(), n - 1);
+  EXPECT_EQ(c.state().phase, Phase::Complete);
+  EXPECT_TRUE(c.tick(5000 + config::kBenchNextSentenceMs));
+  EXPECT_EQ(c.word(), n);  // its first word
+  EXPECT_EQ(c.currentWord().word, benchJapanese().words[0].word);
+  while (c.step(+1, 9000)) {
+  }
+  EXPECT_EQ(c.word(), 2 * n - 1);  // then the page ends
+  EXPECT_FALSE(c.awaitingNext());
 }

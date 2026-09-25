@@ -4,6 +4,8 @@
 
 #include <Utf8.h>
 
+#include <algorithm>
+
 #include "CharClass.h"
 #include "Utf8Units.h"
 #include "lexirise/LexiriseConfig.h"
@@ -86,6 +88,52 @@ class Builder {
       }
     }
     return first;
+  }
+
+  // The piece holding a character (its token and codepoint), or -1.
+  long pieceWith(const SentenceChar& c) const {
+    for (size_t i = 0; i < items_.size(); i++) {
+      const Item& item = items_[i];
+      if (item.ref.line == c.token.line && item.ref.token == c.token.token &&
+          std::find(item.tokenCps.begin(), item.tokenCps.end(), c.codepoint) != item.tokenCps.end()) {
+        return static_cast<long>(i);
+      }
+    }
+    return -1;
+  }
+
+  // The first piece with text after the one holding `last` (a sentence's last character): where the next
+  // sentence starts. -1 when there's none on the page.
+  long pieceAfter(const SentenceChar& last) const {
+    const long i = pieceWith(last);
+    if (i < 0) return -1;
+    const size_t next = textAfter(static_cast<size_t>(i));
+    return next < items_.size() ? static_cast<long>(next) : -1;
+  }
+
+  // The sentence from `start` on, for the one after a sentence (buildSentenceAfter). Usually a sentence starts
+  // there; after a long one the cap cut, it doesn't, and building around `start` would reach back over what
+  // was just shown: then it starts at `start` (cut on the left) and runs right up to the cap.
+  std::optional<BuiltSentence> buildFrom(const size_t start) const {
+    if (cutBefore(start)) return build(start);
+    const size_t n = items_.size();
+    size_t end = start + 1;
+    while (end < n && !cutBefore(end)) end++;
+    bool truncatedRight = end == n && !sentenceEndsBefore(n);
+    if (length(start, end) > config::kMaxSentenceUnits) {
+      // As build() does: a clause end (Chinese "；") is a better cut than the middle of a word.
+      for (size_t i = start; i + 1 < end; i++) {
+        if (endsWithFallbackCut(i)) {
+          end = i + 1;
+          truncatedRight = true;
+          break;
+        }
+      }
+    }
+    size_t hi = start + 1;
+    while (hi < end && length(start, hi + 1) <= config::kMaxSentenceUnits) hi++;
+    if (hi < end) truncatedRight = true;
+    return join(start, hi, start, /*left=*/true, truncatedRight);
   }
 
   std::optional<BuiltSentence> build(const size_t tap) const {
@@ -390,6 +438,22 @@ class Builder {
 };
 
 }  // namespace
+
+std::optional<BuiltSentence> buildSentenceAfter(const PageModel& page, const BuiltSentence& current,
+                                                const Script script) {
+  if (current.chars.empty()) return std::nullopt;
+  const Builder builder(page, script);
+  const long piece = builder.pieceAfter(current.chars.back());
+  if (piece < 0) return std::nullopt;
+  return builder.buildFrom(static_cast<size_t>(piece));
+}
+
+std::optional<BuiltSentence> buildSentenceFrom(const PageModel& page, const SentenceChar& first, const Script script) {
+  const Builder builder(page, script);
+  const long piece = builder.pieceWith(first);
+  if (piece < 0) return std::nullopt;
+  return builder.buildFrom(static_cast<size_t>(piece));
+}
 
 uint32_t utf16Length(const std::string& utf8) {
   uint32_t total = 0;

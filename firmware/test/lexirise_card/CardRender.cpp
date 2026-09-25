@@ -334,11 +334,11 @@ int main(const int argc, char** argv) {
   }
   if (extra == "unanswered") {
     source.unanswered();
-    c.sourceChanged();
+    c.sourceChanged(0);
   } else if (extra == "save-failed") {
-    c.levelFailed(c.word(), c.state().level, now, CardController::WriteFailure::Network, Level::Learning, 0);
+    c.levelFailed(c.word(), c.state().level, now, CallFailure::Network, Level::Learning, 0);
   } else if (extra == "rate-limited") {  // the longest toast: the largest back-off (config::kRetryAfterMaxS)
-    c.levelFailed(c.word(), c.state().level, now, CardController::WriteFailure::RateLimited, Level::Learning,
+    c.levelFailed(c.word(), c.state().level, now, CallFailure::RateLimited, Level::Learning,
                   lexipoint::config::kRetryAfterMaxS);
   } else if (!extra.empty()) {
     std::fprintf(stderr, "unknown state +%s\n", extra.c_str());

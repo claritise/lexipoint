@@ -3,6 +3,7 @@
 // Lexirise settings model and INI (de)serialisation: pure, host-testable (settings.md in the lexipoint
 // repo). Persistence lives in SettingsStore. Tests: test/lexirise_settings.
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,7 +16,8 @@ namespace lexipoint {
 enum class Language { Japanese, Chinese };
 enum class Reading { Kana, Romaji };
 
-const char* languageCode(Language language);  // "ja" / "zh"
+const char* languageCode(Language language);                      // "ja" / "zh"
+std::optional<Language> languageFromCode(std::string_view code);  // languageCode's inverse, any case
 
 // Every language Lexipoint looks up, in settings order: code that spans languages loops over this, so a new
 // language (settings.md §1) is added here and in Settings::language().

@@ -8,6 +8,9 @@
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
 #include "components/UITheme.h"
+#if LEXIRISE
+#include "lexirise/settings/LanguageNames.h"  // LEXIPOINT
+#endif
 
 namespace fui = freeink::ui;
 
@@ -54,6 +57,9 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
     items.push_back({MenuAction::FRONTLIGHT, StrId::STR_FRONTLIGHT});
   }
   items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
+#if LEXIRISE
+  items.push_back({MenuAction::LOOKUP_LANGUAGE, StrId::STR_LEXI_BOOK_LANGUAGE});  // LEXIPOINT
+#endif
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
@@ -63,6 +69,12 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   items.push_back({MenuAction::SYNC, StrId::STR_SYNC_PROGRESS});
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
 }
+
+#if LEXIRISE
+StrId EpubReaderMenuActivity::bookLanguageLabel(const std::optional<lexipoint::Language> language) {  // LEXIPOINT
+  return language ? lexipoint::languageName(*language) : StrId::STR_LEXI_BOOK_LANGUAGE_AUTO;
+}
+#endif
 
 void EpubReaderMenuActivity::closeCancelled() {
   ActivityResult result;
@@ -126,6 +138,13 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     return;
   }
 
+#if LEXIRISE
+  if (selectedAction == MenuAction::LOOKUP_LANGUAGE) {  // LEXIPOINT
+    if (bookLanguage.cycle()) requestUpdate();
+    return;
+  }
+#endif
+
   setResult(MenuResult{static_cast<int>(selectedAction), pendingOrientation, selectedPageTurnOption});
   finish();
 }
@@ -171,7 +190,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
 
   // menuRowItems's labels/actionValue were set once in the constructor (see
   // buildMenuRowItems()); only rows with live values need refreshing here.
-  for (size_t i = 0; i < menuItems.size(); i++) {
+  for (size_t i = 0; i < static_cast<size_t>(listCount()); i++) {  // LEXIPOINT: capped (not gated)
     const auto action = menuItems[i].action;
     if (action == MenuAction::ROTATE_SCREEN) {
       menuRowItems[i].value = I18N.get(orientationLabels[pendingOrientation]);
@@ -182,11 +201,16 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
     } else if (action == MenuAction::FRONTLIGHT) {
       menuRowItems[i].value = I18N.get(Frontlight.isOn() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     }
+#if LEXIRISE
+    else if (action == MenuAction::LOOKUP_LANGUAGE) {  // LEXIPOINT
+      menuRowItems[i].value = I18N.get(bookLanguageLabel(bookLanguage.language()));
+    }
+#endif
   }
 
   fui::ListProps props;
   props.items = menuRowItems;
-  props.count = static_cast<uint16_t>(menuItems.size());
+  props.count = static_cast<uint16_t>(listCount());  // LEXIPOINT: capped at the rows (not gated)
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = 8;               // air between the value and the row edge

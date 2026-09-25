@@ -45,9 +45,6 @@ inline AfterCard afterCard(const LiveOutcome& ended, const bool starDictSet) {
   return starDictSet ? AfterCard::RunStarDict : AfterCard::NoDictionary;
 }
 
-// How a write's failure is told on the card (offline-and-errors.md §3).
-CardController::WriteFailure writeFailure(api::ApiError error);
-
 class CardSession {
  public:
   // `live`: the lookup's source, or nullptr for the bench (nothing to fetch or send).

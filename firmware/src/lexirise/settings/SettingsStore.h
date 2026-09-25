@@ -1,8 +1,8 @@
 #pragma once
 
 // Lexirise settings persistence (settings.md §3 in the lexipoint repo). Owns the in-memory Settings and
-// the crash-safe save of /.lexirise/config.ini. The file I/O goes through SettingsFiles so the save and
-// recovery logic is host-testable (test/lexirise_settings/SettingsStoreTest.cpp); the SD card adapter
+// the crash-safe save of /.lexirise/config.ini (SafeFile.h). The file I/O goes through SettingsFiles so the
+// save and recovery logic is host-testable (test/lexirise_settings/SettingsStoreTest.cpp); the SD card adapter
 // lives in SettingsFilesHal.cpp.
 //
 // Threading: the store is shared across FreeRTOS tasks by design (CrossPoint's web handlers run on
@@ -17,23 +17,10 @@
 #include <string>
 #include <string_view>
 
+#include "SafeFile.h"
 #include "Settings.h"
 
 namespace lexipoint {
-
-// The handful of file operations the store needs. Paths are absolute SD paths.
-class SettingsFiles {
- public:
-  enum class ReadStatus { Ok, Missing, TooLarge, Error };
-
-  virtual ~SettingsFiles() = default;
-  virtual ReadStatus read(const char* path, size_t maxBytes, std::string& out) = 0;
-  virtual bool write(const char* path, std::string_view content) = 0;  // create/truncate, fully written
-  virtual bool exists(const char* path) = 0;
-  virtual bool remove(const char* path) = 0;
-  virtual bool rename(const char* from, const char* to) = 0;  // fails if `to` exists (SdFat semantics)
-  virtual bool ensureDir(const char* path) = 0;
-};
 
 enum class LoadOutcome {
   Defaults,         // no file yet (first boot)
@@ -65,7 +52,6 @@ class SettingsStore {
 
  private:
   LoadOutcome loadLocked();                   // requires writeMutex_
-  void quarantine(const char* path);          // requires writeMutex_
   bool saveLocked(const Settings& settings);  // requires writeMutex_
 
   SettingsFiles& files_;

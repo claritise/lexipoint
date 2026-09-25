@@ -62,6 +62,7 @@ CardStrings cardStringsFromI18n() {
   s.retrying = tr(STR_LEXI_CARD_RETRYING);
   s.offline = tr(STR_LEXI_CARD_OFFLINE);
   s.rateLimited = tr(STR_LEXI_CARD_RATE_LIMITED);
+  s.nextSentenceFailed = tr(STR_LEXI_CARD_NEXT_SENTENCE_FAILED);
   s.meaningUnavailable = tr(STR_LEXI_CARD_MEANING_UNAVAILABLE);
   s.notYet = tr(STR_LEXI_CARD_NOT_YET);
   s.actionDone[0] = tr(STR_LEXI_CARD_ACTION_DONE_0);

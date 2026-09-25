@@ -281,23 +281,26 @@ void EpubReaderActivity::openReaderMenu() {
   const ChapterPosition position = chapterPosition();
   const int bookProgressPercent = bookPercentFor(position);
 
-  startActivityForResult(
-      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
-                                               position.totalPages, bookProgressPercent, SETTINGS.orientation,
-                                               !currentPageFootnotes.empty(), !cachedBookmarks.empty()),
-      [this](const ActivityResult& result) {
-        const auto& menu = std::get<MenuResult>(result.data);
+  // LEXIPOINT: built first, so the Lookup language row can be given the book (not gated: a plain restructure).
+  auto menu = std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
+                                                       position.totalPages, bookProgressPercent, SETTINGS.orientation,
+                                                       !currentPageFootnotes.empty(), !cachedBookmarks.empty());
+#if LEXIRISE
+  menu->setBookPath(epub->getPath());  // LEXIPOINT
+#endif
+  startActivityForResult(std::move(menu), [this](const ActivityResult& result) {
+    const auto& menu = std::get<MenuResult>(result.data);
 
-        if (SETTINGS.orientation != menu.orientation) {
-          applyOrientation(menu.orientation);
-        }
+    if (SETTINGS.orientation != menu.orientation) {
+      applyOrientation(menu.orientation);
+    }
 
-        toggleAutoPageTurn(menu.pageTurnOption);
+    toggleAutoPageTurn(menu.pageTurnOption);
 
-        if (!result.isCancelled) {
-          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
-        }
-      });
+    if (!result.isCancelled) {
+      onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+    }
+  });
 }
 
 bool EpubReaderActivity::buildTickHeapGate() {
@@ -318,14 +321,35 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
 // LEXIPOINT: with Lexirise usable, word select works without a StarDict dictionary installed; a language
 // can have its own (settings.md §1).
 bool EpubReaderActivity::dictionaryLookupsAvailable() const {
-  const lexipoint::text::BookLanguage book(epub->getLanguage(), std::nullopt);
+  const lexipoint::text::BookLanguage book = lexipoint::lookup::bookLanguageFor(epub->getLanguage(), epub->getPath());
   const lexipoint::Settings settings = lexipoint::settingsStore().snapshot();
   return lexipoint::lookup::lookupsAvailable(lexipoint::lookup::anyStarDict(settings, SETTINGS.dictionaryName, book),
                                              lexipoint::lookup::lexiriseConfigured(settings, book));
 }
+
+std::unique_ptr<Page> EpubReaderActivity::pageWithWordAt(const int x, const int y) {
+  RenderLock lock;  // the page's words are measured with the glyph cache the render task draws with
+  if (!section) return nullptr;
+  auto page = section->loadPage(section->currentPage);
+  if (!page) return nullptr;
+  int left = 0;
+  int top = 0;
+  wordSelectOrigin(left, top);
+  if (!DictionaryWordSelectActivity::pressOnWord(renderer, *page, left, top, x, y)) return nullptr;
+  return page;
+}
 #endif
 
-void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int touchY) {
+// LEXIPOINT: where word select draws the page, shared with the long-press check (not gated: upstream uses it).
+void EpubReaderActivity::wordSelectOrigin(int& left, int& top) const {
+  int right = 0;
+  int bottom = 0;
+  renderer.getOrientedViewableTRBL(&top, &right, &bottom, &left);
+  top += SETTINGS.screenMargin;
+  left += SETTINGS.screenMargin;
+}
+
+void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int touchY, std::unique_ptr<Page> page) {
 #if LEXIRISE
   const bool lookupsAvailable = dictionaryLookupsAvailable();  // LEXIPOINT
 #else
@@ -340,19 +364,17 @@ void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int to
     return;
   }
   if (!section) return;
-  auto page = section->loadPage(section->currentPage);
+  if (!page) page = section->loadPage(section->currentPage);  // LEXIPOINT: a long-press may have loaded it
   if (!page) return;
 
-  int orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft;
-  renderer.getOrientedViewableTRBL(&orientedMarginTop, &orientedMarginRight, &orientedMarginBottom,
-                                   &orientedMarginLeft);
-  orientedMarginTop += SETTINGS.screenMargin;
-  orientedMarginLeft += SETTINGS.screenMargin;
+  int orientedMarginTop = 0;
+  int orientedMarginLeft = 0;
+  wordSelectOrigin(orientedMarginLeft, orientedMarginTop);
 
   auto wordSelect = std::make_unique<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
                                                                    orientedMarginLeft, orientedMarginTop);
 #if LEXIRISE
-  wordSelect->setBook(epub->getLanguage());  // LEXIPOINT: the tap's language follows the book
+  wordSelect->setBook(lexipoint::lookup::bookLanguageFor(epub->getLanguage(), epub->getPath()));  // LEXIPOINT
   if (touchX >= 0) wordSelect->setInitialTouch(touchX, touchY);
 #endif
   startActivityForResult(std::move(wordSelect), [this](const ActivityResult&) { requestUpdate(); });
@@ -587,11 +609,17 @@ void EpubReaderActivity::loop() {
         SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_ON ||
             SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_INVERTED_TAP};
     const bool fired = mappedInput.peekScreenLongPress(pressX, pressY);
-    // Taken (consumed) only when the lookup owns the zone and can answer: otherwise it stays CrossPoint's.
-    if (lexipoint::lookup::takeLongPress(fired ? std::optional<int>(pressX) : std::nullopt, rules,
-                                         [this] { return dictionaryLookupsAvailable(); })) {
+    // Taken (consumed) only when the lookup owns the zone, can answer, and the press is on a word:
+    // otherwise it stays CrossPoint's, and its lift is a tap (the menu, a page turn).
+    std::unique_ptr<Page> pressed;
+    const bool taken = lexipoint::lookup::takeLongPress(
+        fired ? std::optional<int>(pressX) : std::nullopt, rules, [this] { return dictionaryLookupsAvailable(); },
+        [&] { return (pressed = pageWithWordAt(pressX, pressY)) != nullptr; });
+    // Debug level (dev builds): `lxctl reader-longpress` checks it.
+    if (fired) LOG_DBG("LXLP", "long-press %d %d %s", pressX, pressY, taken ? "taken" : "left");
+    if (taken) {
       mappedInput.wasScreenLongPress(pressX, pressY);  // consume: the finger lift mustn't tap word select
-      openDictionaryWordSelect(pressX, pressY);
+      openDictionaryWordSelect(pressX, pressY, std::move(pressed));
       return;
     }
   }
@@ -911,6 +939,11 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       openDictionaryWordSelect();
       break;
     }
+#if LEXIRISE
+    case EpubReaderMenuActivity::MenuAction::LOOKUP_LANGUAGE:
+      // LEXIPOINT: handled in place by the menu (and the More panel), like Night mode.
+      break;
+#endif
     case EpubReaderMenuActivity::MenuAction::DISPLAY_QR: {
       if (section && section->currentPage >= 0 && section->currentPage < section->pageCount) {
         std::string fullText = section->getTextFromSectionFile();
@@ -2405,6 +2438,9 @@ void EpubReaderActivity::buildMoreActions() {
                                    return item.action == MA::SELECT_CHAPTER || item.action == MA::TEXT_SETTINGS;
                                  }),
                   moreItems.end());
+#if LEXIRISE
+  if (epub) moreBookLanguage.open(epub->getPath());  // LEXIPOINT
+#endif
 }
 
 std::string EpubReaderActivity::moreRowName(int row) const {
@@ -2428,6 +2464,10 @@ std::string EpubReaderActivity::moreRowValue(int row) const {
       return SETTINGS.screenInverted ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case MA::FRONTLIGHT:
       return Frontlight.isOn() ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
+#if LEXIRISE
+    case MA::LOOKUP_LANGUAGE:  // LEXIPOINT
+      return I18N.get(EpubReaderMenuActivity::bookLanguageLabel(moreBookLanguage.language()));
+#endif
     default:
       return "";
   }
@@ -2484,6 +2524,15 @@ void EpubReaderActivity::activateMoreRow(int row) {
       }
       return;
     }
+#if LEXIRISE
+    case MA::LOOKUP_LANGUAGE:  // LEXIPOINT: only the row's value changes, as with the frontlight
+      if (moreBookLanguage.cycle()) {
+        RenderLock lock;
+        renderOverlay();
+        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      }
+      return;
+#endif
     default:
       break;
   }

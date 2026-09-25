@@ -12,6 +12,7 @@
 
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
+#include "WordBoxes.h"  // LEXIPOINT: one word-box rule, shared with the reader's long-press check (not gated)
 #include "components/UITheme.h"
 #if LEXIRISE
 #include "lexirise/LexiriseService.h"            // LEXIPOINT
@@ -27,23 +28,6 @@ namespace {
 constexpr unsigned long POPUP_DURATION_MS = 1500;
 constexpr unsigned long WORD_REPEAT_START_MS = 500;
 constexpr unsigned long WORD_REPEAT_INTERVAL_MS = 500;
-
-// A token is selectable when it has an ASCII alphanumeric or a non-ASCII
-// codepoint outside U+2000-U+206F (dashes, bullets and other General
-// Punctuation that appear as standalone tokens are not words).
-bool isSelectableToken(const char* text) {
-  for (const uint8_t* p = reinterpret_cast<const uint8_t*>(text); *p != 0; p++) {
-    if (*p < 0x80) {
-      if (std::isalnum(*p)) return true;
-    } else if (*p == 0xE2 && (p[1] == 0x80 || p[1] == 0x81)) {
-      if (p[2] == 0) break;  // truncated sequence: skipping would step past the NUL
-      p += 2;                // skip the 3-byte General Punctuation codepoint
-    } else {
-      return true;
-    }
-  }
-  return false;
-}
 
 void indexBuildYield(void*) { vTaskDelay(1); }
 
@@ -103,10 +87,10 @@ void DictionaryWordSelectActivity::extractWords() {
 
     bool rowHasWords = false;
     const int ascender = renderer.getFontAscenderSize(fontId);
-    const int rubyShift = block->getRubyShift(ascender);
+    const int top = word_boxes::lineTop(*line, *block, marginTop, ascender);  // LEXIPOINT: WordBoxes.h
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
-      if (!isSelectableToken(text)) {
+      if (!word_boxes::isSelectableToken(text)) {  // LEXIPOINT: WordBoxes.h
 #if LEXIRISE
         pageText.append(text);  // LEXIPOINT: the page model measures every line's last token
         pageText.push_back(' ');
@@ -116,8 +100,8 @@ void DictionaryWordSelectActivity::extractWords() {
       }
 
       WordBox box;
-      box.x = static_cast<int16_t>(line->xPos + block->wordXpos(i) + marginLeft);
-      box.y = static_cast<int16_t>(line->yPos + marginTop + rubyShift);
+      box.x = static_cast<int16_t>(word_boxes::wordLeft(*line, *block, i, marginLeft));  // LEXIPOINT
+      box.y = static_cast<int16_t>(top);
       box.style = block->wordStyle(i);
       box.width = 0;  // measured below, once the advance table is ready
       box.row = rowCount;
@@ -159,18 +143,29 @@ void DictionaryWordSelectActivity::extractWords() {
 }
 
 // Index of the word whose box (with finger-sized slop) contains the touch
-// point; -1 when the touch lands on no word. Boxes never overlap after the
-// slop grows them, at worst they touch, so first hit wins.
+// point; -1 when the touch lands on no word.
 int DictionaryWordSelectActivity::wordAt(const int x, const int y) const {
-  constexpr int SLOP = 4;  // matches the highlight box (+2) plus finger error
   for (int i = 0; i < static_cast<int>(words.size()); i++) {
     const WordBox& word = words[i];
-    if (x >= word.x - SLOP && x < word.x + word.width + SLOP && y >= word.y - SLOP && y < word.y + lineHeight + SLOP) {
-      return i;
-    }
+    if (word_boxes::hit(word.x, word.y, word.width, lineHeight, x, y)) return i;  // LEXIPOINT: WordBoxes.h
   }
   return -1;
 }
+
+#if LEXIRISE
+// LEXIPOINT: wordAt() over the boxes extractWords() would make (WordBoxes.h), measuring only the words of
+// the lines under the press. The caller holds the render lock (the measuring shares the glyph cache with
+// the render task).
+bool DictionaryWordSelectActivity::pressOnWord(GfxRenderer& renderer, const Page& page, const int marginLeft,
+                                               const int marginTop, const int x, const int y) {
+  const int fontId = SETTINGS.getReaderFontId();
+  return word_boxes::anyWordAt(page, marginLeft, marginTop, renderer.getLineHeight(fontId),
+                               renderer.getFontAscenderSize(fontId), x, y,
+                               [&renderer, fontId](const char* text, const EpdFontFamily::Style style) {
+                                 return renderer.getTextAdvanceX(fontId, text, style);
+                               });
+}
+#endif
 
 // Index of the word in `row` whose horizontal center is closest to centerX;
 // -1 when the row has no words.
@@ -535,8 +530,14 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
   if (!lexipoint::lookup::asksLexirise(context, lexipoint::lookup::lexiriseConfigured(settings, *book))) return false;
 
   auto outcome = std::make_shared<lexipoint::card::LiveOutcome>();
+  // The side buttons go on into the page's next sentence (P9): described like a tap, from this page.
+  // The page model is this activity's (it outlives the card, as drawPage's page does); book and settings are
+  // copied (settings is this call's).
+  auto next = [this, book = *book, settings](const lexipoint::text::TapContext& current) {
+    return lexipoint::text::describeNextSentence(pageModel, current, book, settings);
+  };
   auto source = std::make_unique<lexipoint::card::LiveSource>(lexipoint::service(), std::move(context), readerPage,
-                                                              lexipoint::tagList(settings.tags));
+                                                              lexipoint::tagList(settings.tags), std::move(next));
   // The page stays this activity's: the card draws it under itself while it's open.
   auto drawPage = [this](GfxRenderer& r) { page->render(r, fontId, marginLeft, marginTop); };
   popup = Popup::None;

@@ -64,6 +64,7 @@ void LexiriseCardActivity::onEnter() {
     // (the bench's page is laid out for the card's).
     pageUnderCard_ = card == current || !drawPage_;
     controller_.open(millis());
+    loggedWord_ = controller_.word();  // the smoke log starts from the word it opened on
     nextDueMs_ = controller_.nextDueMs();
   }
   if (live_) service().holdWifi(true);  // one WiFi join per card, whatever the idle setting
@@ -77,8 +78,15 @@ void LexiriseCardActivity::loop() {
   int y = 0;
   if (mappedInput.wasScreenTapped(x, y)) input_.tap(x, y, now);
   readGestures(now);
-  if (mappedInput.wasReleased(MappedInputManager::Button::PageForward)) input_.step(+1, now);
-  if (mappedInput.wasReleased(MappedInputManager::Button::PageBack)) input_.step(-1, now);
+  // A step keeps when its press was first seen: one held through a blocking call (the next sentence's
+  // analysis) is first seen just after it, and mustn't count after the jump (CardController::step). A press
+  // made and released entirely during the call is never seen at all.
+  if (mappedInput.wasReleased(MappedInputManager::Button::PageForward)) {
+    input_.step(+1, now, now - mappedInput.getHeldTime());
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::PageBack)) {
+    input_.step(-1, now, now - mappedInput.getHeldTime());
+  }
   // Back (the left-edge swipe, as everywhere in CrossPoint) is Home: expanded → card, card → close.
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) input_.home(now);
   // Input and due phases wait while a render holds the lock (its refresh takes ~0.5 s): next pass.
@@ -109,32 +117,42 @@ void LexiriseCardActivity::readGestures(const unsigned long now) {
 void LexiriseCardActivity::handleQueuedInput(const unsigned long nowMs) {
   const bool hadInput = !input_.empty();
   Outcome outcome;
-  int word = 0;
-  bool expanded = false;
-  int tab = 0;
+  SmokeState shown;
   {
     RenderLock lock;
     outcome = session_.handleInput(nowMs);
     nextDueMs_ = controller_.nextDueMs();
-    word = controller_.word();
-    expanded = controller_.state().view == View::Expanded;
-    tab = controller_.state().tab;
+    shown = smokeState();
   }
-  // lxctl card-smoke checks the side buttons stepped to the word it meant (their mapping follows settings),
-  // and card-gestures where each swipe left the card.
-  if (smoke_ && hadInput) LOG_INF("LXCARD", "word %d view %s tab %d", word, expanded ? "expanded" : "card", tab);
+  logWord(shown, hadInput);
   apply(outcome);
+}
+
+LexiriseCardActivity::SmokeState LexiriseCardActivity::smokeState() const {
+  return {controller_.word(), controller_.state().view == View::Expanded, controller_.state().tab};
+}
+
+void LexiriseCardActivity::logWord(const SmokeState& shown, const bool hadInput) {
+  // lxctl card-smoke checks the side buttons stepped to the word it meant (their mapping follows settings),
+  // card-gestures where each swipe left the card, and card-sentence the jump into the next sentence (which
+  // comes with no input, from a tick or an answer: logged when the word changes).
+  if (!smoke_ || (!hadInput && shown.word == loggedWord_)) return;
+  LOG_INF("LXCARD", "word %d view %s tab %d", shown.word, shown.expanded ? "expanded" : "card", shown.tab);
+  loggedWord_ = shown.word;
 }
 
 void LexiriseCardActivity::fetchAnswer() {
   LiveSource::Fetched fetched = session_.fetch(millis());  // blocking: WiFi, TLS, one request
   CardSession::Answer answer;
+  SmokeState shown;
   {
     RenderLock lock;
     answer = session_.apply(std::move(fetched), millis());
     nextDueMs_ = controller_.nextDueMs();
+    shown = smokeState();
   }
   logAnswer(answer);
+  logWord(shown, false);
   if (answer.ended) return end(*answer.ended);
   if (answer.redraw) redraw();
 }

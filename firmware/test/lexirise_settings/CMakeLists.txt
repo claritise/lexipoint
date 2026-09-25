@@ -3,8 +3,11 @@ add_executable(LexiriseSettingsTest
   SettingsStoreTest.cpp
   SettingsPatchTest.cpp
   SettingsScreenTest.cpp
+  BookLanguagesTest.cpp
   ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsStore.cpp
+  ${REPO_ROOT}/src/lexirise/settings/SafeFile.cpp
+  ${REPO_ROOT}/src/lexirise/settings/BookLanguages.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsPatch.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsScreen.cpp
   ${REPO_ROOT}/src/lexirise/net/Http.cpp

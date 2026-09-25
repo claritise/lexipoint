@@ -152,3 +152,35 @@ TEST(TapContext, ASwitchedOffLanguageStillPicksItsPunctuation) {
   ASSERT_TRUE(t.sentence);
   EXPECT_EQ(t.sentence->text, "「行く」");
 }
+
+TEST(TapContext, TheNextSentenceIsDescribedLikeATap) {
+  const PageModel page{{{{"彼", "は", "来", "た。", "雨", "が", "降", "る。"}, true}}};
+  const Settings s;
+  const BookLanguage untagged("", std::nullopt);
+  const auto first = describeTap(page, {0, 1}, untagged, s);
+  ASSERT_TRUE(first.sentence);
+  EXPECT_EQ(first.sentence->text, "彼は来た。");
+  const auto next = lexipoint::text::describeNextSentence(page, first, untagged, s);
+  ASSERT_TRUE(next.sentence);
+  EXPECT_EQ(next.sentence->text, "雨が降る。");
+  EXPECT_EQ(next.sentence->tapOffset, 0u);
+  EXPECT_EQ(next.language.language, s.fallbackLanguage());  // Han-only: decided again, from its own text
+  EXPECT_FALSE(lexipoint::text::describeNextSentence(page, next, untagged, s).sentence);  // the page ends
+  EXPECT_FALSE(lexipoint::text::describeNextSentence(page, lexipoint::text::TapContext{}, untagged, s).sentence);
+}
+
+TEST(TapContext, TheNextSentenceIsCutWithItsOwnLanguagesRules) {
+  // Japanese, then Chinese-only text in a book that doesn't say (Han-only → Chinese here). ”“ only splits
+  // dialogue with Chinese rules, so it's cut again once its language is known.
+  const PageModel page{{{{"彼", "は", "来", "た。"}, true}, {{"他", "说", "“好", "”", "“走", "吧", "”"}, true}}};
+  Settings s;
+  s.defaultLanguage = Language::Chinese;
+  const BookLanguage untagged("", std::nullopt);
+  const auto first = describeTap(page, {0, 1}, untagged, s);
+  ASSERT_EQ(first.script, Script::Japanese);
+  const auto next = lexipoint::text::describeNextSentence(page, first, untagged, s);
+  ASSERT_TRUE(next.sentence);
+  EXPECT_EQ(next.script, Script::Chinese);
+  EXPECT_EQ(next.language.language, Language::Chinese);
+  EXPECT_EQ(next.sentence->text, "他说“好”");
+}

@@ -431,3 +431,76 @@ TEST(SentencePageMap, InvisiblesAndSpacingKeepTheTokensOwnIndices) {
   EXPECT_EQ(l.text, "He came late.");
   EXPECT_EQ(l.chars.size(), 11u);  // 13 characters, two of them inserted spaces
 }
+
+// lookup-flow.md §6: the side buttons step on into the next sentence on the page.
+TEST(SentenceAfter, TheNextSentenceStartsWhereThisOneEnds) {
+  const PageModel page{{layout("前の文だ。彼は東京へ行った。次の文。", true)}};
+  const auto first = build(page, "京");
+  const auto next = lexipoint::text::buildSentenceAfter(page, first, Script::Japanese);
+  ASSERT_TRUE(next.has_value());
+  EXPECT_EQ(next->text, "次の文。");
+  EXPECT_EQ(next->tapOffset, 0u);  // the tap is its first piece
+  EXPECT_FALSE(lexipoint::text::buildSentenceAfter(page, *next, Script::Japanese).has_value());  // the page ends
+}
+
+TEST(SentenceAfter, AcrossLinesAndParagraphs) {
+  const PageModel page{{layout("雨だ。昨日の夜、彼", true), layout("は本を読んだ。"), layout("翌朝、晴れた。", true)}};
+  const auto rain = build(page, "雨");
+  const auto night = lexipoint::text::buildSentenceAfter(page, rain, Script::Japanese);
+  ASSERT_TRUE(night.has_value());
+  EXPECT_EQ(night->text, "昨日の夜、彼は本を読んだ。");
+  const auto morning = lexipoint::text::buildSentenceAfter(page, *night, Script::Japanese);
+  ASSERT_TRUE(morning.has_value());
+  EXPECT_EQ(morning->text, "翌朝、晴れた。");
+}
+
+TEST(SentenceAfter, ASentenceBreakInsideOneToken) {
+  // Chinese “好。”“走 is one laid-out token holding two sentences.
+  const PageModel page{{layout("他说：“好。”“走吧。”", true)}};
+  const auto first = build(page, "说", Script::Chinese);
+  const auto next = lexipoint::text::buildSentenceAfter(page, first, Script::Chinese);
+  ASSERT_TRUE(next.has_value());
+  EXPECT_NE(next->text, first.text);
+  EXPECT_NE(next->text.find("走吧"), std::string::npos);
+}
+
+TEST(SentenceAfter, NothingWithoutAPlaceOnThePage) {
+  const PageModel page{{layout("彼は来た。", true)}};
+  EXPECT_FALSE(lexipoint::text::buildSentenceAfter(page, BuiltSentence{}, Script::Japanese).has_value());
+}
+
+TEST(SentenceAfter, AfterACappedSentenceItPicksUpWhereThatStopped) {
+  // One 300-character run-on: the tapped window is the cap's worth around the tap; the "next sentence" is
+  // the text right after that window, never overlapping it.
+  std::string runOn;
+  for (int i = 0; i < 300; i++) runOn += (i == 100 ? "猫" : (i % 2 ? "あ" : "い"));
+  const PageModel page{{layout(runOn, true)}};
+  const auto first = build(page, "猫");
+  ASSERT_TRUE(first.truncatedRight);
+  const auto next = lexipoint::text::buildSentenceAfter(page, first, Script::Japanese);
+  ASSERT_TRUE(next.has_value());
+  EXPECT_TRUE(next->truncatedLeft);
+  EXPECT_EQ(next->tapOffset, 0u);
+  EXPECT_LE(utf16Length(next->text), lexipoint::config::kMaxSentenceUnits);
+  // Its first character is the one right after the first window's last, on the page.
+  const auto& last = first.chars.back();
+  const auto& start = next->chars.front();
+  EXPECT_EQ(start.token.line, last.token.line);
+  EXPECT_EQ(start.token.token, last.token.token + 1);
+}
+
+TEST(SentenceAfter, AContinuationEndsAtAClauseBreakLikeATap) {
+  // A 300-character Chinese run-on in clauses joined by "；": the tapped window ends at the first "；"
+  // after the tap, and the continuation at the next one, not mid-clause at the cap.
+  std::string clause;
+  for (int i = 0; i < 60; i++) clause += "的";
+  const std::string text = clause + "；" + clause + "猫" + "；" + clause + "；" + clause + "；" + clause + "。";
+  const PageModel page{{layout(text, true)}};
+  const auto first = build(page, "猫", Script::Chinese);
+  ASSERT_TRUE(first.truncatedRight);
+  ASSERT_EQ(first.text.substr(first.text.size() - 3), "；");
+  const auto next = lexipoint::text::buildSentenceAfter(page, first, Script::Chinese);
+  ASSERT_TRUE(next.has_value());
+  EXPECT_EQ(next->text, clause + "；");  // the next clause, whole
+  EXPECT_TRUE(next->truncatedRight);
+}

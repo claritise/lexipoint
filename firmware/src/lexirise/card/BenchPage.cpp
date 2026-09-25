@@ -29,6 +29,10 @@ Scene layoutPage(const BenchBook& book, const int word, const bool low, const bo
     StripLine strip;
     for (const BenchToken& t : lines[li]) {
       const int w = metrics.width(Font::Page, t.text);
+      // The reference's lines are set in a narrower font: what runs past the right padding isn't drawn (the
+      // panel would clip it with an error per pixel), though the strip still has it.
+      const bool drawn =
+          card::metrics::kBenchPagePadLeft + x + w <= card::metrics::kScreenWidth - card::metrics::kBenchPagePadRight;
       const bool active = t.word == word;
       if (active) {
         const int i = static_cast<int>(strip.tokens.size());
@@ -37,10 +41,10 @@ Scene layoutPage(const BenchBook& book, const int word, const bool low, const bo
         scene.wordOnPage = {card::metrics::kBenchPagePadLeft + x - card::metrics::kHighlightPadH, top,
                             w + 2 * card::metrics::kHighlightPadH, lh};
       }
-      const bool whole = active && highlight && highlightCodepoints <= 0;
+      const bool whole = drawn && active && highlight && highlightCodepoints <= 0;
       if (whole) scene.page.fill(scene.wordOnPage);
-      scene.page.text(Font::Page, card::metrics::kBenchPagePadLeft + x, top, t.text, !whole);
-      if (active && highlight && highlightCodepoints > 0) {
+      if (drawn) scene.page.text(Font::Page, card::metrics::kBenchPagePadLeft + x, top, t.text, !whole);
+      if (drawn && active && highlight && highlightCodepoints > 0) {
         const std::string part = firstCodepoints(t.text, highlightCodepoints);
         scene.page.fill({card::metrics::kBenchPagePadLeft + x - card::metrics::kHighlightPadH, top,
                          metrics.width(Font::Page, part) + 2 * card::metrics::kHighlightPadH, lh});

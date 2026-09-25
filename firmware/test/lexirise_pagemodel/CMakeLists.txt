@@ -1,5 +1,6 @@
 add_executable(LexirisePageModelTest
   PageModelAdapterTest.cpp
+  WordBoxesTest.cpp
   LinkStubs.cpp
   ${REPO_ROOT}/src/lexirise/text/PageModelAdapter.cpp
   ${REPO_ROOT}/src/lexirise/text/SentenceBuilder.cpp

@@ -1,13 +1,16 @@
 #pragma once
 
 // The live card's source (P5): the tapped sentence analyzed once, then each word's dictionary entry as
-// the card lands on it (lookup-flow.md §5-6). The network is behind api::LexiriseApi. The activity runs
+// the card lands on it (lookup-flow.md §5-6). Stepped past its last word, the card goes on into the page's
+// next sentence (P9): extend() adds it, it is analyzed like the first, and its words follow at the end, so
+// every word keeps its index. The network is behind api::LexiriseApi. The activity runs
 // one blocking call per loop pass (fetch(): outside RenderLock, it changes nothing render() reads), then
 // applies the answer under the lock (apply()), so each phase is drawn before the next call starts
 // (phases A and B, popup-ui.md §2). Pure; tests: test/lexirise_card.
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -19,17 +22,25 @@
 
 namespace lexipoint::card {
 
+// How a failed call is told on the card (CardSource.h CallFailure).
+CallFailure callFailure(api::ApiError error);
+
 class LiveSource final : public CardSource {
  public:
+  // The sentence after one on the page (text::describeNextSentence over word select's page); none at its end.
+  using NextSentence = std::function<text::TapContext(const text::TapContext& current)>;
+
   // `tap` must have a sentence and a language (a Lexirise lookup: lookup::lexiriseConfigured). `tags` go on
-  // every word saved from it (settings: tags).
-  LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage page, std::vector<std::string> tags = {});
+  // every word saved from it (settings: tags). Without `next`, the card stops at the sentence's ends.
+  LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage page, std::vector<std::string> tags = {},
+             NextSentence next = nullptr);
 
   enum class Advance {
     Idle,         // nothing to fetch
-    Changed,      // an answer arrived: redraw
-    NotFound,     // Lexirise found no word in the sentence: the card closes, word select says so
-    Unavailable,  // no answer (error()): the card closes, word select falls back to StarDict
+    Changed,      // an answer arrived: redraw (a next sentence that failed too: the card stays on its word,
+                  // with a toast via extendFailure(), or quietly at the page's end)
+    NotFound,     // Lexirise found no word in the tapped sentence: the card closes, word select says so
+    Unavailable,  // no answer for the tapped sentence (error()): the card closes, StarDict answers
   };
   // One answer from the network, not yet applied.
   struct Fetched {
@@ -37,7 +48,8 @@ class LiveSource final : public CardSource {
     lookup::LookupReport report;  // Analysis
     lookup::AnalyzedSentence analysis;
     size_t tapped = 0;
-    int index = 0;  // Entry: the word, and its card with phase B filled in
+    size_t sentence = 0;  // Analysis: which (0: the tapped one)
+    int index = 0;        // Entry: the word, and its card with phase B filled in
     lookup::LookupCard card;
     api::ApiError error = api::ApiError::None;
     std::string savedExpressionId;  // Write: a new save's id (empty for a level change or a removal)
@@ -67,9 +79,9 @@ class LiveSource final : public CardSource {
   std::optional<FailedWrite> takeFailedWrite();
 
   bool hasWork(unsigned long nowMs) const;  // fetch() would call the network
-  // At most one call: the analysis; then the focused word's lookup; then the next write that is ready
-  // (with its word's lookup first, when a save still waits for it). `closing`: only what the queued
-  // writes need, all of them now.
+  // At most one call, in this order: the tapped sentence's analysis; the focused word's lookup (and a
+  // save's, when a save waits for its word's translation); a next sentence the card waits for; the next
+  // write that is ready. `closing`: only what the queued writes need, all of them now (no analysis).
   Fetched fetch(unsigned long nowMs, bool closing = false) const;
   Advance apply(Fetched fetched);  // under RenderLock on the device
   Advance advance(const unsigned long nowMs = 0) { return apply(fetch(nowMs)); }
@@ -86,18 +98,31 @@ class LiveSource final : public CardSource {
 
   void open(unsigned long) override {}
   void focus(const int index, unsigned long) override { focused_ = index; }
+  bool extend(unsigned long nowMs) override;
+  bool extending() const override { return loadingSentence().value_or(0) > 0; }
+  std::optional<CallFailure> extendFailure() const override { return extendFailure_; }
   bool tick(unsigned long) override { return false; }  // answers come through advance()
   std::optional<unsigned long> nextDueMs() const override { return std::nullopt; }
 
   PageScene scene(int index, bool highlight, const TextMetrics& metrics, int highlightCodepoints) const override;
 
  private:
+  struct Sentence {
+    text::TapContext tap;
+    bool analyzed = false;
+  };
+
   api::LexiriseApi& api_;
-  text::TapContext tap_;
+  std::vector<Sentence> sentences_;  // [0] the tapped one, then each one extend() added, in page order
   ReaderPage page_;
-  bool analyzed_ = false;
-  lookup::AnalyzedSentence analysis_;
+  NextSentence next_;
+  bool pageEnded_ = false;  // no sentence after the last (the page ends, or it can't be sent to Lexirise)
+  std::optional<CallFailure> extendFailure_;
+  // A sentence with no word in it the card went past: a later extend() starts after it, not before it (a next
+  // sentence that failed after it would otherwise ask about it again).
+  std::optional<text::TapContext> resumeAfter_;
   std::vector<lookup::LookupCard> cards_;
+  std::vector<size_t> sentenceOf_;  // per word: its sentence
   std::vector<CardWord> words_;
   int start_ = 0;
   int focused_ = 0;
@@ -115,6 +140,19 @@ class LiveSource final : public CardSource {
   int lookupDue(unsigned long nowMs, bool closing) const;
   bool writeReady(unsigned long nowMs, bool closing) const;
   bool needsLookupForSave(int word) const;
+  Fetched analysis(size_t sentence) const;  // the call analyzing one sentence
+  // An analysis that brought words: they join the card at the end (the tapped sentence also sets the start).
+  Advance addWords(Fetched& fetched);
+  // A later sentence's analysis that brought none: the one after is tried (no word in it) or the card stays
+  // where it is (no answer: extendFailure()).
+  Advance laterSentenceFailed(const Fetched& fetched);
+  // The first sentence Lexirise can be asked about after `current` on the page (sentences with no language, a
+  // line of dots or English in a book that doesn't say, are passed over); none at the page's end.
+  std::optional<text::TapContext> nextAskable(const text::TapContext& current) const;
+  // The sentence being analyzed (the first one not yet); none when all are.
+  std::optional<size_t> loadingSentence() const;
+  // The sentence a word is in; past the known words, the one loading (its first character in phase 0).
+  const text::BuiltSentence& sentenceFor(int index) const;
 };
 
 }  // namespace lexipoint::card

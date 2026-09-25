@@ -28,16 +28,40 @@ void CardController::open(const unsigned long nowMs) {
   state_.view = View::Card;
   state_.tab = 0;
   clearToast();
-  syncWord();
+  pendingStep_ = -1;
+  jumpedAtMs_.reset();
+  syncWord(nowMs);
 }
 
-bool CardController::syncWord() {
+bool CardController::syncWord(const unsigned long nowMs) {
   // The sentence just arrived (a lookup answers after phase 0): the card is on the tapped word.
   if (levels_.empty() && source_.wordCount() > 0) word_ = source_.startWord();
   while (static_cast<int>(levels_.size()) < source_.wordCount()) {
-    levels_.push_back(source_.savedLevel(static_cast<int>(levels_.size())));
+    // A word already on the card (the same entry in an earlier sentence) has the level the user set, which
+    // may not have reached Lexirise yet (its Undo window): the new one shows that.
+    const int i = static_cast<int>(levels_.size());
+    Level level = source_.savedLevel(i);
+    for (const int w : source_.sameWord(i)) {
+      if (w < i) {
+        level = levels_[static_cast<size_t>(w)];
+        break;
+      }
+    }
+    levels_.push_back(level);
   }
   const CardState before = state_;
+  const int wordBefore = word_;
+  if (pendingStep_ >= 0 && !source_.extending()) {  // the next sentence came, or didn't
+    const int to = pendingStep_;
+    pendingStep_ = -1;
+    if (to < source_.wordCount()) {
+      jumpedFrom_ = word_;
+      moveTo(to, nowMs);
+      jumpedAtMs_ = nowMs;
+    } else {
+      nextSentenceFailed(nowMs);
+    }
+  }
   state_.phase = hasWord() ? source_.phase(word_) : Phase::Pending;
   // The tab stays across words, but a language with fewer tabs (⋯ is last) can't be left past its end.
   if (hasWord()) state_.tab = std::min(state_.tab, tabCount(currentWord().language) - 1);
@@ -45,11 +69,23 @@ bool CardController::syncWord() {
   state_.pendingText = source_.pendingText();
   state_.pageNumber = source_.pageNumber();
   return state_.phase != before.phase || state_.level != before.level || state_.pendingText != before.pendingText ||
-         state_.pageNumber != before.pageNumber || state_.tab != before.tab;
+         state_.pageNumber != before.pageNumber || state_.tab != before.tab || state_.toast != before.toast ||
+         word_ != wordBefore;
+}
+
+void CardController::nextSentenceFailed(const unsigned long nowMs) {
+  const std::optional<CallFailure> why = source_.extendFailure();
+  if (!why) return;  // the page simply ended
+  // A failed save's Retry, or a save's Undo still in its window, matters more than this: it stays.
+  if (failureToast_ || state_.toastUndo) return;
+  const char* text = strings_.nextSentenceFailed;
+  if (*why == CallFailure::KeyRejected) text = strings_.keyRejected;
+  if (*why == CallFailure::RateLimited) text = strings_.rateLimited;
+  showToast(text, nowMs, false, config::kFailureToastMs);
 }
 
 bool CardController::tick(const unsigned long nowMs) {
-  bool changed = source_.tick(nowMs) && syncWord();
+  bool changed = source_.tick(nowMs) && syncWord(nowMs);
   if (!state_.toast.empty() && timing::reached(nowMs, toastUntilMs_)) {
     clearToast();
     changed = true;
@@ -57,7 +93,7 @@ bool CardController::tick(const unsigned long nowMs) {
   return changed;
 }
 
-bool CardController::sourceChanged() { return syncWord(); }
+bool CardController::sourceChanged(const unsigned long nowMs) { return syncWord(nowMs); }
 
 std::optional<unsigned long> CardController::nextDueMs() const {
   std::optional<unsigned long> due = source_.nextDueMs();
@@ -65,17 +101,50 @@ std::optional<unsigned long> CardController::nextDueMs() const {
   return due;
 }
 
-bool CardController::step(const int direction, const unsigned long nowMs) {
+bool CardController::step(const int direction, const unsigned long nowMs,
+                          const std::optional<unsigned long> pressedAtMs) {
+  if (pressedBeforeJump(pressedAtMs)) {
+    if (direction > 0) return false;  // held through the analysis: its job (off the last word) the jump did
+    pendingStep_ = -1;                // a step back cancels any wait, as below
+    // Back, as it would have been before the jump: from the word the card waited on.
+    const int to = std::max(jumpedFrom_ - 1, 0);
+    jumpedFrom_ = to;               // a second such press goes on back from there
+    if (to == word_) return false;  // already there (the sentence's first word): nothing to redraw
+    moveTo(to, nowMs);
+    syncWord(nowMs);
+    return true;
+  }
+  if (direction < 0) {
+    pendingStep_ = -1;  // back instead: the next sentence still loads, the card doesn't jump to it
+  } else if (pendingStep_ >= 0) {
+    return false;  // already on its way there
+  }
   const int next = word_ + (direction > 0 ? 1 : -1);
-  if (!hasWord() || next < 0 || next >= source_.wordCount()) return false;  // v0.1: stop at the ends
-  word_ = next;
+  if (next < 0) return false;  // the tapped sentence's start: the card doesn't go back before it
+  if (next >= source_.wordCount()) {
+    // The sentence's end: on into the page's next one once it's analyzed (syncWord moves the card); at the
+    // page's end, stop. A sentence already loading (the card stepped back meanwhile) is waited for again.
+    if (hasWord() && next == source_.wordCount() && (source_.extending() || source_.extend(nowMs))) {
+      pendingStep_ = next;
+    }
+    return false;  // nothing changes on screen until it comes
+  }
+  moveTo(next, nowMs);
+  syncWord(nowMs);
+  return true;
+}
+
+bool CardController::pressedBeforeJump(const std::optional<unsigned long> pressedAtMs) const {
+  return pressedAtMs && jumpedAtMs_ && timing::before(*pressedAtMs, *jumpedAtMs_ + config::kStepAfterJumpGraceMs);
+}
+
+void CardController::moveTo(const int index, const unsigned long nowMs) {
+  word_ = index;
   steps_++;
   // A toast (and its Undo) belongs to the word it was about; a failure is about a save the user believes
   // made, and it came late: it stays for its time, Retry and all.
   if (!failureToast_) clearToast();
   source_.focus(word_, nowMs);
-  syncWord();
-  return true;
 }
 
 void CardController::showToast(std::string text, const unsigned long nowMs, const bool tappable,
@@ -97,6 +166,9 @@ void CardController::clearToast() {
 }
 
 Outcome CardController::tap(const Hit* hit, const unsigned long nowMs) {
+  // Anything done on the card while it waits for the next sentence is about this word: the card stays (the
+  // jump would clear a save's Undo toast just made). The words still arrive; the next step goes to them.
+  if (hit) pendingStep_ = -1;
   if (!hit) {  // the page outside the card: close (the expanded view covers the page)
     return {state_.view == View::Card ? Effect::Close : Effect::None, false};
   }
@@ -171,18 +243,18 @@ Outcome CardController::setLevel(const Level level, const char* toastPrefix, con
   return o;
 }
 
-void CardController::levelFailed(const int word, const Level level, const unsigned long nowMs, const WriteFailure why,
+void CardController::levelFailed(const int word, const Level level, const unsigned long nowMs, const CallFailure why,
                                  const Level wanted, const uint32_t retryInS) {
   if (word < 0 || word >= static_cast<int>(levels_.size())) return;
   for (const int same : source_.sameWord(word)) levels_[same] = level;
   if (hasWord()) state_.level = levels_[word_];
   // Said even when the card moved on: the user thinks it's saved (offline-and-errors.md §3).
-  if (why == WriteFailure::KeyRejected) {
+  if (why == CallFailure::KeyRejected) {
     showToast(strings_.keyRejected, nowMs, false, config::kFailureToastMs);
     failureToast_ = true;
     return;
   }
-  std::string text = why == WriteFailure::RateLimited
+  std::string text = why == CallFailure::RateLimited
                          ? std::string(strings_.rateLimitedTryIn) + std::to_string(retryInS) + strings_.seconds
                          : std::string(strings_.saveFailed);
   std::vector<Failed> retries = std::move(retries_);  // the toast's Retry keeps every failure it covers
@@ -211,6 +283,7 @@ Outcome CardController::retry(const unsigned long nowMs) {
 }
 
 Outcome CardController::home() {
+  pendingStep_ = -1;  // as for a tap: the card doesn't jump after it
   if (state_.view == View::Expanded) {
     state_.view = View::Card;
     return {Effect::Redraw, false};
@@ -219,6 +292,7 @@ Outcome CardController::home() {
 }
 
 Outcome CardController::swipe(const Swipe direction) {
+  pendingStep_ = -1;  // as for a tap: the card stays on this word
   // Before the word arrives there's no detail view to open or tab to change (the rank row isn't a target
   // either): only a swipe down (close) means something.
   if (direction != Swipe::Down && (!hasWord() || state_.phase == Phase::Pending)) return {};

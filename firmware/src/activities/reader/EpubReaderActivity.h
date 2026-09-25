@@ -84,6 +84,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool overlayPageStored = false;
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
+#if LEXIRISE
+  lexipoint::BookLanguageRow moreBookLanguage{lexipoint::bookLanguageStore()};  // LEXIPOINT: the More panel's row
+#endif
 
   // Footnote support
   std::vector<FootnoteEntry> currentPageFootnotes;
@@ -154,10 +157,14 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string moreRowName(int row) const;
   std::string moreRowValue(int row) const;
   void activateMoreRow(int row);
-  // LEXIPOINT: touchX/touchY (from a long-press) select that word and look it up at once.
-  void openDictionaryWordSelect(int touchX = -1, int touchY = -1);
+  // LEXIPOINT: touchX/touchY (from a long-press) select that word and look it up at once; `page` is the
+  // current page when the caller has loaded it already.
+  void openDictionaryWordSelect(int touchX = -1, int touchY = -1, std::unique_ptr<Page> page = nullptr);
+  void wordSelectOrigin(int& left, int& top) const;  // LEXIPOINT: where word select draws the page (not gated)
 #if LEXIRISE
   bool dictionaryLookupsAvailable() const;  // LEXIPOINT: StarDict set, or Lexirise usable
+  // LEXIPOINT: the current page when a long-press at (x, y) is on one of its words; nullptr otherwise.
+  std::unique_ptr<Page> pageWithWordAt(int x, int y);
 #endif
   bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;

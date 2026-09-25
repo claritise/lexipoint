@@ -37,21 +37,39 @@ TEST(LongPress, OnlyTakenWhenSomethingCanAnswer) {
   EXPECT_TRUE(lookupsAvailable(false, true));
 }
 
-TEST(LongPress, TakenOnlyWhenFiredOwnedAndAvailable) {
+TEST(LongPress, TakenOnlyWhenFiredOwnedAvailableAndOnAWord) {
   using lexipoint::lookup::takeLongPress;
   int asked = 0;
+  int measured = 0;
   const auto available = [&asked](const bool answer) {
     return [&asked, answer] {
       asked++;
       return answer;
     };
   };
+  const auto onWord = [&measured](const bool answer) {
+    return [&measured, answer] {
+      measured++;
+      return answer;
+    };
+  };
   const LongPressRules on = rules(true, true);
-  EXPECT_FALSE(takeLongPress(std::nullopt, on, available(true)));  // no long-press this frame
-  EXPECT_FALSE(takeLongPress(150, on, available(true)));           // CrossPoint's zone (touch-down point)
+  EXPECT_FALSE(takeLongPress(std::nullopt, on, available(true), onWord(true)));  // no long-press this frame
+  EXPECT_FALSE(takeLongPress(150, on, available(true), onWord(true)));           // CrossPoint's zone (touch-down point)
   EXPECT_EQ(asked, 0);  // the settings aren't read for a frame the lookup can't take
-  EXPECT_TRUE(takeLongPress(165, on, available(true)));
-  EXPECT_FALSE(takeLongPress(165, on, available(false)));  // nothing can answer: stays CrossPoint's
+  EXPECT_TRUE(takeLongPress(165, on, available(true), onWord(true)));
+  EXPECT_FALSE(takeLongPress(165, on, available(false), onWord(true)));  // nothing can answer: stays CrossPoint's
   EXPECT_EQ(asked, 2);
-  EXPECT_TRUE(takeLongPress(10, rules(false, true), available(true)));
+  EXPECT_EQ(measured, 1);  // the page isn't loaded when nothing could answer
+  EXPECT_TRUE(takeLongPress(10, rules(false, true), available(true), onWord(true)));
+}
+
+TEST(LongPress, APressOffTheTextStaysCrossPoints) {
+  // A margin, an image, blank space: its lift is CrossPoint's tap (the reader menu in the centre, a page
+  // turn at the sides), never word select with nothing looked up.
+  using lexipoint::lookup::takeLongPress;
+  const auto yes = [] { return true; };
+  const auto no = [] { return false; };
+  EXPECT_FALSE(takeLongPress(240, rules(false, true), yes, no));
+  EXPECT_FALSE(takeLongPress(240, rules(true, true), yes, no));
 }

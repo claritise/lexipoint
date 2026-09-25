@@ -145,6 +145,7 @@ struct CardStrings {
   const char* retrying = "Trying again\xE2\x80\xA6";
   const char* offline = "offline";  // the meaning row when phase B couldn't reach Lexirise
   const char* rateLimited = "Lexirise: rate limited";
+  const char* nextSentenceFailed = "Couldn't load the next sentence";  // a step past the end, offline (P9)
   const char* meaningUnavailable = "meaning unavailable";
   const char* notYet = "Not in this version yet";
   const char* actionDone[3] = {"Sentence saved as a card", "Ignored: won't be marked again", "Flagged for later"};

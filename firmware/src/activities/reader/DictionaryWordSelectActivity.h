@@ -39,13 +39,17 @@ class DictionaryWordSelectActivity final : public Activity {
   void render(RenderLock&&) override;
 
 #if LEXIRISE
-  // LEXIPOINT: the book's <dc:language> (and later its override), so a tap can pick its language.
-  void setBook(const std::string& dcLanguage) { book.emplace(dcLanguage, std::nullopt); }
+  // LEXIPOINT: the book's language inputs (lookup::bookLanguageFor), so a tap can pick its language.
+  void setBook(const lexipoint::text::BookLanguage& bookLanguage) { book = bookLanguage; }
   // LEXIPOINT: opened by a long-press on the page: select the word there and look it up at once.
   void setInitialTouch(const int x, const int y) {
     initialTouchX = x;
     initialTouchY = y;
   }
+  // LEXIPOINT: whether a press at (x, y) lands on a word of `page` (drawn at the margins given), as
+  // setInitialTouch() would find one: the reader takes a long-press only then, so one anywhere else stays
+  // CrossPoint's (its lift is a tap: the menu, a page turn). Call with the render lock held.
+  static bool pressOnWord(GfxRenderer& renderer, const Page& page, int marginLeft, int marginTop, int x, int y);
 #endif
 
  private:

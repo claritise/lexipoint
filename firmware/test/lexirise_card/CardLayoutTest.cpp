@@ -231,6 +231,7 @@ TEST(CardLayout, CardViewStripOnlyWhenTheWordIsCovered) {
   EXPECT_EQ(textCommand(clear, mark), nullptr);
 }
 
+// The page line, scrolled: the card view's strip, and the detail view's before a word is marked (P9).
 TEST(CardLayout, StripScrollsTheActiveWordIntoView) {
   CardWord w = benchJapanese().words[0];
   CardState s;
@@ -243,6 +244,51 @@ TEST(CardLayout, StripScrollsTheActiveWordIntoView) {
   const int clipRight = 480 - 28 - 56;
   EXPECT_EQ(word->rect.x + 26, clipRight - 11);                             // ends 11 inside the clip
   EXPECT_EQ(textCommand(list, "一二三四五六七八九十一二三四五"), nullptr);  // pushed past the left edge
+}
+
+// P9 (claritise, 2026-09-25): the detail view's strip is the active word at the left edge, then its sentence.
+TEST(CardLayout, DetailStripStartsAtTheActiveWord) {
+  CardWord w = benchJapanese().words[0];
+  CardState s;
+  s.view = View::Expanded;
+  s.strip.tokens = {{"前の文", 0, 78}, {"語", 78, 26}};  // the page line: not what the strip shows now
+  s.strip.activeFirst = s.strip.activeLast = 1;
+  s.contextSentence = {"前の語が来た。", 6, 3};  // 語 marked (bytes)
+  const auto list = layoutCard(w, s, kMetrics);
+  const Command* word = textCommand(list, "語");
+  ASSERT_NE(word, nullptr);
+  EXPECT_EQ(word->rect.x, m::kStripPadH);  // at the left edge
+  EXPECT_FALSE(word->black);               // inverted
+  const Command* rest = textCommand(list, "が来た。");
+  ASSERT_NE(rest, nullptr);
+  EXPECT_EQ(rest->rect.x, m::kStripPadH + kMetrics.width(Font::Page, "語") + m::kHighlightPadH);
+  EXPECT_EQ(textCommand(list, "前の文"), nullptr);  // nothing before the word
+}
+
+TEST(CardLayout, DetailStripCutsWhatDoesNotFit) {
+  const int stripBottom = m::kScreenHeight - m::kCardInset - m::kExpandedCardHeight;  // the strip: above the card
+  CardWord w = benchJapanese().words[0];
+  CardState s;
+  s.view = View::Expanded;
+  s.contextSentence = {"語" + std::string(300, 'x'), 0, 3};
+  const auto list = layoutCard(w, s, kMetrics);
+  const int clipRight = m::kScreenWidth - m::kStripPadH - m::kStripClip;
+  bool cut = false;
+  for (const Command& c : list.commands) {
+    if (c.kind != Command::Kind::Text || c.rect.y >= stripBottom || c.text.rfind("x", 0) != 0) continue;
+    EXPECT_LE(c.rect.x + kMetrics.width(Font::Page, c.text), clipRight);
+    cut = c.text.compare(c.text.size() - 3, 3, "\xE2\x80\xA6") == 0;
+  }
+  EXPECT_TRUE(cut);
+  // A word wider than the strip is cut itself, and nothing follows it.
+  s.contextSentence = {std::string(300, 'y') + "z", 0, 300};
+  const auto wide = layoutCard(w, s, kMetrics);
+  for (const Command& c : wide.commands) {
+    if (c.kind == Command::Kind::Text && c.rect.y < stripBottom && c.text != "line 1/1") {
+      EXPECT_LE(c.rect.x + kMetrics.width(Font::Page, c.text), clipRight) << c.text;
+      EXPECT_EQ(c.text.find('z'), std::string::npos);
+    }
+  }
 }
 
 TEST(CardLayout, Phases) {
@@ -332,6 +378,34 @@ TEST(BenchFixtures, AreTheReferencesWords) {
   const auto scene = bench::layoutPage(ja, 2, false, true, kMetrics);
   EXPECT_EQ(scene.sentence.text.substr(scene.sentence.markStart, scene.sentence.markLength), "煩わしくて");
   EXPECT_EQ(scene.strip.lineNumber, 2);
+}
+
+TEST(BenchPage, ALineInAWiderFontIsCutAtTheRightPadding) {
+  // The device's page font is wider than the reference's: what doesn't fit isn't drawn (the panel logged
+  // "Outside range" for every pixel past its edge), and the strip keeps the whole line.
+  struct WideMetrics final : TextMetrics {
+    int lineHeight(const Font font) const override { return kMetrics.lineHeight(font); }
+    int ascender(const Font font) const override { return kMetrics.ascender(font); }
+    int width(const Font font, const std::string& text) const override {
+      return (font == Font::Page ? 3 : 1) * kMetrics.width(font, text);
+    }
+  };
+  const WideMetrics wide;
+  const BenchBook& ja = benchJapanese();
+  const auto scene = bench::layoutPage(ja, ja.start, false, true, wide);
+  const int right = m::kScreenWidth - m::kBenchPagePadRight;
+  int drawn = 0;
+  for (const Command& c : scene.page.commands) {
+    if (c.kind != Command::Kind::Text) continue;
+    drawn++;
+    EXPECT_LE(c.rect.x + wide.width(Font::Page, c.text), right) << c.text;
+  }
+  EXPECT_GT(drawn, 0);
+  size_t lineTokens = 0;
+  for (const auto& line : ja.lines) {
+    if (scene.strip.lineNumber == static_cast<int>(&line - ja.lines.data()) + 1) lineTokens = line.size();
+  }
+  EXPECT_EQ(scene.strip.tokens.size(), lineTokens);
 }
 
 TEST(CardText, KinsokuKeepsPunctuationWithItsWord) {

@@ -17,6 +17,13 @@ constexpr const char* kSettingsTmpPath = "/.lexirise/config.ini.tmp";
 constexpr const char* kSettingsBackupPath = "/.lexirise/config.ini.bak";
 constexpr const char* kSettingsBadPath = "/.lexirise/config.ini.bad";  // an unreadable file, moved aside
 constexpr size_t kSettingsMaxBytes = 4096;  // a hand-edited file larger than this is rejected
+// Each book's lookup language (languages.md §1, step 3): `<ja|zh>=<book path>` lines, newest last.
+constexpr const char* kBookLanguagesPath = "/.lexirise/books.ini";
+constexpr const char* kBookLanguagesTmpPath = "/.lexirise/books.ini.tmp";
+constexpr const char* kBookLanguagesBackupPath = "/.lexirise/books.ini.bak";
+constexpr const char* kBookLanguagesBadPath = "/.lexirise/books.ini.bad";
+constexpr size_t kBookLanguagesMax = 100;         // books remembered; setting one more forgets the oldest
+constexpr size_t kBookLanguagesMaxBytes = 32768;  // ~100 typical paths; long ones forget the oldest sooner
 // The longest FAT/exFAT long name in UTF-8: 255 UTF-16 units, up to 3 bytes each (web/HiddenPath.h).
 constexpr size_t kMaxFatNameBytes = 255 * 3;
 
@@ -96,10 +103,16 @@ constexpr unsigned long kFailureToastMs = 6000;  // "Save failed · Retry": it c
 constexpr unsigned long kPhaseMergeMs = 300;     // phase B this soon after A: one refresh for both
 constexpr int kCardHalfRefreshEvery = 5;         // the 5th card's dismiss: a half refresh (ghosts), as the reader's
 constexpr int kCardPendingInputMax = 4;          // input read while a card refresh runs, handled after it
-constexpr int kCardSwipeEdgeMarginPx = 85;       // ~10 mm on the X4 Pro's ~217 ppi panel (popup-ui.md §3.2)
+// P9: buttons are only read between loop passes, and the next sentence's analysis blocks the loop (~1 s): a
+// press made during it is first seen ~20-30 ms after the jump (two debounced polls, 10 ms loop passes). A forward press
+// stamped within this of the jump was made before it and is dropped; a real new one comes after the new frame (a
+// refresh, ~0.5 s) and a human's reaction.
+constexpr unsigned long kStepAfterJumpGraceMs = 100;
+constexpr int kCardSwipeEdgeMarginPx = 85;  // ~10 mm on the X4 Pro's ~217 ppi panel (popup-ui.md §3.2)
 // The bench (P4) plays the phases on a timer, as a lookup would fill them.
-constexpr unsigned long kBenchPhaseAMs = 250;  // tap → analyzed
-constexpr unsigned long kBenchPhaseBMs = 900;  // tap → translated
+constexpr unsigned long kBenchPhaseAMs = 250;         // tap → analyzed
+constexpr unsigned long kBenchPhaseBMs = 900;         // tap → translated
+constexpr unsigned long kBenchNextSentenceMs = 1000;  // P9: a step past the end → the "next sentence" came
 
 // Response limits (lexirise-client.md §4): past these a response is treated as malformed.
 constexpr size_t kMaxOccurrences = 128;

@@ -136,9 +136,10 @@ constexpr int kReaderMediumPt = 10;  // 20.8 px
 constexpr int kReaderLargePt = 18;   // 37.5 px
 
 // The bench's page (P4 only): the reference's own .pg, scaled. Deviation 3: its text is the reader font.
-constexpr int kBenchPagePadTop = 31;   // the reference's 22
-constexpr int kBenchPagePadLeft = 28;  // the reference's 20
-constexpr int kBenchPageLineBox = 52;  // the reference's 19 px × line-height 1.95
+constexpr int kBenchPagePadTop = 31;    // the reference's 22
+constexpr int kBenchPagePadLeft = 28;   // the reference's 20
+constexpr int kBenchPagePadRight = 28;  // the reference's 20: the device font is wider, so a line is cut here
+constexpr int kBenchPageLineBox = 52;   // the reference's 19 px × line-height 1.95
 
 // The glyphs no device font has (✕ ▼ ▲ ⋯ ›), drawn as shapes in their box (deviation 2): the ink's
 // proportions, in % of the box. ShapeGeometry.h draws them.

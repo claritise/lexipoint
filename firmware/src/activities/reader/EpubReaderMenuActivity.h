@@ -7,6 +7,9 @@
 
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
+#if LEXIRISE
+#include "lexirise/settings/BookLanguages.h"  // LEXIPOINT
+#endif
 
 class EpubReaderMenuActivity final : public UiListActivity {
  public:
@@ -27,7 +30,10 @@ class EpubReaderMenuActivity final : public UiListActivity {
     GO_HOME,
     SYNC,
     DELETE_CACHE,
-    DICTIONARY
+    DICTIONARY,
+#if LEXIRISE
+    LOOKUP_LANGUAGE,  // LEXIPOINT: the book's lookup language, cycled in place (languages.md §1, step 3)
+#endif
   };
 
   struct MenuItem {
@@ -44,16 +50,30 @@ class EpubReaderMenuActivity final : public UiListActivity {
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
 
+#if LEXIRISE
+  // LEXIPOINT: the open book, for its Lookup language row.
+  void setBookPath(std::string path) { bookLanguage.open(std::move(path)); }
+  // LEXIPOINT: a Lookup language row's value (the list menu's and the toolbar's More panel).
+  static StrId bookLanguageLabel(std::optional<lexipoint::Language> language);  // nullopt: Auto
+#endif
+
  private:
   // Row storage: menuItems is at most MAX_MENU_ITEMS, so a
   // fixed-capacity array avoids any heap allocation for the row list. Labels
   // are set once in the constructor (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
-  static constexpr size_t MAX_MENU_ITEMS = 16;
+  // LEXIPOINT: sized by the actions (each row is a different one), so a new row can't outgrow it.
+#if LEXIRISE
+  static constexpr size_t MAX_MENU_ITEMS = static_cast<size_t>(MenuAction::LOOKUP_LANGUAGE) + 1;
+#else
+  static constexpr size_t MAX_MENU_ITEMS = static_cast<size_t>(MenuAction::DICTIONARY) + 1;
+#endif
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
-  int listCount() const override { return static_cast<int>(menuItems.size()); }
+  int listCount() const override {  // LEXIPOINT: never past the row slots (not gated)
+    return static_cast<int>(menuItems.size() < MAX_MENU_ITEMS ? menuItems.size() : MAX_MENU_ITEMS);
+  }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   // Popup input runs before any button or touch handling.
@@ -70,6 +90,9 @@ class EpubReaderMenuActivity final : public UiListActivity {
   std::vector<MenuItem> menuItems;
 
   OptionPopup optionPopup;
+#if LEXIRISE
+  lexipoint::BookLanguageRow bookLanguage{lexipoint::bookLanguageStore()};  // LEXIPOINT
+#endif
   std::string title = "Reader Menu";
   uint8_t pendingOrientation = 0;
   uint8_t selectedPageTurnOption = 0;

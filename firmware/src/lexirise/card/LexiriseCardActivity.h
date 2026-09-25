@@ -41,6 +41,14 @@ class LexiriseCardActivity final : public Activity {
 
  private:
   void handleQueuedInput(unsigned long nowMs);
+  // Smoke mode's word log (lxctl): what the card shows, read under RenderLock, logged after it.
+  struct SmokeState {
+    int word = 0;
+    bool expanded = false;
+    int tab = 0;
+  };
+  SmokeState smokeState() const;
+  void logWord(const SmokeState& shown, bool hadInput);
   void readGestures(unsigned long now);  // a long-press and a card swipe, queued with the rest
   void fetchAnswer();
   // The writes still queued, sent before the card goes (the toast said "Saved"). `lockHeld`: from
@@ -62,6 +70,7 @@ class LexiriseCardActivity final : public Activity {
   std::optional<unsigned long> nextDueMs_;  // loop()'s own copy of controller_.nextDueMs()
   bool persistReading_ = true;
   bool smoke_ = false;         // Options::smoke: logs the word after each input (lxctl card-smoke)
+  int loggedWord_ = -1;        // smoke: the word last logged
   int orientation_ = 0;        // the reader's, restored on exit
   bool pageUnderCard_ = true;  // false when the page was laid out for another orientation (landscape)
   bool finishing_ = false;     // end() ran: no more lookups or input

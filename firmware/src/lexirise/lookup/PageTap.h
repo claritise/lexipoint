@@ -5,6 +5,7 @@
 // cache; a tap is then pure work (text/TapContext.h). Reused by the Lexirise provider (P3).
 
 #include <string>
+#include <string_view>
 
 #include "Fallback.h"
 #include "lexirise/text/TapContext.h"
@@ -20,6 +21,10 @@ constexpr const char* kEmProbe = "\xE5\x9B\xBD";  // 国: one full-width charact
 // Measures the page (line ends, the em, furigana heights) with the font it was laid out in. Call where
 // DictionaryWordSelectActivity measures its words: after ensureSdCardFontReady() on the page's text.
 text::PageModel pageModelFor(GfxRenderer& renderer, int fontId, const Page& page);
+
+// The open book's language inputs: its <dc:language> and the Lookup language chosen for it in the reader
+// menu (books.ini; Auto: none). Main task (the first call reads the card).
+text::BookLanguage bookLanguageFor(std::string_view dcLanguage, const std::string& bookPath);
 
 // Lexirise is set up for lookups in this book (on, a key, the language allowed), from a fresh settings
 // snapshot. This decides what doesn't change with time: word select opens without a StarDict dictionary,

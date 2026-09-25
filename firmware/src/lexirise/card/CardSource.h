@@ -12,6 +12,14 @@
 
 namespace lexipoint::card {
 
+// Why a call to Lexirise failed, as the card tells it (offline-and-errors.md §3): a level change (a Retry
+// toast) or the next sentence (a plain toast). LiveSource.h callFailure() maps an api::ApiError to it.
+enum class CallFailure : uint8_t {
+  Network,      // no WiFi, a timeout, 5xx, a bad answer
+  KeyRejected,  // 401/403: Lexirise is off until reboot or a new key
+  RateLimited,  // 429
+};
+
 // The page under the card for the active word (D17): drawn over the page backdrop in card view (the
 // bench's is the whole page; the reader's is only the highlight), plus the word's box on the page, its
 // line for the strips and the sentence for the Context tab.
@@ -46,6 +54,13 @@ class CardSource {
   // The card opened (on startWord()) or stepped to `index` at `nowMs`: that word's lookup starts.
   virtual void open(unsigned long nowMs) = 0;
   virtual void focus(int index, unsigned long nowMs) = 0;
+  // Stepped past the last word: start on the page's next sentence (lookup-flow.md §6, P9). Its words come at
+  // wordCount() onwards once it's analyzed. False when there's none (the page ends) or the source can't.
+  virtual bool extend(unsigned long /*nowMs*/) { return false; }
+  // A sentence extend() started is still being analyzed (its words aren't there yet).
+  virtual bool extending() const { return false; }
+  // Why the last sentence extend() started brought no words; nullopt when the page simply ended.
+  virtual std::optional<CallFailure> extendFailure() const { return std::nullopt; }
   // Time passed: true when something the card shows changed. nextDueMs: when tick() next has work.
   virtual bool tick(unsigned long nowMs) = 0;
   virtual std::optional<unsigned long> nextDueMs() const = 0;

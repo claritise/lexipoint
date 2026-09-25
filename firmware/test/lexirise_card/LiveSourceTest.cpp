@@ -14,6 +14,7 @@
 
 using namespace lexipoint::card;
 using lexipoint::Language;
+namespace config = lexipoint::config;
 using lexipoint::api::ApiError;
 using lexipoint::card::test::FakeMetrics;
 using lexipoint::fakes::apiFailure;
@@ -86,7 +87,7 @@ TEST(LiveSource, PhaseZeroThenAThenB) {
 
   ASSERT_TRUE(source.hasWork(0));
   EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);  // A
-  EXPECT_TRUE(c.sourceChanged());
+  EXPECT_TRUE(c.sourceChanged(0));
   EXPECT_EQ(c.state().phase, Phase::Analyzed);
   EXPECT_EQ(c.word(), 4);
   EXPECT_EQ(c.currentWord().word, "読む");
@@ -96,7 +97,7 @@ TEST(LiveSource, PhaseZeroThenAThenB) {
 
   EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);  // B
   EXPECT_EQ(rig.api.looked, std::vector<std::string>{"読む"});
-  EXPECT_TRUE(c.sourceChanged());
+  EXPECT_TRUE(c.sourceChanged(0));
   EXPECT_EQ(c.state().phase, Phase::Complete);
   EXPECT_EQ(c.currentWord().senses, std::vector<std::string>{"to read"});
   EXPECT_EQ(c.currentWord().badge, "N5");
@@ -112,14 +113,14 @@ TEST(LiveSource, SteppingLooksUpOnlyTheNewWordWithItsSavedLevel) {
   CardController c(source, ReadingMode::Kana);
   c.open(0);
   source.advance();
-  c.sourceChanged();
+  c.sourceChanged(0);
   source.advance();
-  c.sourceChanged();
+  c.sourceChanged(0);
   ASSERT_TRUE(c.step(-1, 0));  // を
   EXPECT_EQ(c.state().phase, Phase::Analyzed);
   EXPECT_TRUE(source.hasWork(0));
   source.advance();
-  c.sourceChanged();
+  c.sourceChanged(0);
   ASSERT_TRUE(c.step(-1, 0));  // 本: saved at 3 (fresh)
   EXPECT_EQ(c.state().level, Level::Fresh);
   source.advance();
@@ -139,7 +140,7 @@ TEST(LiveSource, APhaseBFailureStillShowsTheWord) {
   source.advance();
   EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);
   EXPECT_EQ(source.error(), ApiError::Timeout);
-  c.sourceChanged();
+  c.sourceChanged(0);
   EXPECT_EQ(c.currentWord().word, "本");
   EXPECT_EQ(c.state().phase, Phase::Unanswered);  // the meaning row says "offline"
   EXPECT_TRUE(c.currentWord().senses.empty());
@@ -853,4 +854,498 @@ TEST(LiveSession, WhatWordSelectDoesOnceANoticeIsRead) {
   }
   EXPECT_EQ(afterNotice(std::nullopt, true), AfterNotice::BackToReader);  // "Not found" after a long-press
   EXPECT_EQ(afterNotice(std::nullopt, false), AfterNotice::Redraw);       // ...after the menu's Look Up
+}
+
+// P9, lookup-flow.md §6: past a sentence's last word the side buttons go on into the page's next sentence.
+namespace {
+
+constexpr const char* kAnalyzeRain =
+    R"({"occurrences":[)"
+    R"({"word":"雨","isWordLike":true,"transliteration":"ame","charStart":0,"charEnd":1,"entryId":11},)"
+    R"({"word":"が","isWordLike":true,"transliteration":"ga","charStart":1,"charEnd":2,"entryId":12},)"
+    R"({"word":"降る","isWordLike":true,"transliteration":"furu","charStart":2,"charEnd":4,"entryId":13},)"
+    R"({"word":"。","isWordLike":false,"charStart":4,"charEnd":5}]})";
+
+// Two sentences on the page: 彼は本を読んだ。 / 雨が降る。
+struct TwoSentences {
+  FakeApi api;
+  PageModel model;
+  ReaderPage page;
+  TwoSentences() {
+    model.lines = {{{"彼", "は", "本", "を", "読んだ", "。"}, true}, {{"雨", "が", "降る", "。"}, true}};
+    page.lines = {
+        {100, {{"彼", 20, 26}, {"は", 46, 26}, {"本", 72, 26}, {"を", 98, 26}, {"読んだ", 124, 78}, {"。", 202, 26}}},
+        {140, {{"雨", 20, 26}, {"が", 46, 26}, {"降る", 72, 52}, {"。", 124, 26}}}};
+  }
+  TapContext tapped(const size_t token) const {
+    TapContext t;
+    t.sentence = buildSentence(model, {0, token}, Script::Japanese);
+    t.language.language = Language::Japanese;
+    return t;
+  }
+  LiveSource::NextSentence next() const {
+    return [this](const TapContext& current) {
+      TapContext t;
+      t.sentence = lexipoint::text::buildSentenceAfter(model, *current.sentence, Script::Japanese);
+      if (t.sentence) t.language.language = Language::Japanese;
+      return t;
+    };
+  }
+};
+
+// Opens on 読んだ (the tapped sentence's last word) with its phases A and B done.
+void openOnTheLastWord(LiveSource& source, CardController& c) {
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  source.advance();
+  c.sourceChanged(0);
+}
+
+}  // namespace
+
+TEST(LiveSteps, PastTheLastWordIntoTheNextSentence) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu), apiOk(R"({"word":"雨"})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  ASSERT_EQ(c.word(), 4);
+
+  const int steps = c.steps();
+  EXPECT_FALSE(c.step(+1, 1000));  // 雨が降る。 starts loading; the card stays on 読んだ meanwhile
+  EXPECT_TRUE(c.awaitingNext());
+  EXPECT_TRUE(source.extending());
+  EXPECT_EQ(c.word(), 4);
+  EXPECT_EQ(c.steps(), steps);
+  EXPECT_EQ(c.state().phase, Phase::Complete);  // never a detail view of nothing
+  EXPECT_FALSE(c.step(+1, 1100));               // already on its way
+  EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);
+  EXPECT_TRUE(c.sourceChanged(1200));  // it came: the card is on its first word
+  ASSERT_EQ(rig.api.analyzed.size(), 2u);
+  EXPECT_EQ(rig.api.analyzed[1], "雨が降る。");
+  EXPECT_FALSE(c.awaitingNext());
+  EXPECT_EQ(c.word(), 5);
+  EXPECT_EQ(c.steps(), steps + 1);  // a touch on the old frame means nothing now
+  EXPECT_EQ(c.currentWord().word, "雨");
+  EXPECT_EQ(c.state().phase, Phase::Analyzed);
+  EXPECT_EQ(source.scene(5, false, kMetrics, 0).sentence.text, "雨が降る。");  // the Context tab follows
+
+  ASSERT_TRUE(c.step(-1, 2000));  // back into the first sentence: nothing reloaded
+  EXPECT_EQ(c.currentWord().word, "読む");
+  ASSERT_TRUE(c.step(+1, 3000));  // and on again, straight there
+  ASSERT_TRUE(c.step(+1, 3100));
+  ASSERT_TRUE(c.step(+1, 3200));
+  EXPECT_EQ(c.currentWord().word, "降る");
+  EXPECT_FALSE(c.step(+1, 3300));  // the page ends
+  EXPECT_FALSE(c.awaitingNext());
+  EXPECT_EQ(rig.api.analyzed.size(), 2u);
+}
+
+TEST(LiveSteps, SteppingBackWhileItLoadsStaysPut) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  ASSERT_TRUE(c.step(-1, 1100));  // changed mind: back to を
+  EXPECT_FALSE(c.awaitingNext());
+  EXPECT_EQ(source.fetch(1150).kind, LiveSource::Fetched::Kind::Entry);  // を's own lookup comes first
+  while (source.extending()) source.advance(1150);                       // then the next sentence arrives anyway
+  c.sourceChanged(1200);
+  EXPECT_EQ(c.word(), 3);  // no jump
+  ASSERT_TRUE(c.step(+1, 1300));
+  ASSERT_TRUE(c.step(+1, 1400));  // its words are there now: straight on
+  EXPECT_EQ(c.currentWord().word, "雨");
+}
+
+TEST(LiveSteps, AWordAlreadySavedCarriesItsLevelIntoTheNextSentence) {
+  TwoSentences rig;
+  // The next sentence has 読んだ (entry 6) again; Lexirise hasn't had the save yet (its Undo window).
+  constexpr const char* kAgain =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":1,"charEnd":4,"entryId":5,"lemmaEntryId":6}]})";
+  rig.model.lines[1].tokens = {"雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAgain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const Hit fresh{Target::Level, 2, {}};
+  for (const LevelChange& ch : c.tap(&fresh, 1000).changes) source.queue(ch);  // readyAt: +2 s
+  c.step(+1, 1100);
+  source.advance(1200);  // the analysis first: the save is still in its window
+  c.sourceChanged(1200);
+  ASSERT_EQ(c.currentWord().word, "雨");
+  ASSERT_TRUE(c.step(+1, 1300));
+  EXPECT_EQ(c.state().level, Level::Fresh);  // the level the user set, not Lexirise's "not saved"
+  EXPECT_EQ(source.sameWord(6), (std::vector<int>{4, 6}));
+}
+
+TEST(LiveSteps, APunctuationOnlySentenceIsSkippedAndThePageEndStops) {
+  TwoSentences rig;
+  // After 読んだ。: a line of dots (no word in it), then the rain.
+  rig.model.lines = {rig.model.lines[0], {{"……"}, true}, rig.model.lines[1]};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(R"({"occurrences":[]})"), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  while (source.extending()) source.advance();
+  c.sourceChanged(2000);
+  ASSERT_EQ(rig.api.analyzed.size(), 3u);
+  EXPECT_EQ(rig.api.analyzed[1], "……");
+  EXPECT_EQ(c.currentWord().word, "雨");  // the dots were passed over
+  c.step(+1, 3000);
+  c.step(+1, 3100);
+  EXPECT_FALSE(c.step(+1, 3200));  // the page's last word
+  EXPECT_FALSE(c.awaitingNext());
+  EXPECT_TRUE(c.state().toast.empty());  // the page ending is no failure
+}
+
+TEST(LiveSteps, WithoutANextSentenceTheCardStops) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page);  // no NextSentence: the bench's behaviour
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  EXPECT_FALSE(c.step(+1, 1000));
+  EXPECT_EQ(c.word(), 4);
+}
+
+TEST(LiveSteps, ANextSentenceWithNoAnswerSaysSoAndIsTriedAgain) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiFailure(ApiError::Network), apiFailure(ApiError::Unauthorized),
+                            apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);  // offline: the card doesn't close
+  EXPECT_TRUE(c.sourceChanged(1100));
+  EXPECT_EQ(c.word(), 4);  // still on 読んだ
+  EXPECT_FALSE(c.awaitingNext());
+  EXPECT_EQ(c.state().toast, CardStrings{}.nextSentenceFailed);
+  c.step(+1, 2000);  // tried again: a rejected key this time
+  source.advance();
+  c.sourceChanged(2100);
+  EXPECT_EQ(c.state().toast, CardStrings{}.keyRejected);
+  c.step(+1, 3000);  // and again: it comes
+  source.advance();
+  c.sourceChanged(3100);
+  EXPECT_EQ(c.currentWord().word, "雨");
+}
+
+TEST(LiveSteps, ASaveInTheNextSentenceNotesItsOwnSentence) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu), apiOk(R"({"word":"雨","translations":[{"translation":"rain"}]})")};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":9}})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  source.advance();  // its analysis
+  c.sourceChanged(1000);
+  const Hit learning{Target::Level, 1, {}};
+  for (const LevelChange& ch : c.tap(&learning, 2000).changes) source.queue(ch);
+  while (source.hasWork(100000)) source.advance(100000);
+  ASSERT_EQ(rig.api.written.size(), 1u);
+  EXPECT_NE(rig.api.written[0].body.find("雨が降る"), std::string::npos);
+  EXPECT_EQ(rig.api.written[0].body.find("彼は本を"), std::string::npos);
+}
+
+TEST(LiveSteps, ClosingWhileTheNextSentenceLoadsStillSendsTheSaves) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":9}})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const Hit learning{Target::Level, 1, {}};
+  for (const LevelChange& ch : c.tap(&learning, 2000).changes) source.queue(ch);
+  c.step(+1, 2100);  // the next sentence starts loading
+  while (source.hasPendingWrites()) source.apply(source.fetch(2200, /*closing=*/true));
+  EXPECT_EQ(rig.api.analyzed.size(), 1u);  // closing skips the next sentence's analysis
+  EXPECT_EQ(rig.api.written.size(), 1u);
+}
+
+TEST(LiveSteps, ARateLimitSaysSo) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiFailure(ApiError::RateLimited)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  source.advance();
+  c.sourceChanged(1100);
+  EXPECT_EQ(c.state().toast, CardStrings{}.rateLimited);
+}
+
+TEST(LiveSteps, AFailedSavesRetryOutlivesTheNextSentenceFailing) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiFailure(ApiError::Network)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiFailure(ApiError::Network)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session(c, targets, input, &source);
+  openOnTheLastWord(source, c);
+  const Hit learning{Target::Level, 1, {}};
+  for (const LevelChange& ch : c.tap(&learning, 1000).changes) source.queue(ch);
+  session.apply(session.fetch(10000), 10000);  // the save fails: "Save failed · Retry"
+  ASSERT_TRUE(c.state().toastUndo);
+  const std::string retryToast = c.state().toast;
+  c.step(+1, 11000);
+  session.apply(session.fetch(11100), 11100);  // the next sentence fails too
+  EXPECT_EQ(c.state().toast, retryToast);      // the Retry stays
+  EXPECT_TRUE(c.state().toastUndo);
+}
+
+TEST(LiveSteps, SentencesItCantAskAboutArePassedOver) {
+  // A book that doesn't say: a line of dots has no language (nothing to send), so the card goes past it
+  // without a call, to the rain.
+  TwoSentences rig;
+  rig.model.lines = {rig.model.lines[0], {{"……"}, true}, rig.model.lines[1]};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  const auto next = [&rig](const TapContext& current) {
+    TapContext t;
+    t.sentence = lexipoint::text::buildSentenceAfter(rig.model, *current.sentence, Script::Japanese);
+    if (t.sentence && t.sentence->text != "……") t.language.language = Language::Japanese;
+    return t;
+  };
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, next);
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  while (source.extending()) source.advance();
+  c.sourceChanged(2000);
+  ASSERT_EQ(rig.api.analyzed.size(), 2u);
+  EXPECT_EQ(rig.api.analyzed[1], "雨が降る。");
+  EXPECT_EQ(c.currentWord().word, "雨");
+}
+
+TEST(LiveSteps, ALevelTappedWhileItWaitsKeepsTheCardAndItsUndo) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);  // waiting for 雨が降る。
+  const Hit learning{Target::Level, 1, {}};
+  for (const LevelChange& ch : c.tap(&learning, 1100).changes) source.queue(ch);
+  EXPECT_FALSE(c.awaitingNext());  // the tap was about this word
+  source.advance(1200);            // the analysis lands
+  c.sourceChanged(1200);
+  EXPECT_EQ(c.word(), 4);  // no jump under the user's Undo
+  EXPECT_TRUE(c.state().toastUndo);
+}
+
+TEST(LiveSteps, ANextSentenceFailingLeavesASavesUndo) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiFailure(ApiError::Network)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const Hit learning{Target::Level, 1, {}};
+  for (const LevelChange& ch : c.tap(&learning, 1000).changes) source.queue(ch);
+  const std::string undo = c.state().toast;
+  c.step(+1, 1100);
+  source.advance(1200);  // the analysis fails (the save is still in its window, not sent)
+  c.sourceChanged(1200);
+  EXPECT_EQ(c.state().toast, undo);  // "Saved as learning · Undo" stays
+  EXPECT_TRUE(c.state().toastUndo);
+}
+
+TEST(LiveSteps, ARetryAfterASkippedSentenceDoesNotAskAboutItAgain) {
+  TwoSentences rig;
+  rig.model.lines = {rig.model.lines[0], {{"……"}, true}, rig.model.lines[1]};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(R"({"occurrences":[]})"), apiFailure(ApiError::Network),
+                            apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  while (source.extending()) source.advance();  // the dots (no word), then the rain (offline)
+  c.sourceChanged(1100);
+  ASSERT_EQ(c.state().toast, CardStrings{}.nextSentenceFailed);
+  c.step(+1, 2000);  // tried again: from after the dots
+  while (source.extending()) source.advance();
+  c.sourceChanged(2100);
+  EXPECT_EQ(c.currentWord().word, "雨");
+  EXPECT_EQ(rig.api.analyzed, (std::vector<std::string>{"彼は本を読んだ。", "……", "雨が降る。", "雨が降る。"}));
+}
+
+TEST(LiveSteps, ASwipeOrHomeWhileItWaitsKeepsTheCard) {
+  for (const bool swipe : {true, false}) {
+    TwoSentences rig;
+    rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+    rig.api.lookupReplies = {apiOk(kLookupYomu)};
+    LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+    CardController c(source, ReadingMode::Kana);
+    openOnTheLastWord(source, c);
+    const Hit rank{Target::RankRow, 0, {}};
+    c.tap(&rank, 900);  // the detail view
+    c.step(+1, 1000);
+    ASSERT_TRUE(c.awaitingNext());
+    if (swipe) {
+      c.swipe(Swipe::Left);  // next tab
+    } else {
+      c.home();  // back to the card view
+    }
+    EXPECT_FALSE(c.awaitingNext()) << swipe;
+    source.advance(1100);
+    c.sourceChanged(1100);
+    EXPECT_EQ(c.word(), 4) << swipe;  // no jump after it
+  }
+}
+
+TEST(LiveSteps, APressHeldThroughTheAnalysisDoesNotSkipTheFirstWord) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000, 950);  // at the last word: waits
+  source.advance(3000);   // the analysis blocks the loop until 3000
+  c.sourceChanged(3000);  // the jump
+  ASSERT_EQ(c.currentWord().word, "雨");
+  // A second press went down during the call; the loop first sees it at 3010, and its release at 3200.
+  EXPECT_FALSE(c.step(+1, 3200, 3010));
+  EXPECT_EQ(c.currentWord().word, "雨");                                // still the first word
+  EXPECT_TRUE(c.step(+1, 4000, 3000 + config::kStepAfterJumpGraceMs));  // one made after the jump moves on
+  EXPECT_EQ(c.currentWord().word, "が");
+  EXPECT_TRUE(c.step(-1, 4100, 3010));  // back is never dropped
+}
+
+TEST(LiveSteps, AQueuedStepCarriesItsPressTime) {
+  // The same held press as above, through the input queue the activity uses (CardInput handleInput).
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  ShownTargets shown;
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000, 950);
+  source.advance(3000);
+  c.sourceChanged(3000);  // the jump
+  PendingInput held;
+  held.step(+1, 3200, 3010);  // first seen just after the call
+  handleInput(c, shown, held, 3200);
+  EXPECT_EQ(c.currentWord().word, "雨");
+  PendingInput fresh;
+  fresh.step(+1, 4000, 3900);
+  handleInput(c, shown, fresh, 4000);
+  EXPECT_EQ(c.currentWord().word, "が");
+  PendingInput plain;
+  plain.step(+1, 5000);  // no press time known: never dropped as held
+  EXPECT_FALSE(plain[0].pressedMs.has_value());
+  EXPECT_FALSE(InputEvent{}.pressedMs.has_value());  // an event built by hand: no press time, never dropped
+}
+
+TEST(LiveSteps, ABackPressHeldThroughTheAnalysisStepsBackFromTheWaitingWord) {
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000, 950);  // waits on 読んだ (4)
+  source.advance(3000);   // the call blocks until 3000
+  c.sourceChanged(3000);  // the jump to 雨 (5)
+  ASSERT_EQ(c.word(), 5);
+  // Back was pressed during the call (first seen at 3010): meant from 読んだ, so を (3), as without the call.
+  EXPECT_TRUE(c.step(-1, 3200, 3010));
+  EXPECT_EQ(c.word(), 3);
+  EXPECT_TRUE(c.step(-1, 3300, 3020));  // a second one during the call goes on back
+  EXPECT_EQ(c.word(), 2);
+  EXPECT_TRUE(c.step(-1, 3400, 3030));
+  EXPECT_TRUE(c.step(-1, 3500, 3040));
+  EXPECT_EQ(c.word(), 0);
+  EXPECT_FALSE(c.step(-1, 3600, 3050));  // at the start already: nothing moves, nothing redraws
+  EXPECT_EQ(c.word(), 0);
+  EXPECT_TRUE(c.step(+1, 4000, 3900));  // a later press is an ordinary step
+  EXPECT_EQ(c.word(), 1);
+}
+
+TEST(LiveSteps, AHeldBackPressCancelsAWaitStartedAfterTheJump) {
+  // Three sentences, the second one word long: after the jump to it, an ordinary press waits on the third;
+  // a back press held through the first analysis then steps back from 読んだ, and the wait is over.
+  TwoSentences rig;
+  rig.model.lines = {{{"彼", "は", "本", "を", "読んだ", "。"}, true}, {{"雨", "。"}, true}, {{"風", "。"}, true}};
+  rig.page.lines.resize(1);
+  rig.page.lines.push_back({140, {{"雨", 20, 26}, {"。", 46, 26}}});
+  rig.page.lines.push_back({180, {{"風", 20, 26}, {"。", 46, 26}}});
+  constexpr const char* kRain =
+      R"({"occurrences":[{"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"。","isWordLike":false,"charStart":1,"charEnd":2}]})";
+  constexpr const char* kWind =
+      R"({"occurrences":[{"word":"風","isWordLike":true,"charStart":0,"charEnd":1,"entryId":14},)"
+      R"({"word":"。","isWordLike":false,"charStart":1,"charEnd":2}]})";
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kRain), apiOk(kWind)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000, 950);  // waits on 読んだ (4)
+  source.advance(3000);
+  c.sourceChanged(3000);
+  ASSERT_EQ(c.word(), 5);                // 雨, its sentence's only word
+  EXPECT_FALSE(c.step(+1, 3200, 3150));  // an ordinary press: waits on 風
+  ASSERT_TRUE(c.awaitingNext());
+  EXPECT_TRUE(c.step(-1, 3300, 3010));  // pressed during the call: を (3)
+  EXPECT_EQ(c.word(), 3);
+  EXPECT_FALSE(c.awaitingNext());
+  source.advance(4000);
+  c.sourceChanged(4000);
+  EXPECT_EQ(c.word(), 3);  // 風 arrives: the card stays where it was sent
+}
+
+TEST(LiveSteps, TheSameEntryIdInTheOtherLanguageIsAnotherWord) {
+  // A book that doesn't say: the next sentence is decided Chinese, and one of its words happens to have
+  // the entry id of a Japanese word already on the card. It's a different Lexirise item.
+  TwoSentences rig;
+  constexpr const char* kZh =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"读","isWordLike":true,"charStart":1,"charEnd":2,"entryId":5,"lemmaEntryId":6}]})";
+  rig.model.lines[1].tokens = {"雨", "读", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kZh)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  const auto next = [&rig](const TapContext& current) {
+    TapContext t;
+    t.sentence = lexipoint::text::buildSentenceAfter(rig.model, *current.sentence, Script::Chinese);
+    if (t.sentence) t.language.language = Language::Chinese;
+    return t;
+  };
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, next);
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const Hit fresh{Target::Level, 2, {}};
+  for (const LevelChange& ch : c.tap(&fresh, 1000).changes) source.queue(ch);
+  c.step(+1, 5000);
+  source.advance(5000);
+  c.sourceChanged(5000);
+  ASSERT_EQ(source.wordCount(), 7);
+  EXPECT_EQ(source.sameWord(4), std::vector<int>{4});  // 読む (ja) alone
+  EXPECT_EQ(source.sameWord(6), std::vector<int>{6});  // 读 (zh) alone
+  ASSERT_TRUE(c.step(+1, 6000));
+  EXPECT_EQ(c.state().level, Level::None);  // no level carried over from the Japanese word
 }

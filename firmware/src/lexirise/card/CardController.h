@@ -57,8 +57,16 @@ class CardController {
   // When tick() next has something to do (a phase or the toast's end); none: nothing pending.
   std::optional<unsigned long> nextDueMs() const;
   // The source changed outside tick() (a lookup answered): true when the card shows something new.
-  bool sourceChanged();
-  bool step(int direction, unsigned long nowMs);     // side buttons: previous / next word, stopping at the ends
+  bool sourceChanged(unsigned long nowMs);
+  // Side buttons: previous / next word. Past the sentence's last word, on into the page's next sentence: the
+  // card stays on this word while it loads (awaitingNext()), then moves to its first word; it stops at the
+  // page's end and never goes back before the tapped sentence (lookup-flow.md §6, P9).
+  // `pressedAtMs`: when the button was first seen down. A press seen within config::kStepAfterJumpGraceMs of
+  // the jump into the next sentence was made during its analysis (the loop reads no buttons then), on the
+  // word the card waited on: forward, it asked to move off it, which the jump did (dropped); back, it steps
+  // back from that word, as it would have before the jump.
+  bool step(int direction, unsigned long nowMs, std::optional<unsigned long> pressedAtMs = std::nullopt);
+  bool awaitingNext() const { return pendingStep_ >= 0; }
   Outcome tap(const Hit* hit, unsigned long nowMs);  // nullptr: outside the card
   Outcome home();                                    // expanded → card; card → close
   // Up: the detail view. Down: back to the card, or from the card, close. Left / right: the detail view's
@@ -68,16 +76,12 @@ class CardController {
   // closes the card and asks for a lookup there; anywhere else it does nothing (the detail view covers the
   // page).
   Outcome longPress(const Hit* hit, int x, int y);
-  // Why a level change didn't reach Lexirise (offline-and-errors.md §3).
-  enum class WriteFailure : uint8_t {
-    Network,      // no WiFi, a timeout, 5xx, a bad answer: "Save failed · Retry"
-    KeyRejected,  // 401/403: "Lexirise key rejected", no retry (Lexirise is off until reboot or a new key)
-    RateLimited,  // 429: "Rate limited: try in N s · Retry"
-  };
+
   // Lexirise refused a level change (or couldn't be reached): the word (and the sentence's other
   // occurrences of it) go back to `level`, with a toast wherever the card is. `wanted` is what the user
-  // had set: the toast's Retry sets it again.
-  void levelFailed(int word, Level level, unsigned long nowMs, WriteFailure why, Level wanted, uint32_t retryInS);
+  // had set: the toast's Retry sets it again. `why`: Network "Save failed · Retry", KeyRejected "Lexirise key
+  // rejected" (no retry), RateLimited "Rate limited: try in N s · Retry" (offline-and-errors.md §3).
+  void levelFailed(int word, Level level, unsigned long nowMs, CallFailure why, Level wanted, uint32_t retryInS);
 
   const CardSource& source() const { return source_; }
   int word() const { return word_; }
@@ -96,8 +100,10 @@ class CardController {
                  unsigned long durationMs = config::kToastMs);
   void clearToast();
   Outcome setLevel(Level level, const char* toastPrefix, bool undo, unsigned long nowMs);
-  Outcome retry(unsigned long nowMs);  // the failed change again (the toast's Retry)
-  bool syncWord();                     // true: something shown changed
+  Outcome retry(unsigned long nowMs);            // the failed change again (the toast's Retry)
+  bool syncWord(unsigned long nowMs);            // true: something shown changed
+  void moveTo(int index, unsigned long nowMs);   // a step: the word, its lookup, a new frame's targets
+  void nextSentenceFailed(unsigned long nowMs);  // the toast saying why the card couldn't go on
   bool hasWord() const { return word_ < source_.wordCount(); }
 
   CardSource& source_;
@@ -118,7 +124,12 @@ class CardController {
     unsigned long notBeforeMs;  // a 429's back-off: its Retry is sent when it has passed
   };
   std::vector<Failed> retries_;
-  bool failureToast_ = false;  // the toast is a failure (levelFailed): a step doesn't clear it
+  bool failureToast_ = false;                // the toast is a failure (levelFailed): a step doesn't clear it
+  int pendingStep_ = -1;                     // the next sentence's first word, where the card goes once it's analyzed
+  std::optional<unsigned long> jumpedAtMs_;  // when the card last went there
+  int jumpedFrom_ = 0;                       // ... and the word it had waited on
+  // A press first seen within config::kStepAfterJumpGraceMs of the jump was made during the analysis.
+  bool pressedBeforeJump(std::optional<unsigned long> pressedAtMs) const;
 };
 
 }  // namespace lexipoint::card

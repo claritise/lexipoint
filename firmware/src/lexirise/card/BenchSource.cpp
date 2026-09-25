@@ -27,7 +27,23 @@ void BenchSource::focus(int, const unsigned long nowMs) {
   phaseBDueMs_ = nowMs + config::kBenchPhaseBMs - config::kBenchPhaseAMs;
 }
 
+bool BenchSource::extend(const unsigned long nowMs) {
+  if (repeated_ || extending_) return false;  // one "next sentence", then the page ends
+  extending_ = true;
+  extendDueMs_ = nowMs + config::kBenchNextSentenceMs;  // an analysis, slow enough to see the card wait
+  return true;
+}
+
 bool BenchSource::tick(const unsigned long nowMs) {
+  const bool arrived = extending_ && timing::reached(nowMs, extendDueMs_);
+  if (arrived) {
+    extending_ = false;
+    repeated_ = true;
+  }
+  return tickPhases(nowMs) || arrived;
+}
+
+bool BenchSource::tickPhases(const unsigned long nowMs) {
   if (phase_ == Phase::Pending && timing::reached(nowMs, phaseADueMs_)) {
     // B close behind A: skip A's refresh (popup-ui.md §2, ~0.5 s per partial refresh).
     phase_ = timing::reached(nowMs + config::kPhaseMergeMs, phaseBDueMs_) ? Phase::Complete : Phase::Analyzed;
@@ -41,14 +57,16 @@ bool BenchSource::tick(const unsigned long nowMs) {
 }
 
 std::optional<unsigned long> BenchSource::nextDueMs() const {
-  if (phase_ == Phase::Pending) return phaseADueMs_;
-  if (phase_ == Phase::Analyzed) return phaseBDueMs_;
-  return std::nullopt;
+  std::optional<unsigned long> due;
+  if (phase_ == Phase::Pending) due = phaseADueMs_;
+  if (phase_ == Phase::Analyzed) due = phaseBDueMs_;
+  if (extending_ && (!due || timing::before(extendDueMs_, *due))) due = extendDueMs_;  // whichever is first
+  return due;
 }
 
 PageScene BenchSource::scene(const int index, const bool highlight, const TextMetrics& metrics,
                              const int highlightCodepoints) const {
-  return bench::layoutPage(book_, index, low_, highlight, metrics, highlightCodepoints);
+  return bench::layoutPage(book_, static_cast<int>(fixture(index)), low_, highlight, metrics, highlightCodepoints);
 }
 
 }  // namespace lexipoint::card

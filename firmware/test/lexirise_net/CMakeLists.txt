@@ -21,6 +21,7 @@ add_executable(LexiriseNetTest
   ${REPO_ROOT}/src/lexirise/api/Requests.cpp
   ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsStore.cpp
+  ${REPO_ROOT}/src/lexirise/settings/SafeFile.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsPatch.cpp
   ${REPO_ROOT}/src/lexirise/web/WebApi.cpp
   ${REPO_ROOT}/src/lexirise/LexiriseService.cpp

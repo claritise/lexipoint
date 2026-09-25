@@ -114,11 +114,8 @@ class Applier {
   }
 
   void setDefaultLanguage(const Entry& e) {
-    const std::string v = lower(e.value);
-    if (v == "ja") {
-      s_.defaultLanguage = Language::Japanese;
-    } else if (v == "zh") {
-      s_.defaultLanguage = Language::Chinese;
+    if (const auto language = languageFromCode(e.value)) {
+      s_.defaultLanguage = *language;
     } else {
       warn(e);
     }
@@ -243,7 +240,23 @@ std::string canonicalBaseUrl(std::string_view url) {
   return std::string(url);
 }
 
-const char* languageCode(const Language language) { return language == Language::Chinese ? "zh" : "ja"; }
+const char* languageCode(const Language language) {
+  switch (language) {  // no default: -Wswitch names a language added without its code
+    case Language::Japanese:
+      return "ja";
+    case Language::Chinese:
+      return "zh";
+  }
+  return "ja";  // not reached
+}
+
+std::optional<Language> languageFromCode(const std::string_view code) {
+  const std::string lowered = lower(code);
+  for (const Language language : kLanguages) {
+    if (lowered == languageCode(language)) return language;
+  }
+  return std::nullopt;
+}
 
 ParseResult parseSettings(std::string_view text) {
   ParseResult result;

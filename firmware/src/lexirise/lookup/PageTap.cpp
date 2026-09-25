@@ -7,6 +7,7 @@
 #include <Logging.h>
 
 #include "lexirise/LexiriseService.h"
+#include "lexirise/settings/BookLanguages.h"
 #include "lexirise/settings/SettingsStore.h"
 #include "lexirise/text/PageModelAdapter.h"
 
@@ -25,6 +26,10 @@ text::PageModel pageModelFor(GfxRenderer& renderer, const int fontId, const Page
         return renderer.getTextAdvanceX(fontId, word, style);
       },
       em, renderer.getFontAscenderSize(fontId));
+}
+
+text::BookLanguage bookLanguageFor(const std::string_view dcLanguage, const std::string& bookPath) {
+  return text::BookLanguage(dcLanguage, bookLanguageStore().get(bookPath));
 }
 
 bool lexiriseConfigured(const text::BookLanguage& book) {

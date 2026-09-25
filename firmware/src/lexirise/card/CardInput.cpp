@@ -14,7 +14,7 @@ Outcome handleInput(CardController& controller, const ShownTargets& targets, con
     changed = controller.tick(e.ms) || changed;
     Outcome o;
     if (e.kind == InputEvent::Kind::Step) {
-      changed = controller.step(e.direction, e.ms) || changed;
+      changed = controller.step(e.direction, e.ms, e.pressedMs) || changed;
       continue;
     }
     if (e.kind == InputEvent::Kind::Home) {

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <memory>
 
+#include "LanguageNames.h"
 #include "MappedInputManager.h"
 #include "SettingsStore.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -276,7 +277,7 @@ std::string LexiriseSettingsActivity::valueFor(const Row row, const Settings& se
     case Row::ZhDictionary:
       return dictionaryValue(settings.chinese.stardict);
     case Row::DefaultLanguage:
-      return settings.defaultLanguage == Language::Japanese ? tr(STR_LEXI_SET_JAPANESE) : tr(STR_LEXI_SET_CHINESE);
+      return I18N.get(languageName(settings.defaultLanguage));
     case Row::Tags:
       return settings.tags;
     case Row::WifiIdle:
