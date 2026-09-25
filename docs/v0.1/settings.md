@@ -58,7 +58,8 @@ with their values kept (turning a language off never clears its settings). The s
 master **Lexirise lookups** toggle: when it's Off, everything below the Account group is hidden.
 **"Language when a book doesn't say"** only shows while **two or more** languages are on. With one
 language on, that language is the fallback, and there's nothing to choose (as built, P7:
-`Settings::fallbackLanguage()`, which `BookLanguage` uses for Han-only text; the stored choice is kept for
+`Settings::fallbackLanguage()`, which `BookLanguage` uses for Han-only text; code that spans languages loops
+over `kLanguages`, so a new language is added there and in `Settings::language()`; the stored choice is kept for
 when both are on again). A consequence to know: with only Japanese on, Han-only sentences of an untagged
 Chinese book are read as Japanese (sent to Lexirise as Japanese, or to the Japanese offline dictionary);
 tag the book (or set its language on the card, later) to keep them Chinese.
