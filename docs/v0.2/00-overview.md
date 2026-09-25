@@ -283,7 +283,8 @@ claritise's call on the card's orientation on a sideways strip (`manga.md` §6).
 stopped moving, write it up as its own doc (e.g. `manga-format.md`): the strip layout, the XTCH use,
 the word-box sidecar, sample output from one volume, and a validator. It's needed for our own
 pipeline anyway, and it turns a future ask to Lexirise into "export this documented format"
-(claritise says Lexirise already ingests manga; not checked here). Open and documented, not
+(**confirmed 2026-09-25 from lexirise.app:** Lexirise already OCRs comics, with tappable speech
+bubbles on Webtoon, Line Manga, Kakao and others). Open and documented, not
 proprietary: easier for Lexirise to adopt, reusable by other e-ink projects. Pitch it with C20, after
 v0.3, not while the format is still a spike.
 
@@ -307,7 +308,8 @@ nothing comes back to the device (C8). With a way back, the device could:
   is that experience for learners.
 - **Fandom readers are an audience:** people learning Chinese to read danmei in the original, or reading
   Japanese web novels and fan works (AO3 and similar), mostly on phones today. claritise mentions that
-  Lexirise already has links to ebook sites (not checked here).
+  Lexirise already has links to ebook sites (not confirmed: the site lists streaming, comic and podcast
+  integrations, not ebook sites).
 - **Rights:** only the reader's own works and downloads (AO3 allows personal downloads). No bulk
   scraping, and nothing that looks like redistributing authors' work.
 - **Before then, on our side:** make the device's web upload and library screens as painless as
@@ -317,9 +319,19 @@ nothing comes back to the device (C8). With a way back, the device could:
 - **A device sign-in flow is a prerequisite** for anything sold preinstalled: a code shown on the
   device, confirmed on the phone, instead of pasting an API key into a web page. Lexirise would build
   it. Not asked yet.
-- **The end state discussed (2026-09-25, not a plan):** an X4 Pro sold with Lexipoint preinstalled and a
-  year of Lexirise Pro included. That depends on the sign-in flow, library sync, and Lexirise and Xteink
+- **The end state discussed (2026-09-25, not a plan):** an X4 Pro sold with Lexipoint preinstalled and
+  Lexirise Pro included. That depends on the sign-in flow, library sync, and Lexirise and Xteink
   agreeing a bundle, none of which we control. Beta retention numbers (C24) are what they'd want to see.
+  **A 3-month trial is the easier ask than a year:** Pro is $9.99 / month or $99.99 / year (lexirise.app,
+  2026-09-25), so a year is worth about the device's price and 3 months about $30. SRS makes renewal
+  natural once a few months of mined cards exist. Retention risks: the habit has to form in those months,
+  and review backlogs make people quit (C11 helps).
+- **Lexirise's current shape** (lexirise.app, 2026-09-25): browser extensions (Chrome, Safari, Firefox)
+  over YouTube, Netflix, Crunchyroll, Bilibili and others; iOS and Android apps; comic OCR; podcast
+  transcripts; FSRS; Chinese, Japanese and Korean first ("we chose depth", from the founder's comparison
+  with LingQ). Pro includes **exports**, so a user's data isn't locked in. There's also a lifetime plan,
+  a 7-day Pro trial and a 14-day money-back guarantee. No ebook reader or e-ink device, which is the gap
+  Lexipoint fills.
 
 **Gate (claritise, 2026-09-25):** pitch only after the manga pipeline and SRS reviews (C18, C11) work on
 the device, phase M (the standalone repo and rebrand) has landed, and Lexipoint has been slimmed down to a
@@ -488,7 +500,7 @@ when it's settled.
 7. Can a save carry a **reading or sense override**, so saves match the contextual card? (C10)
 8. Report the **とびら → と + びら** split (with the sentence). Not reported yet.
 9. A **device sign-in flow** (code on the device, confirmed on the phone), only before any bundle (C20).
-10. Does Lexirise already ingest manga and link to ebook sites, as claritise says? Not checked here (C18, C20).
+~~10. Does Lexirise already ingest manga and link to ebook sites, as claritise says?~~ **Manga: yes**, comic OCR with tappable speech bubbles on Webtoon, Line Manga, Kakao and others (lexirise.app, 2026-09-25). **Ebook sites: not confirmed**, the site lists streaming, comic and podcast integrations only. **Data export: yes**, a Pro feature (C18, C20).
 
 **On the device / measured by us:**
 11. Does the X4 Pro's RTC survive a fully drained battery? Matters only if offline review returns (C11).
