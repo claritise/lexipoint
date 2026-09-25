@@ -518,16 +518,23 @@ class Layout {
            std::to_string(s_.strip.lineCount);
   }
 
+  // The strips' heights (P12): their reference size, or more when the reader's page font needs it.
+  int stripLineBox() const { return lh(Font::Page) + 2 * m::kStripTextPadV; }  // a strip's line and its air
+  int cardStripHeight() const { return std::max(m::kCardStripHeight, stripLineBox()); }
+  int expandedCardTop() const {  // the detail view's strip is the screen above the card
+    return std::max(kCardBottom - m::kExpandedCardHeight, stripLineBox());
+  }
+
   bool cardStripShown(const int cardTop) const {
     return s_.wordOnPage && s_.wordOnPage->bottom() > cardTop && !s_.strip.tokens.empty();
   }
   void cardStrip(const int rowTop) {
     const int right = kContentRight - m::kStripClip;
-    stripLine(kInnerX + m::kCardStripPadH, right, centred(rowTop, m::kCardStripHeight, lh(Font::Page)));
+    stripLine(kInnerX + m::kCardStripPadH, right, centred(rowTop, cardStripHeight(), lh(Font::Page)));
     const std::string mk = marker();
     out_.text(Font::UiSmall, kInnerRight - m::kCardStripMarkerRight - tw(Font::UiSmall, mk),
               rowTop + m::kCardStripMarkerTop, mk);
-    out_.fill({kInnerX, rowTop + m::kCardStripHeight, kInnerW, m::kDivider});
+    out_.fill({kInnerX, rowTop + cardStripHeight(), kInnerW, m::kDivider});
   }
 
   // ---- views ----
@@ -542,13 +549,13 @@ class Layout {
     const int core = headerHeight() + m::kDivider + meaningHeight() + rankHeight();
     int top = kCardBottom - m::kCardFrame - core - m::kCardFrame;
     const bool strip = cardStripShown(top);
-    if (strip) top -= m::kCardStripHeight + m::kDivider;
+    if (strip) top -= cardStripHeight() + m::kDivider;
     // Touch targets are front-most first: the card's own come before its catch-all.
     cardFrame(top);
     int y = top + m::kCardFrame;
     if (strip) {
       cardStrip(y);
-      y += m::kCardStripHeight + m::kDivider;
+      y += cardStripHeight() + m::kDivider;
     }
     header(y);
     y += headerHeight();
@@ -562,7 +569,7 @@ class Layout {
 
   void expanded() {
     // The strip: the active word and its sentence after it, in the screen above the card.
-    const int cardTop = kCardBottom - m::kExpandedCardHeight;
+    const int cardTop = expandedCardTop();
     out_.fill({0, 0, m::kScreenWidth, cardTop}, false);
     wordStrip(m::kStripPadH, m::kScreenWidth - m::kStripPadH - m::kStripClip, centred(0, cardTop, lh(Font::Page)));
     const std::string mk = marker();

@@ -62,7 +62,8 @@ constexpr int kArrowGlyph = 17;  // ▼ / ▲
 
 // Expanded view.
 // The expanded card: the reference's 500 px tall, bottom-anchored (§1.1: the panel's ~10 px of extra height
-// goes to the strip, so the strip is 800 − 14 − 706 = 80, the table's 71 plus that).
+// goes to the strip, so the strip is 800 − 14 − 706 = 80, the table's 71 plus that). P12: at most 706; the strip
+// is at least 80, more for a page line that needs it (CardLayout::expandedCardTop).
 constexpr int kExpandedCardHeight = 706;
 constexpr int kStripPadH = 28;  // the page's side padding (the reference's .strip, 20)
 constexpr int kStripMarkerText = 14;
@@ -72,8 +73,14 @@ constexpr int kStripClip = 56;         // the strip's text ends this far before 
 constexpr int kStripScrollInset = 11;  // an active word past the clip ends this far inside it
 constexpr int kBodyPadTop = 17;        // the tab content's top padding (the reference's 12)
 
-// Card-view strip (D17): the card's first row, only when the card covers the word.
-constexpr int kCardStripHeight = 51;
+// Card-view strip (D17): the card's first row, only when the card covers the word. It's set in the reader's
+// font at the reader's size, so both strips grow with a bigger size (P12, claritise: "when font size is bigger,
+// the row doesn't expand"): each is at least its reference height, and at least the page line plus
+// kStripTextPadV above and below it.
+constexpr int kCardStripHeight = 51;  // the minimum (the reference's)
+// The least air above and below a strip's line: at the default 14 pt (NotoSerifCJK's line is 42 px), 42 + 8
+// stays within the reference's 51, so the approved card doesn't move; 16 and 18 pt grow the row.
+constexpr int kStripTextPadV = 4;
 constexpr int kCardStripPadH = 17;
 constexpr int kCardStripMarkerText = 14;
 constexpr int kCardStripMarkerRight = 8;

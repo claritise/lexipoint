@@ -231,6 +231,111 @@ TEST(CardLayout, CardViewStripOnlyWhenTheWordIsCovered) {
   EXPECT_EQ(textCommand(clear, mark), nullptr);
 }
 
+// A page font of line height `line` (the reader's size), the rest as the host metrics.
+struct PageLine final : TextMetrics {
+  explicit PageLine(const int line) : line(line) {}
+  int line;
+  int lineHeight(const Font font) const override { return font == Font::Page ? line : kMetrics.lineHeight(font); }
+  int ascender(const Font font) const override { return font == Font::Page ? line * 4 / 5 : kMetrics.ascender(font); }
+  int width(const Font font, const std::string& text) const override { return kMetrics.width(font, text); }
+};
+
+// The card with the word covered (so the card view's strip row shows), in `view`.
+DisplayList coveredCard(const TextMetrics& metrics, const View view) {
+  const auto base = build(benchJapanese(), 2);
+  CardState s = base.state;
+  s.wordOnPage = Rect{100, 700, 60, 80};
+  s.view = view;
+  return layoutCard(base.word, s, metrics);
+}
+
+// P12 (claritise, on the device: "when font size is bigger, the row doesn't expand"): both strips grow with
+// the reader's page font.
+TEST(CardLayout, TheStripsGrowWithABigReaderFont) {
+  const PageLine big(80);
+  const int rowH = 80 + 2 * m::kStripTextPadV;
+  const auto card = coveredCard(big, View::Card);
+  const int rowTop = card.card.y + m::kCardFrame;
+  // The row holds the line: the divider under it sits below the text, and the text starts inside the row.
+  EXPECT_TRUE(has(card, Command::Kind::Fill, {17, rowTop + rowH, 446, 1}));
+  int checked = 0;
+  for (const Command& c : card.commands) {
+    if (c.kind == Command::Kind::Text && c.font == Font::Page) {
+      EXPECT_GE(c.rect.y, rowTop) << c.text;
+      EXPECT_LE(c.rect.y + 80, rowTop + rowH) << c.text;
+      checked++;
+    }
+  }
+  EXPECT_GT(checked, 0);
+  // The detail view: the card starts below its strip.
+  const auto expanded = coveredCard(big, View::Expanded);
+  EXPECT_EQ(expanded.card.y, rowH);
+  checked = 0;
+  for (const Command& c : expanded.commands) {
+    if (c.kind == Command::Kind::Text && c.font == Font::Page && c.rect.y < expanded.card.y) {
+      EXPECT_LE(c.rect.y + 80, expanded.card.y) << c.text;
+      checked++;
+    }
+  }
+  EXPECT_GT(checked, 0);
+}
+
+TEST(CardLayout, TheDefaultSizeKeepsTheApprovedStrips) {
+  // The device's default 14 pt in NotoSerifCJK has a 42 px line: the approved card, not a pixel moved.
+  const PageLine defaultSize(42);
+  const auto card = coveredCard(defaultSize, View::Card);
+  EXPECT_TRUE(has(card, Command::Kind::Fill, {17, card.card.y + m::kCardFrame + m::kCardStripHeight, 446, 1}));
+  EXPECT_EQ(coveredCard(defaultSize, View::Expanded).card.y, m::kScreenHeight - m::kCardInset - m::kExpandedCardHeight);
+}
+
+TEST(CardLayout, TheRowGrowsJustWhenTheLineAndItsAirOutgrowIt) {
+  // 43 + 2 × 4 = 51: still the reference row; 44 needs 52.
+  const int fits = m::kCardStripHeight - 2 * m::kStripTextPadV;
+  for (const int line : {fits, fits + 1}) {
+    const auto card = coveredCard(PageLine(line), View::Card);
+    const int rowH = std::max(m::kCardStripHeight, line + 2 * m::kStripTextPadV);
+    EXPECT_TRUE(has(card, Command::Kind::Fill, {17, card.card.y + m::kCardFrame + rowH, 446, 1})) << line;
+  }
+  EXPECT_EQ(fits, 43);
+}
+
+TEST(CardLayout, EveryPageLineHeightStaysOnScreen) {
+  // A font file's line height is one byte (fontconvert_sdcard.py): 1 to 255 px.
+  for (int line = 1; line <= 255; line++) {
+    const PageLine metrics(line);
+    for (const View view : {View::Card, View::Expanded}) {
+      const auto list = coveredCard(metrics, view);
+      SCOPED_TRACE(testing::Message() << "line " << line << (view == View::Card ? " card" : " expanded"));
+      ASSERT_GE(list.card.y, 0);
+      ASSERT_LE(list.card.bottom(), m::kScreenHeight);
+      for (const Hit& h : list.hits) {
+        if (h.target == Target::OwnWord) continue;  // the page's word, not the card's
+        ASSERT_GE(h.rect.y, list.card.y);           // every target inside the card
+        ASSERT_LE(h.rect.bottom(), m::kScreenHeight);
+      }
+      for (const Command& c : list.commands) {
+        if (c.kind != Command::Kind::Text || c.font != Font::Page) continue;
+        ASSERT_GE(c.rect.y, 0) << c.text;
+        if (view == View::Card) {
+          ASSERT_GE(c.rect.y, list.card.y) << c.text;  // the strip row, inside the card
+        } else {
+          ASSERT_LE(c.rect.y + line, list.card.y) << c.text;  // the strip band, above the card
+        }
+      }
+      if (view == View::Expanded) {
+        // The tabs sit inside the card, far enough below its top for the header and some of the body.
+        const Hit* tab = nullptr;
+        for (const Hit& h : list.hits) {
+          if (h.target == Target::Tab && !tab) tab = &h;
+        }
+        ASSERT_NE(tab, nullptr);
+        // 200: the header (~120 at these metrics) plus a few body lines; at the default size it's ~560.
+        ASSERT_GE(tab->rect.y - list.card.y, 200);
+      }
+    }
+  }
+}
+
 // The page line, scrolled: the card view's strip, and the detail view's before a word is marked (P9).
 TEST(CardLayout, StripScrollsTheActiveWordIntoView) {
   CardWord w = benchJapanese().words[0];
