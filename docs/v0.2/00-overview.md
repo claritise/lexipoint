@@ -496,12 +496,23 @@ deduped batches). The earlier online-only decision is superseded. What applies e
 - **Directions:** decide which the device offers. `listen` needs audio, which the X4 Pro can't play.
 
 **Offline review, the plan (2026-09-25):**
-1. **Fetch while online.** Whenever WiFi is up and cards are due (`study/summary`), start a session and
-   keep its cards on SD. Creating a session needs the network.
-2. **Review offline.** Each answer goes to an SD queue with a new UUID `id` and `reviewedAt`.
-3. **Sync on the next WiFi-up**: send the queue in batches (≤ 200). `duplicate` counts as sent. Keep
-   `rejected` answers with their `error` in the log, and drop them from the queue.
+1. **Sync is manual, like Anki (claritise, 2026-09-25).** A **Sync** action in the review screen. Nothing
+   syncs in the background. One sync does, in order:
+   1. join WiFi (the saved network, as lookups do; `WifiSession`), and fail fast if it can't;
+   2. get the time (NTP) and **write the RTC**;
+   3. send the queued answers in batches (≤ 200). `duplicate` counts as sent. Keep `rejected` answers
+      with their `error` in the log, and drop them from the queue;
+   4. read `study/summary`, start a session, and keep its cards on SD;
+   5. drop WiFi.
+   It shows what happened: "Synced: 24 sent, 30 new cards", or "Offline: 24 answers waiting".
+2. **Opening review tries a sync first (claritise, 2026-09-25).** If it works, review the fresh cards. If
+   WiFi or the server isn't there, review the cards already on SD, offline, without waiting long.
+3. **Review offline.** Each answer goes to the SD queue with a new UUID `id` and `reviewedAt`. Pressing
+   Sync, or opening review next time, sends it.
 4. **The timestamp comes from the RTC**, never the boot clock (see "The device's clock" below).
+
+Open: how long "fail fast" is on the review screen (WiFi join is up to ~6 s today), and whether leaving
+review with answers queued should offer "Sync now?" (the Anki habit is to sync on close).
 
 **To test before relying on it:** how long a session stays valid (fetched Monday, synced Wednesday?; the
 reference doesn't say); a card reviewed on the phone before the device syncs an older answer for it
