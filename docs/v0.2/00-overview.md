@@ -27,8 +27,9 @@
 | C15 | Card: other readings (`also tsuitachi`) | **Yes** | v0.1.x | Tiny | `multipleReadings` |
 | C16 | Card: explain the conjugation (te-form, causative-passive…) | **Yes** | v0.1.x | Small | Surface + lemma, on-device rules |
 | C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, `PATCH suspended`, C3 |
-| C11 | SRS review app on the device | **Blocked on Lexirise** (no review endpoint) | v0.3 | Medium–large | Client, vocab mirror, card UI |
-| C10 | Sense and reading chosen from the sentence | **Yes, but it needs a source** | v0.2 | Depends on the source | The sentence (D5), `multipleReadings` |
+| C11 | SRS review app on the device | **Yes, online-only: Lexirise is building the endpoints** (announced 2026-09-25, not live) | v0.3 | Medium–large | Client, card UI |
+| C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/words/context`** (announced 2026-09-25, not live) | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
+| C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes, once grammar comes back** (announced 2026-09-25) | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
 | C18 | Manga: tap a word in a speech bubble (sideways strips, OCR'd on the Mac) | **Yes: specced as `manga.md`; Mac pipeline built as a spike** | v0.2 | Medium: the device side; the card's orientation needs claritise | The card, lookup, saving, `analyze/text` (at conversion) |
 
 ---
@@ -187,6 +188,35 @@ be four requests and four refreshes.
    second key and a cost per lookup. It also sends book text to another service, which should be
    opt-in. Only worth it if (2) is a no.
 
+**Update 2026-09-25: option 2 is being built.** Lexirise announced `POST /v1/words/context` (sentence
++ word → the meaning in that context), not live yet. Option 3 is dropped. With it, the card can put
+the sense that fits the sentence first, and (if the endpoint returns it) the reading that fits:
+四月一日 → tsuitachi, 一枚上手 → uwate, 长得 → zhǎng. Right now the card is wrong on exactly those tricky
+words.
+- **Open:** the announcement says "meaning", not "reading". Check the reference when it's live. If
+  there's no reading, that's the one follow-up worth asking for, and option 1 (C15) stays the
+  reading's fallback.
+- **Cost:** a third call per lookup (~400 lookups/h at 1200 req/h, fine). It lands after the card is
+  up, like phase B, so the card doesn't wait for it. When to call it (on open, or on the Context tab)
+  is part of the design.
+- **Design:** where the contextual sense and reading go on the card needs claritise's sign-off. The
+  approved card is binding.
+
+## C19. Grammar on the card
+
+**Added 2026-09-25.** `grammar[]` / `grammarStates` were always empty because the slower second pass
+behind `morphoPending: true` never started through the API. Lexirise is fixing that: calling
+`analyze/text` again will return the grammar (`../reference/lexirise-api-notes.md`, "Reported to
+Lexirise"). The card could then say that the word is part of ～ことにした, and whether that pattern
+is in your SRS. StarDict can't do that.
+- **Firmware:** parse `grammar` / `grammarStates` (skipped today, `../v0.1/lexirise-client.md` §2),
+  and call `analyze/text` once more after the first answer said `morphoPending: true`. That's a
+  second call per lookup at most, arriving after the card is up. How long to wait before the second
+  call is to be measured.
+- **Design:** where the pattern goes on the card, with claritise's sign-off (the approved card is
+  binding).
+- Response shape unknown until it's live. Read it before specifying.
+
 ## C12–C13. Page analysis and the vocab mirror
 
 These are the foundations for `page-annotations.md` §1, and they also help v0.1:
@@ -244,8 +274,29 @@ mine a word from the book, then review it from the same book.
    level up or down via `PATCH`. It's honest about what it is, but it isn't SRS, and it's unknown
    whether a `PATCH` to `proficiency` disturbs the FSRS state. Test before offering it.
 
-**Firmware cost:** a new top-level activity (a Home menu entry: one more upstream hook), a card
-activity, and a local queue. That's close to the "vocab mirror" work (see the API-usage review), which
+**Update 2026-09-25: option 1 is being built.** Lexirise announced `GET /v1/vocabulary/due` and
+`POST /v1/vocabulary/{id}/review` (grade 1–4; the server runs the scheduler and returns the updated
+card). Not live yet.
+
+**Decision (claritise, 2026-09-25): review is online-only, grade only.** Lookups already need the
+network, and a phone hotspot covers the rest. So there's no offline queue, no `reviewed_at`, and no
+dedupe of synced reviews: the server's time is the review time, which is what FSRS needs. This
+supersedes the offline queue in option 1 and the SD cache above. Consequences:
+- A review POST is **not idempotent**. After a dropped connection, don't resend (as with a save). At
+  worst the reader grades that card again.
+- Fetch the due list once per session, so stepping between cards is local and only the grade goes
+  over the network.
+- Checks for the reference once live (content per card, pagination against the 64 KB body cap, the
+  grade scale, the next due date in the response): `../reference/lexirise-api-notes.md`.
+
+**If offline review ever comes back:** the device *can* timestamp. The X4 Pro has an RTC that
+`HalClock::syncFromNTP()` sets to the full UTC date and time, but `HalClock` only reads back hour and
+minute. It would need the date accessor already listed for P8 (`../v0.1/lexirise-client.md` §1,
+"Clock source"), plus an optional `reviewedAt` and a client ID per review from Lexirise. Not checked:
+whether the RTC survives a fully drained battery.
+
+**Firmware cost:** a new top-level activity (a Home menu entry: one more upstream hook) and a card
+activity. The local queue is no longer needed. That's close to the "vocab mirror" work (see the API-usage review), which
 it would share.
 
 **Scope note:** upstream `SCOPE.md` rules out "interactive apps". That doesn't bind the fork, but it
@@ -253,7 +304,7 @@ does mean this code will never go upstream, and it adds to the rebase cost.
 
 ## Questions to put to Lexirise
 
-> **Sent by claritise on 2026-09-24** in the Lexirise community (their posts at 3:58 pm and 5:07 pm): the review and due endpoints (Q8), contextual meaning (Q7), empty grammar (Q7), and the bad-data reports. **Awaiting answers.** Record replies here, with dates. (all from the checks above)
+> **Sent by claritise on 2026-09-24** in the Lexirise community (their posts at 3:58 pm and 5:07 pm): the review and due endpoints (Q8), contextual meaning (Q7), empty grammar (Q7), and the bad-data reports. **Answered 2026-09-24 / 25** (Q7, Q8 below; details in `../reference/lexirise-api-notes.md`, "Reported to Lexirise"). The bad data wasn't addressed yet. Record further replies here, with dates.
 
 ~~1. Deck ID on save / smart decks?~~ No deck ID, **but dynamic tag decks exist** (C4).
 ~~2. Sentence auto-translation?~~ **Yes, immediately** (tested 2026-09-24). Always send `proficiency`, because sentences default to 2. **C3 is unblocked.**
@@ -261,9 +312,9 @@ does mean this code will never go upstream, and it adds to the rebase cost.
 ~~4. A count or stats endpoint?~~ **Yes**: `totalCount` / `languageCount` (C7).
 ~~5. Server-side analysis of uploaded chapters?~~ **Not exposed** (C8 stays parked).
 ~~6. Tags: `:` and merge vs replace?~~ **`:` is fine. A re-POST replaces all tags. Tags can't be deleted through the API**, so keep the set small (C2).
-7. Is the app's *Context* tab (the contextual sense and reading) available through the API? Why are `grammar[]` / `grammarStates` always empty? (C10)
-8. Could the API get a **review endpoint** (grade + timestamp → FSRS update), and a `due` filter on `GET /v1/vocabulary`? (C11)
+~~7. Is the app's *Context* tab (the contextual sense and reading) available through the API? Why are `grammar[]` / `grammarStates` always empty?~~ **`POST /v1/words/context` is being built** (C10; check it returns the reading). **Grammar:** the second pass behind `morphoPending` wasn't starting; the API will start it, and a second call returns grammar (C19). 2026-09-25.
+~~8. Could the API get a **review endpoint** (grade + timestamp → FSRS update), and a `due` filter on `GET /v1/vocabulary`?~~ **Being built:** `GET /v1/vocabulary/due` and `POST /v1/vocabulary/{id}/review` (grade 1–4, no timestamp). Fine, since review is online-only (C11). 2026-09-25.
 
 ## Suggested order after v0.1
 
-**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes"). **v0.2:** `page-annotations.md` build order (§5) → C10 (once Lexirise answers Q7) → C5. **v0.3:** C11 (once Lexirise answers Q8). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7).
+**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes"). **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7).

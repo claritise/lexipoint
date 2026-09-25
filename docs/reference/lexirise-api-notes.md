@@ -94,9 +94,9 @@ Lexirise schedules with **FSRS**, and each item exposes the schedule **read-only
 `proficiency_source` (`manual`), and the full `dictionary_entry` (with `system_tags`, rank and
 translations) embedded.
 
-- **There's no endpoint to record a review.** `PATCH /v1/vocabulary/{id}` accepts `proficiency`,
+- **There's no endpoint to record a review** *(one is being built: see "Reported to Lexirise" below)*. `PATCH /v1/vocabulary/{id}` accepts `proficiency`,
   `suspended` and so on, but no grade, and no FSRS fields.
-- **There's no "due" filter.** `sortId` has `last_review_at` but not `next_review_at`. Due cards
+- **There's no "due" filter** *(`GET /v1/vocabulary/due` is being built)*. `sortId` has `last_review_at` but not `next_review_at`. Due cards
   have to be filtered on the device (`next_review_at <= now`) after paging everything, which is 1
   request per 200 items.
 - `GET /v1/me` → `apiKey` has `rateLimitMax: 1200` and `rateLimitTimeWindow: 3600000`, plus
@@ -129,6 +129,13 @@ this API. `dictionary/lookup` gives every sense in a fixed order. See v0.2 C10 f
   That's a server-side quality issue, not something to fix on the device, but it's worth reporting to
   Lexirise.
 - `コーヒー` came through as one token, with the reading `kōhī`.
+- **Kana spelling of a common word split as particle + word** (seen on the device, 2026-09-25):
+  in ときどきどこかの教室の**とびら**のあけしめされる音が… (とびら = 扉, door) the word came back
+  as と + **びら** (handbill), so the card showed びら. The full sentence was sent (~45 characters,
+  bounded by 。 on both sides, ruby excluded), so more context wouldn't help: the clue (a noun after
+  の) is next to the word. Most likely a lexicon cost for the kana spelling of a word usually written
+  in kanji. Kana-heavy books (children's, YA) are the weak spot. Chinese segmentation seems better
+  in use (claritise's impression, not measured). Not reported yet.
 
 ## Tested live, 2026-09-24 (second round)
 
@@ -176,4 +183,27 @@ Chinese ranks run higher for words as common, so the thresholds are per language
 
 ## Reported to Lexirise (2026-09-24, by claritise)
 
-The contextual meaning endpoint, empty `grammar[]`, a review endpoint plus a due list, and the bad data (一緒 → `ichiitoguchi`, 𠮟る split as 𠮟 + る, 一日中雨 as one token). Awaiting replies. Record them here.
+The contextual meaning endpoint, empty `grammar[]`, a review endpoint plus a due list, and the bad data (一緒 → `ichiitoguchi`, 𠮟る split as 𠮟 + る, 一日中雨 as one token).
+
+**Replies:**
+- **2026-09-24:** the Lexirise developer is happy to support the use case with new endpoints.
+- **2026-09-25** (Lexirise's announcement bot): **being built, not live yet.** Lexirise will post in
+  the thread when they are.
+
+| Announced | What it does (as announced) | Check in the reference once live |
+|---|---|---|
+| `GET /v1/vocabulary/due` | The cards due now | Does each card carry its content (word, reading, meaning, the saved sentence) or only IDs? A `limit` / pagination? Our parser caps a body at 64 KB (`../v0.1/lexirise-client.md` §1), so a large backlog with sentences needs pages of ~20 |
+| `POST /v1/vocabulary/{id}/review` | Takes a grade **1–4**; the server runs the scheduler and returns the updated card | The grade scale (Again / Hard / Good / Easy expected). Does the response carry the next due date? Not idempotent: never resend after a dropped connection (same rule as a save) |
+| `POST /v1/words/context` | Sentence + word → the meaning in that context | **Does it return the reading too?** The announcement only says "meaning", and the reported cases were mostly readings (四月一日 → tsuitachi, 一枚上手 → uwate, 长得 → zhǎng). If it's meaning-only, ask for the reading: that's the one follow-up worth sending |
+
+- **Grammar explained:** `analyze/text` answers `morphoPending: true` for new text, and grammar comes
+  from a slower second pass that the API wasn't starting, so `grammar[]` stayed empty. The API will
+  start that pass, so **calling `analyze/text` again returns the grammar.** Not a bug on our side:
+  the v0.1 client skips `grammar` / `grammarStates` (`../v0.1/lexirise-client.md` §2) and doesn't
+  call again.
+- **Timestamp on reviews:** the second post asked for "grade + timestamp", but never said why, and the
+  announcement is grade only. That's fine for online reviews (server time is the review time). **No
+  follow-up needed: on-device review is online-only** (claritise, 2026-09-25; v0.2 C11).
+- **Bad data:** not mentioned in the announcement. Re-test 一緒, 𠮟る and 一日中雨 once the endpoints are live.
+- **Nothing gets better on the device by itself** except fixed server data. Grammar, contextual
+  meaning and reviews each need firmware work (v0.2 C10, C11, C19).
