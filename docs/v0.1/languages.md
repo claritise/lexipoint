@@ -62,7 +62,8 @@ The book-language row isn't scripted in `lxctl` (where it sits depends on the me
 the page shows), so it's a manual check: set a Chinese book to Chinese, look a word up (sent as `zh`), reboot (still Chinese),
 Auto again (back to the default); the row in both menu styles.
 
-The decision is made once, when the book is opened, and cached for the reading session. The
+The decision is made once, when the book is opened, and cached for the reading session. (As built: the
+override is read at each lookup, so a change in the reader menu applies to the next one.) The
 sentence heuristic in step 2 runs per lookup only when there's no metadata.
 
 **As built (P2, `text/BookLanguage`):** precedence is override → metadata → sentence. Metadata that is
