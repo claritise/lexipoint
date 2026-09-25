@@ -31,6 +31,8 @@
 | C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/words/context`** (announced 2026-09-25, not live) | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
 | C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes, once grammar comes back** (announced 2026-09-25) | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
+| C21 | Faster lookups: on-device caches (entries by lemma, chapter analysis, text-keyed cache, warm TLS) | **Yes, no Lexirise changes needed** | v0.1.x–v0.2, with C12–C13 | Small–medium each | Client, C12–C13, SD |
+| C22 | One font for everything: a single CJK + Latin family | **Yes, as part of the slimming after M** (claritise, 2026-09-25) | After M | Small–medium; the font choice needs claritise | `languages.md` §5.1, the card's type sizes |
 | C18 | Manga: tap a word in a speech bubble (sideways strips, OCR'd on the Mac) | **Yes: specced as `manga.md`; Mac pipeline built as a spike** | v0.2 | Medium: the device side; the card's orientation needs claritise | The card, lookup, saving, `analyze/text` (at conversion) |
 
 ---
@@ -287,6 +289,55 @@ what we can without Lexirise first, and ask only for what's critical** (like `wo
 C20 after v0.3, once our own manga pipeline and the rest work, as the next step, and alongside a
 possible Xteink + Lexirise bundle.
 
+## C21. Faster lookups: on-device caches
+
+**Added 2026-09-25 (claritise).** A lookup today is WiFi (up to ~6 s if down), NTP on the first call
+after boot (up to ~5 s), a TLS handshake, then ① `analyze/text` and ③ `dictionary/lookup` at
+~1.0–1.3 s each. C12–C13 (`page-annotations.md` §1) come first: page analysis skips ①, and the vocab
+mirror gives saved state offline. On top of them, cheapest and most likely to pay first:
+
+1. **Cache dictionary entries by lemma on SD.** Books repeat their vocabulary (names, recurring
+   words), so a second tap on a word needs no network. Don't cache an entry whose
+   `translation_status` isn't ready; expire after ~30 days. Probably the biggest win after C12.
+2. **Analyze a chapter at once**, not a page. No limit was hit up to 20k characters (~5.8 s, ~70 bytes of
+   response per character, streamed to SD). One call on opening a chapter readies every page and
+   uses far fewer requests. It may replace per-page prefetch for forward reading.
+3. **Key the analysis cache by a hash of the paragraph text**, not by `<section>-<pageStart>` plus font
+   settings (`page-annotations.md` §1.1). A font or layout change then keeps the cache.
+4. **Prefetch a few likely unknown words per page** (high rank, not in the mirror), capped and inside
+   the 70% rate-limit guard, so the card is often complete on the tap.
+5. **Keep the connection warm:** TLS session resumption (skips most of the ECC handshake; check
+   wolfSSL's heap cost), and optionally a "fast lookups" setting that keeps WiFi up in a reading
+   session (battery cost).
+6. **Seed the clock from the RTC** to skip the NTP wait (the HalClock date accessor, P8).
+7. **A kanji / hanzi pack on SD** for the character breakdown, instead of one lookup per character.
+
+With 1–4, most taps on a forward read would need no network: the network is left for saves, level
+changes and reviews. **Nothing here is measured yet.** Measure 1–3 first (hit rate of the lemma
+cache over a chapter, chapter-call time and memory, cache survival across a font change).
+
+## C22. One font for everything
+
+**Added 2026-09-25 (claritise): support one font going forward**, a single family covering CJK and
+English. Part of slimming Lexipoint into CJK-learning firmware after phase M (not a decision row
+yet). Today the reader font is `NotoSerifCJK` built from `NotoSerifCJKjp` (`languages.md` §5.1), and
+the card mixes it with CrossPoint's built-in UI fonts (SMALL, UI_10).
+
+Why: one family to build, test and ship; the card and the book always match; no "wrong font" setup
+trap (`languages.md` §5); the font picker and the rest of CrossPoint's font machinery can go.
+
+**Needs claritise:**
+- **Which font.** Noto Serif CJK is what works now; Noto Sans CJK is the other obvious candidate
+  (it may suit the UI better).
+- **Chinese letterforms.** The JP file carries every ideograph but draws Japanese forms. One font means
+  Chinese books show those forms, unless the one family ships both the JP and SC builds.
+- **The UI fonts too?** Replacing the built-in UI fonts means the card's type changes, and the approved
+  card is binding (`popup-ui.md` §1.1), so it needs a check against the reference. The built-ins also
+  live in flash and render without an SD card.
+
+Also worth doing when it's rebuilt: widen the glyph ranges to CJK Extension A and the non-BMP
+characters fiction uses (𠮟 renders as a box today, §5.1).
+
 ## C11. SRS review app on the device
 
 **The appeal:** e-ink suits flashcards well. They're static, button-driven, need no touch, and use
@@ -354,4 +405,4 @@ does mean this code will never go upstream, and it adds to the rebase cost.
 
 ## Suggested order after v0.1
 
-**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes"). **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
+**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After M:** C22 with the rest of the slimming. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
