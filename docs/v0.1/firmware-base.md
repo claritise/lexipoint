@@ -179,19 +179,26 @@ Record any upstream or ++ commit we carry that isn't in the base tag.
 - **Release notes** say which upstream version each release is built on, and link the user setup guide.
 
 **As built (P8):**
-- `platformio.ini` `[lexirise] release = <n>` (bump per release; back to 1 after a rebase onto a new
-  upstream version). `x4pro-gh_release` builds `CROSSPOINT_VERSION = <upstream>-lexi.<n>`, its `_rc` twin
+- `platformio.ini` `[lexirise] release = <n>` (bump per release; back to 1 **only when `[crosspoint]
+  version` changes**: a rebase that keeps the upstream version keeps counting, or devices on a higher `n`
+  would never be offered the new release). `x4pro-gh_release` builds `CROSSPOINT_VERSION = <upstream>-lexi.<n>`, its `_rc` twin
   `<upstream>-lexi.<n>-rc+<hash>`, and the dev env `<upstream>-lexi.<n>-x4pro`. `LEXIPOINT_VERSION` (0.1.0)
   stays the product version in the Lexirise User-Agent.
-- **Releasing:** tag `<upstream>-lexi.<n>` (a prerelease: `…-rc`) and publish a GitHub release on the fork;
-  `release.yml` checks the tag against `platformio.ini`, builds `x4pro-gh_release` and attaches
-  `crosspoint-<tag>-x4pro.bin`. Only claritise publishes releases.
+- **Releasing:** tag `<upstream>-lexi.<n>` (a prerelease: `…-rc`; `release_tag.py expected` prints it) and
+  publish a GitHub release on the fork. `release.yml` runs `scripts/lexipoint/release_tag.py check` (tested):
+  the tag must be exactly what `platformio.ini` says (no leading `v`: devices look for
+  `crosspoint-<tag>-x4pro.bin`), at most 26 characters (the updater's buffers), from an `X.Y.Z` upstream
+  version and `n ≥ 1`, and newer than the fork's previous release. Then it builds `x4pro-gh_release` and
+  attaches the asset. Only claritise publishes releases. Checklist: run `keyscan.py` in the docs repo too
+  (it has no CI); until the first release exists, a device's *Check for updates* shows an error (GitHub's
+  `/releases/latest` is 404), not "no update".
 - **OTA** (`OtaUpdater.cpp` hook): the fork's `/releases/latest` (prereleases aren't "latest"); a release is
   offered only when it's a Lexipoint version newer than the running one (`ota::isNewerRelease`: upstream
   version, then `n`; a release candidate updates to its release). Upstream's releases never are.
 - **CI** (`ci.yml`): runs on pushes to `lexipoint` too (the fork's Actions must be enabled). The
   `unit-tests` job already builds every `lexirise_*` suite and the card goldens; `x4c` in the build matrix is
-  the LEXIRISE-off parity build; the new `lexipoint` job runs `scripts/lexipoint/keyscan.py` and the script
-  tests. `cppcheck` runs on the `default` env, which doesn't build Lexirise.
+  the LEXIRISE-off parity build; the new `lexipoint` job (with submodules: `test_lxctl` reads the SDK's
+  edge bands) runs `scripts/lexipoint/keyscan.py` and the script tests (`test_gen_bench_fixtures` skips
+  there: it needs this docs repo). `cppcheck` runs on the `default` env, which doesn't build Lexirise.
 - **Rebase (P8 gate):** checked 2026-09-25: the newest upstream tag (`1.6.5rc`) is already in `lexipoint`,
   and upstream `master`'s two newer commits are empty merges, so there was nothing to rebase onto.
