@@ -214,7 +214,7 @@ expand with a bigger size). Each is set in the reader's page font; the card view
 reference 51 px and at least the line plus `kStripTextPadV` (4 px) above and below it, so the card grows
 upward; the detail view's strip band is at least its 80 px likewise, and the detail card below it starts lower
 (its body shorter). At the device's default 14 pt (NotoSerifCJK's line is 42 px: 50 ≤ 51) nothing moves;
-16 pt (48 px line) makes the row 56, 18 pt (54) 62; the detail view grows only past a 72 px line (an SD font
+16 pt (48 px line) makes the row 56, 18 pt (54) 62 (the built-in fonts, 34–51 px lines at 12–18 pt: 51, 51, 53, 59); the detail view grows only past a 72 px line (an SD font
 of ~24 pt). Every line height a font file can have (1–255 px) keeps the card on screen, its targets inside
 it and the detail view's tabs clear of its header (`CardLayout.EveryPageLineHeightStaysOnScreen`).
 
