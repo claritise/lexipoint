@@ -1,0 +1,132 @@
+name: Compile Release
+
+# Build and attach firmware only after a release is published. The release tag
+# supplies both the source revision and the version in each asset name.
+# LEXIPOINT: the fork releases the X4 Pro build only (firmware-base.md §6), tagged
+# <upstream>-lexi.<release> (platformio.ini [crosspoint] version, [lexirise] release),
+# with -rc for a prerelease; the device's OTA updater reads this repo's latest release.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release_env: x4pro-gh_release
+            rc_env: x4pro-gh_release_rc
+            device: x4pro
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          submodules: recursive
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Validate release version
+        # LEXIPOINT: scripts/lexipoint/release_tag.py (tested): the tag is <upstream>-lexi.<n>[-rc] as
+        # platformio.ini says, fits the OTA updater, and is newer than the fork's previous release.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A failing gh fails the step: the newer-than check must never be skipped silently.
+          tags="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+            --limit 100 --json tagName -q '.[].tagName')"
+          printf '%s\n' "$tags" | python3 scripts/lexipoint/release_tag.py check "$RELEASE_TAG" --releases - \
+            ${{ github.event.release.prerelease && '--prerelease' || '' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Install PlatformIO Core
+        run: |
+          uv pip install --system -U https://github.com/pioarduino/platformio-core/archive/refs/tags/v6.1.19.zip
+          # platform-espressif32's builder/main.py imports these unconditionally; its own
+          # penv bootstrap (builder/penv_setup.py) is supposed to install them automatically
+          # but isn't picking them up reliably in this runner image, so pin them explicitly.
+          uv pip install --system -U "littlefs-python>=0.16.0" "fatfs-ng>=0.1.14" "pyyaml>=6.0.2" \
+            "rich-click>=1.8.6" "zopfli>=0.2.2" "intelhex>=2.3.0" "rich>=14.0.0" "urllib3<2" \
+            "cryptography>=45.0.3" "certifi>=2025.8.3" "ecdsa>=0.19.1" "bitstring>=4.3.1" \
+            "reedsolo>=1.5.3,<1.8" "esp-idf-size>=2.0.0" "esp-coredump>=1.14.0"
+
+      - name: Build CrossPoint
+        env:
+          PIO_ENV: ${{ github.event.release.prerelease && matrix.rc_env || matrix.release_env }}
+        run: CROSSPOINT_RC_HASH="$(git rev-parse --short=7 HEAD)" pio run -e "$PIO_ENV" -j1
+
+      - name: Prepare firmware asset
+        id: asset
+        env:
+          PIO_ENV: ${{ github.event.release.prerelease && matrix.rc_env || matrix.release_env }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          asset="crosspoint-${version}-${{ matrix.device }}.bin"
+          cp ".pio/build/${PIO_ENV}/firmware.bin" "$asset"
+          echo "name=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Stage firmware asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.asset.outputs.name }}
+          path: ${{ steps.asset.outputs.name }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish-release:
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download firmware assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: crosspoint-*.bin
+          merge-multiple: true
+
+      - name: Attach firmware assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          for device in x4pro; do  # LEXIPOINT: the X4 Pro only
+            test -f "dist/crosspoint-${version}-${device}.bin"
+          done
+          test "$(find dist -maxdepth 1 -type f -name 'crosspoint-*.bin' | wc -l)" -eq 1
+          gh release upload "$RELEASE_TAG" dist/crosspoint-*.bin \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Check devices will see it
+        # LEXIPOINT: the OTA updater reads /releases/latest (firmware-base.md §6): a full release must be it
+        # (not unticked as latest, not an older commit), with its asset.
+        if: ${{ !github.event.release.prerelease }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name)"
+          test "$latest" = "$RELEASE_TAG" || { echo "latest release is $latest, not $RELEASE_TAG"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q '.assets[].name' \
+            | grep -qxF "crosspoint-${RELEASE_TAG}-x4pro.bin"

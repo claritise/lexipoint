@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lexirise - CrossPoint Reader</title>
+  <!-- LEXIPOINT: settings.md §1a. Markup and CSS follow SettingsPage.html so it looks like the rest of the UI. -->
+  <style>
+    :root {
+      --font-color: #333;
+      --bg: #f5f5f5;
+      --title-color: #2c3e50;
+      --card-bg: #FFF;
+      --label-color: #7f8c8d;
+      --border-color: #eee;
+      --accent-color: rgb(110, 154, 130);
+      --accent-hover-color: #5a8c73;
+      --toggle-bg: #ccc;
+      --danger-color: #e74c3c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --font-color: #f5f5f5;
+        --bg: #333;
+        --title-color: #ecf0f1;
+        --card-bg: #444;
+        --label-color: #bdc3c7;
+        --border-color: #555;
+        --toggle-bg: #666;
+        color-scheme: dark;
+      }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: var(--bg);
+      color: var(--font-color);
+    }
+    h1 { color: var(--title-color); border-bottom: 2px solid var(--accent-color); padding-bottom: 10px; }
+    h2 { color: var(--title-color); margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
+    .card { background: var(--card-bg); border-radius: 8px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); }
+    .nav-links { margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+    .nav-links a { padding: 10px 20px; color: var(--font-color); text-decoration: none; border-radius: 4px; }
+    .nav-links a.active { background-color: var(--accent-color); color: white; }
+    .nav-links a:not(.active):hover { background-color: var(--accent-hover-color); color: white; }
+    .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-color); gap: 12px; flex-wrap: wrap; }
+    .setting-row:last-child { border-bottom: none; }
+    .setting-row.sub .setting-name { padding-left: 16px; }
+    .setting-name { font-weight: 500; color: var(--label-color); flex: 1; min-width: 0; }
+    .setting-control { flex-shrink: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .setting-control select, .setting-control input[type="text"] {
+      padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.95em; background: var(--card-bg); color: var(--font-color);
+    }
+    .setting-control select { min-width: 160px; }
+    .setting-control input[type="text"] { width: 240px; max-width: 100%; }
+    .toggle-switch { display: inline-block; position: relative; width: 48px; height: 26px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--toggle-bg); border-radius: 26px; transition: 0.3s; }
+    .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; border-radius: 50%; transition: 0.3s; }
+    .toggle-switch input:checked + .toggle-slider { background-color: var(--accent-color); }
+    .toggle-switch input:checked + .toggle-slider:before { transform: translateX(22px); }
+    .btn { padding: 6px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em; background: var(--accent-color); color: white; }
+    .btn:hover { background: var(--accent-hover-color); }
+    .btn:disabled { background: #95a5a6; cursor: not-allowed; }
+    .btn-link { background: none; color: var(--danger-color); padding: 6px 4px; }
+    .btn-link:hover { background: none; text-decoration: underline; }
+    .meta { color: var(--label-color); font-size: 0.9em; }
+    .status { font-size: 0.9em; font-weight: 500; }
+    .status.connected { color: #27ae60; }
+    .status.rejected, .status.error { color: var(--danger-color); }
+    .message { padding: 12px; border-radius: 4px; margin: 15px 0; text-align: center; display: none; }
+    .message.success { display: block; background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+    .message.error { display: block; background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+    details summary { cursor: pointer; color: var(--title-color); font-weight: 600; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <h1>📚 CrossPoint Reader</h1>
+
+  <div class="nav-links">
+    <a href="/">Home</a>
+    <a href="/files">File Manager</a>
+    <a href="/settings">Settings</a>
+    <a href="/fonts">Fonts</a>
+    <a href="/lexirise" class="active">Lexirise</a>
+  </div>
+
+  <div id="message" class="message"></div>
+
+  <div class="card">
+    <h2>Lexirise <span id="status" class="status">…</span></h2>
+    <div class="setting-row">
+      <span class="setting-name">API key</span>
+      <span class="setting-control">
+        <input type="text" id="key" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste your lx_… key" />
+        <button class="btn" id="saveKey">Save</button>
+      </span>
+    </div>
+    <div class="setting-row hidden" id="serverNote">
+      <span class="setting-name meta">⚠ Your key is sent to <b id="serverHost"></b>, not the Lexirise server.
+        Change it under Advanced if you didn't set this.</span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-name meta">Current: <span id="currentKey">none</span></span>
+      <span class="setting-control">
+        <button class="btn" id="test">Test connection</button>
+        <button class="btn btn-link" id="removeKey">Remove key</button>
+      </span>
+    </div>
+  </div>
+
+  <div class="card" id="settings">
+    <div class="setting-row">
+      <span class="setting-name">Lexirise lookups</span>
+      <span class="setting-control" data-toggle="enabled"></span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-name">Japanese</span>
+      <span class="setting-control" data-toggle="ja.enabled" data-when="jaLookups"></span>
+    </div>
+    <div class="setting-row sub" data-when="jaReading">
+      <span class="setting-name">Readings</span>
+      <span class="setting-control"><select data-field="ja.reading"><option value="kana">Kana</option><option value="romaji">Romaji</option></select></span>
+    </div>
+    <div class="setting-row sub">
+      <span class="setting-name">Offline dictionary</span>
+      <span class="setting-control"><select data-field="ja.stardict" data-dictionaries></select></span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-name">Chinese (Simplified)</span>
+      <span class="setting-control" data-toggle="zh.enabled" data-when="zhLookups"></span>
+    </div>
+    <div class="setting-row sub">
+      <span class="setting-name">Offline dictionary</span>
+      <span class="setting-control"><select data-field="zh.stardict" data-dictionaries></select></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>General</h2>
+    <div class="setting-row" data-when="defaultLanguage">
+      <span class="setting-name">Language when a book doesn't say</span>
+      <span class="setting-control"><select data-field="defaultLanguage"><option value="ja">Japanese</option><option value="zh">Chinese</option></select></span>
+    </div>
+    <div class="setting-row" data-when="tags">
+      <span class="setting-name">Tags on saved words</span>
+      <span class="setting-control"><input type="text" data-field="tags" placeholder="xteink" /></span>
+    </div>
+    <div class="setting-row" data-when="wifiIdle">
+      <span class="setting-name">Keep WiFi on after a lookup</span>
+      <span class="setting-control"><select data-field="wifiIdleMin" data-number></select></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Advanced</summary>
+      <div class="setting-row">
+        <span class="setting-name">Server<br /><span class="meta">Changing it needs the key pasted again.</span></span>
+        <span class="setting-control"><input type="text" data-field="baseUrl" spellcheck="false" /></span>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    const STATUS_TEXT = {
+      'unchecked': 'Not checked', 'checking': 'Checking…', 'no-key': 'No key', 'rejected': 'Key rejected',
+      'offline': 'No internet (checked again when the device is online)', 'error': 'Could not connect'
+    };
+    // The device checks a new key from its main loop, not inside the request, so the page polls, for
+    // as long as the device says one call can take (checkTimeoutS).
+    const POLL_MS = 1000;
+    let state = null;
+
+    function get(obj, path) { return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj); }
+    function patchFor(path, value) {
+      const parts = path.split('.');
+      const patch = {};
+      let o = patch;
+      parts.slice(0, -1).forEach(k => { o[k] = {}; o = o[k]; });
+      o[parts[parts.length - 1]] = value;
+      return patch;
+    }
+
+    function showMessage(text, ok) {
+      const m = document.getElementById('message');
+      m.textContent = text;
+      m.className = 'message ' + (ok ? 'success' : 'error');
+    }
+
+    function renderStatus(status) {
+      const el = document.getElementById('status');
+      el.className = 'status ' + status.state;
+      if (status.state === 'connected') {
+        el.textContent = '● Connected' + (status.name ? ' as ' + status.name : '') + (status.plan ? ' (' + status.plan + ')' : '');
+      } else {
+        el.textContent = STATUS_TEXT[status.state] || status.state;
+      }
+    }
+
+    function fillSelect(select, options, current) {
+      select.replaceChildren();
+      options.forEach(([value, label]) => {
+        const o = document.createElement('option');
+        o.value = value;
+        o.textContent = label;
+        select.appendChild(o);
+      });
+      select.value = String(current);
+    }
+
+    function render(s) {
+      state = s;
+      renderStatus(s.status);
+      document.getElementById('currentKey').textContent = s.hasKey ? s.key : 'none';
+      // A server other than Lexirise's gets the key: always say so next to it (settings.md §2).
+      const customServer = s.baseUrl !== s.defaultBaseUrl;
+      document.getElementById('serverNote').classList.toggle('hidden', !customServer);
+      document.getElementById('serverHost').textContent = s.baseUrl;
+      document.getElementById('removeKey').classList.toggle('hidden', !s.hasKey);
+      document.querySelectorAll('[data-toggle]').forEach(el => {
+        const input = el.querySelector('input');
+        if (input) input.checked = !!get(s, el.dataset.toggle);
+      });
+      document.querySelectorAll('select[data-dictionaries]').forEach(sel => {
+        const current = get(s, sel.dataset.field) || '';
+        const names = s.choices.dictionaries.slice();
+        if (current && !names.includes(current)) names.push(current);
+        fillSelect(sel, [['', 'Same as CrossPoint']].concat(names.map(n => [n, n])), current);
+      });
+      const idle = document.querySelector('select[data-field="wifiIdleMin"]');
+      fillSelect(idle, s.choices.wifiIdleMin.map(m => [m, m === 0 ? 'Off' : m + ' min']), s.wifiIdleMin);
+      document.querySelectorAll('[data-field]').forEach(el => {
+        if (el.tagName === 'INPUT') el.value = get(s, el.dataset.field) || '';
+        else if (!el.hasAttribute('data-dictionaries') && el.dataset.field !== 'wifiIdleMin') el.value = get(s, el.dataset.field);
+      });
+      // The device says which rows show (settings_screen::visibleRows, sent as `shows`): the offline
+      // dictionaries and the language names have no data-when, so they always do.
+      document.querySelectorAll('[data-when]').forEach(row => {
+        row.classList.toggle('hidden', !s.shows[row.dataset.when]);
+      });
+    }
+
+    async function pollUntilSettled() {
+      const limit = state ? state.checkTimeoutS + 5 : 0;
+      for (let i = 0; i < limit && state && state.status.state === 'checking'; i++) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        try {
+          const res = await fetch('/api/lexirise');
+          if (res.ok) render(await res.json());
+        } catch (e) { /* keep polling */ }
+      }
+      return state;
+    }
+
+    async function send(url, body) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {})
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const reason = data.field === 'apiKeyForServer' ? 'Paste the API key again to change the server.'
+            : data.field ? 'Invalid value: ' + data.field : (data.error || 'error');
+          showMessage('Not saved. ' + reason, false);
+          if (state) render(state);  // put the controls back
+          return null;
+        }
+        render(data);
+        return data;
+      } catch (e) {
+        showMessage('Could not reach the device: ' + e.message, false);
+        return null;
+      }
+    }
+
+    function buildToggles() {
+      document.querySelectorAll('[data-toggle]').forEach(el => {
+        const label = document.createElement('label');
+        label.className = 'toggle-switch';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.addEventListener('change', () => send('/api/lexirise', patchFor(el.dataset.toggle, input.checked)));
+        const slider = document.createElement('span');
+        slider.className = 'toggle-slider';
+        label.append(input, slider);
+        el.appendChild(label);
+      });
+    }
+
+    function wireFields() {
+      document.querySelectorAll('[data-field]').forEach(el => {
+        el.addEventListener('change', () => {
+          const value = el.hasAttribute('data-number') ? Number(el.value) : el.value;
+          if (el.dataset.field === 'baseUrl') {
+            // A new server needs the key pasted alongside it (settings.md §2).
+            const key = document.getElementById('key').value.trim();
+            send('/api/lexirise', key ? { baseUrl: value, key: key } : { baseUrl: value })
+              .then(d => { if (d) { document.getElementById('key').value = ''; pollUntilSettled(); } });
+            return;
+          }
+          send('/api/lexirise', patchFor(el.dataset.field, value)).then(d => { if (d) showMessage('Saved.', true); });
+        });
+      });
+    }
+
+    document.getElementById('saveKey').addEventListener('click', async () => {
+      const input = document.getElementById('key');
+      const key = input.value.trim();
+      if (!/^lx_[A-Za-z0-9_-]+$/.test(key)) {
+        showMessage('That doesn\'t look like a Lexirise key (it starts with lx_).', false);
+        return;
+      }
+      const button = document.getElementById('saveKey');
+      button.disabled = true;
+      button.textContent = 'Checking…';
+      const d = await send('/api/lexirise', { key: key });
+      if (d) {
+        input.value = '';
+        const settled = await pollUntilSettled();
+        const st = settled.status.state;
+        showMessage(st === 'connected' ? 'Key saved and working.' : 'Key saved. ' + (STATUS_TEXT[st] || st), st === 'connected');
+      }
+      button.disabled = false;
+      button.textContent = 'Save';
+    });
+
+    document.getElementById('test').addEventListener('click', async () => {
+      const button = document.getElementById('test');
+      button.disabled = true;
+      button.textContent = 'Testing…';
+      if (await send('/api/lexirise/test')) await pollUntilSettled();
+      button.disabled = false;
+      button.textContent = 'Test connection';
+    });
+
+    document.getElementById('removeKey').addEventListener('click', () => {
+      if (confirm('Remove the Lexirise key from this device?')) send('/api/lexirise', { clearKey: true });
+    });
+
+    buildToggles();
+    wireFields();
+    fetch('/api/lexirise?recheck=1').then(r => r.json()).then(s => {
+      render(s);
+      if (s.settingsReset) {
+        showMessage('The settings file could not be read, so defaults are shown. The old file was kept as ' +
+          '.lexirise/config.ini.bad on the SD card.', false);
+      }
+      pollUntilSettled();
+    })
+      .catch(e => showMessage('Could not load settings: ' + e.message, false));
+  </script>
+</body>
+</html>
