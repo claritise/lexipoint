@@ -14,6 +14,21 @@ namespace lexipoint::card::bench {
 
 using Scene = PageScene;
 
+// A token (or the part of one that fits) on a wrapped row.
+struct PlacedToken {
+  std::string text;
+  int word = -1;         // as BenchToken::word
+  uint32_t firstCp = 0;  // where this part starts in its token, in codepoints
+  int x = 0;             // from the row's left
+  int width = 0;
+};
+using PlacedRow = std::vector<PlacedToken>;
+
+// The book's lines wrapped at `width` (P11): the reference's lines, set in the device's wider page font, can
+// run past the panel. Each line keeps its tokens while they fit, then goes on to a new row; a token wider
+// than a whole row is broken between codepoints. A line that fits comes out as it went in.
+std::vector<PlacedRow> wrapLines(const std::vector<BenchLine>& lines, int width, const TextMetrics& metrics);
+
 // The page for `book` with `word` active; `low`: the sentence low on the page ("Low on page", D17).
 // `highlightCodepoints` > 0 inverts only the word's first that many characters (phase 0: the tapped one;
 // popup-ui.md §2, the highlight then grows to the word).

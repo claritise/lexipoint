@@ -174,14 +174,40 @@ def header_constants(path: str) -> dict[str, int]:
     with open(os.path.join(REPO, path)) as f:
         text = f.read()
     pattern = r"constexpr\s+(?:unsigned\s+long|u?int\d*_t|int|size_t|long)\s+(k\w+)\s*=\s*([0-9]+)(?:UL|U|L)?\s*;"
-    return {name: int(value) for name, value in re.findall(pattern, text)}
+    values = {name: int(value) for name, value in re.findall(pattern, text)}
+    # Sums and small products of those (kWifiJoinMaxMs = kWifiDirectJoinMs + kWifiConnectMs), in order.
+    expr = r"constexpr\s+(?:unsigned\s+long|u?int\d*_t|int|size_t|long)\s+(k\w+)\s*=\s*([\w\s+*]+?)\s*;"
+    for name, body in re.findall(expr, text):
+        if name in values:
+            continue
+        total = 0
+        for term in body.split("+"):
+            product = 1
+            for factor in term.split("*"):
+                factor = factor.strip()
+                if factor.isdigit():
+                    product *= int(factor)
+                elif factor in values:
+                    product *= values[factor]
+                else:
+                    product = None
+                    break
+            if product is None:
+                total = None
+                break
+            total += product
+        if total is not None:
+            values[name] = total
+    return values
 
 
 class HostConstantsMatchTheFirmware(unittest.TestCase):
     def test_lexi_wait_outlasts_the_longest_call(self):
         c = header_constants("src/lexirise/LexiriseConfig.h")
-        max_call_ms = c["kWifiConnectMs"] + c["kNtpWaitMs"] + 2 * c["kHttpTimeoutMs"] + c["kRequestDeadlineMs"]
-        self.assertGreater(lxctl.LEXI_CALL_TIMEOUT_S * 1000, max_call_ms)
+        # config::kMaxCallMs (the WiFi join: a direct attempt then the scan, NTP, two TCP timeouts, the request),
+        # as the header computes it.
+        self.assertEqual(c["kWifiJoinMaxMs"], c["kWifiDirectJoinMs"] + c["kWifiConnectMs"])
+        self.assertGreaterEqual(lxctl.LEXI_CALL_TIMEOUT_S * 1000 - c["kMaxCallMs"], lxctl.LEXI_CALL_MARGIN_MS)
 
     def test_soak_limit_matches(self):
         c = header_constants("src/lexirise/dev/DevConfig.h")

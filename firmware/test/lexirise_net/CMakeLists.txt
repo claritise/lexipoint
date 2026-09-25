@@ -6,6 +6,7 @@ add_executable(LexiriseNetTest
   ResponsesTest.cpp
   LexiriseClientTest.cpp
   WifiLeaseTest.cpp
+  WifiHintTest.cpp
   KeyCheckTest.cpp
   RequestsTest.cpp
   HiddenPathTest.cpp

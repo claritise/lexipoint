@@ -70,6 +70,12 @@ TEST(ReaderScene, PartOfATokenAndPhaseZerosFirstCharacter) {
   const PageScene tail = readerScene(f.page, *s, 5, 7, true, kMetrics);
   EXPECT_EQ(tail.wordOnPage.x, 20 + 26 - kPad);
   EXPECT_EQ(tail.page.commands[1].text, "んだ");
+  // The strip knows where in the token the word is (P11: only that part is inverted).
+  EXPECT_EQ(tail.strip.activeFirst, 0);
+  EXPECT_EQ(tail.strip.activeStartCp, 1u);
+  EXPECT_EQ(tail.strip.activeEndCp, 3u);
+  EXPECT_EQ(zero.strip.activeStartCp, 0u);
+  EXPECT_EQ(zero.strip.activeEndCp, 1u);
 }
 
 TEST(ReaderScene, AWordAcrossTokensAndLinesCoversThemAll) {
@@ -82,6 +88,8 @@ TEST(ReaderScene, AWordAcrossTokensAndLinesCoversThemAll) {
   EXPECT_EQ(scene.wordOnPage.bottom(), 140 + 36);  // down to the second line
   EXPECT_EQ(scene.strip.lineNumber, 1);            // the strip is the first line
   EXPECT_EQ(scene.strip.activeFirst, 3);
+  EXPECT_EQ(scene.strip.activeStartCp, 0u);  // を, whole
+  EXPECT_EQ(scene.strip.activeEndCp, 1u);    // the strip's line ends with を: 読 is on the next line
   // Each piece keeps its own box (P10: the card's own word is only those, not the whole of both lines).
   ASSERT_EQ(scene.wordPieces.size(), 2u);
   EXPECT_EQ(scene.wordPieces[0], (Rect{98 - kPad, 100, 26 + 2 * kPad, 36}));

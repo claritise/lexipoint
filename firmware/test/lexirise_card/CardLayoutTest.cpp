@@ -246,6 +246,83 @@ TEST(CardLayout, StripScrollsTheActiveWordIntoView) {
   EXPECT_EQ(textCommand(list, "一二三四五六七八九十一二三四五"), nullptr);  // pushed past the left edge
 }
 
+// P11 (found on the device): a glued token (话。) holds more than the word: only the word is inverted.
+TEST(CardLayout, TheStripInvertsOnlyTheWordInAGluedToken) {
+  CardWord w = benchJapanese().words[0];
+  CardState s;
+  s.view = View::Expanded;  // no mark yet: the page line (as the card view draws it)
+  s.strip.tokens = {{"这首歌", 0, 78}, {"话。", 78, 52}};
+  s.strip.activeFirst = s.strip.activeLast = 1;
+  s.strip.activeStartCp = 0;
+  s.strip.activeEndCp = 1;  // 话 only
+  const auto list = layoutCard(w, s, kMetrics);
+  const Command* word = textCommand(list, "话");
+  const Command* stop = textCommand(list, "。");
+  ASSERT_NE(word, nullptr);
+  ASSERT_NE(stop, nullptr);
+  EXPECT_FALSE(word->black);  // inverted
+  EXPECT_TRUE(stop->black);   // not
+  EXPECT_EQ(stop->rect.x, word->rect.x + 26);
+  EXPECT_EQ(textCommand(list, "话。"), nullptr);
+  // The fill covers 话 and its padding only.
+  EXPECT_TRUE(std::any_of(list.commands.begin(), list.commands.end(), [&](const Command& c) {
+    return c.kind == Command::Kind::Fill && c.rect.x == word->rect.x - m::kHighlightPadH && c.rect.y == word->rect.y &&
+           c.rect.w == 26 + 2 * m::kHighlightPadH;
+  }));
+}
+
+TEST(CardLayout, TheStripInvertsAWordAcrossTwoGluedTokens) {
+  // 「話 + し。 : the word 話し starts after the bracket in the first token and ends before the stop in the last.
+  CardWord w = benchJapanese().words[0];
+  CardState s;
+  s.view = View::Expanded;
+  s.strip.tokens = {{"「話", 0, 52}, {"し。", 52, 52}};
+  s.strip.activeFirst = 0;
+  s.strip.activeLast = 1;
+  s.strip.activeStartCp = 1;
+  s.strip.activeEndCp = 1;
+  const auto list = layoutCard(w, s, kMetrics);
+  const Command* open = textCommand(list, "「");
+  const Command* ha = textCommand(list, "話");
+  const Command* shi = textCommand(list, "し");
+  const Command* stop = textCommand(list, "。");
+  ASSERT_TRUE(open && ha && shi && stop);
+  EXPECT_TRUE(open->black);
+  EXPECT_FALSE(ha->black);
+  EXPECT_FALSE(shi->black);
+  EXPECT_TRUE(stop->black);
+  // One fill, from 話 to し, padded.
+  EXPECT_TRUE(std::any_of(list.commands.begin(), list.commands.end(), [&](const Command& c) {
+    return c.kind == Command::Kind::Fill && c.rect.x == ha->rect.x - m::kHighlightPadH &&
+           c.rect.right() == shi->rect.x + 26 + m::kHighlightPadH;
+  }));
+}
+
+TEST(CardLayout, TheStripsGluedHighlightFollowsTheScroll) {
+  CardWord w = benchJapanese().words[0];
+  CardState s;
+  s.view = View::Expanded;
+  s.strip.tokens = {{"一二三四五六七八九十一二三四五", 0, 390}, {"话。", 390, 52}};
+  s.strip.activeFirst = s.strip.activeLast = 1;
+  s.strip.activeEndCp = 1;
+  const auto list = layoutCard(w, s, kMetrics);
+  const Command* word = textCommand(list, "话");
+  ASSERT_NE(word, nullptr);
+  EXPECT_TRUE(std::any_of(list.commands.begin(), list.commands.end(), [&](const Command& c) {
+    return c.kind == Command::Kind::Fill && c.rect.x == word->rect.x - m::kHighlightPadH &&
+           c.rect.w == 26 + 2 * m::kHighlightPadH;
+  }));
+}
+
+TEST(BenchPage, ALongTokenStartsANewRowWhenNotEvenItsFirstCharacterFits) {
+  const int one = kMetrics.width(Font::Page, "a");
+  const auto rows = bench::wrapLines({{{"aaa", -1}, {"bbbb", 1}}}, 4 * one, kMetrics);
+  // "aaa" leaves room for one character; "bbbb" (wider than a row) starts on the next row, whole.
+  ASSERT_EQ(rows.size(), 2u);
+  ASSERT_EQ(rows[1].size(), 1u);
+  EXPECT_EQ(rows[1][0].text, "bbbb");
+}
+
 // P9 (claritise, 2026-09-25): the detail view's strip is the active word at the left edge, then its sentence.
 TEST(CardLayout, DetailStripStartsAtTheActiveWord) {
   CardWord w = benchJapanese().words[0];
@@ -380,32 +457,73 @@ TEST(BenchFixtures, AreTheReferencesWords) {
   EXPECT_EQ(scene.strip.lineNumber, 2);
 }
 
-TEST(BenchPage, ALineInAWiderFontIsCutAtTheRightPadding) {
-  // The device's page font is wider than the reference's: what doesn't fit isn't drawn (the panel logged
-  // "Outside range" for every pixel past its edge), and the strip keeps the whole line.
-  struct WideMetrics final : TextMetrics {
-    int lineHeight(const Font font) const override { return kMetrics.lineHeight(font); }
-    int ascender(const Font font) const override { return kMetrics.ascender(font); }
-    int width(const Font font, const std::string& text) const override {
-      return (font == Font::Page ? 3 : 1) * kMetrics.width(font, text);
-    }
-  };
-  const WideMetrics wide;
-  const BenchBook& ja = benchJapanese();
-  const auto scene = bench::layoutPage(ja, ja.start, false, true, wide);
-  const int right = m::kScreenWidth - m::kBenchPagePadRight;
-  int drawn = 0;
+// The bench page in a page font `factor` times the host's (the device's reader font is wider).
+struct WideMetrics final : TextMetrics {
+  explicit WideMetrics(const int factor) : factor(factor) {}
+  int factor;
+  int lineHeight(const Font font) const override { return kMetrics.lineHeight(font); }
+  int ascender(const Font font) const override { return kMetrics.ascender(font); }
+  int width(const Font font, const std::string& text) const override {
+    return (font == Font::Page ? factor : 1) * kMetrics.width(font, text);
+  }
+};
+
+TEST(BenchPage, NothingIsDrawnBelowThePanelWhenWrappingRunsLong) {
+  // Low on the page (filler lines above the sentence) in a much wider font: more rows than the panel holds.
+  const WideMetrics wide(4);
+  const auto scene = bench::layoutPage(benchJapanese(), 2, true, true, wide);
   for (const Command& c : scene.page.commands) {
-    if (c.kind != Command::Kind::Text) continue;
-    drawn++;
+    EXPECT_LE(c.rect.y + kMetrics.lineHeight(Font::Page), m::kScreenHeight) << c.text;
+  }
+  EXPECT_GT(scene.strip.lineCount, 14);  // the rows off the panel still count as lines of the page
+}
+
+TEST(BenchPage, ALineInAWiderFontWrapsInsteadOfOverflowing) {
+  // The device's page font is wider than the reference's (P9 found the lines running off the panel; R20 cut
+  // them, which lost text and the looked-up word): now they wrap, a too-long token broken between characters.
+  const WideMetrics wide(2);
+  const BenchBook& ja = benchJapanese();
+  const int word = 2;  // 煩わしくて, which R20's cut lost
+  const auto scene = bench::layoutPage(ja, word, false, true, wide);
+  const int right = m::kScreenWidth - m::kBenchPagePadRight;
+  std::string drawn;
+  for (const Command& c : scene.page.commands) {
+    if (c.kind != Command::Kind::Text || !c.black) continue;
     EXPECT_LE(c.rect.x + wide.width(Font::Page, c.text), right) << c.text;
   }
-  EXPECT_GT(drawn, 0);
-  size_t lineTokens = 0;
-  for (const auto& line : ja.lines) {
-    if (scene.strip.lineNumber == static_cast<int>(&line - ja.lines.data()) + 1) lineTokens = line.size();
+  // Every character of the page is drawn once, in order (the inverted word counted where it's drawn).
+  for (const Command& c : scene.page.commands) {
+    if (c.kind == Command::Kind::Text) drawn += c.text;
   }
-  EXPECT_EQ(scene.strip.tokens.size(), lineTokens);
+  std::string all;
+  for (const auto& line : ja.lines) {
+    for (const auto& t : line) all += t.text;
+  }
+  EXPECT_EQ(drawn, all);
+  ASSERT_FALSE(scene.wordPieces.empty());  // the word is on the page, highlighted
+  EXPECT_TRUE(std::any_of(scene.page.commands.begin(), scene.page.commands.end(),
+                          [](const Command& c) { return c.kind == Command::Kind::Text && !c.black; }));
+  EXPECT_GE(scene.strip.activeFirst, 0);
+}
+
+TEST(BenchPage, WrappingKeepsALineThatFitsAsItIs) {
+  const std::vector<BenchLine> lines = {{{"ab", -1}, {"cd", 0}}};
+  const auto rows = bench::wrapLines(lines, 1000, kMetrics);
+  ASSERT_EQ(rows.size(), 1u);
+  ASSERT_EQ(rows[0].size(), 2u);
+  EXPECT_EQ(rows[0][1].x, kMetrics.width(Font::Page, "ab"));
+  // Too narrow for both: the second token goes on a new row; one wider than a row is broken.
+  const int ab = kMetrics.width(Font::Page, "ab");
+  const auto narrow = bench::wrapLines(lines, ab, kMetrics);
+  ASSERT_EQ(narrow.size(), 2u);
+  EXPECT_EQ(narrow[1][0].text, "cd");
+  EXPECT_EQ(narrow[1][0].x, 0);
+  const auto broken = bench::wrapLines({{{"abcd", 3}}}, ab, kMetrics);
+  ASSERT_EQ(broken.size(), 2u);
+  EXPECT_EQ(broken[0][0].text, "ab");
+  EXPECT_EQ(broken[1][0].text, "cd");
+  EXPECT_EQ(broken[1][0].firstCp, 2u);
+  EXPECT_EQ(broken[1][0].word, 3);
 }
 
 TEST(CardText, KinsokuKeepsPunctuationWithItsWord) {

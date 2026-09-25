@@ -56,9 +56,10 @@ SHOT_TIMEOUT_S = 10.0  # > DevConfig kShotWriteDeadlineMs (3 s) plus the render 
 PORT_GLOBS = ("/dev/cu.usbmodem*", "/dev/ttyACM*")
 EDGE_INSET = 2  # px from an edge: satisfies any FreeInkUI edgeSwipe edge fraction
 ACTIVITY_WAIT_S = 10.0  # screen transitions (log line "Entering activity: <Name>")
-# LX:LEXI: the device bounds one call by config::kMaxCallMs (LexiriseConfig.h, 38 s); wait longer.
-# test_lxctl checks these against the headers.
-LEXI_CALL_TIMEOUT_S = 45.0
+# LX:LEXI: the device bounds one call by config::kMaxCallMs (LexiriseConfig.h, 45 s); wait longer. test_lxctl
+# checks the margin against the header.
+LEXI_CALL_TIMEOUT_S = 50.0
+LEXI_CALL_MARGIN_MS = 5000
 LEXI_SOAK_MAX = 50  # DevConfig kLexiSoakMax
 LEAK_BYTES_PER_CALL = 64  # a free-heap trend steeper than this, per call, fails the soak
 LEAK_MIN_SAMPLES = 5

@@ -73,7 +73,15 @@ constexpr uint32_t kIoPollMs = 5;  // sleep between non-blocking socket polls
 
 // WiFi for lookups (offline-and-errors.md §5, net/WifiLease.h): join the last-used saved network from
 // radio-off only, never open the UI.
-constexpr uint32_t kWifiConnectMs = 6000;
+// A join goes straight to the last access point first when there's a hint (net/WifiHint.h, P11), then scans
+// every channel: measured on the X4 Pro, the scan alone is ~3.5 s, and 6 s ran out twice (device-checks.md).
+constexpr uint32_t kWifiDirectJoinMs = 3000;
+constexpr uint32_t kWifiConnectMs = 8000;                                // the all-channel scan and join
+constexpr uint32_t kWifiJoinMaxMs = kWifiDirectJoinMs + kWifiConnectMs;  // from one clock, radio restarts included
+constexpr uint32_t kWifiStopWaitMs = 300;  // for the station to report stopped (its events come from another task)
+// Starting the station (WiFi.mode / begin) can block ~1 s each between the join clock's checks: counted in
+// kMaxCallMs, so a waiter (lxctl, the web page's key check) never gives up on a join that's still in time.
+constexpr uint32_t kWifiRadioSlackMs = 2000;
 constexpr uint32_t kWifiPollMs = 50;
 constexpr unsigned long kMsPerMinute = 60UL * 1000UL;
 
@@ -139,6 +147,7 @@ constexpr const char* kDefaultTags = "xteink";
 
 // The longest one Lexirise call can block (WiFi join, NTP, TCP + handshake, the request). The web page
 // polls a queued key check for this long, and lxctl's LEXI wait is checked against it (test_lxctl).
-constexpr uint32_t kMaxCallMs = kWifiConnectMs + kNtpWaitMs + 2 * kHttpTimeoutMs + kRequestDeadlineMs;
+constexpr uint32_t kMaxCallMs =
+    kWifiJoinMaxMs + kWifiRadioSlackMs + kNtpWaitMs + 2 * kHttpTimeoutMs + kRequestDeadlineMs;
 
 }  // namespace lexipoint::config

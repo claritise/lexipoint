@@ -5,6 +5,9 @@
 // (offline-and-errors.md §5). The rules are in WifiLease.h; WifiControl is the seam LexiriseService
 // is tested through. Main task only.
 
+#include <cstdint>
+
+#include "WifiHint.h"
 #include "WifiLease.h"
 
 namespace lexipoint::net {
@@ -39,8 +42,19 @@ class WifiSession final : public WifiControl {
 
  private:
   void tearDown();
+  // One join attempt of the saved network, straight to `hint`'s access point or (nullptr) scanning every
+  // channel; net::attemptStep decides when it's over, timed from `joinStarted` (millis()). The radio is left as
+  // it ends.
+  AttemptStep attempt(const std::string& ssid, const std::string& password, const WifiHint* hint, uint32_t scanUntilMs,
+                      unsigned long joinStarted);
+  // The station off, and waited for until it says so (up to config::kWifiStopWaitMs): its events come from
+  // another task, and one still queued from a direct attempt would otherwise disturb the next attempt.
+  void stopRadio();
+  void rememberConnection();  // the connection now up, as the next join's hint
 
   WifiLease lease_;
+  WifiHints hints_;
+  ConnectionWatch watch_;
 };
 
 }  // namespace lexipoint::net

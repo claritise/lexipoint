@@ -77,6 +77,11 @@ struct StripLine {
   std::vector<StripToken> tokens;
   int activeFirst = -1;  // the active word's tokens [activeFirst, activeLast]
   int activeLast = -1;
+  // Where the word starts in its first token and ends in its last, in codepoints (P11: a glued token such as
+  // 话。 holds more than the word, and only the word is inverted). kToTokenEnd: to the last token's end.
+  static constexpr uint32_t kToTokenEnd = UINT32_MAX;
+  uint32_t activeStartCp = 0;
+  uint32_t activeEndCp = kToTokenEnd;
   int lineNumber = 1;  // 1-based
   int lineCount = 1;
 };

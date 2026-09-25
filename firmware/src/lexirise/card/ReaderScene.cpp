@@ -79,6 +79,8 @@ PageScene readerScene(const ReaderPage& page, const text::BuiltSentence& sentenc
       const int origin = line.tokens.empty() ? 0 : line.tokens.front().x;
       for (const PageToken& t : line.tokens) scene.strip.tokens.push_back({t.text, t.x - origin, t.width});
       scene.strip.activeFirst = scene.strip.activeLast = static_cast<int>(piece.token.token);
+      scene.strip.activeStartCp = piece.first;
+      scene.strip.activeEndCp = piece.last + 1;
       scene.strip.lineNumber = static_cast<int>(piece.token.line) + 1;
       scene.strip.lineCount = static_cast<int>(page.lines.size());
       first = false;
@@ -92,6 +94,7 @@ PageScene readerScene(const ReaderPage& page, const text::BuiltSentence& sentenc
       scene.wordOnPage.h = bottom - scene.wordOnPage.y;
       if (static_cast<int>(piece.token.line) + 1 == scene.strip.lineNumber) {
         scene.strip.activeLast = static_cast<int>(piece.token.token);
+        scene.strip.activeEndCp = piece.last + 1;
       }
     }
   }

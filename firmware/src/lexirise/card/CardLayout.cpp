@@ -11,6 +11,7 @@
 
 #include "CardMetrics.h"
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/text/Utf8Units.h"
 
 namespace lexipoint::card {
 
@@ -458,20 +459,41 @@ class Layout {
       if (activeRight > clipRight) scroll = activeRight - (clipRight - m::kStripScrollInset);
     }
     const int h = lh(Font::Page);
-    if (line.activeFirst >= 0 && line.activeLast >= line.activeFirst &&
-        line.activeLast < static_cast<int>(line.tokens.size())) {
+    const bool hasActive = line.activeFirst >= 0 && line.activeLast >= line.activeFirst &&
+                           line.activeLast < static_cast<int>(line.tokens.size());
+    // The word's own codepoints in token i, [from, to); none outside the word.
+    const auto activeRange = [&line, hasActive](const int i) -> std::optional<std::pair<uint32_t, uint32_t>> {
+      if (!hasActive || i < line.activeFirst || i > line.activeLast) return std::nullopt;
+      return std::pair<uint32_t, uint32_t>{i == line.activeFirst ? line.activeStartCp : 0,
+                                           i == line.activeLast ? line.activeEndCp : StripLine::kToTokenEnd};
+    };
+    if (hasActive) {
       const StripToken& first = line.tokens[line.activeFirst];
       const StripToken& last = line.tokens[line.activeLast];
-      const int x0 = originX + first.x - scroll - m::kHighlightPadH;
-      const int x1 = originX + last.x + last.width - scroll + m::kHighlightPadH;
+      const int x0 = originX + first.x + tw(Font::Page, text::utf8Codepoints(first.text, 0, line.activeStartCp)) -
+                     scroll - m::kHighlightPadH;
+      const int x1 = originX + last.x + tw(Font::Page, text::utf8Codepoints(last.text, 0, line.activeEndCp)) - scroll +
+                     m::kHighlightPadH;
       out_.fill({x0, textTop, x1 - x0, h});
     }
     for (int i = 0; i < static_cast<int>(line.tokens.size()); i++) {
       const StripToken& t = line.tokens[i];
       const int x = originX + t.x - scroll;
       if (x < originX - m::kHighlightPadH || x + t.width > clipRight) continue;  // whole tokens only
-      const bool active = i >= line.activeFirst && i <= line.activeLast;
-      out_.text(Font::Page, x, textTop, t.text, !active);
+      const auto range = activeRange(i);
+      if (!range) {
+        out_.text(Font::Page, x, textTop, t.text);
+        continue;
+      }
+      const auto [from, to] = *range;
+      // The word's part inverted, anything glued before or after it (a full stop, a quote) as normal text.
+      const std::string before = text::utf8Codepoints(t.text, 0, from);
+      const std::string word = text::utf8Codepoints(t.text, from, to);
+      const std::string after = text::utf8Codepoints(t.text, to, StripLine::kToTokenEnd);
+      const int wordX = x + tw(Font::Page, before);
+      if (!before.empty()) out_.text(Font::Page, x, textTop, before);
+      out_.text(Font::Page, wordX, textTop, word, false);
+      if (!after.empty()) out_.text(Font::Page, wordX + tw(Font::Page, word), textTop, after);
     }
   }
   // The detail view's strip (claritise, 2026-09-25): the active word at the left edge, inverted, then as much
