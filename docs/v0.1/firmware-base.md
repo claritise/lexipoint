@@ -193,7 +193,9 @@ Record any upstream or ++ commit we carry that isn't in the base tag.
   must be GitHub's `/releases/latest` with its asset (not unticked as latest, not on an older commit), or
   the workflow fails. CI also builds `x4pro-gh_release` on every push, so a release-only break shows up
   before a release. Tags are unique, so a release number has one `-rc`: to re-cut it, delete that
-  prerelease **and its tag** first. Then it builds `x4pro-gh_release` and
+  prerelease **and its tag** first. **Never promote a prerelease** (unticking "pre-release" sends GitHub's `released`
+  event, which `release.yml` doesn't run on, and leaves an `-rc` tag as latest, which devices never take):
+  publish a new full release tagged `<upstream>-lexi.<n>`. Then it builds `x4pro-gh_release` and
   attaches the asset. Only claritise publishes releases. Checklist: run `release_tag.py check <tag>` locally
   **before** publishing (a release that fails the workflow is already GitHub's latest, with no firmware:
   devices then see no update, so delete it); run `keyscan.py` in the docs repo too (it has no CI); until the first release exists, a device's *Check for updates* shows an error (GitHub's
