@@ -1,0 +1,24 @@
+1790327466.0 ESP-ROM:esp32s3-20210327
+1790327466.0 Build:Mar 27 2021
+1790327466.1 rst:0x15 (USB_UART_CHIP_RESET),boot:0xb (SPI_FAST_FLASH_BOOT)
+1790327466.1 Saved PC:0x4037b642
+1790327466.2 SPIWP:0xee
+1790327466.2 mode:DIO, clock div:1
+1790327466.3 load:0x3fce2820,len:0xfb0
+1790327466.3 load:0x403c8700,len:0xaf4
+1790327466.4 load:0x403cb700,len:0x2e24
+1790327466.5 entry 0x403c8898
+1790327467.5 [445] [INF] [LXDEV] Dev harness ready (send LX:PING)
+1790327467.6 [445] [ERR] [GYR] SDK IMU not found
+1790327467.6 [446] [INF] [CLK] SDK RTC found[446] [INF] [MAIN] Device: xteink_x4_pro
+1790327467.8 [689] [SD] SDMMC card mounted
+1790327467.8 [705] [DBG] [CPS] Settings loaded from file
+1790327467.9 [710] [DBG] [RBS] Recent books loaded from file (2 entries)
+1790327467.9 [720] [DBG] [UI] Using Lyra theme
+1790327468.0 [721] [INF] [FrontlightMgr] apply: brightness=0 level=0 totalDuty=0 coolDuty=0 warmDuty=0 lit=0
+1790327468.0 [721] [INF] [FrontlightMgr] begin: attached gpio=8 warm=9 ok=1
+1790327468.1 [721] [INF] [FrontlightMgr] apply: brightness=0 level=0 totalDuty=0 coolDuty=0 warmDuty=0 lit=0
+1790327468.1 [721] [INF] [FrontlightMgr] apply: brightness=20 level=51 totalDuty=71 coolDuty=0 warmDuty=71 lit=1
+1790327468.2 [722] [INF] [LIGHT] Frontlight up: 20% warm=100% on
+1790327468.2 [722] [DBG] [MAIN] Starting CrossPoint version 1.6.5-lexi.1-x4pro
+1790327468.3 [722] [XTDET] NVS hw_calib/screenType=2 (UltraChip)
