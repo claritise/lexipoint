@@ -19,7 +19,7 @@ never fails silently: it either succeeds visibly or leaves a retry on screen.
 |---|---|---|---|
 | Lexirise disabled / no key | Config at boot | `Unavailable` | StarDict. `No Lexirise key` once per boot |
 | WiFi not configured | `WifiCredentialStore` empty | `Unavailable` | StarDict |
-| WiFi connect fails or takes > 6 s | `WifiSession::ensureUp` | `Unavailable` | StarDict, with the `offline` mark on its title |
+| WiFi connect fails or takes > 6 s (P11: > 3 s direct, then > 8 s scanning) | `WifiSession::ensureUp` | `Unavailable` | StarDict, with the `offline` mark on its title |
 | TLS pre-flight fails (low internal heap) | `MIN_TLS_FREE_HEAP` check | `Unavailable` | StarDict. Logged with heap numbers |
 | Timeout (connect, handshake or read, 6 s each) | `TlsConnection` / `LexiriseClient` | `Unavailable` | StarDict, `offline` |
 | Clock not set (no NTP answer within 5 s) | `TlsConnection` | `Unavailable` | StarDict, `offline` |
@@ -115,7 +115,7 @@ own spec before it's built.
 `WifiSession` owns it for the reader (rules in `src/lexirise/net/WifiLease.h`, revised in P1 review):
 
 - `ensureUp()`: a connected station (anyone's) → use it. **Radio off** → join the last-used saved
-  network (`WifiCredentialStore`, the store `WifiSelectionActivity` writes) within 6 s. **Radio on but
+  network (`WifiCredentialStore`, the store `WifiSelectionActivity` writes) within 6 s (P11: see below). **Radio on but
   not connected** (the web server's hotspot, someone else's join in progress) → `Busy`, and the radio is
   not touched. **Never open the WiFi selection UI from a lookup.** No network, a failed join, or `Busy`
   → `NoWifi` → `Unavailable`.
