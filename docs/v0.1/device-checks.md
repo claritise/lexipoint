@@ -76,3 +76,9 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 | Before flashing, on P10: the first join after a restart | failed at 6 s once more (the case P11 fixes); not seen on P11 |
 
 Still owed for P11: a router on a new channel; away from the saved network (the direct attempt, then the scan, under ~11 s).
+
+## 2026-09-25 (later), `lexipoint` @ `4f416e26` (P12), flashed and verify-flash matched
+
+| Check | Result |
+|---|---|
+| The card view's strip row at claritise's size (NotoSerifCJK 18 pt, 54 px line) | **pass**: the row measures 62 px (54 + 2 × 4) where P11 drew 51 with the line over its borders; the card starts 11 px higher, the rest of the card unchanged (its dividers at the same y) |
