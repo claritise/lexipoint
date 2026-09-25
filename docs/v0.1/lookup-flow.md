@@ -284,7 +284,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
 - `buildSentenceAfter` after a sentence the cap cut (over `kMaxSentenceUnits`) starts right after it and
   runs up to the cap (`Builder::buildFrom`), never overlapping what was shown, ending at a clause break
   (Chinese "；") first as a tap's window does.
-- A word already on the card from an earlier sentence (the same entry) passes its level and saved state to
+- A word already on the card from an earlier sentence (the same entry: the same lemma id **in the same
+  language**, since a book that doesn't say can mix both on one card) passes its level and saved state to
   its new occurrences (a save may still be in its Undo window, not yet in Lexirise's answer).
 - A save notes **its own** sentence; closing while a next sentence loads skips that analysis and sends the
   queued saves.
