@@ -269,7 +269,9 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   during it is never seen; one still held when it returns is first seen just after the jump (~20-30 ms: two debounced polls, 10 ms apart).
   A step keeps when its press was first seen, and a forward one within `config::kStepAfterJumpGraceMs`
   (100 ms) of the jump is dropped (`CardController::step`'s `pressedAtMs`), so it can't skip the new
-  sentence's first word; a real new press comes after the new frame's refresh.
+  sentence's first word; a back press from then steps back from the word the card waited on (as it would
+  have before the jump), not from the new sentence's first. A real new press comes after the new frame's
+  refresh.
 - The calls' order: the tapped sentence's analysis, then the word on screen's lookup (and a save's), then a
   next sentence the card waits for, then ready writes.
 - The bench (`BenchSource`) goes on into one canned "next sentence" (its own again) after
