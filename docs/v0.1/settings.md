@@ -150,7 +150,9 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
   tap again once the screen has settled.
 - **Offline dictionary** (`lookup/StarDictChoice.h`): a tap on a Japanese/Chinese word (kana, Han, ー, 々)
   uses its language's own folder when one is chosen, else CrossPoint's Dictionary setting; any other word (an
-  English word in a Japanese book) goes to CrossPoint's, as before. The language is what the tapped text is
+  English word in a Japanese book) goes to CrossPoint's, as before. So does every tap in a Traditional
+  Chinese book (zh-TW / HK / MO / Hant, parked by H8): the Chinese group is Simplified
+  (`LanguageDecision::dictionaryLanguage`). The language is what the tapped text is
   (`LanguageDecision::detected`), so the choice **still counts while that language's Lexirise lookups are
   off**, which is exactly when StarDict answers every tap in it (the row is hidden then, and the value
   kept). Word select reopens its dictionary when the language changes, and opens without CrossPoint's
