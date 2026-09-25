@@ -141,9 +141,12 @@ Transfer let WiFi go. Now `WifiSession` keeps a hint for the boot (`net/WifiHint
 point and channel of the last connection seen, its own or anyone's: `WifiSession::tick` runs every loop pass
 the card isn't holding WiFi, whatever is on screen, and notices each new connection (`ConnectionWatch`), so
 File Transfer's and KOSync's count (while the card holds WiFi, the radio is Lexipoint's own, which `ensureUp`
-remembers itself). With a hint for the network it joins, `net::join` first goes straight there (`WIFI_FAST_SCAN` with the
-channel and BSSID): it gives up at once when that access point isn't found or refuses it, and after
-`config::kWifiDirectJoinMs` (3 s) unless it has associated (then it waits for DHCP up to the whole join's
+remembers itself). With a hint for the network it joins, `net::join` first asks for that access point
+(`WIFI_FAST_SCAN` with the BSSID and the channel, which the driver treats as where to start: it goes on to
+the other channels until it finds that access point, so a router on a new channel is still joined directly
+and the hint updates). It gives up when the driver reports the access point not found or refusing (the
+driver finds out only after its own scan, ~3.5 s, and retries at once, so a missing access point usually
+costs the whole direct time), and after `config::kWifiDirectJoinMs` (3 s) unless it has associated (then it waits for DHCP up to the whole join's
 budget: a slow address isn't a moved router). A failed direct attempt forgets the hint, stops the radio and
 waits for it to say so (`config::kWifiStopWaitMs`: its events come from another task, and a late one from
 the direct attempt would disturb the scan; `tearDown` waits the same way), and the scan follows for up to
@@ -157,4 +160,6 @@ trade-offs: a join that fails altogether (away from WiFi, a wrong password) now 
 a stale hint, where it was 6 s; on a mesh network the hint keeps the reader on the node it first joined
 for the boot. Tests: `WifiHintTest` (the hint, the watch, the sequence, the steps). Device check owed: the
 second and later joins of a boot come up well under the scan's 3.5 s; a lookup right after File Transfer
-joins directly; a router on a new channel (one quick failed direct attempt, then the scan).
+joins directly; a router on a new channel still joins directly (the log's channel changes); away from the
+saved network, the direct attempt fails after ~3 s, then the scan, under 11 s in all; a slow radio stop is
+logged (`Radio not reported stopped`).

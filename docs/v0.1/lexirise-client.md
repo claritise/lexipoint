@@ -47,7 +47,8 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
   server may have acted on it before dropping the connection). Nothing else is retried.
   Timeouts: 6 s for connect, handshake and each read, and **15 s for the whole request** once the
   connection is open (the stale-session retry shares it), so a trickling server can't hold the main
-  loop. One call is bounded by WiFi join 6 s + NTP 5 s + TCP/handshake 12 s + 15 s.
+  loop. One call is bounded by WiFi join 6 s + NTP 5 s + TCP/handshake 12 s + 15 s (P11: the join is 3 s direct +
+  8 s scan within 11 s, plus 2 s radio slack: `config::kMaxCallMs` = 45 s, `offline-and-errors.md` §5).
 - **Idle close:** the TLS session is closed 30 s after the last call (and on WiFi teardown, and on
   leaving reading), so it never sits on internal heap.
 - **The web page never blocks on the network:** a key check is queued (`requestKeyCheck`) and run by

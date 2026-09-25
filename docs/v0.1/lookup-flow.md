@@ -105,7 +105,7 @@ dumps.
 ## 5. The Lexirise provider
 
 ```
-WifiSession::ensureUp()                     (D10; Unavailable if it fails within 6 s)
+WifiSession::ensureUp()                     (D10; Unavailable if it fails: P11, within 11 s, offline-and-errors.md §5)
 open TLS session to api.lexirise.app        (one per lookup, keep-alive, D6)
 ① POST /v1/analyze/text {text: sentence, language}   (language per book, languages.md §1)
    stream-parse → occurrences[] (only the fields we need) + the entryMetaById and
