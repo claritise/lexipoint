@@ -139,13 +139,18 @@ own spec before it's built.
 (`WIFI_ALL_CHANNEL_SCAN`), ~3.5 s of every join, against a 6 s limit that ran out twice right after File
 Transfer let WiFi go. Now `WifiSession` keeps a hint for the boot (`net/WifiHint.h`): the network, access
 point and channel of the last connection seen, its own or anyone's: `WifiSession::tick` runs every loop pass
-whatever is on screen and notices each new connection (`ConnectionWatch`), so File Transfer's and KOSync's
-count. With a hint for the network it joins, `net::join` first goes straight there (`WIFI_FAST_SCAN` with the
+the card isn't holding WiFi, whatever is on screen, and notices each new connection (`ConnectionWatch`), so
+File Transfer's and KOSync's count (while the card holds WiFi, the radio is Lexipoint's own, which `ensureUp`
+remembers itself). With a hint for the network it joins, `net::join` first goes straight there (`WIFI_FAST_SCAN` with the
 channel and BSSID): it gives up at once when that access point isn't found or refuses it, and after
 `config::kWifiDirectJoinMs` (3 s) unless it has associated (then it waits for DHCP up to the whole join's
-budget: a slow address isn't a moved router). A failed direct attempt forgets the hint and the scan follows,
-as before, for up to `config::kWifiConnectMs` (8 s) or what's left of `config::kWifiJoinMaxMs` (11 s).
-`config::kMaxCallMs` counts it (43 s, under `lxctl`'s 45 s wait: `test_lxctl` evaluates the header). The
+budget: a slow address isn't a moved router). A failed direct attempt forgets the hint, stops the radio and
+waits for it to say so (`config::kWifiStopWaitMs`: its events come from another task, and a late one from
+the direct attempt would disturb the scan; `tearDown` waits the same way), and the scan follows for up to
+`config::kWifiConnectMs` (8 s), or until `config::kWifiJoinMaxMs` (11 s) after the join began: one clock for
+the whole join. `config::kMaxCallMs` counts it plus `kWifiRadioSlackMs` (the station's start-up can block
+~1 s between the clock's checks): 45 s, under `lxctl`'s 50 s wait with the 5 s margin `test_lxctl` checks
+against the header. The
 sequence and the per-poll decision are pure (`net::join`, `net::attemptStep`, WifiSession supplies the
 radio). The log says the channel (`WiFi up in N ms (channel C)`) and a failed direct attempt. Accepted
 trade-offs: a join that fails altogether (away from WiFi, a wrong password) now blocks up to 8 s, or 11 s with
