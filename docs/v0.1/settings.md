@@ -80,8 +80,8 @@ almost always that language (Japanese headings, short lines, kanji compounds), s
 take lookups away from the common case to protect a rare one that a book's Lookup language now fixes.
 - **Device:** `LexiriseSettingsActivity::buildScreen()` simply skips those rows, and a toggle triggers
   a rebuild, as `KOReaderSettingsActivity` does. There's no upstream change.
-- **Web page:** it's our own page (`LexirisePage.html`), so it applies **the same rules** in its JS.
-  Switching a language off collapses its section, with no upstream change needed.
+- **Web page:** it's our own page (`LexirisePage.html`). It has no rules of its own: it hides the rows
+  the device's `shows` says are hidden (P13; before, it repeated the rules in its JS). No upstream change.
 
 **Deliberately not settings:** anything about the card's look or layout (it's binding,
 `popup-ui.md`), the level saved by a tap (you pick it every time with T L F K), and timeouts.
@@ -271,7 +271,8 @@ extra to keep pixel-perfect here beyond "uses the stock components".
   flat keys into sections, and the
   shared `reading` value (a card toggle is visible to the settings getter, and vice versa).
 - On device (P7): set the key from a phone, check the masked value on both UIs, `Test connection` in
-  all three outcomes, turn Chinese off and on again (its rows hide and come back with values kept), and the reading setting and card tap staying in sync across a reboot.
+  all three outcomes, turn Chinese off and on again ("Language when a book doesn't say" hides and comes back with its value
+  kept; since P13 Chinese's Offline dictionary stays), and the reading setting and card tap staying in sync across a reboot.
 - On device (P13): turn Japanese off: Readings hides, its Offline dictionary stays; turn Lexirise off: the
   screen is the Account group, both dictionaries and "Language when a book doesn't say" (7 rows,
   `lxctl settings-smoke`'s minimum), and the web page shows the same rows; turn Lexirise on with both
