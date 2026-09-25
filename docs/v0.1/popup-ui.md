@@ -209,6 +209,12 @@ it's a stretch, the fallback is to let the rank row carry the level control inst
 | **Tap** (P10, claritise 2026-09-25: "changing words when the dictionary is open should be tap instead of hold") or long-press **another word** on the page | Replace the card with a new lookup |
 | **Tap the reading line** (Japanese only) | Switch all readings kana ⇄ romaji, with a toast. Remembered across lookups and reboots |
 
+**As built (P12):** the strips grow with the reader's font size (claritise: the card's strip row didn't
+expand with a bigger size). Each is set in the reader's page font; the card view's strip row is at least its
+reference 51 px and at least the line plus 7 px above and below it, so the card grows upward; the detail view's
+strip band is at least its 80 px likewise, and the detail card below it starts lower (its body shorter). At the
+default size nothing moves.
+
 **As built (P11):** a strip's word is inverted by its own characters, not the whole token it sits in
 (the reader glues a word to its punctuation: 话。); the bench page wraps its lines at the panel instead of
 running off it.
