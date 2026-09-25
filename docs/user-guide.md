@@ -77,8 +77,8 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
 
 ## 5. Looking words up
 
-- **Long-press a word** on the page. (A long-press anywhere else does what it always did: the menu in the
-  middle, a page turn at the sides.) The card opens at the bottom: the word, its reading, meaning and how
+- **Long-press a word** on the page. (A long-press anywhere else does nothing; a quick tap still opens the
+  menu in the middle and turns the page at the sides.) The card opens at the bottom: the word, its reading, meaning and how
   common it is, filling in as Lexirise answers.
 - **Save it:** tap **T L F K** (tracked, learning, fresh, known). The toast offers **Undo** for 2 seconds.
   Tapping another level on a saved word changes it.

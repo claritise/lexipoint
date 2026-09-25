@@ -314,6 +314,19 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   reader stopped answering on USB for a while (no log, no `PING`, esptool couldn't connect); it answered again later without a replug, and `esptool verify-flash` matched the P9 build (booting `ota_0`), so the flash had landed. Likely asleep at the time.
 - **Each book's lookup language** (`languages.md` §1, step 3): see there.
 
+### 5f. As built (P10): a long-press off the text does nothing
+
+claritise (2026-09-25), on hearing that a long-press on blank space fell through to CrossPoint as a slow tap
+(the menu in the middle, a page turn at the sides): "i think we should keep it doing nothing". So in the
+lookup's zone, when something can answer, a long-press is **consumed either way**: on a word it's a lookup,
+anywhere else (a margin, blank space, an image) nothing happens, and its lift is no tap
+(`lookup::longPressUse` → `LongPressUse::Ignore`; logged `[LXLP] long-press x y ignored`). A quick tap is
+unchanged (the menu in the middle, page turns at the sides). Two cases still leave it to CrossPoint, as before
+Lexipoint: nothing to look words up with (no key and no offline dictionary: a slow tap), and CrossPoint's
+own hold action's zones (Long-press Behavior on, in a tap mode: the outer thirds). Tests:
+`LongPress.UsedOnlyWhenFiredOwnedAndAvailable`, `APressOffTheTextDoesNothing`, `LogNames`; on the device
+`lxctl reader-longpress` (the margin must be `ignored`, the word `taken`).
+
 ### 5c. As built (P7)
 
 - **A long-press never also turns the page** (P3 already): the reader takes the long-press before its
