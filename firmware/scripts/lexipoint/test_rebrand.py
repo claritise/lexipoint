@@ -96,12 +96,12 @@ console.log(JSON.stringify(out));
 """
 
 
-# The only behaviour test of the rename: skipped locally without node, never in CI (GitHub's runners have it).
-@unittest.skipUnless(shutil.which("node") or os.environ.get("CI"), "node isn't installed")
 class NavBehaviour(unittest.TestCase):
-    """LexiriseNav.js run against a stub page (node): what a reader of the web pages actually sees."""
+    """LexiriseNav.js run against a stub page (node): what a reader of the web pages actually sees. The only
+    behaviour test of the rename, so it never skips: the uniform gate needs node."""
 
     def run_nav(self, cases):
+        self.assertTrue(shutil.which("node"), "node isn't installed: the uniform gate needs it (brew install node)")
         out = subprocess.run(["node", "-e", NAV_HARNESS, NAV, json.dumps(cases)], capture_output=True, text=True,
                              check=True).stdout
         return json.loads(out)

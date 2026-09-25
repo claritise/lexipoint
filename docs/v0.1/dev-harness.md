@@ -15,8 +15,8 @@ conformance gate that the screenshots feed).
   (`platformio.ini`). The `*-gh_release` envs never define it. **Verified:** the `x4pro-gh_release`
   binary contains no harness strings.
 - It only listens on the USB serial port, so it needs a cable and a computer. There's no network surface.
-- **Never add `LEXIPOINT_DEV_HARNESS` to a release env.** CI should check this (the
-  `firmware-base.md` §6 list).
+- **Never add `LEXIPOINT_DEV_HARNESS` to a release env.** `test_lxctl.py` checks it (`ReleaseEnvsExcludeHarness`),
+  in the uniform gate's script tests.
 
 ## 1. Protocol
 

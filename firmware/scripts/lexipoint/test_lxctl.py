@@ -19,7 +19,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 import lxctl  # noqa: E402
-import release_tag  # noqa: E402
 
 W, H = 800, 480  # panel-native
 
@@ -738,12 +737,6 @@ class ReleaseVersioning(unittest.TestCase):
             self.assertIn('-DCROSSPOINT_VERSION=\\"${crosspoint.version}-lexi.${lexirise.release}' + suffix + '\\"',
                           flags, env)
 
-    def test_release_workflow_builds_the_x4pro_only(self):
-        with open(release_tag.RELEASE_WORKFLOW, encoding="utf-8") as f:
-            text = f.read()
-        self.assertEqual(re.findall(r"^\s+device: (\S+)", text, re.M), ["x4pro"])
-        self.assertIn("python3 scripts/lexipoint/release_tag.py check", text)
-
     def test_ota_reads_lexipoints_releases(self):
         with open(os.path.join(REPO, "src/lexirise/LexiriseConfig.h"), encoding="utf-8") as f:
             self.assertIn("api.github.com/repos/claritise/lexipoint/releases/latest", f.read())
@@ -763,8 +756,8 @@ class X4ProEnvsBuildLexirise(unittest.TestCase):
 
 class LexiriseOffIsTheReleaseBuildWithoutLexirise(unittest.TestCase):
     """x4pro-lexirise-off proves the LEXIRISE hooks compile out only while it is the release build minus [lexirise].
-    Resolved by this file's model of PlatformIO (`extends`, `${section.key}`), not pio itself: CI's lexipoint job
-    has no pio. M checked the model against `pio project config` when it made [x4pro_board]."""
+    Resolved by this file's model of PlatformIO (`extends`, `${section.key}`), not pio itself: the script tests
+    need no pio. M checked the model against `pio project config` when it made [x4pro_board]."""
 
     @staticmethod
     def flag_set(text: str) -> set[str]:

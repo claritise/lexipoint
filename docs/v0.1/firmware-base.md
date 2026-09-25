@@ -28,7 +28,6 @@ lexipoint/                   github.com/claritise/lexipoint (public)
   README.md                  what Lexipoint is, the X4 Pro, how to build, credits
   NOTICE                     built on CrossPoint Reader (MIT, © 2025 Dave Allie); the FreeInk SDK
   .gitmodules                firmware/freeink-sdk → https://github.com/Free-Ink/freeink-sdk.git
-  .github/workflows/         ci.yml, release.yml, release_candidate.yml (they run in firmware/; §6)
   firmware/                  the firmware (PlatformIO), with its history (CrossPoint's and the fork's)
     LICENSE                  CrossPoint's MIT license, unchanged
     AGENTS.md, CLAUDE.md     coding conventions for Lexipoint on the X4 Pro
@@ -65,9 +64,9 @@ The X4 Pro only (D20). `firmware/platformio.ini` has these envs and no others, a
 | Env | What it is |
 |---|---|
 | `x4pro` | The dev build: `pio run -e x4pro -t upload`. ESP32-S3 (`esp32-s3-devkitc1-n16r8`), `-DBOARD_HAS_PSRAM`, `LOG_LEVEL=2`, the USB dev harness (`dev-harness.md`), and it waits for USB serial (`CROSSPOINT_WAIT_FOR_USB_SERIAL`) |
-| `x4pro-gh_release` | What users get: `release.yml` builds it for a release. No harness, `LOG_LEVEL=1`. CI builds it on every push, so a release-only break shows up early |
-| `x4pro-gh_release_rc` | Release candidates (`release_candidate.yml`) |
-| `x4pro-lexirise-off` | The Lexirise-off build: `x4pro-gh_release` without `[lexirise]`, so every `LEXIRISE` hook in a base file must compile out. CI builds it; nobody flashes it. It replaced `x4c` in M |
+| `x4pro-gh_release` | What users get: `publish_release.py` builds it for a release. No harness, `LOG_LEVEL=1`. The uniform gate builds it every phase, so a release-only break shows up early |
+| `x4pro-gh_release_rc` | Release candidates (`publish_release.py --prerelease`) |
+| `x4pro-lexirise-off` | The Lexirise-off build: `x4pro-gh_release` without `[lexirise]`, so every `LEXIRISE` hook in a base file must compile out. The uniform gate builds it; nobody flashes it. It replaced `x4c` in M |
 
 - **Touch is required at compile time.** `firmware/src/lexirise/RequiresTouch.cpp` stops the build with an
   `#error` on a device without `FREEINK_CAP_TOUCH`. A touch device the SDK supports would pass on its own,
@@ -138,7 +137,8 @@ src/activities/reader/WordBoxes.h     (CrossPoint's folder, ours) word select's 
 test/lexirise_*/                host gtest suites
 scripts/lexipoint/lxctl.py      host side of the dev harness (+ test_lxctl.py)
 scripts/lexipoint/websmoke.py   read-only smoke test of the web surface against a device (+ test_websmoke.py)
-scripts/lexipoint/keyscan.py    the key-leak scan, uniform gate 5 and CI (+ test_keyscan.py)
+scripts/lexipoint/keyscan.py    the key-leak scan, uniform gate 5 (+ test_keyscan.py)
+scripts/lexipoint/publish_release.py  builds and publishes a release, §6 (+ test_publish_release.py)
 test/lexirise_fakes/            fakes shared by the suites (card, connection, WiFi, clock)
 ```
 
@@ -167,7 +167,7 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | `src/activities/boot_sleep/BootActivity.cpp`, `SleepActivity.cpp` | (M) The boot screen and the default sleep screen draw `STR_LEXIPOINT` under the logo, where CrossPoint draws `STR_CROSSPOINT` (D22). CrossPoint's logo stays |
 | `src/activities/network/CrossPointWebServerActivity.cpp`, `CalibreConnectActivity.cpp`, `WifiSelectionActivity.cpp` | (M) The product's name on the network (D22): File Transfer's hotspot SSID is `config::kHotspotSsid` ("Lexipoint", CrossPoint's is "CrossPoint-Reader"), the mDNS hostname `config::kMdnsHostname` (`lexipoint.local`, CrossPoint's is `crosspoint.local`), and the name routers list, `config::kDhcpHostnamePrefix` + the MAC ("Lexipoint-AABBCCDDEEFF", CrossPoint's is "CrossPoint-Reader-…"). `test_rebrand.py` checks each file uses them. The calibre plugin's name and its discovery reply are unchanged |
 | `src/network/OtaUpdater.cpp` | (P8) OTA reads **Lexipoint's** releases (`config::kReleasesLatestUrl`) and `isUpdateNewer()` compares `<base>-lexi.<n>` versions (`ota::isNewerRelease`, §6). (M) The asset it looks for is `lexipoint-<tag>-x4pro.bin` (`config::kReleaseAssetPrefix`; CrossPoint's is `crosspoint-<tag>-x4pro.bin`) |
-| `.github/workflows/{ci,release,release_candidate}.yml` | (P8) CI also runs on Lexipoint's branches and adds a `lexipoint` job (the key-leak scan, the Lexipoint script tests); releases and candidates build the X4 Pro only, tagged `<base>-lexi.<n>` (§6). (M) Moved from `firmware/.github/` to the repo root, and they run in `firmware/` (§6) |
+| `.github/workflows/{ci,release,release_candidate}.yml` | (P8) CI also runs on Lexipoint's branches and adds a `lexipoint` job (the key-leak scan, the Lexipoint script tests); releases and candidates build the X4 Pro only, tagged `<base>-lexi.<n>` (§6). (M) Moved from `firmware/.github/` to the repo root, then deleted the same day: no CI, releases by `publish_release.py` (§6) |
 | `bin/clang-format-fix`, `.githooks/pre-commit` | **Not gated (shell):** (M) both run from `firmware/` wherever they're called from, since the repo root also holds `docs/` and `tools/`. The hook re-stages files by their path from the repo root |
 | `lib/GfxRenderer/GfxRenderer.cpp` | (P4) `applyPromotedRefresh`: a promoted refresh never weakens the one asked for (the stronger of the two), so the card's half refresh on dismiss can't turn the reader's due full refresh into a half one |
 | `lib/GfxRenderer/FontCacheManager.{h,cpp}` | (P4) with LEXIRISE the prewarm scan takes 8 fonts (CrossPoint's 4): the card's expanded tabs draw with 7; a font past the cap is logged once per render (it loads glyph by glyph from SD) |
@@ -209,12 +209,12 @@ dropped, and at which commit, stays findable.
 
 M merged the fork-era "Upstream sync" (§4) and "Cherry-picks and divergences" (§5) into §4.
 
-## 6. Releases, OTA updates and CI
+## 6. Releases, OTA updates and checks
 
 - **Releases are on `claritise/lexipoint`.** Each one carries one asset, `lexipoint-<tag>-x4pro.bin`,
-  built from `x4pro-gh_release`. Three places must agree on that name, and one test pins all three:
-  `release.yml`, `config::kReleaseAssetPrefix` (`src/lexirise/LexiriseConfig.h`, used by the OTA hook) and
-  `scripts/lexipoint/release_tag.py` `ASSET_PREFIX`. No release exists yet.
+  built from `x4pro-gh_release`. The name comes from one prefix, `config::kReleaseAssetPrefix`
+  (`src/lexirise/LexiriseConfig.h`, used by the OTA hook), which `scripts/lexipoint/release_tag.py`
+  `ASSET_PREFIX` and `publish_release.py` share (`test_publish_release.py` pins them). No release exists yet.
 - **OTA** (`OtaUpdater.cpp` hook, §3): the device reads `config::kReleasesLatestUrl`
   (`https://api.github.com/repos/claritise/lexipoint/releases/latest`; prereleases aren't "latest"). A
   release is offered only when it's a Lexipoint version newer than the running one (`ota::isNewerRelease`:
@@ -224,26 +224,33 @@ M merged the fork-era "Upstream sync" (§4) and "Cherry-picks and divergences" (
 - **Versions are unchanged by M** (H12's default): `CROSSPOINT_VERSION` is `<base>-lexi.<n>` (e.g.
   `1.6.5-lexi.1`), where `<base>` is `[crosspoint] version` and `n` is `[lexirise] release`. If claritise
   picks Lexipoint's own scheme, that's its own phase before the first release (`standalone-repo.md` §9).
-- **Releasing:** the same steps as "As built (P8)" below, on `claritise/lexipoint`: tag `<base>-lexi.<n>`
-  (`cd firmware && python3 scripts/lexipoint/release_tag.py expected` prints it), run
-  `release_tag.py check <tag>` before publishing, then publish a GitHub release. The tag may be at most
-  **27** characters now (the updater's 48-byte asset name, less `lexipoint-`, `-x4pro.bin` and the
-  terminator). Only claritise publishes releases.
-- **CI is in the root `.github/workflows/`**, and every run step starts in `firmware/`
-  (`defaults.run.working-directory`). `ci.yml` runs on pushes to `main` and `lexi/**`: clang-format,
-  cppcheck on `x4pro` (`pio check -e x4pro`, so Lexipoint's code is checked too), builds of `x4pro`,
-  `x4pro-gh_release` and `x4pro-lexirise-off`, the host tests (every `lexirise_*` suite and the card
-  goldens), and the `lexipoint` job: the key-leak scan over the whole repo, docs included, and every
-  `scripts/lexipoint/test_*.py` (`test_gen_bench_fixtures` reads `docs/v0.1` in the same checkout, so it
-  runs). `release.yml` runs on a published release, `release_candidate.yml` by hand from a `release/*`
-  branch. claritise enables Actions on `claritise/lexipoint`.
-- **Formatting:** CI checks clang-format, and our code follows the same `firmware/.clang-format`.
-  `firmware/bin/clang-format-fix` fixes it, and the pre-commit hook (`firmware/.githooks`, §1a) runs it.
+- **Releasing, from this Mac** (there is no CI; claritise, 2026-09-26: "we dont need it"): bump
+  `[lexirise] release`, merge and push `main`, then from `firmware/`:
+  `python3 scripts/lexipoint/publish_release.py --dry-run`, and without `--dry-run` to publish (with
+  `--prerelease` for a release candidate, built from `x4pro-gh_release_rc`, also from `main`). Before building
+  it refuses: a dirty tree; a HEAD that isn't a commit on GitHub's `main`; an `origin` that isn't the repo devices read;
+  a release or a tag of that name already on GitHub (a release would keep that tag's source, not HEAD's); any
+  `PLATFORMIO_*` variable or a `platformio.local.ini` (either would reach the build); a key-shaped string
+  (`keyscan.py`); and a tag `release_tag.check` rejects (not
+  platformio.ini's, over **27** characters, which is the updater's 48-byte asset name less `lexipoint-`,
+  `-x4pro.bin` and the terminator, or not newer than every published release). Then it builds clean, checks
+  nothing moved meanwhile, creates the release **with** the asset and its tag at HEAD in one step, and checks
+  that a full release is GitHub's latest with its asset. Tags are unique: to re-cut a number, delete that
+  release and its tag first. Never promote a prerelease: publish a full release. Only claritise publishes
+  releases, and only from a commit that passed the uniform gate: the build uses this Mac's `pio`, so it's the
+  toolchain the gate ran with.
+- **Checks run here, not on GitHub:** everything CI used to run is the uniform gate (`01-build-order.md`):
+  clang-format, cppcheck on `x4pro`, builds of `x4pro`, `x4pro-gh_release` and `x4pro-lexirise-off`, the host
+  tests, the key scan over the whole repo, and every `scripts/lexipoint/test_*.py`. The repo has no
+  `.github/` (M moved CrossPoint's workflows to the root; they were deleted the same day).
+- **Formatting:** our code follows `firmware/.clang-format`. `firmware/bin/clang-format-fix` fixes it, and
+  the pre-commit hook (`firmware/.githooks`, §1a) runs it once enabled.
 - **Release notes** say which version each release is built on, and link the user setup guide.
 
 **As built (P8):** history, written when Lexipoint was the fork `claritise/crosspoint-reader`. M moved
 releases to `claritise/lexipoint`, renamed the asset to `lexipoint-<tag>-x4pro.bin`, raised the tag limit to
-27, moved CI to the root and put the key scan over the whole repo (the bullets above are current).
+27, moved CI to the root and put the key scan over the whole repo; the same day CI was dropped and releases
+became `publish_release.py` (the bullets above are current).
 - `platformio.ini` `[lexirise] release = <n>` (bump per release; back to 1 **only when `[crosspoint]
   version` changes**: a rebase that keeps the upstream version keeps counting, or devices on a higher `n`
   would never be offered the new release). `x4pro-gh_release` builds `CROSSPOINT_VERSION = <upstream>-lexi.<n>`, its `_rc` twin

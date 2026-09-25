@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Lexipoint's release tags (firmware-base.md §6): `<base>-lexi.<n>` (<base>: the CrossPoint version it's built on), with `-rc` for a prerelease, built
-from platformio.ini ([crosspoint] version, [lexirise] release). release.yml runs `check` before building, so a
-release the devices' OTA updater couldn't offer or install is refused:
+"""Lexipoint's release tags (firmware-base.md §6): `<base>-lexi.<n>` (<base>: the CrossPoint version it's
+built on), with `-rc` for a prerelease, built from platformio.ini ([crosspoint] version, [lexirise] release).
+publish_release.py runs `check` before building, so a release the devices' OTA updater couldn't offer or
+install is refused:
 
   python3 scripts/lexipoint/release_tag.py expected [--prerelease]
   python3 scripts/lexipoint/release_tag.py check TAG [--prerelease] [--releases FILE|-]
@@ -19,16 +20,15 @@ import re
 import sys
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))  # firmware/
-REPO_ROOT = os.path.dirname(REPO)  # the Lexipoint repo: .github/, docs/
-RELEASE_WORKFLOW = os.path.join(REPO_ROOT, ".github", "workflows", "release.yml")
 LEXI_MARKER = "-lexi."  # src/lexirise/ota/ReleaseVersion.cpp kLexiMarker
 RC_SUFFIX = "-rc"
-# The release asset: <ASSET_PREFIX><tag>-x4pro.bin (LexiriseConfig.h kReleaseAssetPrefix, release.yml).
+# The release asset: <ASSET_PREFIX><tag>-x4pro.bin (LexiriseConfig.h kReleaseAssetPrefix, publish_release.py).
 ASSET_PREFIX = "lexipoint-"
 # The OTA updater keeps a tag in ReleaseJsonParser's 32-byte buffer and names the asset in a 48-byte one
-# (OtaUpdater.cpp): 48 - len("lexipoint--x4pro.bin") - 1.
-MAX_TAG_LENGTH = 48 - len(f"{ASSET_PREFIX}-x4pro.bin") - 1
-RELEASE_LIST_LIMIT = 100  # release.yml's `gh release list --limit`: plenty for Lexipoint's releases
+# (OtaUpdater.cpp assetName): 48 - len("lexipoint--x4pro.bin") - 1.
+ASSET_NAME_BYTES = 48
+MAX_TAG_LENGTH = ASSET_NAME_BYTES - len(f"{ASSET_PREFIX}-x4pro.bin") - 1
+RELEASE_LIST_LIMIT = 100  # publish_release.py's `gh release list --limit`: plenty for Lexipoint's releases
 MAX_NUMBER = 1000000  # src/lexirise/ota/ReleaseVersion.cpp kMaxVersionComponent: past it, not a version
 BASE_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 TAG = re.compile(r"^(\d+)\.(\d+)\.(\d+)" + re.escape(LEXI_MARKER) + r"(\d+)(" + re.escape(RC_SUFFIX) + r")?$")

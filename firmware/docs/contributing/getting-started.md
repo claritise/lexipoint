@@ -6,7 +6,8 @@ This guide helps you build and run Lexipoint's firmware locally. Commands run in
 
 - PlatformIO Core (`pio`) or VS Code + PlatformIO IDE
 - Python 3.8+
-- `clang-format` 21+ in your `PATH` (CI uses clang-format 21)
+- `clang-format` 21+ in your `PATH` (the version `.clang-format` needs)
+- node (the script tests run the web pages' `LexiriseNav.js`)
 - USB-C cable
 - Xteink X4 Pro device for hardware testing
 

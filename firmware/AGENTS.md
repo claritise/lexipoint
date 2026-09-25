@@ -114,7 +114,7 @@ Never invoke or probe `clang-format` directly. The repository wrapper is the onl
   * `x4pro`: Development (LOG_LEVEL=2, serial enabled, the dev harness `LEXIPOINT_DEV_HARNESS`)
   * `x4pro-gh_release`: Production (LOG_LEVEL=1, no dev harness)
   * `x4pro-gh_release_rc`: Release candidate (LOG_LEVEL=1)
-  * `x4pro-lexirise-off`: CI only: proves every `LEXIRISE` hook in a base file compiles out
+  * `x4pro-lexirise-off`: checks only (never flashed): proves every `LEXIRISE` hook in a base file compiles out
 
 ### Critical Build Flags
 
@@ -801,7 +801,7 @@ build_flags =
 1. ✅ **Build**: Build once after the last code edit with the relevant `pio run` target. Do not clean by default, repeat a target that already passed, or rebuild after formatting/comment-only/documentation-only changes.
 2. ✅ **Quality**: `pio check` when relevant + `./bin/clang-format-fix -g`
 3. ✅ **Format**: Commit messages (`feat:`/`fix:`), no `.gitignore`-excluded files staged (e.g., `*.generated.h`, `.pio/`, `platformio.local.ini`)
-4. ✅ **CI**: Fix GitHub Actions failures before review
+4. ✅ **Gate**: The uniform gate in the repo's `docs/v0.1/01-build-order.md` passes (there is no CI)
 5. ✅ **Code review**: Ensure orientation-aware logic is correct in all 4 modes by inspecting switch/case coverage
 
 **Human tester scope** (flag these for the user):
@@ -810,20 +810,16 @@ build_flags =
 8. 🔲 **Heap**: `ESP.getFreeHeap()` > 50KB, no leaks
 9. 🔲 **Cache**: If EPUB modified, delete `.crosspoint/` and verify re-parse
 
-### CI/CD Pipeline Awareness
+### Checks and Releases
 
-**GitHub Actions** (in the repo root's `.github/workflows/`, running in `firmware/`) run on pushes to `main` and
-`lexi/**`:
-
-| Workflow      | File                                      | Purpose                                                  |
-| ------------- | ----------------------------------------- | -------------------------------------------------------- |
-| CI            | `.github/workflows/ci.yml`                | Format, cppcheck, the X4 Pro builds, host tests, key scan |
-| Release Build | `.github/workflows/release.yml`           | Production releases                                      |
-| RC Build      | `.github/workflows/release_candidate.yml` | Release candidates                                       |
+There is no CI. The uniform gate in the repo's `docs/v0.1/01-build-order.md` runs locally before every merge:
+format, cppcheck on `x4pro`, the X4 Pro builds, host tests, script tests and the key scan
+(`docs/contributing/development-workflow.md` lists the commands). Releases are built and published from a
+computer by `scripts/lexipoint/publish_release.py` (the repo's `docs/v0.1/firmware-base.md` §6).
 
 **Rules**:
 
-- **Fix CI failures BEFORE** merging
+- **Fix gate failures BEFORE** merging
 - Format check fails → Run `./bin/clang-format-fix -g`
 - Build check fails → Fix compile errors
 

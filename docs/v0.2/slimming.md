@@ -69,7 +69,7 @@ can't attribute ahead of time.
   serializes before deleting fields. If it's positional, keep a placeholder.
 - **The `LEXIRISE` gate and `// LEXIPOINT:` markers (from M2):** once the base code is being deleted, the
   Lexirise-off build no longer means anything. Default: remove the gate (Lexirise is always on) and the
-  Lexirise-off build (the `x4pro-lexirise-off` env in `firmware/platformio.ini`, and its CI build), in the
+  Lexirise-off build (the `x4pro-lexirise-off` env in `firmware/platformio.ini`, and its line in the uniform gate), in the
   **last** step of this phase, so the gate still helps while features are being cut.
   The markers stay where they say *why* a base file was edited, and go where they only said "our code".
 - **The global rule "don't modify `util/Dictionary*`"** existed for merging from CrossPoint. M kept it

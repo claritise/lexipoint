@@ -1,4 +1,4 @@
-"""release_tag.py: Lexipoint's release tags (firmware-base.md §6), as release.yml checks them."""
+"""release_tag.py: Lexipoint's release tags (firmware-base.md §6), as publish_release.py checks them."""
 
 import os
 import re
@@ -54,23 +54,6 @@ class ReleaseTag(unittest.TestCase):
         self.assertEqual(release_tag.previous_release(["1.6.5-lexi.1", "1.6.5-lexi.3"], "1.6.5-lexi.2"), "1.6.5-lexi.3")
         self.assertEqual(release_tag.previous_release(["nightly", "1.6.5-lexi.1"], "1.6.5-lexi.2"), "1.6.5-lexi.1")
 
-    def test_the_workflow_lists_enough_releases(self):
-        with open(release_tag.RELEASE_WORKFLOW, encoding="utf-8") as f:
-            self.assertIn(f"--limit {release_tag.RELEASE_LIST_LIMIT}", f.read())
-
-    def test_the_asset_name_agrees_everywhere(self):
-        # The workflow names the asset, the updater looks for it: both from one prefix.
-        with open(release_tag.RELEASE_WORKFLOW, encoding="utf-8") as f:
-            workflow = f.read()
-        self.assertIn(f'asset="{release_tag.ASSET_PREFIX}${{version}}-${{{{ matrix.device }}}}.bin"', workflow)
-        self.assertNotIn("crosspoint-", workflow)
-        # Every asset name the workflow spells (build, upload, the devices-will-see-it check) uses the prefix.
-        names = re.findall(r"([a-z]+)-(?:\$\{[^}]+\}|\*)[^\s\"']*\.bin", workflow)
-        self.assertGreaterEqual(len(names), 5)
-        self.assertEqual(set(names), {release_tag.ASSET_PREFIX.rstrip("-")})
-        with open(os.path.join(REPO, "src/lexirise/LexiriseConfig.h"), encoding="utf-8") as f:
-            self.assertIn(f'kReleaseAssetPrefix = "{release_tag.ASSET_PREFIX}";', f.read())
-
     def test_the_command_reads_the_releases_list(self):
         import io
         import unittest.mock
@@ -104,7 +87,7 @@ class ReleaseTag(unittest.TestCase):
         with open(os.path.join(REPO, "lib/JsonParser/ReleaseJsonParser.h"), encoding="utf-8") as f:
             self.assertIn("char tagName[32];", f.read())
         with open(os.path.join(REPO, "src/network/OtaUpdater.cpp"), encoding="utf-8") as f:
-            self.assertIn("char assetName[48]", f.read())
+            self.assertIn(f"char assetName[{release_tag.ASSET_NAME_BYTES}]", f.read())
 
 
 if __name__ == "__main__":

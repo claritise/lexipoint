@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Key-leak scan (01-build-order.md, uniform gate 5; CI's lexipoint job): no tracked file may hold a string
+"""Key-leak scan (01-build-order.md, uniform gate 5): no tracked file may hold a string
 shaped like a Lexirise API key, except the obviously synthetic keys the tests use (they carry a marker:
 lx_TESTKEY..., lx_OTHERkey..., lx_NEWER..., lx_OLDER..., lx_FULLSECRETKEY..., lx_YOUR_KEY_HERE, an alphabet
 run). A real key never goes in the repo (settings.md §2): it's pasted into the device's /lexirise page.

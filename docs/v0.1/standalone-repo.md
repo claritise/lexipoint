@@ -290,3 +290,11 @@ Built as §4 says, with these additions and differences (the ledger's M row has 
   and `.githooks/pre-commit` now run in `firmware/` from anywhere.
 - **Cleanup:** a serial log (`device.log`) committed at the docs root by an earlier session is removed and
   ignored.
+- **No CI (after M landed, 2026-09-26; claritise: "can we get rid of the github actionw e dont need it").**
+  `.github/` is deleted: step 5's workflows and gate item 10 no longer apply. The uniform gate is the check,
+  now with cppcheck in it, and `firmware/scripts/lexipoint/publish_release.py` does what `release.yml` did
+  (checks the tag, builds, uploads the asset with the release, checks devices will see it; tested by
+  `test_publish_release.py`, the whole flow against a fake runner). Unlike the workflow, the script builds
+  on this Mac, so it also refuses a tag already on GitHub, a foreign `origin`, `PLATFORMIO_*` variables and a
+  checkout that moved during the build. A release candidate is now a published GitHub prerelease built from
+  `main` (the workflow built artifacts from a `release/*` branch). `firmware-base.md` §6.

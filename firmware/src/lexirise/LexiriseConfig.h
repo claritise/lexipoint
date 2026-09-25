@@ -58,8 +58,8 @@ constexpr const char* kHotspotSsid = "Lexipoint";
 constexpr const char* kMdnsHostname = "lexipoint";
 constexpr char kDhcpHostnamePrefix[] = "Lexipoint-";
 // The OTA updater's release feed: Lexipoint's own releases (firmware-base.md §6), never CrossPoint's, whose
-// firmware would uninstall Lexipoint. Assets are named lexipoint-<tag>-x4pro.bin (.github/workflows/release.yml,
-// scripts/lexipoint/release_tag.py ASSET_PREFIX).
+// firmware would uninstall Lexipoint. Assets are named lexipoint-<tag>-x4pro.bin (scripts/lexipoint/
+// publish_release.py, release_tag.py ASSET_PREFIX).
 constexpr const char* kReleasesLatestUrl = "https://api.github.com/repos/claritise/lexipoint/releases/latest";
 constexpr const char* kReleaseAssetPrefix = "lexipoint-";
 #ifdef LEXIPOINT_VERSION
