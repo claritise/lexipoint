@@ -188,9 +188,11 @@ Record any upstream or ++ commit we carry that isn't in the base tag.
   publish a GitHub release on the fork. `release.yml` runs `scripts/lexipoint/release_tag.py check` (tested):
   the tag must be exactly what `platformio.ini` says (no leading `v`: devices look for
   `crosspoint-<tag>-x4pro.bin`), at most 26 characters (the updater's buffers), from an `X.Y.Z` upstream
-  version and `n ≥ 1`, and newer than the fork's previous release. Then it builds `x4pro-gh_release` and
-  attaches the asset. Only claritise publishes releases. Checklist: run `keyscan.py` in the docs repo too
-  (it has no CI); until the first release exists, a device's *Check for updates* shows an error (GitHub's
+  version and `1 ≤ n ≤ 1,000,000`, and newer than the fork's previous release (the tag list comes from
+  `gh release list`; if that fails, the step fails). Then it builds `x4pro-gh_release` and
+  attaches the asset. Only claritise publishes releases. Checklist: run `release_tag.py check <tag>` locally
+  **before** publishing (a release that fails the workflow is already GitHub's latest, with no firmware:
+  devices then see no update, so delete it); run `keyscan.py` in the docs repo too (it has no CI); until the first release exists, a device's *Check for updates* shows an error (GitHub's
   `/releases/latest` is 404), not "no update".
 - **OTA** (`OtaUpdater.cpp` hook): the fork's `/releases/latest` (prereleases aren't "latest"); a release is
   offered only when it's a Lexipoint version newer than the running one (`ota::isNewerRelease`: upstream
@@ -199,6 +201,6 @@ Record any upstream or ++ commit we carry that isn't in the base tag.
   `unit-tests` job already builds every `lexirise_*` suite and the card goldens; `x4c` in the build matrix is
   the LEXIRISE-off parity build; the new `lexipoint` job (with submodules: `test_lxctl` reads the SDK's
   edge bands) runs `scripts/lexipoint/keyscan.py` and the script tests (`test_gen_bench_fixtures` skips
-  there: it needs this docs repo). `cppcheck` runs on the `default` env, which doesn't build Lexirise.
+  there: it needs this docs repo). It runs every `scripts/lexipoint/test_*.py` (`unittest discover`). `cppcheck` runs on the `default` env, which doesn't build Lexirise.
 - **Rebase (P8 gate):** checked 2026-09-25: the newest upstream tag (`1.6.5rc`) is already in `lexipoint`,
   and upstream `master`'s two newer commits are empty merges, so there was nothing to rebase onto.

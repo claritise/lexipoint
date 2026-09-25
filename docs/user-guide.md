@@ -19,8 +19,8 @@ Everything CrossPoint does keeps working the same way. Lexipoint only adds the l
    boots its second firmware slot, so a plain `write_flash 0x10000` would be ignored: erase the boot record
    too (`esptool.py --chip esp32s3 ... erase_region 0xe000 0x2000`), or use the web installer or
    CrossPoint's SD-card firmware update.
-3. Later updates arrive **over the air**: Settings → System → *Check for updates* offers the next
-   Lexipoint release (`…-lexi.<n+1>`). It never offers upstream CrossPoint's releases, which would remove
+3. Later updates arrive **over the air**: Settings → System → *Check for updates* offers the newest
+   Lexipoint release. It never offers upstream CrossPoint's releases, which would remove
    Lexipoint. To go back to stock CrossPoint, flash its release the same way.
 
 ## 2. A font that has Japanese and Chinese
