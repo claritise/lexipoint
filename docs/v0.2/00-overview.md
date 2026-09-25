@@ -29,6 +29,7 @@
 | C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, `PATCH suspended`, C3 |
 | C11 | SRS review app on the device | **Yes, online-only: Lexirise is building the endpoints** (announced 2026-09-25, not live) | v0.3 | Medium–large | Client, card UI |
 | C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/words/context`** (announced 2026-09-25, not live) | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
+| C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
 | C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes, once grammar comes back** (announced 2026-09-25) | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
 | C18 | Manga: tap a word in a speech bubble (sideways strips, OCR'd on the Mac) | **Yes: specced as `manga.md`; Mac pipeline built as a spike** | v0.2 | Medium: the device side; the card's orientation needs claritise | The card, lookup, saving, `analyze/text` (at conversion) |
 
@@ -250,6 +251,26 @@ card. The pipeline (`tools/manga/`) ran on one 184-page volume: 613 strips, 10,3
 shown whole on some strip. Owed: a panel check of the strips, a look at `matcha-reader`, and
 claritise's call on the card's orientation on a sideways strip (`manga.md` §6).
 
+## C20. Deeper Lexirise library integration (way down the line)
+
+**Added 2026-09-25 (claritise). An idea, not a plan.** Lexirise already takes uploads
+(`POST /v1/uploads/chapters` accepts EPUB/TXT, and the reference mentions `uploads/series`), but
+nothing comes back to the device (C8). With a way back, the device could:
+- **Sync the library:** books and manga you've added in Lexirise show up on the device, with no SD
+  copying.
+- **Download server-side analysis per chapter** (segmentation, lemmas, later contextual readings),
+  cached on SD. Lookups become instant and work offline (the gap with Kindle), and C5 / C6 cost
+  nothing. Only saves, level changes and reviews stay online.
+- **Take manga OCR from Lexirise:** strips and word boxes made server-side, replacing the Mac step in
+  C18. The biggest barrier removed for users without a Mac.
+- **Sync reading progress** with the app.
+
+**Why later:** it's a big ask of Lexirise (compute and storage per uploaded book, a compact export the
+device can hold in memory, their policy on uploaded books). **Policy (claritise, 2026-09-25): build
+what we can without Lexirise first, and ask only for what's critical** (like `words/context`). Pitch
+C20 after v0.3, once our own manga pipeline and the rest work, as the next step, and alongside a
+possible Xteink + Lexirise bundle.
+
 ## C11. SRS review app on the device
 
 **The appeal:** e-ink suits flashcards well. They're static, button-driven, need no touch, and use
@@ -317,4 +338,4 @@ does mean this code will never go upstream, and it adds to the rebase cost.
 
 ## Suggested order after v0.1
 
-**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes"). **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7).
+**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes"). **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
