@@ -58,10 +58,13 @@ with their values kept (turning a language off never clears its settings). The s
 master **Lexirise lookups** toggle: when it's Off, everything below the Account group is hidden.
 **Except each language's Offline dictionary (P13, claritise 2026-09-25: "what is functionally correct"):**
 it answers that language's taps whenever Lexirise doesn't (Lexirise off, the language's Lookups off, no
-WiFi), so it always shows: with Lexirise off the screen is the Account group and the two dictionaries; a
-language that's off collapses to its Lookups toggle and its Offline dictionary. The web page shows both
-dictionaries always too (Readings still follows Japanese, the default language still needs both on).
-**"Language when a book doesn't say"** only shows while **two or more** languages are on. With one
+WiFi), so it always shows: with Lexirise off the screen is the Account group, the two dictionaries and
+"Language when a book doesn't say" (below); a language that's off collapses to its Lookups toggle and its
+Offline dictionary. The web page shows the same rows by the same rules (`LexirisePage.html`'s `WHEN`
+table, pinned by `scripts/lexipoint/test_lexirise_page.py`).
+**"Language when a book doesn't say"** only shows while **two or more** languages are on, or while
+Lexirise is off: then only the offline dictionaries answer, the per-language switches don't apply, and
+this choice picks the dictionary for Han-only text (P13 review). With one
 language on, that language is the fallback, and there's nothing to choose (as built, P7:
 `Settings::fallbackLanguage()`, which `BookLanguage` uses for Han-only text; code that spans languages loops
 over `kLanguages`, so a new language is added there and in `Settings::language()`; the stored choice is kept for
@@ -102,7 +105,7 @@ same URL shown for uploading books).
  Chinese (Simplified)        [on]
    Offline dictionary        cedict ▾
  General
-   Language when a book doesn't say   Japanese ▾   (only while 2+ languages are on)
+   Language when a book doesn't say   Japanese ▾   (only while 2+ languages are on, or Lexirise is off)
    Tags                      [ xteink ]
    Keep WiFi on after a lookup        5 min ▾
  Advanced ▸  Server  [ https://api.lexirise.app ]
@@ -162,8 +165,9 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
   Chinese book (zh-TW / HK / MO / Hant, parked by H8): the Chinese group is Simplified
   (`LanguageDecision::dictionaryLanguage`). The language is what the tapped text is
   (`LanguageDecision::detected`), so the choice **still counts while that language's Lexirise lookups are
-  off**, which is exactly when StarDict answers every tap in it (the row is hidden then, and the value
-  kept). Word select reopens its dictionary when the language changes, and opens without CrossPoint's
+  off** and while Lexirise is off, which is exactly when StarDict answers every tap in it (the row always
+  shows, P13). With Lexirise off, Han-only text uses "Language when a book doesn't say" (shown then), not
+  the hidden per-language switches (`Settings::fallbackLanguage()`). Word select reopens its dictionary when the language changes, and opens without CrossPoint's
   dictionary when either language has its own. If the chosen folder can't be opened (removed from the
   card), CrossPoint's own dictionary answers instead.
 
@@ -264,3 +268,6 @@ extra to keep pixel-perfect here beyond "uses the stock components".
   shared `reading` value (a card toggle is visible to the settings getter, and vice versa).
 - On device (P7): set the key from a phone, check the masked value on both UIs, `Test connection` in
   all three outcomes, turn Chinese off and on again (its rows hide and come back with values kept), and the reading setting and card tap staying in sync across a reboot.
+- On device (P13): turn Japanese off: Readings hides, its Offline dictionary stays; turn Lexirise off: the
+  screen is the Account group, both dictionaries and "Language when a book doesn't say" (7 rows,
+  `lxctl settings-smoke`'s minimum), and the web page shows the same rows.
