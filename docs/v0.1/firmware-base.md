@@ -82,6 +82,7 @@ src/lexirise/
   net/TlsConnection.{h,cpp}     wolfSSL, ISRG roots pinned, hostname checked (lexirise-client.md §1)
   net/TrustAnchors.h            ISRG Root X1 + X2
   net/WifiLease.h / WifiSession.{h,cpp}  on-demand connect + idle teardown (D10)
+  net/WifiHint.h                the last connection's access point and channel, for a direct join (P11), pure
   api/LexiriseClient.{h,cpp}    keep-alive, stale-session retry, error mapping
   api/Requests.{h,cpp} / Responses.{h,cpp} / KeyCheck.{h,cpp}  endpoints (pure)
   web/LexiriseWeb.{h,cpp}       /lexirise page + /api/lexirise (settings.md §1a)

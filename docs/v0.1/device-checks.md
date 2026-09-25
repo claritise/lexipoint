@@ -43,13 +43,14 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 ### Found this session
 
 - **Bug:** the card view's strip highlights a whole glued token (话。, full stop included); the detail view's strip
-  and the page highlight only the word. Open.
+  and the page highlight only the word. Fixed in P11 (`StripLine::activeStartCp/activeEndCp`).
 - **Bug (from P9 R20):** the bench page drops a whole token that runs past its right padding, so lines lose text and
   one reference state (`ja-card-saved`) loses the looked-up word. Bench only. Fix: re-wrap the bench's tokens at the
-  panel width. Open.
+  panel width. Fixed in P11 (`bench::wrapLines`).
 - **Improvement:** a WiFi join is ~3.5 s of all-channel scanning (`WIFI_ALL_CHANNEL_SCAN`) against a 6 s limit
   (`config::kWifiConnectMs`), and twice the join ran out (right after File Transfer let WiFi go). Joining with the
   last BSSID/channel (a fast scan) would save ~3 s on every lookup that needs WiFi and make the limit comfortable.
+  Done in P11 (`offline-and-errors.md` §5, as built P11).
 - **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row).
 - **Nit:** the More panel shows "Lookup langu…" beside "Chinese (Simplified)".
 

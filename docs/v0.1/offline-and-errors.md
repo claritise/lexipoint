@@ -134,3 +134,15 @@ own spec before it's built.
   the idle time counts from then.
 - **The TLS session is closed after 30 s idle**, on WiFi teardown, and on leaving reading, so it never
   holds internal heap that upstream TLS users pre-flight for.
+
+**As built (P11, found on the device, `device-checks.md`):** a join scanned every channel
+(`WIFI_ALL_CHANNEL_SCAN`), ~3.5 s of every join, against a 6 s limit that ran out twice right after File
+Transfer let WiFi go. Now `WifiSession` keeps a hint for the boot (`net/WifiHint.h`): the network, access
+point and channel of the last connection it saw, its own or anyone's (a connected station it uses, the web
+server's, KOSync's). With a hint for the network it joins, it first goes straight there (`WIFI_FAST_SCAN`
+with the channel and BSSID, `config::kWifiDirectJoinMs` = 3 s); if that fails the hint is forgotten and it
+scans every channel as before, now for up to `config::kWifiConnectMs` = 8 s. `config::kMaxCallMs` counts
+both (`kWifiJoinMaxMs`: 43 s in all, under `lxctl`'s 45 s wait, checked by `test_lxctl`). The log line says
+the channel (`WiFi up in N ms (channel C)`) and a failed direct attempt. Tests: `WifiHintTest`. Device check
+owed: the second and later joins of a boot come up well under the scan's 3.5 s (`WiFi up in` in the log),
+and a join after File Transfer uses its connection's hint.

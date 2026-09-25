@@ -209,6 +209,10 @@ it's a stretch, the fallback is to let the rank row carry the level control inst
 | **Tap** (P10, claritise 2026-09-25: "changing words when the dictionary is open should be tap instead of hold") or long-press **another word** on the page | Replace the card with a new lookup |
 | **Tap the reading line** (Japanese only) | Switch all readings kana ⇄ romaji, with a toast. Remembered across lookups and reboots |
 
+**As built (P11):** a strip's word is inverted by its own characters, not the whole token it sits in
+(the reader glues a word to its punctuation: 话。); the bench page wraps its lines at the panel instead of
+running off it.
+
 **As built (P7, `lookup-flow.md` §5c):** every row above works; the swipes need a start on the card, and a
 long-press on another word replaces the card in card view only (the detail view covers the page). **Where a
 close goes depends on the entry point:** a card opened by a long-press on the page closes to the reader; one
