@@ -265,6 +265,9 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   over for having no word: `resumeAfter_`); the page's end stops it quietly. A press during a rate limit's
   back-off costs no request: the service refuses calls until it has passed (P6 `AccessPolicy`). The
   tapped sentence failing still closes the card as before (P5).
+- The analysis blocks the loop (~1 s), so a second press made meanwhile is only read after the jump: a step
+  keeps when its button went down, and a forward press begun before the jump is dropped
+  (`CardController::step`'s `pressedAtMs`), so it can't skip the new sentence's first word.
 - The calls' order: the tapped sentence's analysis, then the word on screen's lookup (and a save's), then a
   next sentence the card waits for, then ready writes.
 - The bench (`BenchSource`) goes on into one canned "next sentence" (its own again) after
