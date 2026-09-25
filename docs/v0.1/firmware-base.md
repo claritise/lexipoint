@@ -188,8 +188,12 @@ Record any upstream or ++ commit we carry that isn't in the base tag.
   publish a GitHub release on the fork. `release.yml` runs `scripts/lexipoint/release_tag.py check` (tested):
   the tag must be exactly what `platformio.ini` says (no leading `v`: devices look for
   `crosspoint-<tag>-x4pro.bin`), at most 26 characters (the updater's buffers), from an `X.Y.Z` upstream
-  version and `1 ≤ n ≤ 1,000,000`, and newer than the fork's previous release (the tag list comes from
-  `gh release list`; if that fails, the step fails). Then it builds `x4pro-gh_release` and
+  version and `1 ≤ n ≤ 1,000,000`, and newer than the highest-versioned release the fork has published (the
+  tag list comes from `gh release list`; if that fails, the step fails). After the upload, a full release
+  must be GitHub's `/releases/latest` with its asset (not unticked as latest, not on an older commit), or
+  the workflow fails. CI also builds `x4pro-gh_release` on every push, so a release-only break shows up
+  before a release. Tags are unique, so a release number has one `-rc`: to re-cut it, delete that
+  prerelease **and its tag** first. Then it builds `x4pro-gh_release` and
   attaches the asset. Only claritise publishes releases. Checklist: run `release_tag.py check <tag>` locally
   **before** publishing (a release that fails the workflow is already GitHub's latest, with no firmware:
   devices then see no update, so delete it); run `keyscan.py` in the docs repo too (it has no CI); until the first release exists, a device's *Check for updates* shows an error (GitHub's
