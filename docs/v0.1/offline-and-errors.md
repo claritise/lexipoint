@@ -138,11 +138,18 @@ own spec before it's built.
 **As built (P11, found on the device, `device-checks.md`):** a join scanned every channel
 (`WIFI_ALL_CHANNEL_SCAN`), ~3.5 s of every join, against a 6 s limit that ran out twice right after File
 Transfer let WiFi go. Now `WifiSession` keeps a hint for the boot (`net/WifiHint.h`): the network, access
-point and channel of the last connection it saw, its own or anyone's (a connected station it uses, the web
-server's, KOSync's). With a hint for the network it joins, it first goes straight there (`WIFI_FAST_SCAN`
-with the channel and BSSID, `config::kWifiDirectJoinMs` = 3 s); if that fails the hint is forgotten and it
-scans every channel as before, now for up to `config::kWifiConnectMs` = 8 s. `config::kMaxCallMs` counts
-both (`kWifiJoinMaxMs`: 43 s in all, under `lxctl`'s 45 s wait, checked by `test_lxctl`). The log line says
-the channel (`WiFi up in N ms (channel C)`) and a failed direct attempt. Tests: `WifiHintTest`. Device check
-owed: the second and later joins of a boot come up well under the scan's 3.5 s (`WiFi up in` in the log),
-and a join after File Transfer uses its connection's hint.
+point and channel of the last connection seen, its own or anyone's: `WifiSession::tick` runs every loop pass
+whatever is on screen and notices each new connection (`ConnectionWatch`), so File Transfer's and KOSync's
+count. With a hint for the network it joins, `net::join` first goes straight there (`WIFI_FAST_SCAN` with the
+channel and BSSID): it gives up at once when that access point isn't found or refuses it, and after
+`config::kWifiDirectJoinMs` (3 s) unless it has associated (then it waits for DHCP up to the whole join's
+budget: a slow address isn't a moved router). A failed direct attempt forgets the hint and the scan follows,
+as before, for up to `config::kWifiConnectMs` (8 s) or what's left of `config::kWifiJoinMaxMs` (11 s).
+`config::kMaxCallMs` counts it (43 s, under `lxctl`'s 45 s wait: `test_lxctl` evaluates the header). The
+sequence and the per-poll decision are pure (`net::join`, `net::attemptStep`, WifiSession supplies the
+radio). The log says the channel (`WiFi up in N ms (channel C)`) and a failed direct attempt. Accepted
+trade-offs: a join that fails altogether (away from WiFi, a wrong password) now blocks up to 8 s, or 11 s with
+a stale hint, where it was 6 s; on a mesh network the hint keeps the reader on the node it first joined
+for the boot. Tests: `WifiHintTest` (the hint, the watch, the sequence, the steps). Device check owed: the
+second and later joins of a boot come up well under the scan's 3.5 s; a lookup right after File Transfer
+joins directly; a router on a new channel (one quick failed direct attempt, then the scan).
