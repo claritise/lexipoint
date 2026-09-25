@@ -38,7 +38,7 @@
 | C15 | Card: other readings (`also tsuitachi`) | **Yes** | v0.1.x | Tiny | `multipleReadings` |
 | C16 | Card: explain the conjugation (te-form, causative-passive…) | **Yes** | v0.1.x | Small | Surface + lemma, on-device rules |
 | C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, `PATCH suspended`, C3 |
-| C11 | SRS review app on the device | **Yes, online-only: the study-session API is live** (2026-09-25) | v0.3 | Medium–large | Client, card UI |
+| C11 | SRS review app on the device | **Yes, with offline review** (claritise, 2026-09-25); the study-session API is live | v0.3 | Medium–large | Client, card UI |
 | C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/analyze/context`**, live 2026-09-25, returns a reading | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
 | C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes: the grammar pass is live** (2026-09-25); the second call also refines the split | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
@@ -245,6 +245,8 @@ is in your SRS. StarDict can't do that.
   binding).
 - Grammar's response shape: the reference doesn't detail `grammar[]` yet. Read a live second-call
   response before specifying.
+- **Pulled forward (claritise, 2026-09-25):** the second call and the refined word ship first, on their
+  own, before the rest of v0.2 (see "Suggested order"). Grammar on the card stays with C19.
 - **The second pass does refine word boundaries (confirmed by the reference, 2026-09-25).** The first
   answer is "fast tokens only", so **v0.1's card may be built on the rough split today**: the word it
   shows, its entry and C10's offsets can all change on the second call. That makes the second call
@@ -480,9 +482,9 @@ paging everything); recording a review, no (no grade endpoint; `PATCH` only sets
   Applied oldest first; **a resent `id` comes back `duplicate`**, so retries are safe. Each result
   carries the updated card (`dueAt`, `proficiency`, `state`).
 
-**Decision (claritise, 2026-09-25): review is online-only.** It stands until claritise reopens it, but
-the API now supports offline review directly (timestamps, client ids, deduped batches), so the cost of
-reopening it is only on our side. What changes even online:
+~~**Decision (claritise, 2026-09-25): review is online-only.**~~ **Reopened the same day (claritise,
+2026-09-25): make offline review work**, now that the API supports it directly (timestamps, client ids,
+deduped batches). The earlier online-only decision is superseded. What applies either way:
 - **Reviews are idempotent.** Retry a batch after a dropped connection; nothing counts twice. (The
   earlier "don't resend" rule is superseded.)
 - **`reviewedAt` is required, so the device needs the real time** even online. After WiFi is up, NTP
@@ -493,9 +495,43 @@ reopening it is only on our side. What changes even online:
   64 KB response cap (`../v0.1/lexirise-client.md` §1). Size it once a real response is measured.
 - **Directions:** decide which the device offers. `listen` needs audio, which the X4 Pro can't play.
 
-**If offline review is reopened:** queue answers on SD with their UUIDs and `reviewedAt`, and flush on
-WiFi-up. The timestamp needs the RTC date accessor (P8, `../v0.1/lexirise-client.md` §1, "Clock
-source"). Not checked: whether the RTC survives a fully drained battery.
+**Offline review, the plan (2026-09-25):**
+1. **Fetch while online.** Whenever WiFi is up and cards are due (`study/summary`), start a session and
+   keep its cards on SD. Creating a session needs the network.
+2. **Review offline.** Each answer goes to an SD queue with a new UUID `id` and `reviewedAt`.
+3. **Sync on the next WiFi-up**: send the queue in batches (≤ 200). `duplicate` counts as sent. Keep
+   `rejected` answers with their `error` in the log, and drop them from the queue.
+4. **The timestamp comes from the RTC**, never the boot clock (see "The device's clock" below).
+
+**To test before relying on it:** how long a session stays valid (fetched Monday, synced Wednesday?; the
+reference doesn't say); a card reviewed on the phone before the device syncs an older answer for it
+("applied oldest first" should order them, confirm); only fetched cards can be reviewed offline.
+
+**The device's clock (checked in the code, 2026-09-25):**
+- The X4 Pro's RTC is a **BM8563** (PCF8563-compatible) at I²C 0x51 (`freeink-sdk/docs/xteink-x4pro-support.md`).
+  It stores the full date and time, in **UTC** (the status bar's time zone is only a display offset,
+  `clockUtcOffsetQ`), which is what `reviewedAt` needs.
+- **The time can be checked.** The chip flags a stopped oscillator (low voltage, or never set), and the
+  SDK's `Rtc::now()` returns false then. So the device knows when its clock can't be trusted, and a review
+  made then must not be timestamped from it.
+- **Why claritise was never asked to set the time:** CrossPoint sets the RTC from NTP by itself **once**, on
+  the first successful WiFi connection through its own WiFi selection screen
+  (`WifiSelectionActivity.cpp`, then `clockHasBeenSynced = 1`). There's also Settings → Customise Status
+  Bar → Sync clock now.
+- **Lexipoint's own WiFi join doesn't set it.** `lexirise/net/WifiSession` joins directly, and `TlsConnection`
+  runs its own NTP for the system clock (`time()`), which is lost on reboot. It never writes the RTC. So
+  whether this device's RTC holds the right time depends on whether it ever joined WiFi through
+  CrossPoint's screen. **Not checked on the device** (the Home screen shows no clock; the dev harness has
+  no clock command).
+- **What offline review needs:**
+  - after every successful NTP sync in `TlsConnection`, **write the RTC** too (keep it fresh, drift is
+    small);
+  - at boot, **seed the system clock from the RTC** when `Rtc::now()` succeeds (P8's date accessor);
+  - timestamp a review only when the clock is trusted (synced since the RTC last lost power). Otherwise
+    hold the review until the next NTP sync, or block offline review until then;
+  - a dev-harness `CLOCK` command (RTC time + trusted flag) to check the device from the Mac.
+- Still unknown: whether the RTC keeps time through a fully drained battery (there may be no backup cell).
+  The oscillator flag makes this safe either way; it only decides how often a resync is needed.
 
 **Firmware cost:** a new top-level activity (a Home menu entry) and a card activity. `study/summary`
 gives the due count for the menu, so the vocab mirror isn't needed for it.
@@ -523,8 +559,10 @@ when it's settled.
 ~~10. Does Lexirise already ingest manga and link to ebook sites, as claritise says?~~ **Manga: yes**, comic OCR with tappable speech bubbles on Webtoon, Line Manga, Kakao and others (lexirise.app, 2026-09-25). **Ebook sites: not confirmed**, the site lists streaming, comic and podcast integrations only. **Data export: yes**, a Pro feature (C18, C20).
 
 **On the device / measured by us:**
-11. Does the X4 Pro's RTC survive a fully drained battery? Matters only if offline review is reopened, which the API now supports (C11).
-17. **Reopen offline review?** The study API now takes `reviewedAt`, client ids and deduped batches, so offline review costs only our side (an SD queue and the RTC date accessor). claritise's call (C11).
+11. Does the X4 Pro's RTC (BM8563) survive a fully drained battery? Safe either way: its oscillator flag says when the time is lost. Decides how often a resync is needed (C11).
+~~17. **Reopen offline review?**~~ **Yes** (claritise, 2026-09-25). Plan and clock findings in C11.
+18. Does **this device's RTC** hold the right time now? It depends on whether it ever joined WiFi through CrossPoint's own screen. Check with Settings → Customise Status Bar (the clock / sync row), or a dev-harness `CLOCK` command once built (C11).
+19. How long does a study session stay valid for syncing answers later? Not in the reference (C11).
 12. Lemma-cache hit rate over a chapter; time and memory of a whole-chapter `analyze/text`; TLS session resumption's heap cost on wolfSSL (C21).
 
 **Needs claritise:**
@@ -548,4 +586,4 @@ when it's settled.
 
 ## Suggested order after v0.1
 
-**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (both unblocked 2026-09-25: `analyze/context` and the grammar pass are live) → C5. **v0.3:** C11 (unblocked 2026-09-25: the study API is live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
+**Next (pulled forward, claritise 2026-09-25):** the `morphoPending` second call from C19, on its own (re-call `analyze/text`, take the refined word, refresh the card); grammar on the card waits for C19 proper. Then test the とびら sentence. **v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (both unblocked 2026-09-25: `analyze/context` and the grammar pass are live) → C5. **v0.3:** C11 (unblocked 2026-09-25: the study API is live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
