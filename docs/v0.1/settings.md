@@ -143,8 +143,9 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
 - **A tap means the row that was drawn at it**: `listCount()` and taps read the rows of the last built
   frame (`drawnRows_`, published by `buildScreen` on the render task under a mutex), so a second tap
   while a toggle's rows collapse never lands on the row that moved up (`settings_screen::rowAt`).
-- **Offline dictionary** (`lookup/StarDictChoice.h`): a tap uses its language's own folder when one is
-  chosen, else CrossPoint's Dictionary setting. The language is what the tapped text is
+- **Offline dictionary** (`lookup/StarDictChoice.h`): a tap on a Japanese/Chinese word (kana, Han, ー, 々)
+  uses its language's own folder when one is chosen, else CrossPoint's Dictionary setting; any other word (an
+  English word in a Japanese book) goes to CrossPoint's, as before. The language is what the tapped text is
   (`LanguageDecision::detected`), so the choice **still counts while that language's Lexirise lookups are
   off**, which is exactly when StarDict answers every tap in it (the row is hidden then, and the value
   kept). Word select reopens its dictionary when the language changes, and opens without CrossPoint's

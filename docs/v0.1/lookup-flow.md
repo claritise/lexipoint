@@ -265,7 +265,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   no word closes the card as a tap outside would. An unsent save is said first (`UnsentSave`), and then
   the close carries on (`card::afterClosed`: the long-pressed word, or back to the reader).
 - **Swipes** (`popup-ui.md` §3.2, deferred from P4): `CardController::swipe`: up on the card opens the
-  detail view, down goes back to the card and from the card closes it, left / right step the detail view's
+  detail view (not before the word has arrived: phase 0 has no detail view, only a swipe down means
+  something then), down goes back to the card and from the card closes it, left / right step the detail view's
   tabs (stopping at Meaning and ⋯). A swipe only counts when it starts on the card
   (`handleInput` matches its start against the frame on screen, like a tap; a touch on a frame that showed
   the other view, drawn before a view change reached the screen, is dropped too), at least
@@ -276,7 +277,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   (`swipeClearOfEdges`). Both ends come from `MappedInputManager::peekSwipe` (hook), and the direction is
   the SDK's dominant-axis rule. `lxctl card-gestures` drives them on the bench card, including a Back swipe from the left edge
   (the detail view goes back to the card, not to the previous tab) and a swipe that starts off the card
-  (nothing). Word select's side is pure too: `card::closeStep` (where a close goes), `card::afterNotice`
+  (nothing), and a long-press on the page (the bench drops it, and its lift must not tap the page). A
+  long-press, like Home, is never dropped from a full input queue. Word select's side is pure too: `card::closeStep` (where a close goes), `card::afterNotice`
   (what follows a notice), `card::longPressReplacesCard`.
 - **Each language's own offline dictionary** (`settings.md` §1b): `lookup::chooseStarDict`. If the
   language's folder can't be opened (removed from the card while its row is hidden, say), CrossPoint's
