@@ -254,8 +254,9 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   it's loading.
 - `CardController::step(+1)` at the last word calls `extend()` and waits (`awaitingNext()`): the card stays on
   its word (no detail view of nothing, P9 review) and `syncWord` moves it to the new sentence's first word
-  when the analysis lands (a new step, so a touch on the old frame is dropped). Stepping back meanwhile
-  cancels the move (the words still arrive, and the next forward step goes straight to them). If the
+  when the analysis lands (a new step, so a touch on the old frame is dropped). Stepping back, or a tap or
+  swipe on the card, meanwhile cancels the move (it was about this word: a save's Undo toast mustn't vanish
+  under a jump); the words still arrive, and the next forward step goes straight to them. If the
   analysis finds no word (only punctuation), the sentence after is tried, and a sentence with no language
   (a line of dots or English in a book that doesn't say) is passed over without a call
   (`LiveSource::nextAskable`); no answer gives a toast (`nextSentenceFailed`, or the key-rejected /
@@ -264,6 +265,9 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   tapped sentence failing still closes the card as before (P5).
 - The calls' order: the tapped sentence's analysis, then the word on screen's lookup (and a save's), then a
   next sentence the card waits for, then ready writes.
+- The bench (`BenchSource`) goes on into one canned "next sentence" (its own again) after
+  `kBenchPhaseAMs`, and the smoke log reports each word change: `lxctl card-sentence` drives the wait and
+  the jump on the device.
 - `NextSentence` reads word select's own page model (the card never outlives it), with copies of the book
   language and settings.
 - `buildSentenceAfter` after a sentence the cap cut (over `kMaxSentenceUnits`) starts right after it and
