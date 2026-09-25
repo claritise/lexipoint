@@ -73,7 +73,7 @@ well). Then either:
   A Japanese or Chinese word then uses its language's dictionary, and any other word (an English word in a
   Japanese book, say) still uses CrossPoint's. Traditional Chinese books always use CrossPoint's.
 
-The first lookup in a new dictionary builds its index once (`Indexing dictionary…`).
+The first lookup in a new dictionary builds its index once (`Indexing dictionary...`).
 
 ## 5. Looking words up
 
