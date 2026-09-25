@@ -235,6 +235,21 @@ The contextual meaning endpoint, empty `grammar[]`, a review endpoint plus a due
   (`../v0.1/lexirise-client.md` §1). **Measure** a real session's size; use a smaller `limit`.
 - `listen` needs audio; the X4 Pro has none.
 
+**Tested live, 2026-09-25 17:38 UTC** (claritise's account, with their OK; responses and the session ID are
+kept in `research/study-test/`, gitignored, never committed):
+- `GET /v1/study/summary` (ja, zh): 200, ~200–250 bytes. `newCards.dailyLimit` 5 on this account.
+- `POST /v1/study/sessions` (`zh`, `study`, `forward`, `limit: 1`): 200, 306 bytes, one card.
+  **Starting a session changed nothing**: the summary afterwards showed the same `newCount` and
+  `remainingToday`. So fetching cards is safe to do on every sync.
+- `GET /v1/study/sessions/{id}` right away: 200, same 306 bytes (resume works).
+- **Size:** 233 bytes for a new card with no source sentence; a card with a sentence and its
+  translation will be larger. A 180-card session is probably ~40–90 KB, over or near the 64 KB cap, so
+  stream it (v0.2 C11). Measure again with a sentence card.
+- **Session validity test, in progress:** the same session gets **one real review on 2026-09-27**
+  (a card claritise would genuinely grade that way; it changes that card's schedule). Accepted
+  (`applied`) means a session survives at least ~1–2 days. Rejected means offline review needs a
+  fallback (create a new session, then send the queued answers against it). Record the result here.
+
 ### `POST /v1/analyze/context` (live 2026-09-25)
 
 Body: `language`, `text` (≤ 1600 characters), **`charStart` / `charEnd` from `analyze/text`**, optional

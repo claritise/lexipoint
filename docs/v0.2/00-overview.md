@@ -616,7 +616,7 @@ when it's settled.
 11. Does the X4 Pro's RTC (BM8563) survive a fully drained battery? Safe either way: its oscillator flag says when the time is lost. Decides how often a resync is needed (C11).
 ~~17. **Reopen offline review?**~~ **Yes** (claritise, 2026-09-25). Plan and clock findings in C11.
 18. Does **this device's RTC** hold the right time now? It depends on whether it ever joined WiFi through CrossPoint's own screen. Check with Settings → Customise Status Bar (the clock / sync row), or a dev-harness `CLOCK` command once built (C11).
-19. How long does a study session stay valid for syncing answers later? Not in the reference (C11).
+19. How long does a study session stay valid for syncing answers later? Not in the reference. **Test running:** a session started 2026-09-25 17:38 UTC gets one real review on 2026-09-27 (`../reference/lexirise-api-notes.md`, "Study API"). Starting a session was confirmed read-only (C11).
 12. Lemma-cache hit rate over a chapter; time and memory of a whole-chapter `analyze/text`; TLS session resumption's heap cost on wolfSSL (C21).
 
 **Needs claritise:**
