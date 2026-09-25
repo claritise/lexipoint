@@ -56,10 +56,12 @@ drawer variants tried the same day were rejected. Touch is added **without addin
 ```
 
 **Detail view:** the same card, taller. It stops one text line below the top of the screen, leaving a
-**context strip**: the line of the page that holds the active word, with the word highlighted.
-When the active word changes (side buttons, §3.3), **the strip jumps to that word's line** (it's
-redrawn from the page's line layout, and the page itself doesn't scroll). A word that wraps across two lines shows the
-line where it starts. A small `line 2/5` marker sits at the strip's right edge.
+**context strip**: ~~the line of the page that holds the active word~~ **the active word at the strip's
+left edge, highlighted, then as much of its sentence after it as fits** (nothing before it; claritise,
+2026-09-25, P9: the scrolled page line jumped about as words stepped). When the active word changes (side
+buttons, §3.3), the next word takes the left edge. Before the sentence is analyzed (phase 0) the strip
+shows the page line as before. A small `line 2/5` marker sits at the strip's right edge. (The card view's
+strip, shown when the card covers the word, is still the page line.)
 Same frame and header. Tab content in the middle. Then **the tab row**: Meaning · Examples · Context · Kanji/Chars · Form (Japanese only) · **`⋯`**, styled like T L F K
 (the active tab is filled black). `⋯` is an icon-width tab holding the **actions** (Undo save, once saved · Save the sentence as a card ·
 Ignore this word · Look up later: v0.2 C17), so the word tabs keep room for their labels. Examples fall back to your own sentences (this one, and
@@ -223,7 +225,7 @@ origin, and never `wasBackGesture()` territory.
 
 | Input | Card | Detail view |
 |---|---|---|
-| **Side Left / Right** (page buttons) | Previous / next word in the sentence, stopping at its ends in v0.1 and continuing across the page once page analysis exists (D16). Re-runs only `dictionary/lookup` | **Same: previous / next word.** The context strip follows the word to its line, and **the current tab stays open** (step through the Kanji tab word by word) |
+| **Side Left / Right** (page buttons) | Previous / next word in the sentence. **Past its last word, on into the page's next sentence** (P9, claritise 2026-09-25): phase 0 on its first character, then it's analyzed and the card is on its first word; stepping back returns through the sentences seen. It stops at the page's end, and never goes back before the tapped sentence. Re-runs only `dictionary/lookup` within a sentence | **Same: previous / next word.** The context strip follows the word to its line, and **the current tab stays open** (step through the Kanji tab word by word) |
 | **Home** (capacitive pad) | Close | Back to the card |
 
 The side buttons mean **"next / previous" everywhere**: a page when the card is closed, a word when it's open. They never switch tabs. That keeps one meaning per button (claritise, 2026-09-24).

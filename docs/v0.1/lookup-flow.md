@@ -243,6 +243,23 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   has no page number, the ⋯ tab's v0.2 actions say "Not in this version yet", and "Saving…" isn't shown
   (the level shows at once instead). Errors beyond the save toast are P6 (`offline-and-errors.md`).
 
+### 5d. As built (P9): stepping on into the next sentence
+
+- `text::buildSentenceAfter` / `describeNextSentence`: the sentence after one on the page, built as if its
+  first piece were tapped (a token holding two sentences is split as for a tap), its language decided again.
+- `LiveSource` keeps the sentences it has analyzed, in page order, and each word's sentence
+  (`sentenceOf_`); a new sentence's words are added at the end, so every word keeps its index and the
+  controller's levels, Undo and retries stay valid. `CardSource::extend()` starts the next one (word select
+  hands `LiveSource` a `NextSentence` over its page model, book language and settings); `extending()` says
+  it's loading.
+- `CardController::step(+1)` at the last word calls `extend()`: the card steps to the index the new words
+  will take and shows phase 0 on the sentence's first character. If the analysis finds no word (only
+  punctuation), the sentence after is tried; no answer (offline) steps the card back to the last word and a
+  later press tries again; the page's end (or a sentence Lexirise can't be asked about) stops it. The tapped
+  sentence failing still closes the card as before (P5).
+- A save notes **its own** sentence; closing while a next sentence loads skips that analysis and sends the
+  queued saves.
+
 ### 5c. As built (P7)
 
 - **A long-press never also turns the page** (P3 already): the reader takes the long-press before its
