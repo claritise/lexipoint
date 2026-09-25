@@ -280,7 +280,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
 - When the next sentence's language changes the punctuation rules, it's cut again from the same first
   character (`buildSentenceFrom`), so nothing is skipped or repeated at a script change.
 - `buildSentenceAfter` after a sentence the cap cut (over `kMaxSentenceUnits`) starts right after it and
-  runs up to the cap (`Builder::buildFrom`), never overlapping what was shown.
+  runs up to the cap (`Builder::buildFrom`), never overlapping what was shown, ending at a clause break
+  (Chinese "；") first as a tap's window does.
 - A word already on the card from an earlier sentence (the same entry) passes its level and saved state to
   its new occurrences (a save may still be in its Undo window, not yet in Lexirise's answer).
 - A save notes **its own** sentence; closing while a next sentence loads skips that analysis and sends the
