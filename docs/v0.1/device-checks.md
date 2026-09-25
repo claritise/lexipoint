@@ -63,3 +63,16 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 - Physical: daylight photos (P4), thumb reach, ghosting after 20 cards, an hour of real reading; P4's sign-off on the
   pairs (claritise).
 - Japanese books on the device (only the bench's Japanese was driven; the SD card has a Chinese book).
+
+## 2026-09-25 (later), `lexipoint` @ `d58ded3c` (P11), flashed and verify-flash matched
+
+| Check | Result |
+|---|---|
+| First join of a boot (no hint yet) | scan: `WiFi up in 3607 ms (channel 10)` |
+| Five cold lookups (`lxctl lexi soak 5 cold`: WiFi released before each) | **pass**: 5/5, every rejoin direct: 1118–1168 ms (was 3551 ms every time on P10); a whole cold lookup ~4.4 s |
+| Restart, File Transfer joins first, leave it, look up (P11 R1) | **pass**: Lexipoint's first join of that boot was direct, `WiFi up in 1118 ms (channel 10)`: File Transfer's connection was remembered |
+| `Radio not reported stopped` (P11 R3) | never logged over the session |
+| The card view's strip on 话。 (P11) | **pass**: only 话 inverted, 。 plain |
+| Before flashing, on P10: the first join after a restart | failed at 6 s once more (the case P11 fixes); not seen on P11 |
+
+Still owed for P11: a router on a new channel; away from the saved network (the direct attempt, then the scan, under ~11 s).
