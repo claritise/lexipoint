@@ -51,7 +51,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
   (`config::kWifiConnectMs`), and twice the join ran out (right after File Transfer let WiFi go). Joining with the
   last BSSID/channel (a fast scan) would save ~3 s on every lookup that needs WiFi and make the limit comfortable.
   Done in P11 (`offline-and-errors.md` §5, as built P11).
-- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row).
+- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row). A second try (2026-09-25, P10 build): long-presses on either 深 still analyse as 深 + 深, so no card for 深深 can be reached from the reader; claritise to delete it in Lexirise. That session's first WiFi join after the restart failed at 6 s again (the case P11 fixes), the next took 3.5 s.
 - **Nit:** the More panel shows "Lookup langu…" beside "Chinese (Simplified)".
 
 ### Still owed on the device (need claritise, or a proxy)
