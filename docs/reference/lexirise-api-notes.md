@@ -136,6 +136,19 @@ this API. `dictionary/lookup` gives every sense in a fixed order. See v0.2 C10 f
   の) is next to the word. Most likely a lexicon cost for the kana spelling of a word usually written
   in kanji. Kana-heavy books (children's, YA) are the weak spot. Chinese segmentation seems better
   in use (claritise's impression, not measured). Not reported yet.
+- **Seen segmenting a whole manga volume** (2026-09-25, 178 `analyze/text` calls, one per page, the
+  page's OCR'd text blocks joined with `\n`; `../v0.2/manga.md` §4):
+  - `\n` comes back as its **own occurrence** with `isWordLike: false`, like punctuation. Blocks joined
+    with newlines keep their offsets clean; filter on `isWordLike`.
+  - The topic particle **は reads `ha`**, not `wa`: all 374 times in the volume (e.g. それは → それ + は `ha`). A reading
+    shown for は should be corrected on the device or hidden.
+  - **Kanji numerals split per character:** 一九九九年 → 一 / 九 / 九 / 九年.
+  - Full-width Latin (ＨＯＴＥＬ) is one word-like token with no reading; OCR's full-width dots
+    (`．．．`) are three non-word tokens.
+  - Occurrences carry **`lemmaEntryId`** beside `entryId` (the lemma's entry for an inflected form;
+    use it first for the lemma), plus `normalized`, `subTokenCount` and `lang`.
+  - Lemmas were right on inflected forms (めがけて → めがける, 落ちて来た → 落ちる, 早く → 早い).
+  - Latency ~1–5 s per call for a manga page's text (a few hundred characters).
 
 ## Tested live, 2026-09-24 (second round)
 
