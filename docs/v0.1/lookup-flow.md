@@ -252,11 +252,18 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   controller's levels, Undo and retries stay valid. `CardSource::extend()` starts the next one (word select
   hands `LiveSource` a `NextSentence` over its page model, book language and settings); `extending()` says
   it's loading.
-- `CardController::step(+1)` at the last word calls `extend()`: the card steps to the index the new words
-  will take and shows phase 0 on the sentence's first character. If the analysis finds no word (only
-  punctuation), the sentence after is tried; no answer (offline) steps the card back to the last word and a
-  later press tries again; the page's end (or a sentence Lexirise can't be asked about) stops it. The tapped
-  sentence failing still closes the card as before (P5).
+- `CardController::step(+1)` at the last word calls `extend()` and waits (`awaitingNext()`): the card stays on
+  its word (no detail view of nothing, P9 review) and `syncWord` moves it to the new sentence's first word
+  when the analysis lands (a new step, so a touch on the old frame is dropped). Stepping back meanwhile
+  cancels the move (the words still arrive, and the next forward step goes straight to them). If the
+  analysis finds no word (only punctuation), the sentence after is tried; no answer gives a toast
+  (`nextSentenceFailed`, or the key-rejected / rate-limited wording, `CardSource::extendFailure()`) and a later
+  press tries again; the page's end (or a sentence Lexirise can't be asked about) stops it quietly. The
+  tapped sentence failing still closes the card as before (P5).
+- `buildSentenceAfter` after a sentence the cap cut (over `kMaxSentenceUnits`) starts right after it and
+  runs up to the cap (`Builder::buildFrom`), never overlapping what was shown.
+- A word already on the card from an earlier sentence (the same entry) passes its level and saved state to
+  its new occurrences (a save may still be in its Undo window, not yet in Lexirise's answer).
 - A save notes **its own** sentence; closing while a next sentence loads skips that analysis and sends the
   queued saves.
 
