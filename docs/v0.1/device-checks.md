@@ -56,7 +56,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 
 ### Still owed on the device (need claritise, or a proxy)
 
-- `websmoke.py`: this Mac's Claude app has no Local Network access (see above).
+- ~~`websmoke.py`: this Mac's Claude app has no Local Network access (see above).~~ Not needed (claritise, 2026-09-25: "no need to test the network"); it passed at P1 and P9–P11 don't touch the web server.
 - A pasted wrong key, no key, a forced 429, a 5xx, a malformed response (P6 table; need a key change by claritise or a
   local proxy as `base_url`); WiFi dropped mid-save, and the next-sentence toast with WiFi off.
 - A stored Long-press Menu = Dictionary loading as Reader Menu (P10 §5g; host-tested, needs the settings file edited).

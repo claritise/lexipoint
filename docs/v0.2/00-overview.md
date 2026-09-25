@@ -15,7 +15,7 @@
 > manga). Anything e-ink is bad at stays on the computer, and that's fine.
 >
 > **Second rule (claritise, 2026-09-25):** build what we can without Lexirise first, and ask
-> Lexirise only for what's critical (like `words/context`). Bigger asks (C20) wait until after v0.3.
+> Lexirise only for what's critical (like `analyze/context`). Bigger asks (C20) wait until after v0.3.
 >
 > **Open items to confirm** are collected in "Open, to confirm" near the end.
 
@@ -38,8 +38,8 @@
 | C15 | Card: other readings (`also tsuitachi`) | **Yes** | v0.1.x | Tiny | `multipleReadings` |
 | C16 | Card: explain the conjugation (te-form, causative-passive…) | **Yes** | v0.1.x | Small | Surface + lemma, on-device rules |
 | C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, `PATCH suspended`, C3 |
-| C11 | SRS review app on the device | **Yes, online-only: Lexirise is building the endpoints** (announced 2026-09-25, not live) | v0.3 | Medium–large | Client, card UI |
-| C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/words/context`** (announced 2026-09-25, not live) | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
+| C11 | SRS review app on the device | **Yes, online-only: the study-session API is live** (2026-09-25) | v0.3 | Medium–large | Client, card UI |
+| C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/analyze/context`**, live 2026-09-25, returns a reading | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
 | C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes, once grammar comes back** (announced 2026-09-25) | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
 | C21 | Faster lookups: on-device caches (entries by lemma, chapter analysis, text-keyed cache, warm TLS) | **Yes, no Lexirise changes needed** | v0.1.x–v0.2, with C12–C13 | Small–medium each | Client, C12–C13, SD |
@@ -205,14 +205,19 @@ be four requests and four refreshes.
    second key and a cost per lookup. It also sends book text to another service, which should be
    opt-in. Only worth it if (2) is a no.
 
-**Update 2026-09-25: option 2 is being built.** Lexirise announced `POST /v1/words/context` (sentence
-+ word → the meaning in that context), not live yet. Option 3 is dropped. With it, the card can put
+**Update 2026-09-25: option 2 is live** (announced as `words/context`, shipped as `analyze/context`,
+below). Option 3 is dropped. With it, the card can put
 the sense that fits the sentence first, and (if the endpoint returns it) the reading that fits:
 四月一日 → tsuitachi, 一枚上手 → uwate, 长得 → zhǎng. Right now the card is wrong on exactly those tricky
 words.
-- **Open:** the announcement says "meaning", not "reading". Check the reference when it's live. If
-  there's no reading, that's the one follow-up worth asking for, and option 1 (C15) stays the
-  reading's fallback.
+- **Live 2026-09-25, as `POST /v1/analyze/context`** (not `words/context`). Body: `language`, `text`
+  (≤ 1600 characters), and the word's **`charStart` / `charEnd` from `analyze/text`**, plus an optional
+  `question`. Returns `meaning` (full), `conciseMeaning` (short) and **`reading`**, which is returned
+  "when the offsets match one token". So the reading question is answered: **yes, usually**. Option 1
+  (C15) stays the fallback when no reading comes back. Only the answer uses a model.
+- **It takes offsets, not the word**, so it explains whatever span we send. If the first
+  `analyze/text` answer split a word wrongly (とびら), send the span from the refined second call
+  (C19), or the explanation is of the wrong word.
 - **Cost:** a third call per lookup (~400 lookups/h at 1200 req/h, fine). It lands after the card is
   up, like phase B, so the card doesn't wait for it. When to call it (on open, or on the Context tab)
   is part of the design.
@@ -227,9 +232,10 @@ words.
 ## C19. Grammar on the card
 
 **Added 2026-09-25.** `grammar[]` / `grammarStates` were always empty because the slower second pass
-behind `morphoPending: true` never started through the API. Lexirise is fixing that: calling
-`analyze/text` again will return the grammar (`../reference/lexirise-api-notes.md`, "Reported to
-Lexirise"). The card could then say that the word is part of ～ことにした, and whether that pattern
+behind `morphoPending: true` never started through the API. **Fixed and documented 2026-09-25:** "When
+true, the response has fast tokens only. Call again later for grammar and refined segmentation."
+(`../reference/lexirise-api-notes.md`, "Reported to Lexirise"). Detecting ～ことにした is filed
+separately with Lexirise. The card could then say that the word is part of ～ことにした, and whether that pattern
 is in your SRS. StarDict can't do that.
 - **Firmware:** parse `grammar` / `grammarStates` (skipped today, `../v0.1/lexirise-client.md` §2),
   and call `analyze/text` once more after the first answer said `morphoPending: true`. That's a
@@ -237,14 +243,18 @@ is in your SRS. StarDict can't do that.
   call is to be measured.
 - **Design:** where the pattern goes on the card, with claritise's sign-off (the approved card is
   binding).
-- Response shape unknown until it's live. Read it before specifying.
-- **The second pass might also fix word boundaries (a guess, 2026-09-25).** `morphoPending` reads as
-  "morphological analysis still to come", and `../v0.1/lexirise-client.md` §2 already treats it as
-  "the word boundary may be rough". If the slower pass re-segments, the second call could return
-  とびら whole where the first split it as と + びら (`../reference/lexirise-api-notes.md`, tokenizer
-  notes). **Test once live:** call `analyze/text` twice on that sentence and compare the
-  occurrences. If boundaries change, the card must take the second call's word too, not only its
-  grammar, which makes C19 a bigger firmware change than written here.
+- Grammar's response shape: the reference doesn't detail `grammar[]` yet. Read a live second-call
+  response before specifying.
+- **The second pass does refine word boundaries (confirmed by the reference, 2026-09-25).** The first
+  answer is "fast tokens only", so **v0.1's card may be built on the rough split today**: the word it
+  shows, its entry and C10's offsets can all change on the second call. That makes the second call
+  matter for every lookup, not only grammar, and C19 bigger than first written:
+  - after a `morphoPending: true` answer, call again; if the tapped word's span or entry changed,
+    replace the card's word (a refresh), then fetch the meaning and context for the new word;
+  - how long "later" is must be measured (one retry after a delay, or a few with backoff);
+  - page analysis (C12) should cache only refined results, or mark fast ones to be redone.
+  **Test:** call `analyze/text` twice on the とびら sentence (`../reference/lexirise-api-notes.md`,
+  tokenizer notes) and compare. Not reported to Lexirise yet.
 
 ## C12–C13. Page analysis and the vocab mirror
 
@@ -456,29 +466,39 @@ paging everything); recording a review, no (no grade endpoint; `PATCH` only sets
    level up or down via `PATCH`. It's honest about what it is, but it isn't SRS, and it's unknown
    whether a `PATCH` to `proficiency` disturbs the FSRS state. Test before offering it.
 
-**Update 2026-09-25: option 1 is being built.** Lexirise announced `GET /v1/vocabulary/due` and
-`POST /v1/vocabulary/{id}/review` (grade 1–4; the server runs the scheduler and returns the updated
-card). Not live yet.
+**Update 2026-09-25: option 1 is live, as a study-session API** (announced as `vocabulary/due` +
+`vocabulary/{id}/review`; shipped differently). Details in `../reference/lexirise-api-notes.md`,
+"Study API":
+- `GET /v1/study/summary`: due / new counts, overall, per language and per deck (the app's Study tab).
+- `POST /v1/study/sessions`: `mode` `study` or `cram`; `source` all / deck / tags / vocabulary ids /
+  recent / today; `directions` forward / reverse / listen; `limit` ≤ 180. Returns `sessionId` and the
+  cards, **with their content**: `text`, `reading`, `translation`, `sourceSentence {text, translation}`,
+  `audioUrl`, `direction`, `isNew`, `dueAt`, `proficiency`. 422 when there's nothing to study.
+- `GET /v1/study/sessions/{sessionId}`: resume the session.
+- `POST /v1/study/sessions/{sessionId}/reviews`: up to 200 answers per batch, each with its own UUID
+  `id`, `rating` again / hard / good / easy, **`reviewedAt` (required)** and optional `durationMs`.
+  Applied oldest first; **a resent `id` comes back `duplicate`**, so retries are safe. Each result
+  carries the updated card (`dueAt`, `proficiency`, `state`).
 
-**Decision (claritise, 2026-09-25): review is online-only, grade only.** Lookups already need the
-network, and a phone hotspot covers the rest. So there's no offline queue, no `reviewed_at`, and no
-dedupe of synced reviews: the server's time is the review time, which is what FSRS needs. This
-supersedes the offline queue and SD cache first planned in option 1. Consequences:
-- A review POST is **not idempotent**. After a dropped connection, don't resend (as with a save). At
-  worst the reader grades that card again.
-- Fetch the due list once per session, so stepping between cards is local and only the grade goes
-  over the network.
-- Checks for the reference once live (content per card, pagination against the 64 KB body cap, the
-  grade scale, the next due date in the response): `../reference/lexirise-api-notes.md`.
+**Decision (claritise, 2026-09-25): review is online-only.** It stands until claritise reopens it, but
+the API now supports offline review directly (timestamps, client ids, deduped batches), so the cost of
+reopening it is only on our side. What changes even online:
+- **Reviews are idempotent.** Retry a batch after a dropped connection; nothing counts twice. (The
+  earlier "don't resend" rule is superseded.)
+- **`reviewedAt` is required, so the device needs the real time** even online. After WiFi is up, NTP
+  (already in `TlsConnection`) gives it. Use it, never the 1970 boot clock.
+- **The session carries everything**, so no per-card calls: start a session, show cards locally, send
+  answers in batches (e.g. every 10, and on leaving).
+- **Keep `limit` small (e.g. 30–50).** 180 cards with sentences and translations could exceed our
+  64 KB response cap (`../v0.1/lexirise-client.md` §1). Size it once a real response is measured.
+- **Directions:** decide which the device offers. `listen` needs audio, which the X4 Pro can't play.
 
-**If offline review ever comes back:** the device *can* timestamp. The X4 Pro has an RTC that
-`HalClock::syncFromNTP()` sets to the full UTC date and time, but `HalClock` only reads back hour and
-minute. It would need the date accessor already listed for P8 (`../v0.1/lexirise-client.md` §1,
-"Clock source"), plus an optional `reviewedAt` and a client ID per review from Lexirise. Not checked:
-whether the RTC survives a fully drained battery.
+**If offline review is reopened:** queue answers on SD with their UUIDs and `reviewedAt`, and flush on
+WiFi-up. The timestamp needs the RTC date accessor (P8, `../v0.1/lexirise-client.md` §1, "Clock
+source"). Not checked: whether the RTC survives a fully drained battery.
 
-**Firmware cost:** a new top-level activity (a Home menu entry) and a card activity. No local queue.
-It can share the vocab mirror (C13) for showing due counts offline.
+**Firmware cost:** a new top-level activity (a Home menu entry) and a card activity. `study/summary`
+gives the due count for the menu, so the vocab mirror isn't needed for it.
 
 **Scope note:** upstream `SCOPE.md` rules out "interactive apps". That never bound the fork, and after
 phase M there's no upstream to rebase onto, so it no longer costs anything.
@@ -489,12 +509,12 @@ Everything raised 2026-09-25 without a clear answer yet. Strike each one through
 when it's settled.
 
 **When Lexirise's new endpoints are live** (check the reference, `../reference/lexirise-api-notes.md`):
-1. Does `POST /v1/words/context` return the **reading**, or only the meaning? If only the meaning, the one follow-up worth sending (C10).
-2. `GET /v1/vocabulary/due`: does each card carry its content (word, reading, meaning, sentence) or only IDs? Is there a `limit` / pagination (64 KB body cap)? (C11)
-3. `POST /v1/vocabulary/{id}/review`: grade scale 1–4 = Again / Hard / Good / Easy? Does the response carry the next due date? (C11)
-4. The grammar pass: the response shape, and how long after the first call the second one returns grammar (C19).
-5. Does the second `analyze/text` call change **word boundaries** (とびら)? (C19)
-6. Were the reported bad data fixed (一緒 → ichiitoguchi, 𠮟る split, 一日中雨 as one token)? Re-test.
+~~1. Does the context endpoint return the **reading**?~~ **Yes, when the offsets match one token** (`POST /v1/analyze/context`, live 2026-09-25) (C10).
+~~2. Does each due card carry its content? A limit?~~ **Yes**: sessions return text, reading, translation, source sentence and audio URL per card; `limit` ≤ 180. Still to measure: a response's size against the 64 KB cap (C11).
+~~3. The grade scale; the next due date?~~ **`rating` again / hard / good / easy**; each result carries the updated card with `dueAt` (C11). 2026-09-25.
+4. The grammar pass: `grammar[]`'s shape, and how long after the first call the second one returns grammar and the refined split. **To measure** (C19).
+5. ~~Does the second `analyze/text` call change word boundaries?~~ **Yes, documented** ("refined segmentation", 2026-09-25). **Still to test** on the とびら sentence (C19).
+6. The reported bad data (长得, 四月一日, 𠮟る, 一緒) and ～ことにした not detected: **filed and being worked on** by Lexirise (2026-09-25). Re-test when they say it's fixed. 一日中雨 as one token wasn't in the list they named.
 
 **Lexirise, not asked yet:**
 7. Can a save carry a **reading or sense override**, so saves match the contextual card? (C10)
