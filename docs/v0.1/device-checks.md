@@ -23,3 +23,9 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 | **Left over:** 深深 saved as tracked (tag `xteink`) in claritise's account from that second try: Lexirise's analysis has since split 深深 into 深 + 深 on every path, so no card for 深深 can be reached to undo it. The dev key (`~/.lexirise_key`) is on another account. claritise to delete it in Lexirise | **owed (claritise)** |
 | Button press during the card's first network call (P9 §5d, known) | seen: a side-button press made and released while the card's first lookup blocked (WiFi join + TLS) was never seen, as documented |
 | **Bug found:** the card view's strip highlights the whole glued token (话。 with its full stop inverted), while the detail view's strip and the page highlight only 话 | **open** |
+| `lxctl card-smoke` (P4 gate) | **pass**: all 21 reference states driven and shot on the device (upright portrait, default side buttons) |
+| Design conformance, geometry (P4 gate) | **pass**: every frame and divider line (runs ≥ 300 px across, ≥ 150 px down) in all 21 device screenshots sits exactly where the host layout (`cardshots.py`, already matched box for box to `card-reference.html` in P4) puts it: 0 px off everywhere. The pairs for claritise's sign-off: `cardshots.py` panels + these screenshots (not committed) |
+| **Bug found (P9's bench fix, R20):** a bench page line is cut token by token at the right padding, so a long token goes whole: some lines lose most of their text, and in `ja-card-saved` the looked-up 煩わしくて isn't on the page at all (so no highlight). Bench only; real pages are laid out by the reader. Fix: re-wrap the bench's tokens at the panel width instead of dropping them | **open** |
+| `lxctl card-gestures` (P7) | **pass** |
+| `lxctl card-sentence` (P9) | **pass**: words 3 → 11, the wait at the sentence's last word and the jump into the bench's next sentence |
+| `lxctl settings-smoke` (P7) | **pass**: 12 rows |
