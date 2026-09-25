@@ -511,8 +511,51 @@ deduped batches). The earlier online-only decision is superseded. What applies e
    Sync, or opening review next time, sends it.
 4. **The timestamp comes from the RTC**, never the boot clock (see "The device's clock" below).
 
-Open: how long "fail fast" is on the review screen (WiFi join is up to ~6 s today), and whether leaving
-review with answers queued should offer "Sync now?" (the Anki habit is to sync on close).
+**Waiting and closing (proposed 2026-09-25, not signed off):**
+- **Opening review with cards stored:** "Connecting…" with a **Review offline** button, and give up after
+  ~4 s on its own (the saved network's direct join usually takes less). **With nothing stored:** the full
+  timeout, then "No cards on the device yet. Connect to WiFi and press Sync."
+- **Leaving review with answers queued:** try to send them automatically, with no prompt (Anki syncs on
+  close by default). Answers only, no new session (1 call). If it fails they stay queued, and the review
+  screen and Home show "24 answers waiting".
+
+**Using the endpoints (proposed 2026-09-25):**
+
+| When | Calls | Notes |
+|---|---|---|
+| A full sync (opening review, or Sync) | `POST …/sessions/{old}/reviews` × ⌈queued / 200⌉, then `POST /v1/study/sessions` | **2 calls** in the usual case, over one kept-alive TLS session. `study/summary` isn't needed: a session returns the cards, and **422 means nothing is due** (clear the stored session, show "All done") |
+| Leaving review | `POST …/reviews` only | Answers out; the next open fetches cards |
+| Home's due count | none | Counted from the stored session: cards not yet answered |
+
+- **Session request:** `mode: study`, `source: {type: all}`, `directions: ["forward"]` (no `listen`: no
+  audio; `reverse` only if claritise wants it), and a `limit`. Later: `source: {type: tags, tags:
+  ["book:<slug>"]}` gives "review this book's words" for free (C2 / C4 tags).
+- **Stream the session straight to SD.** Parse the response card by card into the stored file instead of
+  holding it in memory. The client's 64 KB body cap (`../v0.1/lexirise-client.md` §1) then doesn't limit
+  it, so `limit` can go up to the API's 180 (a larger per-call cap for this one endpoint, or a streaming
+  sink). Until that's built: `limit` ~50, measured against the cap.
+- **Answers go to the session they were given in.** Each queued answer keeps its `sessionId`; a sync
+  sends one batch per session, oldest first.
+- **Each answer carries:** a UUID v4 `id` (from `esp_random`), `vocabularyId`, `direction`, `rating`,
+  `reviewedAt` (from the RTC, ISO UTC) and `durationMs` (card shown → answered; cheap and the app records
+  it too).
+- **Results:** `applied` or `duplicate` → delete from the queue. `rejected` → log the `error`, delete,
+  and count it on screen. The returned `card` (new `dueAt`, `proficiency`) updates the vocab mirror (C13)
+  if it exists.
+
+**Storing cards (proposed 2026-09-25):**
+- Per language (a session is per language): `/.lexirise/study/<lang>/session.bin` (`sessionId`,
+  `fetchedAt`, and per card: `vocabularyId`, `direction`, `text`, `reading`, `translation`, the source
+  sentence and its translation, `isNew`, `dueAt`; not `audioUrl`) and
+  `/.lexirise/study/<lang>/queue.bin` (answers not yet confirmed).
+- About 300–500 bytes a card: 50 cards ≈ 25 KB, 180 ≈ 90 KB. Both files are written crash-safe (temp
+  file, then rename), as the settings store does.
+- **Rules:** send answers before fetching (or answered cards come back); hide answered cards locally
+  until the next sync; an "again" card comes back at the end of the local session (like Anki's learning
+  steps; both answers are sent and applied in order); replace the stored session only after a
+  successful sync; delete a queued answer only when the server confirms it.
+- **Limit to accept:** only cards due at sync time are stored (the API has no "due within N days").
+  Cards due later need another sync. If that grates, a "due by" parameter is a small later ask.
 
 **To test before relying on it:** how long a session stays valid (fetched Monday, synced Wednesday?; the
 reference doesn't say); a card reviewed on the phone before the device syncs an older answer for it
