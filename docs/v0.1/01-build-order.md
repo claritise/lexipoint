@@ -47,7 +47,9 @@ One phase = one branch = one gate = one ledger row.
 2. `pio run -e x4pro` **with `LEXIRISE` undefined** builds too (the upstream-parity check).
 3. The host suite passes: `cmake --build build/test && ctest --test-dir build/test`.
 4. Flashed to the device, it boots and opens a book, and the phase's manual check passes.
-5. `git grep -n "lx_[A-Za-z0-9]\{8,\}"` returns nothing.
+5. `python3 scripts/lexipoint/keyscan.py` is clean: no key-shaped `lx_…` string in the tracked files except
+   the tests' obviously synthetic ones (P8; the plain `git grep -n "lx_[A-Za-z0-9]\{8,\}"` also lists those).
+   Locally, also `git grep -qF "$(cat ~/.lexirise_key)"` finds nothing.
 
 ## Phase map
 

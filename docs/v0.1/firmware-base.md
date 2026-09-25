@@ -101,10 +101,12 @@ src/lexirise/
   util/Timing.h                       wrap-safe millis() comparisons
   settings/SettingsScreen.{h,cpp}     the device Settings → System → Lexirise rows and edits (P7), pure
   settings/LexiriseSettingsActivity   that screen (P7, device: CrossPoint's UiListActivity)
+  ota/ReleaseVersion                  `<upstream>-lexi.<n>` versions, which release OTA offers (P8), pure
   lookup/StarDictChoice.h             each language's own offline dictionary (P7), pure
 test/lexirise_*/                host gtest suites
 scripts/lexipoint/lxctl.py      host side of the dev harness (+ test_lxctl.py)
 scripts/lexipoint/websmoke.py   read-only smoke test of the web surface against a device (+ test_websmoke.py)
+scripts/lexipoint/keyscan.py    the key-leak scan, uniform gate 5 and CI (+ test_keyscan.py)
 test/lexirise_fakes/            fakes shared by the suites (card, connection, WiFi, clock)
 ```
 
@@ -127,7 +129,8 @@ lists every one. Hooks are wrapped in `#if LEXIRISE` unless noted:
 | `src/activities/reader/EpubReaderActivity.{h,cpp}` | (P2) pass the book's `<dc:language>` to word select. (P3) touch long-press → word select at that point, before link taps, owning the centre third only when CrossPoint's hold action is on (`lookup::lookupOwnsLongPress`); word select opens without a StarDict dictionary when Lexirise is set up (P6: `lookup::lexiriseConfigured`, settings only, not a rate limit's back-off), or when a language has its own (P7: `lookup::anyStarDict`) |
 | `src/activities/settings/SettingsActivity.{h,cpp}` | (P7) `SettingAction::Lexirise`, the System tab's `Lexirise` row (the device-only ACTION rows are appended here, not in `SettingsList.h`), and its dispatch to `LexiriseSettingsActivity` |
 | `lib/I18n/translations/english.yaml` | **No marker (YAML):** the `STR_LEXI_*` keys, one block after `STR_DICT_LOW_MEMORY` (the notices, then `STR_LEXI_CARD_*` for every card word, P6). (P7) `STR_LEXIRISE` and `STR_LEXI_SET_*` for the settings screen. Other languages fall back to English. `scripts/lexipoint/test_card_strings.py` checks them against `CardStrings`; re-check on upstream syncs (gen_i18n.py rejects comments in the file) |
-| (P8) `src/network/OtaUpdater.cpp` | OTA checks **our** fork's releases (§6) |
+| `src/network/OtaUpdater.cpp` | (P8) OTA reads **our** fork's releases (`config::kReleasesLatestUrl`) and `isUpdateNewer()` compares `<upstream>-lexi.<n>` versions (`ota::isNewerRelease`, §6); the asset name (`crosspoint-<tag>-x4pro.bin`) is upstream's rule |
+| `.github/workflows/{ci,release,release_candidate}.yml` | (P8) CI also runs on `lexipoint` pushes and adds a `lexipoint` job (the key-leak scan, the Lexipoint script tests); releases and candidates build the X4 Pro only, tagged `<upstream>-lexi.<n>` (§6) |
 | `lib/GfxRenderer/GfxRenderer.cpp` | (P4) `applyPromotedRefresh`: a promoted refresh never weakens the one asked for (the stronger of the two), so the card's half refresh on dismiss can't turn the reader's due full refresh into a half one |
 | `lib/GfxRenderer/FontCacheManager.{h,cpp}` | (P4) with LEXIRISE the prewarm scan takes 8 fonts (upstream 4): the card's expanded tabs draw with 7; a font past the cap is logged once per render (it loads glyph by glyph from SD) |
 | `src/SdCardFontSystem.{h,cpp}` | (P4) `familyFontIdAt(renderer, pt)`: the loaded SD family at another point size (the card's 8/10/18 pt), via the manager's existing `loadFamilyExtraSize` |
@@ -174,3 +177,21 @@ Record any upstream or ++ commit we carry that isn't in the base tag.
 - **Formatting:** upstream enforces clang-format in CI (`pr-formatting-check.yml`), and our code follows
   the same `.clang-format`, which keeps rebases quiet.
 - **Release notes** say which upstream version each release is built on, and link the user setup guide.
+
+**As built (P8):**
+- `platformio.ini` `[lexirise] release = <n>` (bump per release; back to 1 after a rebase onto a new
+  upstream version). `x4pro-gh_release` builds `CROSSPOINT_VERSION = <upstream>-lexi.<n>`, its `_rc` twin
+  `<upstream>-lexi.<n>-rc+<hash>`, and the dev env `<upstream>-lexi.<n>-x4pro`. `LEXIPOINT_VERSION` (0.1.0)
+  stays the product version in the Lexirise User-Agent.
+- **Releasing:** tag `<upstream>-lexi.<n>` (a prerelease: `…-rc`) and publish a GitHub release on the fork;
+  `release.yml` checks the tag against `platformio.ini`, builds `x4pro-gh_release` and attaches
+  `crosspoint-<tag>-x4pro.bin`. Only claritise publishes releases.
+- **OTA** (`OtaUpdater.cpp` hook): the fork's `/releases/latest` (prereleases aren't "latest"); a release is
+  offered only when it's a Lexipoint version newer than the running one (`ota::isNewerRelease`: upstream
+  version, then `n`; a release candidate updates to its release). Upstream's releases never are.
+- **CI** (`ci.yml`): runs on pushes to `lexipoint` too (the fork's Actions must be enabled). The
+  `unit-tests` job already builds every `lexirise_*` suite and the card goldens; `x4c` in the build matrix is
+  the LEXIRISE-off parity build; the new `lexipoint` job runs `scripts/lexipoint/keyscan.py` and the script
+  tests. `cppcheck` runs on the `default` env, which doesn't build Lexirise.
+- **Rebase (P8 gate):** checked 2026-09-25: the newest upstream tag (`1.6.5rc`) is already in `lexipoint`,
+  and upstream `master`'s two newer commits are empty merges, so there was nothing to rebase onto.
