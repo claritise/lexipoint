@@ -20,7 +20,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 | Tap another word with the card open (P10 §5h) | **pass**: 那 → 经历: the card closed and the tapped word's card opened |
 | Side buttons through a sentence and into the next (P9) | **pass**: 经历 → … → 话 → 这首歌深深… (the next sentence, its strip restarting there); the detail view's strip puts each word at the left edge with what fits after it; punctuation is skipped; the line counter follows (6/11 → 9/11) |
 | Save and Undo (P5) | **pass**: T on 深深 → toast "Saved as tracked · Undo" → the save sent after its window (`POST /v1/vocabulary` 200); ⋯ → Undo save → `DELETE` + `PATCH` (notes, tags cleared) 200, the card back to "not saved". A second try's Undo tap came before the toast's frame was on screen, so it counted as a page tap and closed the card (by design: taps are matched to the frame shown), which sent the save |
-| **Left over:** 深深 saved as tracked (tag `xteink`) in claritise's account from that second try: Lexirise's analysis has since split 深深 into 深 + 深 on every path, so no card for 深深 can be reached to undo it. The dev key (`~/.lexirise_key`) is on another account. claritise to delete it in Lexirise | **owed (claritise)** |
+| **Left over:** 深深 saved as tracked (tag `xteink`) in claritise's account from that second try: Lexirise's analysis has since split 深深 into 深 + 深 on every path, so no card for 深深 can be reached to undo it. The dev key (`~/.lexirise_key`) is on another account. claritise to delete it in Lexirise | **done**: claritise deleted it in Lexirise (2026-09-26) |
 | Button press during the card's first network call (P9 §5d, known) | seen: a side-button press made and released while the card's first lookup blocked (WiFi join + TLS) was never seen, as documented |
 | **Bug found:** the card view's strip highlights the whole glued token (话。 with its full stop inverted), while the detail view's strip and the page highlight only 话 | **open** |
 | `lxctl card-smoke` (P4 gate) | **pass**: all 21 reference states driven and shot on the device (upright portrait, default side buttons) |
@@ -51,7 +51,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
   (`config::kWifiConnectMs`), and twice the join ran out (right after File Transfer let WiFi go). Joining with the
   last BSSID/channel (a fast scan) would save ~3 s on every lookup that needs WiFi and make the limit comfortable.
   Done in P11 (`offline-and-errors.md` §5, as built P11).
-- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row). A second try (2026-09-25, P10 build): long-presses on either 深 still analyse as 深 + 深, so no card for 深深 can be reached from the reader; claritise to delete it in Lexirise. That session's first WiFi join after the restart failed at 6 s again (the case P11 fixes), the next took 3.5 s.
+- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row). A second try (2026-09-25, P10 build): long-presses on either 深 still analyse as 深 + 深, so no card for 深深 can be reached from the reader; claritise deleted it in Lexirise (2026-09-26). That session's first WiFi join after the restart failed at 6 s again (the case P11 fixes), the next took 3.5 s.
 - **Nit:** the More panel shows "Lookup langu…" beside "Chinese (Simplified)".
 
 ### Still owed on the device (need claritise, or a proxy)
@@ -60,8 +60,8 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 - A pasted wrong key, no key, a forced 429, a 5xx, a malformed response (P6 table; need a key change by claritise or a
   local proxy as `base_url`); WiFi dropped mid-save, and the next-sentence toast with WiFi off.
 - A stored Long-press Menu = Dictionary loading as Reader Menu (P10 §5g; host-tested, needs the settings file edited).
-- Physical: daylight photos (P4), thumb reach, ghosting after 20 cards, an hour of real reading; P4's sign-off on the
-  pairs (claritise).
+- Physical: daylight photos (P4), thumb reach, ghosting after 20 cards, an hour of real reading; (P4's sign-off on the
+  pairs: done, 2026-09-26).
 - Japanese books on the device (only the bench's Japanese was driven; the SD card has a Chinese book).
 
 ## 2026-09-25 (later), `lexipoint` @ `d58ded3c` (P11), flashed and verify-flash matched
