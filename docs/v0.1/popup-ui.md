@@ -99,7 +99,7 @@ size. Colours are **exactly black or white**, never grey (see the deviations bel
 | Strip text | the page's own reader font and size | same (follows the user's settings) |
 | Strip line marker (`line 2/5`): text / right / top | 10 / 8 / 4 | **14 / 11 / 6** |
 | Strip text clip: ends before the marker (both strips) | 40 from the right padding edge | **56** |
-| Strip auto-scroll: if the active word is past the clip, shift the line left so the word ends 8 px (**11**) inside the clip | — | — |
+| Strip auto-scroll (the card view's strip, and the detail view's before its word is known; P9's detail strip starts at the word and doesn't scroll): if the active word is past the clip, shift the line left so the word ends 8 px (**11**) inside the clip | — | — |
 | **Card-view strip (D17)**, the card's first row, only when the word is covered: height / h-padding / divider under it | 36 / 12 / 1 | **51 / 17 / 1** |
 | Card-view strip text / marker text / marker right / marker top | reader font (17 in the reference) / 10 / 6 / 2 | **reader font** / **14 / 8 / 3** |
 | Tab row: text / v-padding | 11 / 8 | **16 / 11** |
