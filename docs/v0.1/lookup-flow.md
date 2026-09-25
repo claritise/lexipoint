@@ -290,6 +290,21 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
 - A save notes **its own** sentence; closing while a next sentence loads skips that analysis and sends the
   queued saves.
 
+### 5e. As built (P9): claritise's follow-ups (2026-09-25)
+
+- **A long-press is taken only on a word.** Reported: a long-press off the text (a margin, blank space, an
+  image) opened word select with a word highlighted and nothing looked up, and the reader menu (text size and
+  the rest) could no longer be reached that way. Cause: since P3 `takeLongPress` took any long-press in the
+  lookup's zone, and word select opened on the middle word when none was under the finger. Fix: the reader
+  asks `DictionaryWordSelectActivity::pressOnWord` (the same word boxes and slop as its `wordAt`, measured
+  under the render lock, only for the lines under the press) last, after the zone and "can anything
+  answer"; the page it loaded is handed to word select. A long-press anywhere else isn't consumed, so the SDK
+  reports its lift as a tap and CrossPoint handles it as before (the centre opens the menu, the sides turn
+  the page). Tests: `LongPress.TakenOnlyWhenFiredOwnedAvailableAndOnAWord`, `APressOffTheTextStaysCrossPoints`.
+  Device check owed: long-press a margin, the gap between paragraphs and an image (the menu or a page turn,
+  nothing highlighted); long-press a word (the card, as before); a word at a line's end and the first line.
+- **Each book's lookup language** (`languages.md` §1, step 3): see there.
+
 ### 5c. As built (P7)
 
 - **A long-press never also turns the page** (P3 already): the reader takes the long-press before its
@@ -298,8 +313,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
 - **Back by entry point** (`popup-ui.md` §3): word select remembers a long-press on a word opened it
   (`touchEntry`). Then any close of the card (Back, Home, ✕, a tap or swipe down outside it) goes straight
   back to the reader (`card::closeStep` → `CloseStep::BackToReader`), and so does closing StarDict's definition. Opened
-  from the menu, the card closes to word select, as before. A long-press on no word still opens word
-  select as usual, and it behaves as menu-opened. For a touch-opened word select, a lookup that ends in a
+  from the menu, the card closes to word select, as before. ~~A long-press on no word still opens word
+  select as usual, and it behaves as menu-opened.~~ (P9: a long-press on no word isn't taken at all, §5e.) For a touch-opened word select, a lookup that ends in a
   notice instead (Not found, No dictionary set, a dictionary error) also goes back to the reader once the
   notice has been read.
 - **A long-press on another word while the card is open** (`popup-ui.md` §3.2): in card view, a

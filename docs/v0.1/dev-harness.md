@@ -2,7 +2,7 @@
 
 **Status:** built 2026-09-24 on branch `lexi/dev-harness` (the pre-P1 phase). It lets the builder
 drive and observe the X4 Pro with nobody touching it: synthetic taps, swipes and buttons, screenshots,
-memory stats, reboot. Asked for by claritise so the build can run while she's away from the device.
+memory stats, reboot. Asked for by claritise so the build can run while they're away from the device.
 
 Related: `01-build-order.md` (the phase), `firmware-base.md` §3 (hooks), `popup-ui.md` (the design
 conformance gate that the screenshots feed).

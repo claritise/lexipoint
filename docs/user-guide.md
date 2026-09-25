@@ -77,14 +77,16 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
 
 ## 5. Looking words up
 
-- **Long-press a word** on the page. The card opens at the bottom: the word, its reading, meaning and how
+- **Long-press a word** on the page. (A long-press anywhere else does what it always did: the menu in the
+  middle, a page turn at the sides.) The card opens at the bottom: the word, its reading, meaning and how
   common it is, filling in as Lexirise answers.
 - **Save it:** tap **T L F K** (tracked, learning, fresh, known). The toast offers **Undo** for 2 seconds.
   Tapping another level on a saved word changes it.
 - **More:** tap the arrow on the rank row, or swipe up on the card, for the detail view (Meaning,
   Examples, Context, Kanji or Characters, Form, ⋯). Swipe left or right on it to change tabs; swipe down to
   go back.
-- **Next and previous word:** the side page buttons step through the sentence while the card is open.
+- **Next and previous word:** the side page buttons step through the sentence while the card is open, and
+  on into the page's next sentence at its end.
 - **Readings:** tap the reading line (Japanese) to switch kana ⇄ romaji; it's remembered.
 - **Another word:** long-press it on the page while the card is open.
 - **Close:** ✕, Home, the Back swipe from the left edge, swipe down on the card, or tap the page. You're
@@ -92,6 +94,8 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
 
 Languages: a book's `<dc:language>` decides; a book that doesn't say is read by its text (kana means
 Japanese; Han-only text uses **Language when a book doesn't say**, or the only language you have on).
+If a book gets it wrong (a Chinese book looked up as Japanese), open the reader menu and set **Lookup
+language** to that book's language; it's remembered for that book (Auto goes back to the rule above).
 
 ## 6. Settings (Settings → System → Lexirise)
 

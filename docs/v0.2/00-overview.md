@@ -242,7 +242,7 @@ does mean this code will never go upstream, and it adds to the rebase cost.
 
 ## Questions to put to Lexirise
 
-> **Sent by claritise on 2026-09-24** in the Lexirise community (her posts at 3:58 pm and 5:07 pm): the review and due endpoints (Q8), contextual meaning (Q7), empty grammar (Q7), and the bad-data reports. **Awaiting answers.** Record replies here, with dates. (all from the checks above)
+> **Sent by claritise on 2026-09-24** in the Lexirise community (their posts at 3:58 pm and 5:07 pm): the review and due endpoints (Q8), contextual meaning (Q7), empty grammar (Q7), and the bad-data reports. **Awaiting answers.** Record replies here, with dates. (all from the checks above)
 
 ~~1. Deck ID on save / smart decks?~~ No deck ID, **but dynamic tag decks exist** (C4).
 ~~2. Sentence auto-translation?~~ **Yes, immediately** (tested 2026-09-24). Always send `proficiency`, because sentences default to 2. **C3 is unblocked.**
