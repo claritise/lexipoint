@@ -37,3 +37,28 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 | A word broken over two lines (P10 R4) | **pass**: 老黑奴 (老黑 ending line 3, 奴 starting line 4) highlighted as its pieces; a tap on either piece does nothing (screenshot-identical); a tap on 美 on the same line switched the card to 美国 |
 | Landscape book (P4/P10 §5h) | **pass**: Reading Orientation → Landscape CW; a long-press on a word opens the card in portrait (the strip shows its line, the page isn't drawn under it); a tap above the card just closes it (no lookup) and the reader comes back in landscape. Restored to Portrait, same page |
 | WiFi join (P6/P7 note) | **seen twice**: `WiFi failed after 6037 ms` on the first join after another WiFi user (File Transfer) let go; successful joins took 3.5–4.1 s. The next press joined. Worth watching: the join deadline may be tight right after a WiFi hand-back |
+| Rank row without a frequency rank (P4) | as designed: 老黑奴 has no rank, so the row shows the save state ("not saved"), `CardLayout` "no rank: the row shows only the state" |
+| Stability over the session (~45 min, ~60 lookups, 2 soaks) | **pass**: no reset, panic or watchdog in the log (the one `rst` is the harness's own connect); internal heap low-water 53,740 B free, largest block 31,732 B (240 samples) |
+
+### Found this session
+
+- **Bug:** the card view's strip highlights a whole glued token (话。, full stop included); the detail view's strip
+  and the page highlight only the word. Open.
+- **Bug (from P9 R20):** the bench page drops a whole token that runs past its right padding, so lines lose text and
+  one reference state (`ja-card-saved`) loses the looked-up word. Bench only. Fix: re-wrap the bench's tokens at the
+  panel width. Open.
+- **Improvement:** a WiFi join is ~3.5 s of all-channel scanning (`WIFI_ALL_CHANNEL_SCAN`) against a 6 s limit
+  (`config::kWifiConnectMs`), and twice the join ran out (right after File Transfer let WiFi go). Joining with the
+  last BSSID/channel (a fast scan) would save ~3 s on every lookup that needs WiFi and make the limit comfortable.
+- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row).
+- **Nit:** the More panel shows "Lookup langu…" beside "Chinese (Simplified)".
+
+### Still owed on the device (need claritise, or a proxy)
+
+- `websmoke.py`: this Mac's Claude app has no Local Network access (see above).
+- A pasted wrong key, no key, a forced 429, a 5xx, a malformed response (P6 table; need a key change by claritise or a
+  local proxy as `base_url`); WiFi dropped mid-save, and the next-sentence toast with WiFi off.
+- A stored Long-press Menu = Dictionary loading as Reader Menu (P10 §5g; host-tested, needs the settings file edited).
+- Physical: daylight photos (P4), thumb reach, ghosting after 20 cards, an hour of real reading; P4's sign-off on the
+  pairs (claritise).
+- Japanese books on the device (only the bench's Japanese was driven; the SD card has a Chinese book).
