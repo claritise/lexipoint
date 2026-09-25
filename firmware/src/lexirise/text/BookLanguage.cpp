@@ -34,7 +34,7 @@ bool hasSubtag(const std::string& tag, const std::string_view subtag) {
 std::string primarySubtag(const std::string& tag) { return tag.substr(0, tag.find_first_of("-_")); }
 
 bool isEnabled(const Language language, const Settings& settings) {
-  return settings.enabled && (language == Language::Japanese ? settings.japanese.enabled : settings.chinese.enabled);
+  return settings.enabled && settings.language(language).enabled;
 }
 
 LanguageDecision decision(const Language language, const LanguageSource source, const Settings& settings) {
@@ -74,6 +74,7 @@ LanguageDecision BookLanguage::decide(const std::string_view sentence, const Set
       LanguageDecision out;  // H8 (parked): not sent (StarDict answers), but cut as Chinese
       out.detected = Language::Chinese;
       out.source = LanguageSource::Metadata;
+      out.traditional = true;
       return out;
     }
     case TaggedLanguage::Unknown:
@@ -87,12 +88,12 @@ LanguageDecision BookLanguage::decide(const std::string_view sentence, const Set
     if (chars::isKana(cp)) return decision(Language::Japanese, LanguageSource::Kana, settings);
     han = han || chars::isHan(cp);
   }
-  if (han) return decision(settings.defaultLanguage, LanguageSource::DefaultForHan, settings);
+  if (han) return decision(settings.fallbackLanguage(), LanguageSource::DefaultForHan, settings);
   return {};
 }
 
 bool BookLanguage::mayUseLexirise(const Settings& settings) const {
-  if (!settings.enabled || !(settings.japanese.enabled || settings.chinese.enabled)) return false;
+  if (!settings.enabled || settings.enabledLanguageCount() == 0) return false;
   return dependsOnSentence() || decide({}, settings).language.has_value();
 }
 

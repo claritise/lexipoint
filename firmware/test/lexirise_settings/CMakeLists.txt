@@ -2,9 +2,11 @@ add_executable(LexiriseSettingsTest
   SettingsTest.cpp
   SettingsStoreTest.cpp
   SettingsPatchTest.cpp
+  SettingsScreenTest.cpp
   ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsStore.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsPatch.cpp
+  ${REPO_ROOT}/src/lexirise/settings/SettingsScreen.cpp
   ${REPO_ROOT}/src/lexirise/net/Http.cpp
 )
 

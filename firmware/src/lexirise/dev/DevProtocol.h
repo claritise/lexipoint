@@ -31,7 +31,7 @@ enum class Verb {
 };
 
 enum class ButtonName { Left, Right, Power };
-enum class LexiAction { Me, Analyze, Soak, Card };
+enum class LexiAction { Me, Analyze, Soak, Card, Settings };
 
 struct Command {
   Verb verb = Verb::None;

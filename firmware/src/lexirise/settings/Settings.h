@@ -17,6 +17,10 @@ enum class Reading { Kana, Romaji };
 
 const char* languageCode(Language language);  // "ja" / "zh"
 
+// Every language Lexipoint looks up, in settings order: code that spans languages loops over this, so a new
+// language (settings.md §1) is added here and in Settings::language().
+inline constexpr Language kLanguages[] = {Language::Japanese, Language::Chinese};
+
 struct LanguageSettings {
   bool enabled = true;
   std::string stardict;  // offline fallback dictionary folder; empty = the global dictionary
@@ -47,8 +51,32 @@ struct Settings {
   };
   std::vector<Extra> extras;
 
+  // A language's own group ([ja] / [zh]).
+  const LanguageSettings& language(const Language l) const {
+    switch (l) {  // no default: a new language must be added here
+      case Language::Japanese:
+        return japanese;
+      case Language::Chinese:
+        break;
+    }
+    return chinese;
+  }
   bool hasApiKey() const { return !apiKey.empty(); }
-  int enabledLanguageCount() const { return (japanese.enabled ? 1 : 0) + (chinese.enabled ? 1 : 0); }
+  int enabledLanguageCount() const {
+    int count = 0;
+    for (const Language l : kLanguages) count += language(l).enabled ? 1 : 0;
+    return count;
+  }
+  // "Language when a book doesn't say" as it applies (settings.md §1): with one language on, that one (the
+  // row is hidden then); otherwise the chosen one.
+  Language fallbackLanguage() const {
+    if (enabledLanguageCount() == 1) {
+      for (const Language l : kLanguages) {
+        if (language(l).enabled) return l;
+      }
+    }
+    return defaultLanguage;
+  }
 };
 
 struct ParseResult {

@@ -216,7 +216,7 @@ def device_usages() -> dict[str, re.Pattern]:
         if verb == "LEXI":
             for sub in rest.split(" | "):
                 out["LEXI " + sub.split()[0]] = usage_regex("LEXI " + sub)
-        elif verb in ("TAP", "BTN", "SYNC", "HOME"):
+        elif verb in ("TAP", "LONG", "SWIPE", "BTN", "SYNC", "HOME"):
             out[verb] = usage_regex(line)
     out.setdefault("SYNC", re.compile("^SYNC$"))
     return out
@@ -327,6 +327,148 @@ class CardSmoke(unittest.TestCase):
             self.assertTrue(lxctl.card_state_commands(state, name.split("-")[0], "-low" in name)[0].endswith("KANA"))
 
 LEXIRISE_FLAG = re.compile(r"-D\s*LEXIRISE=1\b")
+
+
+class FakeGestureHarness:
+    """The device's side of card-gestures: the card's view and tab after each swipe, logged at the SYNC as
+    smoke mode does. `states`: what the card logs after each swipe that doesn't close it."""
+
+    def __init__(self, states):
+        self.states = list(states)
+        self.sent = []
+        self.closed = False
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        previous = self.sent[-1] if self.sent else ""
+        self.sent.append(cmd)
+        # A long-press on the bench is dropped: the card logs nothing for it.
+        if cmd == "SYNC" and seen is not None and not previous.startswith("LONG"):
+            view, tab = self.states.pop(0)
+            seen.append(f"[123] [INF] [LXCARD] word 2 view {view} tab {tab}")
+        return "LX:OK"
+
+    def wait_for(self, pattern, timeout):
+        if pattern.startswith("Exiting activity"):
+            self.closed = True
+        return pattern
+
+
+class CardGestures(unittest.TestCase):
+    def card_box(self, golden):
+        with open(os.path.join(lxctl.GOLDEN_DIR, golden + ".json"), encoding="utf-8") as f:
+            frame = next(c for c in json.load(f)["card"] if c["kind"] == "frame" and c.get("t") == 3)
+        return frame["x"], frame["y"], frame["x"] + frame["w"], frame["y"] + frame["h"]
+
+    def test_every_swipe_matches_the_device_grammar(self):
+        usages = device_usages()
+        for cmd, _, _ in lxctl.CARD_GESTURES:
+            self.assertRegex(cmd, usages[cmd.split()[0]], cmd)
+
+    def test_every_swipe_starts_on_the_card_clear_of_the_edges(self):
+        """CardInput.h swipeClearOfEdges, over the SDK's own edge bands (FreeInkUICore.h edgeSwipe)."""
+        margin = header_constants("src/lexirise/LexiriseConfig.h")["kCardSwipeEdgeMarginPx"]
+        with open(os.path.join(REPO, "freeink-sdk/libs/ui/FreeInkUI/include/FreeInkUICore.h")) as f:
+            fracs = dict(re.findall(r"constexpr float (EDGE_SWIPE_\w+) = ([0-9.]+)f;", f.read()))
+        w, h = 480, 800
+        side, top_bottom = int(w * float(fracs["EDGE_SWIPE_SIDE_FRAC"])), int(h * float(fracs["EDGE_SWIPE_TOP_BOTTOM_FRAC"]))
+        view = "card"
+        for cmd, after, kind in lxctl.CARD_GESTURES:
+            if kind == "long":
+                x, y = map(int, cmd.split()[1:3])
+                left, top, right, bottom = self.card_box("ja-card-saved" if view == "card" else "ja-expanded-meaning")
+                self.assertEqual(view, "card", f"{cmd}: the page is only under the card view")
+                self.assertFalse(left <= x < right and top <= y < bottom, f"{cmd}: meant for the page")
+                continue
+            x, y, ex, ey = map(int, cmd.split()[1:5])
+            dx, dy = ex - x, ey - y
+            left, top, right, bottom = self.card_box("ja-card-saved" if view == "card" else "ja-expanded-meaning")
+            on_card = left <= x < right and top <= y < bottom
+            back = x <= side and dx > 0 and abs(dx) > abs(dy)
+            if kind == "back":
+                self.assertTrue(back, f"{cmd}: meant as Back, but the SDK wouldn't read it so")
+            elif kind == "page":
+                self.assertFalse(on_card, f"{cmd}: meant to start off the card")
+            else:
+                self.assertTrue(on_card, f"{cmd}: off the {view} view's card")
+                self.assertTrue(x >= margin and margin <= y < h - margin, f"{cmd}: inside an edge gesture's margin")
+                self.assertFalse(back, f"{cmd}: the SDK reads it as Back")
+                self.assertFalse(y <= top_bottom and dy > 0 and abs(dy) > abs(dx), f"{cmd}: a top-edge gesture")
+                self.assertFalse(y >= h - top_bottom and dy < 0 and abs(dy) > abs(dx), f"{cmd}: a bottom-edge gesture")
+            view = after[0] if after else view
+
+    def test_a_long_press_that_closes_the_card_fails(self):
+        class Closing(FakeGestureHarness):
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                if cmd.startswith("LONG"):
+                    self.long_pressed = True
+                elif cmd == "SYNC" and getattr(self, "long_pressed", False) and seen is not None:
+                    seen.append("[1] [INF] [ACT] Exiting activity: LexiriseCard")
+                    self.long_pressed = False
+                    return "LX:OK"
+                return super().command(cmd, expect, timeout, seen)
+
+        h = Closing([s for _, s, k in lxctl.CARD_GESTURES if s and k != "long"])
+        with self.assertRaises(RuntimeError):
+            lxctl.card_gestures(h, sleep=lambda _s: None)
+
+    def test_replay_checks_each_state_and_ends_closed(self):
+        h = FakeGestureHarness([s for _, s, k in lxctl.CARD_GESTURES if s and k != "long"])
+        lxctl.card_gestures(h, sleep=lambda _s: None)
+        self.assertTrue(h.closed)
+        self.assertEqual([c for c in h.sent if c.startswith(("SWIPE", "LONG"))], [c for c, _, _ in lxctl.CARD_GESTURES])
+
+    def test_a_swipe_that_lands_elsewhere_fails(self):
+        states = [s for _, s, k in lxctl.CARD_GESTURES if s and k != "long"]
+        states[1] = ("expanded", 0)  # the left swipe didn't change the tab
+        with self.assertRaises(RuntimeError):
+            lxctl.card_gestures(FakeGestureHarness(states), sleep=lambda _s: None)
+
+
+class SettingsSmoke(unittest.TestCase):
+    class Fake:
+        def __init__(self, rows):
+            self.rows, self.sent, self.shots, self.left = rows, [], 0, False
+
+        def command(self, cmd, expect=None, timeout=0, seen=None):
+            self.sent.append(cmd)
+            if cmd == "SYNC" and seen is not None and self.rows is not None:
+                seen.append(f"[1] [INF] [LXSET] rows {self.rows}")
+            return "LX:OK LEXI" if cmd.startswith("LEXI") else "LX:OK"
+
+        def wait_for(self, pattern, timeout):
+            self.left = self.left or pattern.startswith("Exiting")
+            return pattern
+
+    def run_smoke(self, rows):
+        h = self.Fake(rows)
+        with tempfile.TemporaryDirectory() as out:
+            n = lxctl.settings_smoke(h, out, shot=lambda _h, _p: None)
+        return h, n
+
+    def test_opens_checks_the_rows_and_leaves_with_back(self):
+        h, n = self.run_smoke(12)
+        self.assertEqual(n, 12)
+        self.assertTrue(h.left)
+        self.assertEqual(h.sent[0], "LEXI SETTINGS")
+        self.assertTrue(any(c.startswith("SWIPE") for c in h.sent))
+
+    def test_no_rows_or_too_many_fail(self):
+        for rows in (None, 3, 13):
+            with self.assertRaises(RuntimeError):
+                self.run_smoke(rows)
+
+    def test_commands_match_the_device_grammar(self):
+        usages = device_usages()
+        self.assertRegex("LEXI SETTINGS", usages["LEXI SETTINGS"])
+        self.assertRegex(f"SWIPE {lxctl.EDGE_INSET} 400 240 400", usages["SWIPE"])
+
+    def test_row_bounds_match_the_screen(self):
+        """SETTINGS_ROWS_MAX is every settings_screen::Row; MIN the Account group (visibleRows, Lexirise off)."""
+        with open(os.path.join(REPO, "src/lexirise/settings/SettingsScreen.h"), encoding="utf-8") as f:
+            body = re.search(r"enum class Row : uint8_t \{(.*?)\};", f.read(), re.S).group(1)
+        rows = re.findall(r"^\s*(\w+),", body, re.M)
+        self.assertEqual(lxctl.SETTINGS_ROWS_MAX, len(rows))
+        self.assertEqual(rows[:lxctl.SETTINGS_ROWS_MIN], ["Lookups", "ApiKey", "Account", "TestConnection"])
 
 
 class X4ProEnvsBuildLexirise(unittest.TestCase):

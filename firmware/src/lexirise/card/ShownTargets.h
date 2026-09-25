@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "CardModel.h"
 #include "DisplayList.h"
 #include "lexirise/util/Timing.h"
 
@@ -18,13 +19,14 @@ namespace lexipoint::card {
 
 struct ShownFrame {
   std::vector<Hit> hits;
-  int step = -1;  // CardController::steps() when it was drawn
+  int step = -1;           // CardController::steps() when it was drawn
+  View view = View::Card;  // the view it showed: a touch on it means nothing in the other one
 };
 
 class ShownTargets {
  public:
-  // render(): this frame's targets and step count, before its refresh starts.
-  void drawing(std::vector<Hit> hits, const int step) { pending_ = {std::move(hits), step}; }
+  // render(): this frame's targets, step count and view, before its refresh starts.
+  void drawing(std::vector<Hit> hits, const int step, const View view) { pending_ = {std::move(hits), step, view}; }
   // render(): the refresh ended at `nowMs`; the pending frame is what the user sees from here on.
   void shown(const unsigned long nowMs) {
     previous_ = std::move(current_);

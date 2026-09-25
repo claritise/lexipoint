@@ -111,11 +111,13 @@ TEST(DevProtocol, Lexi) {
   EXPECT_TRUE(smoke.kana);
   EXPECT_TRUE(parse("LX:LEXI CARD zh KANA").kana);
   EXPECT_FALSE(parse("LX:LEXI CARD zh KANA").low);
+  EXPECT_EQ(parse("LX:LEXI SETTINGS").lexi, LexiAction::Settings);
+  EXPECT_EQ(parse("LX:LEXI SETTINGS").verb, Verb::Lexi);
   EXPECT_EQ(parse(("LX:LEXI SOAK " + std::to_string(lexipoint::dev::config::kLexiSoakMax)).c_str()).verb, Verb::Lexi);
   for (const char* bad : {"LX:LEXI", "LX:LEXI ANALYZE", "LX:LEXI ANALYZE ko", "LX:LEXI SOAK 0", "LX:LEXI SOAK 51",
                           "LX:LEXI SOAK x", "LX:LEXI SOAK 5 WARM", "LX:LEXI ME 1", "LX:LEXI KEY lx_abc", "LX:LEXI CARD",
                           "LX:LEXI CARD ko", "LX:LEXI CARD ja HIGH", "LX:LEXI CARD JA", "LX:LEXI CARD ja KANA LOW",
-                          "LX:LEXI CARD ja LOW LOW", "LX:LEXI CARD ja LOW KANA x"}) {
+                          "LX:LEXI CARD ja LOW LOW", "LX:LEXI CARD ja LOW KANA x", "LX:LEXI SETTINGS x"}) {
     EXPECT_NE(parse(bad).error, nullptr) << bad;
     EXPECT_EQ(parse(bad).verb, Verb::None) << bad;
   }

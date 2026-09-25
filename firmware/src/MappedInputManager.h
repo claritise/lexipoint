@@ -65,6 +65,11 @@ class MappedInputManager {
   // LEXIPOINT: the same long-press (at its touch-down point) without consuming it, so a caller can
   // decide whether it's theirs before taking it with wasScreenLongPress().
   bool peekScreenLongPress(int& x, int& y) const;
+  // LEXIPOINT: this frame's swipe, both ends in logical coordinates, as wasSwipe() reads it: the card only
+  // takes swipes that start on it, clear of the edge gestures (popup-ui.md §3.2).
+  bool peekSwipe(int& startX, int& startY, int& endX, int& endY) const {
+    return decodeSwipe(startX, startY, endX, endY);
+  }
 #endif
   bool isScreenTouchHeld(int& x, int& y) const;
   // Raw release edge, also true when the contact ended in a swipe or drag-off

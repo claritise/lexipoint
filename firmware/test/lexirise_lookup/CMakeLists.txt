@@ -4,6 +4,7 @@ add_executable(LexiriseLookupTest
   LexiriseLookupTest.cpp
   StarDictCandidatesTest.cpp
   LongPressTest.cpp
+  StarDictChoiceTest.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LexiriseLookup.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LookupCard.cpp
   ${REPO_ROOT}/src/lexirise/api/Responses.cpp

@@ -26,6 +26,9 @@ enum class SettingAction {
   DownloadFonts,
   TextSettings,
   KeyboardLayouts,
+#if LEXIRISE
+  Lexirise,  // LEXIPOINT: Settings → System → Lexirise (settings.md §0)
+#endif
 };
 
 struct SettingInfo {

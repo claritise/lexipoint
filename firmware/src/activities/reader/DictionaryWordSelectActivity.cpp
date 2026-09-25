@@ -19,6 +19,7 @@
 #include "lexirise/card/ReaderPageFor.h"         // LEXIPOINT
 #include "lexirise/lookup/PageTap.h"             // LEXIPOINT
 #include "lexirise/lookup/StarDictCandidates.h"  // LEXIPOINT
+#include "lexirise/lookup/StarDictChoice.h"      // LEXIPOINT
 #endif
 
 namespace {
@@ -70,6 +71,7 @@ void DictionaryWordSelectActivity::onEnter() {
     if (touched >= 0) {
       selected = touched;
       lookupPending = true;
+      touchEntry = true;  // popup-ui.md §3: its card's Back returns to the reader
     }
   }
 #endif
@@ -203,8 +205,16 @@ void DictionaryWordSelectActivity::performLookup() {
   // LEXIPOINT: Lexirise first, in the card; StarDict only when it isn't asked or had no answer
   // (lookup-flow.md §4, offline-and-errors.md §1).
   using lexipoint::lookup::Gate;
-  const Gate gate = book ? lexipoint::lookup::lexiriseGate(*book) : Gate::Off;
-  if (gate == Gate::Ask && openLexiriseCard()) return;
+  // One settings copy for the whole lookup (the web page may change them from another task meanwhile).
+  const lexipoint::Settings settings = lexipoint::settingsStore().snapshot();
+  const Gate gate = book ? lexipoint::lookup::lexiriseGate(settings, *book, lexipoint::service().blocked()) : Gate::Off;
+  // The sentence and its language: for Lexirise, or when a language has its own StarDict dictionary. Plain
+  // StarDict lookups (upstream's path) skip the work.
+  auto tap =
+      gate == Gate::Ask || lexipoint::lookup::anyLanguageStarDict(settings) ? describeSelected(settings) : std::nullopt;
+  starDict = lexipoint::lookup::chooseStarDict(settings, tap ? tap->language.dictionaryLanguage() : std::nullopt,
+                                               words.empty() ? "" : words[selected].text, SETTINGS.dictionaryName);
+  if (gate == Gate::Ask && tap && openLexiriseCard(std::move(*tap), settings)) return;
   fallBack(lexipoint::lookup::gateFallback(gate, lexipoint::lookup::takeNoKeyNoticeIf(gate),
                                            lexipoint::lookup::takeUnannouncedIf(gate), starDictSet()));
   return;
@@ -215,6 +225,19 @@ void DictionaryWordSelectActivity::performLookup() {
 // LEXIPOINT: split from performLookup(), unchanged: the Lexirise card hands back to it.
 void DictionaryWordSelectActivity::runStarDict() {
   popup = Popup::Busy;
+#if LEXIRISE
+  // LEXIPOINT: the selected word's language's own dictionary, else (removed from the card, say) CrossPoint's;
+  // a tap in the other language reopens (lookup/StarDictChoice.h).
+  if (const auto state = lexipoint::lookup::prepareStarDict(
+          starDict, dictOpened, [this](const std::string& folder) { return dict.open(folder.c_str()); },
+          [this] { return dict.needsIndex(); })) {
+    if (state->from == lexipoint::lookup::OpenedFrom::Fallback) {
+      LOG_INF("LXLOOK", "Offline dictionary %s can't be opened: CrossPoint's answers", starDict.folder.c_str());
+    }
+    dictOpenOk = state->ok();
+    dictNeedsIndex = state->needsIndex;
+  }
+#else
   if (!dictOpenAttempted) {
     dictOpenAttempted = true;
     dictOpenOk = dict.open(SETTINGS.dictionaryName);
@@ -223,6 +246,7 @@ void DictionaryWordSelectActivity::runStarDict() {
     // the sidecar ourselves, which is handled below.
     dictNeedsIndex = dictOpenOk && dict.needsIndex();
   }
+#endif
   popupMsg = dictNeedsIndex ? StrId::STR_DICT_INDEXING : StrId::STR_DICT_LOOKING_UP;
   requestUpdateAndWait();  // paint the page + busy popup before blocking on SD
 
@@ -251,7 +275,11 @@ void DictionaryWordSelectActivity::runStarDict() {
     startActivityForResult(
         std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(headword),
                                                        std::move(definition), dict.definitionsAreHtml()),
+#if LEXIRISE
+        [this](const ActivityResult&) { answerClosed(); });  // LEXIPOINT: by entry point
+#else
         [this](const ActivityResult&) { requestUpdate(); });
+#endif
     return;
   }
   // Name the failure: a genuine miss is "Not found"; a word that WAS found but
@@ -315,10 +343,22 @@ void DictionaryWordSelectActivity::loop() {
     if (millis() - popupTime >= POPUP_DURATION_MS) {
       popup = Popup::None;
 #if LEXIRISE
-      if (starDictAfterPopup) {  // LEXIPOINT: the Lexirise notice has been read: StarDict answers
-        starDictAfterPopup = false;
-        runStarDict();
-        return;
+      // LEXIPOINT: the notice has been read (card::afterNotice).
+      using lexipoint::card::AfterNotice;
+      const std::optional<lexipoint::card::AfterPopup> waiting = afterPopup;
+      afterPopup.reset();
+      switch (lexipoint::card::afterNotice(waiting, touchEntry)) {
+        case AfterNotice::RunStarDict:  // after a Lexirise notice, StarDict answers
+          runStarDict();
+          return;
+        case AfterNotice::FinishClose:  // after an unsent save's notice, the rest of the card's close
+          finishClose(waiting->lookUpAt);
+          return;
+        case AfterNotice::BackToReader:  // a long-press opened this: the lookup ends back in the reader
+          finish();
+          return;
+        case AfterNotice::Redraw:
+          break;
       }
 #endif
       requestUpdate();
@@ -487,19 +527,16 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
 // Lexirise isn't asked (no language to send: off, a switched-off language, a non-CJK book). The card
 // hands back when Lexirise found no word (Not found) or had no answer (no key, no WiFi, network, a bad
 // response): StarDict gets its turn then.
-bool DictionaryWordSelectActivity::openLexiriseCard() {
-  if (!book || selected < 0 || selected >= static_cast<int>(words.size())) return false;
-  lexipoint::text::TapContext context =
-      lexipoint::lookup::describeTap(pageModel, {words[selected].line, words[selected].token}, *book);
+bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext context,
+                                                    const lexipoint::Settings& settings) {
 #if LOG_LEVEL >= 2
   lexipoint::lookup::logTap(context);
 #endif
-  if (!lexipoint::lookup::asksLexirise(context, lexipoint::lookup::lexiriseConfigured(*book))) return false;
+  if (!lexipoint::lookup::asksLexirise(context, lexipoint::lookup::lexiriseConfigured(settings, *book))) return false;
 
   auto outcome = std::make_shared<lexipoint::card::LiveOutcome>();
-  auto source =
-      std::make_unique<lexipoint::card::LiveSource>(lexipoint::service(), std::move(context), readerPage,
-                                                    lexipoint::tagList(lexipoint::settingsStore().snapshot().tags));
+  auto source = std::make_unique<lexipoint::card::LiveSource>(lexipoint::service(), std::move(context), readerPage,
+                                                              lexipoint::tagList(settings.tags));
   // The page stays this activity's: the card draws it under itself while it's open.
   auto drawPage = [this](GfxRenderer& r) { page->render(r, fontId, marginLeft, marginTop); };
   popup = Popup::None;
@@ -510,10 +547,11 @@ bool DictionaryWordSelectActivity::openLexiriseCard() {
       [this, outcome](const ActivityResult&) {
         using lexipoint::card::AfterCard;
         switch (lexipoint::card::afterCard(*outcome, starDictSet())) {
-          case AfterCard::Redraw:
-            requestUpdate();
+          case AfterCard::Closed:
+            finishClose(outcome->lookUpAt);
             return;
-          case AfterCard::UnsentSave:  // the card closed before a save could go
+          case AfterCard::UnsentSave:  // the card closed before a save could go: said first, then the close's way
+            afterPopup = lexipoint::card::AfterPopup::finishClose(outcome->lookUpAt);
             showLookupPopup(Popup::Error, noticeString(lexipoint::lookup::noticeForUnsentSave(outcome->unsentError)));
             return;
           case AfterCard::NotFound:
@@ -531,8 +569,37 @@ bool DictionaryWordSelectActivity::openLexiriseCard() {
   return true;
 }
 
-// LEXIPOINT: a StarDict dictionary is chosen in the settings.
-bool DictionaryWordSelectActivity::starDictSet() { return SETTINGS.dictionaryName[0] != '\0'; }
+// LEXIPOINT: a lookup's answer (the card, or StarDict's definition) was closed: a long-press on the page
+// opened this, so back to the reader; opened from the menu, back to choosing a word (popup-ui.md §3).
+void DictionaryWordSelectActivity::answerClosed() { finishClose(std::nullopt); }
+
+// LEXIPOINT: where a closed answer goes (card::closeStep): the word a long-press on the page landed on (looked
+// up on the next loop() once this page is back on screen; the card used this page's own coordinates), back to
+// the reader, or this page.
+void DictionaryWordSelectActivity::finishClose(const std::optional<lexipoint::card::PagePoint>& lookUpAt) {
+  using lexipoint::card::CloseStep;
+  const int word = lookUpAt ? wordAt(lookUpAt->x, lookUpAt->y) : -1;
+  switch (lexipoint::card::closeStep(lookUpAt, word >= 0, touchEntry)) {
+    case CloseStep::LookUp:
+      selected = word;
+      lookupPending = true;
+      requestUpdate();
+      return;
+    case CloseStep::BackToReader:
+      finish();
+      return;
+    case CloseStep::Redraw:
+      requestUpdate();
+      return;
+  }
+}
+
+// LEXIPOINT: the selected word's sentence and language (its language also picks the StarDict dictionary).
+std::optional<lexipoint::text::TapContext> DictionaryWordSelectActivity::describeSelected(
+    const lexipoint::Settings& settings) const {
+  if (!book || selected < 0 || selected >= static_cast<int>(words.size())) return std::nullopt;
+  return lexipoint::text::describeTap(pageModel, {words[selected].line, words[selected].token}, *book, settings);
+}
 
 // LEXIPOINT: a Lexirise notice's words.
 StrId DictionaryWordSelectActivity::noticeString(const lexipoint::lookup::Notice notice) {
@@ -560,7 +627,7 @@ void DictionaryWordSelectActivity::fallBack(const lexipoint::lookup::Fallback fa
   starDictOffline = plan.offline;
   if (plan.notice != Notice::None) {
     showLookupPopup(Popup::Error, noticeString(plan.notice));
-    starDictAfterPopup = plan.starDict;
+    if (plan.starDict) afterPopup = lexipoint::card::AfterPopup::runStarDict();
     return;
   }
   if (plan.noDictionary) {

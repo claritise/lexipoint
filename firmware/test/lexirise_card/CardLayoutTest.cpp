@@ -629,13 +629,13 @@ TEST(ShownTargets, ATapMatchesTheFrameOnScreenWhenItWasMade) {
   const Hit after{Target::Tab, 2, {0, 0, 10, 10}};
   ShownTargets t;
   EXPECT_EQ(t.at(100), nullptr);  // nothing shown yet: the tap is dropped
-  t.drawing({before}, 0);
+  t.drawing({before}, 0, View::Card);
   EXPECT_EQ(t.at(100), nullptr);  // the first frame is still refreshing
   t.shown(200);
   ASSERT_NE(t.at(250), nullptr);
   EXPECT_EQ(t.at(250)->hits.at(0).target, Target::Level);
-  EXPECT_EQ(t.at(150), nullptr);  // before the first frame showed
-  t.drawing({after}, 0);          // phase B: laid out, refreshing
+  EXPECT_EQ(t.at(150), nullptr);      // before the first frame showed
+  t.drawing({after}, 0, View::Card);  // phase B: laid out, refreshing
   EXPECT_EQ(t.at(300)->hits.at(0).target, Target::Level);
   t.shown(500);
   EXPECT_EQ(t.at(400)->hits.at(0).target, Target::Level);  // made during the refresh: the frame the user saw
@@ -644,9 +644,9 @@ TEST(ShownTargets, ATapMatchesTheFrameOnScreenWhenItWasMade) {
 
 TEST(ShownTargets, MillisWrapping) {
   ShownTargets t;
-  t.drawing({Hit{Target::Close, 0, {}}}, 0);
+  t.drawing({Hit{Target::Close, 0, {}}}, 0, View::Card);
   t.shown(0xFFFFFF00UL);
-  t.drawing({Hit{Target::Tab, 0, {}}}, 0);
+  t.drawing({Hit{Target::Tab, 0, {}}}, 0, View::Card);
   t.shown(0x10UL);  // after the wrap
   EXPECT_EQ(t.at(0x20UL)->hits.at(0).target, Target::Tab);
   EXPECT_EQ(t.at(0xFFFFFFF0UL)->hits.at(0).target, Target::Close);

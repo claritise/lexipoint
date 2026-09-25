@@ -41,6 +41,7 @@ class LexiriseCardActivity final : public Activity {
 
  private:
   void handleQueuedInput(unsigned long nowMs);
+  void readGestures(unsigned long now);  // a long-press and a card swipe, queued with the rest
   void fetchAnswer();
   // The writes still queued, sent before the card goes (the toast said "Saved"). `lockHeld`: from
   // onExit, under the lock exitActivity holds.

@@ -9,6 +9,7 @@
 #include "lexirise/card/CardFrame.h"
 #include "lexirise/card/CardSession.h"
 #include "lexirise/card/LiveSource.h"
+#include "lexirise/card/WordSelectFlow.h"
 #include "lexirise/lookup/Fallback.h"
 
 using namespace lexipoint::card;
@@ -185,7 +186,7 @@ struct Saving {
   }
   // The frame for the card as it is now, on screen from `now`.
   void show() {
-    targets.drawing(composeFrame(c, kMetrics).card.hits, c.steps());
+    targets.drawing(composeFrame(c, kMetrics).card.hits, c.steps(), c.state().view);
     targets.shown(++now);
   }
   CardSession::Answer fetchOne() {
@@ -397,10 +398,10 @@ TEST(LiveSession, ATapDuringTheFirstRefreshOnAMidSentenceWordStillCounts) {
   PendingInput input;
   CardSession session(c, targets, input, &source);
   c.open(0);
-  targets.drawing(composeFrame(c, kMetrics).card.hits, c.steps());  // phase 0
+  targets.drawing(composeFrame(c, kMetrics).card.hits, c.steps(), c.state().view);  // phase 0
   targets.shown(10);
   session.apply(session.fetch(20), 20);  // A arrives; its frame starts refreshing
-  targets.drawing(composeFrame(c, kMetrics).card.hits, c.steps());
+  targets.drawing(composeFrame(c, kMetrics).card.hits, c.steps(), c.state().view);
   input.tap(1, 1, 30);  // the page above the card, on the phase-0 frame: close
   EXPECT_EQ(session.handleInput(30).effect, Effect::Close);
 }
@@ -604,13 +605,15 @@ TEST(LiveSession, ClosingOfflineWithASaveWhoseLookupFailedStillEnds) {
 TEST(LiveSession, WhatWordSelectDoesAfterTheCard) {
   using lexipoint::card::afterCard;
   using lexipoint::card::AfterCard;
+  using lexipoint::card::PagePoint;
   using Kind = LiveOutcome::Kind;
   for (const bool starDict : {false, true}) {
-    EXPECT_EQ(afterCard(LiveOutcome{Kind::Closed}, starDict), AfterCard::Redraw);
+    EXPECT_EQ(afterCard(LiveOutcome{Kind::Closed}, starDict), AfterCard::Closed);
     EXPECT_EQ(afterCard(LiveOutcome{Kind::NotFound}, starDict), AfterCard::NotFound);  // a Lexirise miss is final
     LiveOutcome unsent{Kind::Closed};
     unsent.unsentSaves = 1;
-    EXPECT_EQ(afterCard(unsent, starDict), AfterCard::UnsentSave);  // never fails silently
+    unsent.lookUpAt = PagePoint{10, 20};
+    EXPECT_EQ(afterCard(unsent, starDict), AfterCard::UnsentSave);  // never fails silently, said first
   }
   EXPECT_EQ(afterCard(LiveOutcome{Kind::Unavailable}, true), AfterCard::RunStarDict);
   EXPECT_EQ(afterCard(LiveOutcome{Kind::Unavailable}, false), AfterCard::NoDictionary);
@@ -821,4 +824,33 @@ TEST(LiveErrors, AStepKeepsAFailureAndItsRetry) {
   s.drain();
   ASSERT_EQ(s.rig.api.written.size(), 2u);
   EXPECT_NE(s.rig.api.written[1].body.find(R"("text":"読む")"), std::string::npos);
+}
+
+TEST(LiveSession, WhereWordSelectGoesAsAnAnswerCloses) {
+  using lexipoint::card::CloseStep;
+  using lexipoint::card::closeStep;
+  using lexipoint::card::PagePoint;
+  for (const bool touch : {false, true}) {
+    const CloseStep byEntry = touch ? CloseStep::BackToReader : CloseStep::Redraw;  // popup-ui.md §3
+    EXPECT_EQ(closeStep(std::nullopt, false, touch), byEntry);              // ✕, Home, Back, StarDict's definition
+    EXPECT_EQ(closeStep(PagePoint{1, 2}, true, touch), CloseStep::LookUp);  // a long-press on another word
+    EXPECT_EQ(closeStep(PagePoint{1, 2}, false, touch), byEntry);           // ... on no word: as any close
+  }
+}
+
+TEST(LiveSession, WhatWordSelectDoesOnceANoticeIsRead) {
+  using lexipoint::card::AfterNotice;
+  using lexipoint::card::afterNotice;
+  using lexipoint::card::AfterPopup;
+  using lexipoint::card::PagePoint;
+  for (const bool touch : {false, true}) {
+    // What was waiting for the notice comes first, even when a long-press opened word select.
+    EXPECT_EQ(afterNotice(AfterPopup::runStarDict(), touch), AfterNotice::RunStarDict);
+    const AfterPopup close = AfterPopup::finishClose(PagePoint{10, 20});
+    EXPECT_EQ(afterNotice(close, touch), AfterNotice::FinishClose);  // an unsent save's notice
+    ASSERT_TRUE(close.lookUpAt.has_value());
+    EXPECT_EQ(close.lookUpAt->y, 20);
+  }
+  EXPECT_EQ(afterNotice(std::nullopt, true), AfterNotice::BackToReader);  // "Not found" after a long-press
+  EXPECT_EQ(afterNotice(std::nullopt, false), AfterNotice::Redraw);       // ...after the menu's Look Up
 }

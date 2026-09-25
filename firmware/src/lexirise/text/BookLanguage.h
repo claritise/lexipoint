@@ -28,6 +28,11 @@ struct LanguageDecision {
   std::optional<Language> detected;  // what the text is, even when that language is switched off
                                      // (it still picks the punctuation rules)
   LanguageSource source = LanguageSource::None;
+  bool traditional = false;  // a Traditional Chinese book (H8, parked): cut as Chinese, never sent
+
+  // The language whose own offline dictionary answers (settings.md §1b): what the text is, except that a
+  // Traditional book keeps CrossPoint's (the Chinese group is Simplified).
+  std::optional<Language> dictionaryLanguage() const { return traditional ? std::nullopt : detected; }
 };
 
 // Decided once per book when it opens; sentences are only scanned when the metadata doesn't say.
@@ -37,7 +42,7 @@ class BookLanguage {
       : tagged_(parseLanguageTag(dcLanguage)), override_(override) {}
 
   // Precedence: the per-book override (set from the card), then the metadata, then the sentence
-  // itself: any kana → Japanese; Han without kana → settings.defaultLanguage; no CJK → none. A
+  // itself: any kana → Japanese; Han without kana → settings.fallbackLanguage(); no CJK → none. A
   // language that is switched off in settings (or Lexirise itself) isn't sent, but is still `detected`.
   // Kana means real hiragana/katakana: the middle dot ・ and the long-vowel mark ー also appear in
   // Chinese transliterated names (哈利・波特), so they don't count.

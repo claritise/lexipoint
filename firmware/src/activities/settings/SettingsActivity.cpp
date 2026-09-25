@@ -31,6 +31,9 @@
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
+#if LEXIRISE
+#include "lexirise/settings/LexiriseSettingsActivity.h"  // LEXIPOINT
+#endif
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -86,6 +89,9 @@ void SettingsActivity::rebuildSettingsLists() {
   }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
+#if LEXIRISE
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_LEXIRISE, SettingAction::Lexirise));  // LEXIPOINT
+#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_LIBRARY_REBUILD, SettingAction::RebuildLibraryIndex));
@@ -333,6 +339,12 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::KOReaderSync:
         startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
+#if LEXIRISE
+      case SettingAction::Lexirise:  // LEXIPOINT
+        startActivityForResult(std::make_unique<lexipoint::LexiriseSettingsActivity>(renderer, mappedInput),
+                               resultHandler);
+        break;
+#endif
       case SettingAction::OPDSBrowser:
         startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);
         break;

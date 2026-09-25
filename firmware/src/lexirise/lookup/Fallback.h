@@ -15,6 +15,11 @@ namespace lexipoint::lookup {
 // reboot or a new key), a rate limit's back-off.
 enum class Gate : uint8_t { Ask, Off, NoKey, Rejected, RateLimited };
 
+// Lexirise is set up for lookups in this book (lookup/PageTap.h lexiriseConfigured, from one settings copy).
+inline bool lexiriseConfigured(const Settings& settings, const text::BookLanguage& book) {
+  return settings.hasApiKey() && book.mayUseLexirise(settings);
+}
+
 inline Gate lexiriseGate(const Settings& settings, const text::BookLanguage& book,
                          const api::AccessPolicy::Block block) {
   if (!book.mayUseLexirise(settings)) return Gate::Off;

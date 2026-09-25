@@ -2,6 +2,7 @@
 
 #include "CardController.h"
 
+#include <algorithm>
 #include <iterator>
 
 #include "lexirise/LexiriseConfig.h"
@@ -38,11 +39,13 @@ bool CardController::syncWord() {
   }
   const CardState before = state_;
   state_.phase = hasWord() ? source_.phase(word_) : Phase::Pending;
+  // The tab stays across words, but a language with fewer tabs (⋯ is last) can't be left past its end.
+  if (hasWord()) state_.tab = std::min(state_.tab, tabCount(currentWord().language) - 1);
   state_.level = hasWord() ? levels_[word_] : Level::None;
   state_.pendingText = source_.pendingText();
   state_.pageNumber = source_.pageNumber();
   return state_.phase != before.phase || state_.level != before.level || state_.pendingText != before.pendingText ||
-         state_.pageNumber != before.pageNumber;
+         state_.pageNumber != before.pageNumber || state_.tab != before.tab;
 }
 
 bool CardController::tick(const unsigned long nowMs) {
@@ -163,7 +166,7 @@ Outcome CardController::setLevel(const Level level, const char* toastPrefix, con
         std::string(toastPrefix) + strings_.levelNames[static_cast<int>(level)] + (undo ? strings_.undoSuffix : ""),
         nowMs, undo);
   }
-  Outcome o{Effect::Redraw, false, {}};
+  Outcome o{Effect::Redraw, false};
   o.changes.push_back(change);
   return o;
 }
@@ -196,7 +199,7 @@ Outcome CardController::retry(const unsigned long nowMs) {
   for (const Failed& f : retries_) {
     if (timing::before(readyAt, f.notBeforeMs)) readyAt = f.notBeforeMs;
   }
-  Outcome o{Effect::Redraw, false, {}};
+  Outcome o{Effect::Redraw, false};
   for (const Failed& f : retries_) {
     const LevelChange change{f.word, levels_[f.word], f.wanted, readyAt};
     for (const int same : source_.sameWord(f.word)) levels_[same] = f.wanted;
@@ -213,6 +216,37 @@ Outcome CardController::home() {
     return {Effect::Redraw, false};
   }
   return {Effect::Close, false};
+}
+
+Outcome CardController::swipe(const Swipe direction) {
+  // Before the word arrives there's no detail view to open or tab to change (the rank row isn't a target
+  // either): only a swipe down (close) means something.
+  if (direction != Swipe::Down && (!hasWord() || state_.phase == Phase::Pending)) return {};
+  const bool expanded = state_.view == View::Expanded;
+  switch (direction) {
+    case Swipe::Up:
+      if (expanded) return {};
+      state_.view = View::Expanded;
+      return {Effect::Redraw, false};
+    case Swipe::Down:
+      return home();
+    case Swipe::Left:
+    case Swipe::Right: {
+      if (!expanded) return {};
+      const int tab = state_.tab + (direction == Swipe::Left ? 1 : -1);
+      if (tab < 0 || tab >= tabCount(currentWord().language)) return {};
+      state_.tab = tab;
+      return {Effect::Redraw, false};
+    }
+  }
+  return {};
+}
+
+Outcome CardController::longPress(const Hit* hit, const int x, const int y) {
+  if (hit || state_.view != View::Card) return {};
+  Outcome o{Effect::Close, false};
+  o.lookUpAt = PagePoint{x, y};
+  return o;
 }
 
 }  // namespace lexipoint::card

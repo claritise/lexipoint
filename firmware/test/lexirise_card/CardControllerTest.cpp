@@ -223,9 +223,9 @@ TEST(CardInput, ATapDuringARefreshHitsTheFrameTheUserSaw) {
   CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   ShownTargets shown;
-  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 1), at(Target::Card, {0, 0, 480, 400})}, c.steps());
+  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 1), at(Target::Card, {0, 0, 480, 400})}, c.steps(), c.state().view);
   shown.shown(100);
-  shown.drawing({at(Target::Card, {0, 0, 480, 400})}, c.steps());  // phase B moved T L F K away
+  shown.drawing({at(Target::Card, {0, 0, 480, 400})}, c.steps(), c.state().view);  // phase B moved T L F K away
   shown.shown(600);
   PendingInput in;
   in.tap(10, 10, 400);  // read during B's refresh
@@ -240,7 +240,7 @@ TEST(CardInput, EventsRunInOrderAtTheirOwnTimesAndStopAtAClose) {
   c.open(0);
   const int start = c.word();
   ShownTargets shown;
-  shown.drawing({at(Target::Close, {0, 0, 50, 50})}, 1);  // the next word's card (one step on), up at 25
+  shown.drawing({at(Target::Close, {0, 0, 50, 50})}, 1, View::Card);  // the next word's card (one step on), up at 25
   shown.shown(25);
   PendingInput in;
   in.step(+1, 20);
@@ -255,7 +255,7 @@ TEST(CardInput, TwoReadingSwitchesCancelOut) {
   CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   ShownTargets shown;
-  shown.drawing({at(Target::ReadingLine, {0, 0, 50, 50})}, c.steps());
+  shown.drawing({at(Target::ReadingLine, {0, 0, 50, 50})}, c.steps(), c.state().view);
   shown.shown(10);
   PendingInput one;
   one.tap(10, 10, 20);
@@ -278,7 +278,7 @@ TEST(CardInput, ATapOnTheOldCardDuringAStepIsDropped) {
   c.tick(60000);
   const int a = c.word();
   ShownTargets shown;
-  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 3)}, c.steps());  // word A's card, K at the top left
+  shown.drawing({at(Target::Level, {0, 0, 50, 50}, 3)}, c.steps(), c.state().view);  // word A's card, K at the top left
   shown.shown(60000);
   PendingInput in;
   in.step(+1, 60100);     // → word B; its refresh starts
@@ -330,12 +330,12 @@ TEST(CardInput, HomeQueuedBehindATapRunsAfterIt) {
   CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.tick(60000);
-  ShownTargets shown;
-  shown.drawing({at(Target::RankRow, {0, 0, 50, 50})}, c.steps());
-  shown.shown(10);
   const Hit rank = hit(Target::RankRow);
   c.tap(&rank, 60000);  // the expanded view
   ASSERT_EQ(c.state().view, View::Expanded);
+  ShownTargets shown;
+  shown.drawing({at(Target::RankRow, {0, 0, 50, 50})}, c.steps(), c.state().view);  // its ▲
+  shown.shown(60010);
   PendingInput in;
   in.tap(10, 10, 60100);  // ▲ during a refresh
   in.home(60200);         // then Home: back to the card, then … nothing more
@@ -431,4 +431,202 @@ TEST(CardController, StepsFocusTheSourceAndLevelsComeFromIt) {
   EXPECT_TRUE(c.step(-1, 10));
   EXPECT_EQ(source.focused, std::vector<int>{1});
   EXPECT_EQ(c.state().level, Level::Fresh);  // 本 was saved as fresh
+}
+
+// popup-ui.md §3.2: swipes on the card and a long-press on another word (P7).
+namespace {
+// The card view's card is the bottom half, the detail view's everything below y 80. Each input is followed
+// by the frame it asked for (`redraw`), as render() would put it on screen, unless a test wants the old one.
+struct Swiping {
+  BenchSource source{benchJapanese(), false};
+  CardController c{source, ReadingMode::Kana};
+  ShownTargets shown;
+  unsigned long now = config::kBenchPhaseBMs;
+  Swiping() {
+    c.open(0);
+    c.tick(now);
+    draw();
+  }
+  void draw() {
+    const Rect card = c.state().view == View::Card ? Rect{0, 400, 480, 400} : Rect{0, 80, 480, 720};
+    shown.drawing({at(Target::Card, card)}, c.steps(), c.state().view);
+    shown.shown(now);
+  }
+  Outcome run(PendingInput& in, const bool redraw) {
+    const Outcome o = handleInput(c, shown, in, now + 20);
+    now += 100;
+    if (redraw) draw();
+    return o;
+  }
+  Outcome swipe(const Swipe direction, const int x = 240, const int y = 600, const bool redraw = true) {
+    PendingInput in;
+    in.swipe(direction, x, y, now + 10);
+    return run(in, redraw);
+  }
+  Outcome longPress(const int x, const int y, const bool redraw = true) {
+    PendingInput in;
+    in.longPress(x, y, now + 10);
+    return run(in, redraw);
+  }
+};
+}  // namespace
+
+TEST(CardSwipe, UpOpensTheDetailViewAndDownGoesBackThenCloses) {
+  Swiping s;
+  EXPECT_EQ(s.swipe(Swipe::Up).effect, Effect::Redraw);
+  EXPECT_EQ(s.c.state().view, View::Expanded);
+  EXPECT_EQ(s.swipe(Swipe::Up).effect, Effect::None);  // already there
+  EXPECT_EQ(s.swipe(Swipe::Down).effect, Effect::Redraw);
+  EXPECT_EQ(s.c.state().view, View::Card);
+  EXPECT_EQ(s.swipe(Swipe::Down).effect, Effect::Close);
+}
+
+TEST(CardSwipe, LeftAndRightChangeTabsInTheDetailViewOnly) {
+  Swiping s;
+  EXPECT_EQ(s.swipe(Swipe::Left).effect, Effect::None);  // the card view has no tabs
+  EXPECT_EQ(s.c.state().tab, 0);
+  s.swipe(Swipe::Up);
+  EXPECT_EQ(s.swipe(Swipe::Right).effect, Effect::None);  // the first tab: stops
+  const int last = tabCount(s.c.currentWord().language) - 1;
+  for (int tab = 1; tab <= last; tab++) {
+    EXPECT_EQ(s.swipe(Swipe::Left).effect, Effect::Redraw);
+    EXPECT_EQ(s.c.state().tab, tab);
+  }
+  EXPECT_EQ(s.swipe(Swipe::Left).effect, Effect::None);  // the ⋯ tab: stops
+  EXPECT_EQ(s.c.state().tab, last);
+  EXPECT_EQ(s.swipe(Swipe::Right).effect, Effect::Redraw);
+  EXPECT_EQ(s.c.state().tab, last - 1);
+}
+
+TEST(CardSwipe, ASwipeThatStartsOffTheCardIsDropped) {
+  Swiping s;
+  EXPECT_EQ(s.swipe(Swipe::Down, 240, 200).effect, Effect::None);  // started on the page
+  EXPECT_EQ(s.swipe(Swipe::Up, 240, 200).effect, Effect::None);
+  EXPECT_EQ(s.c.state().view, View::Card);
+}
+
+TEST(CardSwipe, OnlySwipesClearOfTheEdgeGesturesCount) {
+  const int w = 480;
+  const int h = 800;
+  const int m = config::kCardSwipeEdgeMarginPx;
+  const int side = static_cast<int>(w * freeink::ui::EDGE_SWIPE_SIDE_FRAC);        // 120
+  const int band = static_cast<int>(h * freeink::ui::EDGE_SWIPE_TOP_BOTTOM_FRAC);  // 112
+  EXPECT_TRUE(swipeClearOfEdges(240, 400, 240, 200, w, h));
+  EXPECT_TRUE(swipeClearOfEdges(479, 400, 200, 400, w, h));       // the right edge is free
+  EXPECT_FALSE(swipeClearOfEdges(m - 1, 400, m - 1, 200, w, h));  // ~10 mm from the left, whichever way
+  EXPECT_FALSE(swipeClearOfEdges(240, m - 1, 100, m - 1, w, h));  // ... and the top
+  EXPECT_FALSE(swipeClearOfEdges(240, h - m, 100, h - m, w, h));  // ... and the bottom
+  // The SDK's own bands, wider than the margin: those swipes are CrossPoint's (Back, the frontlight panel,
+  // the reader menu or Home), never the card's.
+  EXPECT_FALSE(swipeClearOfEdges(side, 400, side + 200, 400, w, h));
+  EXPECT_TRUE(swipeClearOfEdges(side + 1, 400, side + 200, 400, w, h));
+  EXPECT_TRUE(swipeClearOfEdges(side, 400, side, 200, w, h));  // up, not away from the left edge
+  EXPECT_FALSE(swipeClearOfEdges(240, band, 240, band + 200, w, h));
+  EXPECT_TRUE(swipeClearOfEdges(240, band, 440, band, w, h));  // across, not down from the top
+  EXPECT_FALSE(swipeClearOfEdges(240, h - band, 240, h - band - 200, w, h));
+  EXPECT_TRUE(swipeClearOfEdges(240, h - band - 1, 240, h - band - 201, w, h));
+}
+
+TEST(CardSwipe, DirectionFollowsTheDominantAxis) {
+  EXPECT_EQ(swipeBetween(240, 600, 250, 300), Swipe::Up);
+  EXPECT_EQ(swipeBetween(240, 300, 230, 600), Swipe::Down);
+  EXPECT_EQ(swipeBetween(400, 400, 100, 390), Swipe::Left);
+  EXPECT_EQ(swipeBetween(100, 400, 400, 410), Swipe::Right);
+  EXPECT_EQ(swipeBetween(240, 400, 240, 400), Swipe::Right);  // the SDK's tie goes to the horizontal axis
+}
+
+TEST(CardLongPress, OnThePageClosesAndLooksUpThere) {
+  Swiping s;
+  const Outcome o = s.longPress(100, 200);
+  EXPECT_EQ(o.effect, Effect::Close);
+  ASSERT_TRUE(o.lookUpAt.has_value());
+  EXPECT_EQ(o.lookUpAt->x, 100);
+  EXPECT_EQ(o.lookUpAt->y, 200);
+}
+
+TEST(CardLongPress, OnTheCardOrOverTheDetailViewDoesNothing) {
+  Swiping s;
+  EXPECT_EQ(s.longPress(100, 600).effect, Effect::None);  // on the card
+  s.swipe(Swipe::Up);
+  const Outcome o = s.longPress(100, 200);  // the detail view covers the page
+  EXPECT_EQ(o.effect, Effect::None);
+  EXPECT_FALSE(o.lookUpAt.has_value());
+}
+
+TEST(CardLongPress, ATapCloseCarriesNoLookup) {
+  Swiping s;
+  PendingInput in;
+  in.tap(100, 200, config::kBenchPhaseBMs + 10);
+  const Outcome o = handleInput(s.c, s.shown, in, config::kBenchPhaseBMs + 20);
+  EXPECT_EQ(o.effect, Effect::Close);
+  EXPECT_FALSE(o.lookUpAt.has_value());
+}
+
+TEST(CardSwipe, ASwipeOrLongPressOnTheOldCardDuringAStepIsDropped) {
+  Swiping s;
+  s.c.step(+1, s.now + 1);  // the frame on screen still shows the previous word
+  s.swipe(Swipe::Up, 240, 600, /*redraw=*/false);
+  EXPECT_EQ(s.c.state().view, View::Card);
+  const Outcome o = s.longPress(100, 200, /*redraw=*/false);
+  EXPECT_NE(o.effect, Effect::Close);
+  EXPECT_FALSE(o.lookUpAt.has_value());
+}
+
+TEST(CardSwipe, ATouchOnTheOtherViewsFrameIsDropped) {
+  Swiping s;
+  s.swipe(Swipe::Up, 240, 600, /*redraw=*/false);  // the detail view, its frame not drawn yet
+  ASSERT_EQ(s.c.state().view, View::Expanded);
+  const Outcome o = s.longPress(100, 200, /*redraw=*/false);  // off the card on the frame seen; the detail view now
+  EXPECT_NE(o.effect, Effect::Close);
+  EXPECT_FALSE(o.lookUpAt.has_value());
+  s.swipe(Swipe::Left, 240, 600, /*redraw=*/false);  // no tab change from a frame that showed no tabs
+  EXPECT_EQ(s.c.state().tab, 0);
+}
+
+TEST(CardLongPress, ReplacesOnlyALiveCardOverWordSelectsPage) {
+  EXPECT_TRUE(longPressReplacesCard(true, true));
+  EXPECT_FALSE(longPressReplacesCard(false, true));  // the bench: no word select under it
+  EXPECT_FALSE(longPressReplacesCard(true, false));  // a landscape book: its page isn't drawn under the card
+}
+
+TEST(CardSwipe, NothingOpensOrChangesTabBeforeTheWordArrives) {
+  BenchSource source(benchJapanese(), false);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);  // phase 0: the tapped character only
+  ASSERT_EQ(c.state().phase, Phase::Pending);
+  EXPECT_EQ(c.swipe(Swipe::Up).effect, Effect::None);
+  EXPECT_EQ(c.state().view, View::Card);
+  EXPECT_EQ(c.swipe(Swipe::Left).effect, Effect::None);
+  EXPECT_EQ(c.swipe(Swipe::Down).effect, Effect::Close);  // closing still works
+}
+
+TEST(CardInput, ALongPressIsNeverDroppedFromAFullQueue) {
+  PendingInput in;
+  for (int i = 0; i < config::kCardPendingInputMax; i++) in.tap(0, 0, static_cast<unsigned long>(i));
+  in.longPress(5, 6, 100);
+  ASSERT_EQ(in.size(), static_cast<size_t>(config::kCardPendingInputMax));
+  EXPECT_EQ(in[in.size() - 1].kind, InputEvent::Kind::LongPress);
+  EXPECT_EQ(in[in.size() - 1].x, 5);
+}
+
+TEST(CardController, ATabPastTheLanguagesLastIsBroughtBack) {
+  BenchSource source(benchChinese(), false);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  c.tick(config::kBenchPhaseBMs);
+  const Hit rank = hit(Target::RankRow);
+  const Hit far = hit(Target::Tab, 9);
+  c.tap(&rank, 0);
+  c.tap(&far, 0);
+  c.sourceChanged();
+  EXPECT_EQ(c.state().tab, tabCount(c.currentWord().language) - 1);
+}
+
+TEST(CardInput, ALongPressNeverTakesAHomesPlace) {
+  PendingInput in;
+  for (int i = 0; i < config::kCardPendingInputMax - 1; i++) in.tap(0, 0, static_cast<unsigned long>(i));
+  in.home(50);
+  in.longPress(5, 6, 60);  // full: the way out stays
+  ASSERT_EQ(in.size(), static_cast<size_t>(config::kCardPendingInputMax));
+  EXPECT_EQ(in[in.size() - 1].kind, InputEvent::Kind::Home);
 }

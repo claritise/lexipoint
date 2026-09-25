@@ -12,10 +12,13 @@
 #include <optional>
 #include <string>
 
-#include "lexirise/card/ReaderScene.h"      // LEXIPOINT
-#include "lexirise/lookup/Fallback.h"       // LEXIPOINT
-#include "lexirise/text/BookLanguage.h"     // LEXIPOINT
-#include "lexirise/text/SentenceBuilder.h"  // LEXIPOINT
+#include "lexirise/card/ReaderScene.h"       // LEXIPOINT
+#include "lexirise/card/WordSelectFlow.h"    // LEXIPOINT
+#include "lexirise/lookup/Fallback.h"        // LEXIPOINT
+#include "lexirise/lookup/StarDictChoice.h"  // LEXIPOINT
+#include "lexirise/text/BookLanguage.h"      // LEXIPOINT
+#include "lexirise/text/SentenceBuilder.h"   // LEXIPOINT
+#include "lexirise/text/TapContext.h"        // LEXIPOINT
 #endif
 
 // Word selection over the current reader page: Left/Right step through words
@@ -85,14 +88,23 @@ class DictionaryWordSelectActivity final : public Activity {
   lexipoint::card::ReaderPage readerPage;             // LEXIPOINT: the same page, as drawn (the live card)
   int initialTouchX = -1;                             // LEXIPOINT: setInitialTouch()
   int initialTouchY = -1;
-  bool lookupPending = false;       // LEXIPOINT: the long-press lookup runs on the first loop()
-  bool starDictPending = false;     // LEXIPOINT: Lexirise had no answer: StarDict runs on the next loop()
-  bool starDictAfterPopup = false;  // LEXIPOINT: ...once the notice before it has been read
-  bool starDictOffline = false;     // LEXIPOINT: its answer carries the `offline` mark
-  void fallBack(lexipoint::lookup::Fallback fallback);          // LEXIPOINT: the notice, then StarDict
-  static StrId noticeString(lexipoint::lookup::Notice notice);  // LEXIPOINT
-  static bool starDictSet();                                    // LEXIPOINT
-  bool openLexiriseCard();                          // LEXIPOINT: false when Lexirise isn't asked about this word
+  bool lookupPending = false;  // LEXIPOINT: the long-press lookup runs on the first loop()
+  bool touchEntry = false;     // LEXIPOINT: a long-press on a word opened this: its answer closes to the reader
+  void answerClosed();         // LEXIPOINT: back to the reader (touchEntry) or to this page
+  void finishClose(const std::optional<lexipoint::card::PagePoint>& lookUpAt);  // LEXIPOINT: card::closeStep
+  // LEXIPOINT: what waits for the notice on screen to be read (StarDict's turn, or a card's close).
+  std::optional<lexipoint::card::AfterPopup> afterPopup;
+  bool starDictPending = false;  // LEXIPOINT: Lexirise had no answer: StarDict runs on the next loop()
+  bool starDictOffline = false;  // LEXIPOINT: its answer carries the `offline` mark
+  void fallBack(lexipoint::lookup::Fallback fallback);           // LEXIPOINT: the notice, then StarDict
+  static StrId noticeString(lexipoint::lookup::Notice notice);   // LEXIPOINT
+  bool starDictSet() const { return !starDict.folder.empty(); }  // LEXIPOINT: for the selected word
+  // LEXIPOINT: the selected word's sentence and language; nullopt without a book or a word.
+  std::optional<lexipoint::text::TapContext> describeSelected(const lexipoint::Settings& settings) const;
+  lexipoint::lookup::StarDictChoice starDict;  // LEXIPOINT: the dictionary for the selected word's language
+  std::optional<lexipoint::lookup::StarDictChoice> dictOpened;  // LEXIPOINT: what `dict` was opened for
+  // LEXIPOINT: false when Lexirise isn't asked about this word.
+  bool openLexiriseCard(lexipoint::text::TapContext context, const lexipoint::Settings& settings);
   void showLookupPopup(Popup kind, StrId message);  // LEXIPOINT
   bool starDictLookup(std::string& definition, std::string& headword, Dictionary::LookupResult* result);
 #endif

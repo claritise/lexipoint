@@ -27,17 +27,8 @@ text::PageModel pageModelFor(GfxRenderer& renderer, const int fontId, const Page
       em, renderer.getFontAscenderSize(fontId));
 }
 
-text::TapContext describeTap(const text::PageModel& page, const text::TokenRef tap, const text::BookLanguage& book) {
-  return text::describeTap(page, tap, book, settingsStore().snapshot());
-}
-
 bool lexiriseConfigured(const text::BookLanguage& book) {
-  const Settings settings = settingsStore().snapshot();
-  return settings.hasApiKey() && book.mayUseLexirise(settings);
-}
-
-Gate lexiriseGate(const text::BookLanguage& book) {
-  return lookup::lexiriseGate(settingsStore().snapshot(), book, service().blocked());
+  return lookup::lexiriseConfigured(settingsStore().snapshot(), book);
 }
 
 api::AccessPolicy::Block takeUnannouncedIf(const Gate gate) {

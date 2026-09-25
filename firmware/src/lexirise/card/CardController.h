@@ -28,11 +28,25 @@ struct LevelChange {
   unsigned long readyAtMs = 0;
 };
 
+// A point on the reader's page, in the card's (portrait) coordinates.
+struct PagePoint {
+  int x = 0;
+  int y = 0;
+};
+
 struct Outcome {
+  Outcome() = default;
+  Outcome(const Effect e, const bool reading) : effect(e), readingChanged(reading) {}
+
   Effect effect = Effect::None;
   bool readingChanged = false;       // persist the Japanese reading (settings.md: `reading`)
   std::vector<LevelChange> changes;  // in the order they were made (a batch can hold T, then its Undo)
+  // Close: a long-press on the page outside the card, to be looked up next (popup-ui.md §3.2).
+  std::optional<PagePoint> lookUpAt;
 };
+
+// A swipe that started on the card (CardInput: swipeClearOfEdges), by the way the finger went.
+enum class Swipe : uint8_t { Up, Down, Left, Right };
 
 class CardController {
  public:
@@ -47,6 +61,13 @@ class CardController {
   bool step(int direction, unsigned long nowMs);     // side buttons: previous / next word, stopping at the ends
   Outcome tap(const Hit* hit, unsigned long nowMs);  // nullptr: outside the card
   Outcome home();                                    // expanded → card; card → close
+  // Up: the detail view. Down: back to the card, or from the card, close. Left / right: the detail view's
+  // next / previous tab, stopping at the ends (popup-ui.md §3.2).
+  Outcome swipe(Swipe direction);
+  // A long-press (hit: what it landed on, nullptr outside the card). On the page outside the card view it
+  // closes the card and asks for a lookup there; anywhere else it does nothing (the detail view covers the
+  // page).
+  Outcome longPress(const Hit* hit, int x, int y);
   // Why a level change didn't reach Lexirise (offline-and-errors.md §3).
   enum class WriteFailure : uint8_t {
     Network,      // no WiFi, a timeout, 5xx, a bad answer: "Save failed · Retry"

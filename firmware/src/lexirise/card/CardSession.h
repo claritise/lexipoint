@@ -24,15 +24,19 @@ struct LiveOutcome {
   // and why the last one failed: word select says so, since the card can't any more.
   int unsentSaves = 0;
   api::ApiError unsentError = api::ApiError::None;
+  // Closed by a long-press on the page outside the card: the word there is looked up next.
+  std::optional<PagePoint> lookUpAt{};
 };
 
-// What word select does once the card has ended (lookup-flow.md §4, §5b): redraw its page; say "Not
-// found" (a Lexirise miss is final); let StarDict answer; or say "No dictionary set" when there's none.
-enum class AfterCard : uint8_t { Redraw, UnsentSave, NotFound, RunStarDict, NoDictionary };
+// What word select does once the card has ended (lookup-flow.md §4, §5b): the user closed it (Closed:
+// WordSelectFlow.h closeStep says where to); saves went unsent (UnsentSave: that notice first, then the rest
+// of the close); say "Not found" (a Lexirise miss is final); let StarDict answer; or say "No dictionary set"
+// when there's none.
+enum class AfterCard : uint8_t { Closed, UnsentSave, NotFound, RunStarDict, NoDictionary };
 inline AfterCard afterCard(const LiveOutcome& ended, const bool starDictSet) {
   switch (ended.kind) {
     case LiveOutcome::Kind::Closed:
-      return ended.unsentSaves > 0 ? AfterCard::UnsentSave : AfterCard::Redraw;  // never fails silently (§0)
+      return ended.unsentSaves > 0 ? AfterCard::UnsentSave : AfterCard::Closed;  // never fails silently (§0)
     case LiveOutcome::Kind::NotFound:
       return AfterCard::NotFound;
     case LiveOutcome::Kind::Unavailable:

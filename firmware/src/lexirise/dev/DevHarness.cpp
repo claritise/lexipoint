@@ -23,6 +23,7 @@
 #include "lexirise/api/Responses.h"
 #include "lexirise/card/BenchFixtures.h"
 #include "lexirise/card/LexiriseCardActivity.h"
+#include "lexirise/settings/LexiriseSettingsActivity.h"
 #endif
 
 extern MappedInputManager mappedInputManager;  // main.cpp (LX:LEXI CARD pushes the bench with it)
@@ -185,6 +186,9 @@ void lexi(const Command& c) {
       activityManager.pushActivity(std::make_unique<card::LexiriseCardActivity>(
           *gRenderer, mappedInputManager, c.chinese ? card::benchChinese() : card::benchJapanese(),
           card::LexiriseCardActivity::Options{c.low, c.kana}));
+      break;
+    case LexiAction::Settings:  // Settings → System → Lexirise (P7), without the taps to get there
+      activityManager.pushActivity(std::make_unique<LexiriseSettingsActivity>(*gRenderer, mappedInputManager));
       break;
   }
   ok(Verb::Lexi);

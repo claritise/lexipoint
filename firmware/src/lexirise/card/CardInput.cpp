@@ -21,13 +21,22 @@ Outcome handleInput(CardController& controller, const ShownTargets& targets, con
       o = controller.home();
     } else {
       const ShownFrame* shown = targets.at(e.ms);
-      // Nothing on screen yet, or a card for another word (tapped while a step redrew): dropped.
-      if (!shown || shown->step != controller.steps()) continue;
-      o = controller.tap(hitAt(shown->hits, e.x, e.y), e.ms);
+      // Nothing on screen yet, or a card for another word (tapped while a step redrew) or in the other view
+      // (touched while a view change redrew): dropped.
+      if (!shown || shown->step != controller.steps() || shown->view != controller.state().view) continue;
+      const Hit* hit = hitAt(shown->hits, e.x, e.y);
+      if (e.kind == InputEvent::Kind::Tap) {
+        o = controller.tap(hit, e.ms);
+      } else if (e.kind == InputEvent::Kind::LongPress) {
+        o = controller.longPress(hit, e.x, e.y);
+      } else if (hit) {  // a swipe, started on the card
+        o = controller.swipe(e.swipe);
+      }
     }
     outcome.changes.insert(outcome.changes.end(), o.changes.begin(), o.changes.end());
     if (o.effect == Effect::Close) {
       outcome.effect = Effect::Close;
+      outcome.lookUpAt = o.lookUpAt;
       break;
     }
     changed = o.effect == Effect::Redraw || changed;

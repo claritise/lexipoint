@@ -25,8 +25,10 @@
 #include "CrossPointState.h"
 #include "DictionaryWordSelectActivity.h"
 #if LEXIRISE
-#include "lexirise/lookup/LongPress.h"  // LEXIPOINT
-#include "lexirise/lookup/PageTap.h"    // LEXIPOINT
+#include "lexirise/lookup/LongPress.h"        // LEXIPOINT
+#include "lexirise/lookup/PageTap.h"          // LEXIPOINT
+#include "lexirise/lookup/StarDictChoice.h"   // LEXIPOINT
+#include "lexirise/settings/SettingsStore.h"  // LEXIPOINT
 #endif
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
@@ -313,11 +315,13 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
 }
 
 #if LEXIRISE
-// LEXIPOINT: with Lexirise usable, word select works without a StarDict dictionary installed.
+// LEXIPOINT: with Lexirise usable, word select works without a StarDict dictionary installed; a language
+// can have its own (settings.md §1).
 bool EpubReaderActivity::dictionaryLookupsAvailable() const {
-  return lexipoint::lookup::lookupsAvailable(
-      SETTINGS.dictionaryName[0] != '\0',
-      lexipoint::lookup::lexiriseConfigured(lexipoint::text::BookLanguage(epub->getLanguage(), std::nullopt)));
+  const lexipoint::text::BookLanguage book(epub->getLanguage(), std::nullopt);
+  const lexipoint::Settings settings = lexipoint::settingsStore().snapshot();
+  return lexipoint::lookup::lookupsAvailable(lexipoint::lookup::anyStarDict(settings, SETTINGS.dictionaryName, book),
+                                             lexipoint::lookup::lexiriseConfigured(settings, book));
 }
 #endif
 

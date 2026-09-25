@@ -112,3 +112,47 @@ TEST(BookLanguage, MayUseLexirise) {
   s.enabled = false;
   EXPECT_FALSE(BookLanguage("ja", std::nullopt).mayUseLexirise(s));
 }
+
+TEST(BookLanguage, WithOneLanguageOnHanOnlyTextIsThatLanguage) {
+  // settings.md §1: with one language on, it's the fallback (the "doesn't say" row is hidden then).
+  Settings s;
+  s.defaultLanguage = Language::Japanese;
+  s.japanese.enabled = false;
+  const auto han = BookLanguage("", std::nullopt).decide("我是学生。", s);
+  EXPECT_EQ(han.language, Language::Chinese);
+  EXPECT_EQ(han.detected, Language::Chinese);
+  EXPECT_EQ(han.source, LanguageSource::DefaultForHan);
+  s.japanese.enabled = true;
+  s.chinese.enabled = false;
+  s.defaultLanguage = Language::Chinese;
+  EXPECT_EQ(BookLanguage("", std::nullopt).decide("学生", s).detected, Language::Japanese);
+  s.japanese.enabled = false;  // none on: the chosen one still decides what the text is (its punctuation)
+  EXPECT_EQ(BookLanguage("", std::nullopt).decide("学生", s).detected, Language::Chinese);
+  EXPECT_FALSE(BookLanguage("", std::nullopt).decide("学生", s).language);
+}
+
+TEST(BookLanguage, MayUseLexiriseWhileAnyLanguageIsOn) {
+  Settings s;
+  s.chinese.enabled = false;  // one on
+  EXPECT_TRUE(BookLanguage("", std::nullopt).mayUseLexirise(s));
+  EXPECT_TRUE(BookLanguage("ja", std::nullopt).mayUseLexirise(s));
+  EXPECT_FALSE(BookLanguage("zh", std::nullopt).mayUseLexirise(s));  // the book's language is the one that's off
+  s.japanese.enabled = false;                                        // none on
+  EXPECT_FALSE(BookLanguage("", std::nullopt).mayUseLexirise(s));
+  s.japanese.enabled = true;
+  s.enabled = false;  // Lexirise off
+  EXPECT_FALSE(BookLanguage("", std::nullopt).mayUseLexirise(s));
+}
+
+TEST(BookLanguage, DictionaryLanguageIsWhatTheTextIsExceptForTraditional) {
+  Settings s;
+  EXPECT_EQ(BookLanguage("ja", std::nullopt).decide("", s).dictionaryLanguage(), Language::Japanese);
+  EXPECT_EQ(BookLanguage("zh-CN", std::nullopt).decide("", s).dictionaryLanguage(), Language::Chinese);
+  for (const char* hant : {"zh-TW", "zh-HK", "zh-MO", "zh-Hant"}) {
+    const auto d = BookLanguage(hant, std::nullopt).decide("", s);
+    EXPECT_TRUE(d.traditional) << hant;
+    EXPECT_FALSE(d.dictionaryLanguage().has_value()) << hant;
+  }
+  s.chinese.enabled = false;  // switched off: still its own dictionary (StarDict answers every tap then)
+  EXPECT_EQ(BookLanguage("zh", std::nullopt).decide("", s).dictionaryLanguage(), Language::Chinese);
+}

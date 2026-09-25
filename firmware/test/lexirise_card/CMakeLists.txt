@@ -36,6 +36,7 @@ target_include_directories(LexiriseCardTest PRIVATE
   ${REPO_ROOT}/test/lexirise_fakes
   ${REPO_ROOT}/lib/GfxRenderer
   ${REPO_ROOT}/lib/Utf8
+  ${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/include
 )
 
 target_link_libraries(LexiriseCardTest PRIVATE

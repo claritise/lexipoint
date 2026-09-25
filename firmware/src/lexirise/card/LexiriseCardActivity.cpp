@@ -76,6 +76,7 @@ void LexiriseCardActivity::loop() {
   int x = 0;
   int y = 0;
   if (mappedInput.wasScreenTapped(x, y)) input_.tap(x, y, now);
+  readGestures(now);
   if (mappedInput.wasReleased(MappedInputManager::Button::PageForward)) input_.step(+1, now);
   if (mappedInput.wasReleased(MappedInputManager::Button::PageBack)) input_.step(-1, now);
   // Back (the left-edge swipe, as everywhere in CrossPoint) is Home: expanded → card, card → close.
@@ -87,18 +88,41 @@ void LexiriseCardActivity::loop() {
   if (live_ && !finishing_ && session_.shouldFetch(millis(), RenderLock::peek())) fetchAnswer();
 }
 
+void LexiriseCardActivity::readGestures(const unsigned long now) {
+  int x = 0;
+  int y = 0;
+  // A long-press is always taken (consumed, so the finger's lift isn't also a tap on the card), and it
+  // replaces the card (popup-ui.md §3.2) only where word select's page is what's under the card (not the
+  // bench, not a landscape page), in the same coordinates.
+  if (mappedInput.wasScreenLongPress(x, y) && longPressReplacesCard(live_ != nullptr, pageUnderCard_)) {
+    input_.longPress(x, y, now);
+  }
+  // Card swipes (up / down / tabs). The edge swipes stay CrossPoint's: Back arrives as Button::Back.
+  int endX = 0;
+  int endY = 0;
+  if (mappedInput.peekSwipe(x, y, endX, endY) &&
+      swipeClearOfEdges(x, y, endX, endY, renderer.getScreenWidth(), renderer.getScreenHeight())) {
+    if (const auto swipe = swipeBetween(x, y, endX, endY)) input_.swipe(*swipe, x, y, now);
+  }
+}
+
 void LexiriseCardActivity::handleQueuedInput(const unsigned long nowMs) {
   const bool hadInput = !input_.empty();
   Outcome outcome;
   int word = 0;
+  bool expanded = false;
+  int tab = 0;
   {
     RenderLock lock;
     outcome = session_.handleInput(nowMs);
     nextDueMs_ = controller_.nextDueMs();
     word = controller_.word();
+    expanded = controller_.state().view == View::Expanded;
+    tab = controller_.state().tab;
   }
-  // lxctl card-smoke checks the side buttons stepped to the word it meant (their mapping follows settings).
-  if (smoke_ && hadInput) LOG_INF("LXCARD", "word %d", word);
+  // lxctl card-smoke checks the side buttons stepped to the word it meant (their mapping follows settings),
+  // and card-gestures where each swipe left the card.
+  if (smoke_ && hadInput) LOG_INF("LXCARD", "word %d view %s tab %d", word, expanded ? "expanded" : "card", tab);
   apply(outcome);
 }
 
@@ -155,7 +179,11 @@ void LexiriseCardActivity::apply(const Outcome& outcome) {
       return true;
     });
   }
-  if (outcome.effect == Effect::Close) return end({});
+  if (outcome.effect == Effect::Close) {
+    LiveOutcome closed;
+    closed.lookUpAt = outcome.lookUpAt;
+    return end(closed);
+  }
   if (outcome.effect == Effect::Redraw) redraw();
 }
 
@@ -192,7 +220,7 @@ void LexiriseCardActivity::render(RenderLock&&) {
   const CardFonts fonts = resolveCardFonts(renderer);
   const RendererMetrics metrics(renderer, fonts);
   const Frame frame = composeFrame(controller_, metrics, pageUnderCard_);
-  targets_.drawing(frame.card.hits, controller_.steps());
+  targets_.drawing(frame.card.hits, controller_.steps(), controller_.state().view);
 
   renderer.clearScreen();
   // Scan, prewarm the SD glyphs, then draw for real (the reader's pattern).

@@ -92,7 +92,8 @@ constexpr unsigned long kToastMs = 2000;         // "Saved as learning · Undo"
 constexpr unsigned long kFailureToastMs = 6000;  // "Save failed · Retry": it comes late, the eyes are elsewhere
 constexpr unsigned long kPhaseMergeMs = 300;     // phase B this soon after A: one refresh for both
 constexpr int kCardHalfRefreshEvery = 5;         // the 5th card's dismiss: a half refresh (ghosts), as the reader's
-constexpr int kCardPendingInputMax = 4;          // taps/steps read while a card refresh runs, handled after it
+constexpr int kCardPendingInputMax = 4;          // input read while a card refresh runs, handled after it
+constexpr int kCardSwipeEdgeMarginPx = 85;       // ~10 mm on the X4 Pro's ~217 ppi panel (popup-ui.md §3.2)
 // The bench (P4) plays the phases on a timer, as a lookup would fill them.
 constexpr unsigned long kBenchPhaseAMs = 250;  // tap → analyzed
 constexpr unsigned long kBenchPhaseBMs = 900;  // tap → translated

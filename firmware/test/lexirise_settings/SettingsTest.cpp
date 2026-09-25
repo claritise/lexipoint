@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <set>
 #include <string>
 
 #include "lexirise/settings/Settings.h"
@@ -159,3 +160,23 @@ TEST(Settings, TagListSplitsTheNormalisedForm) {
 }
 
 }  // namespace
+
+TEST(Settings, FallbackLanguageIsTheOnlyOneOnElseTheChosenOne) {
+  lexipoint::Settings s;
+  s.defaultLanguage = lexipoint::Language::Chinese;
+  EXPECT_EQ(s.fallbackLanguage(), lexipoint::Language::Chinese);  // both on: the choice
+  s.chinese.enabled = false;
+  EXPECT_EQ(s.fallbackLanguage(), lexipoint::Language::Japanese);  // one on: that one
+  s.japanese.enabled = false;
+  EXPECT_EQ(s.fallbackLanguage(), lexipoint::Language::Chinese);  // none on: the choice
+}
+
+TEST(Settings, EveryLanguageIsListedOnceWithItsOwnGroup) {
+  std::set<std::string> codes;
+  for (const lexipoint::Language l : lexipoint::kLanguages) codes.insert(lexipoint::languageCode(l));
+  EXPECT_EQ(codes, (std::set<std::string>{"ja", "zh"}));
+  lexipoint::Settings s;
+  EXPECT_EQ(&s.language(lexipoint::Language::Japanese), &s.japanese);
+  EXPECT_EQ(&s.language(lexipoint::Language::Chinese), &s.chinese);
+  EXPECT_EQ(s.enabledLanguageCount(), 2);
+}

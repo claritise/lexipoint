@@ -23,6 +23,8 @@ Examples:
   lxctl.py smoke [outdir]      # end-to-end harness check with screenshots
   lxctl.py card-smoke [outdir] [name]  # every reference card state on the device, a screenshot each (P4 gate);
                                        # upright portrait, default side buttons
+  lxctl.py card-gestures              # the card's swipes (up, down, tabs) checked from the log (P7)
+  lxctl.py settings-smoke [outdir]    # opens Settings → Lexirise, checks its rows, a screenshot (P7)
 """
 
 from __future__ import annotations
@@ -64,6 +66,27 @@ CARD_HOME_PRESSES_MAX = 3  # Home: expanded → card → closed, plus one spare
 PANEL_FULL_REFRESH_S = 1.34
 CARD_CLOSE_WAIT_S = 3.0
 CARD_WORD_LOG = re.compile(r"\[LXCARD\] word (\d+)")  # LexiriseCardActivity, smoke mode
+CARD_VIEW_LOG = re.compile(r"\[LXCARD\] word \d+ view (\w+) tab (\d+)")
+# card-gestures (popup-ui.md §3.2), on the bench's ja card (card view: y 530-786; the detail view from 80, as
+# in test/lexirise_card/golden, which test_lxctl checks these against): each swipe, the view and tab it leaves
+# (None: it closes the card), and what it is. A card swipe starts on the card, at least
+# config::kCardSwipeEdgeMarginPx (85) clear of the left, top and bottom edges and outside the SDK's
+# edge-gesture bands (CardInput.h swipeClearOfEdges). "back" starts in the SDK's left band, so it's Back (the
+# detail view goes back to the card, the tab kept); "page" starts on the page above the card: nothing. "long"
+# is a long-press on the page: on the bench it's consumed and dropped (no word select under it), so its lift
+# must not tap the page and close the card; nothing is logged for it.
+CARD_GESTURES = [
+    ("SWIPE 240 670 240 430", ("expanded", 0), "card"),  # up from the card: the detail view
+    ("SWIPE 380 400 120 400", ("expanded", 1), "card"),  # left: the next tab
+    ("SWIPE 380 400 120 400", ("expanded", 2), "card"),
+    ("SWIPE 160 400 420 400", ("expanded", 1), "card"),  # right: the previous tab
+    ("SWIPE 60 400 320 400", ("card", 1), "back"),       # right from the left edge: Back, not a tab
+    ("SWIPE 240 300 240 100", ("card", 1), "page"),      # starts above the card: not the card's
+    ("LONG 240 300", ("card", 1), "long"),               # a long-press on the page: its lift isn't a tap
+    ("SWIPE 240 670 240 430", ("expanded", 1), "card"),  # up again: the tab was kept
+    ("SWIPE 240 300 240 600", ("card", 1), "card"),      # down: back to the card
+    ("SWIPE 240 560 240 760", None, "card"),             # down on the card: closes it
+]
 GOLDEN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "test", "lexirise_card", "golden")
 
 
@@ -337,6 +360,56 @@ def card_smoke(h: Harness, outdir: str, only: str = "", sleep=time.sleep, shot=N
     return done
 
 
+def card_gestures(h: Harness, sleep=time.sleep) -> None:
+    """The card's swipes on the device (P7): opens the bench card and checks where each CARD_GESTURES swipe
+    leaves it, from the smoke log. Needs upright portrait. Ends over the screen it started on."""
+    h.command("LEXI CARD ja KANA", "LX:OK LEXI")
+    h.wait_for("Entering activity: LexiriseCard", ACTIVITY_WAIT_S)
+    sleep(CARD_PHASES_S)  # the phases end before a finger would swipe
+    for cmd, expected, kind in CARD_GESTURES:
+        log: list[str] = []
+        h.command(cmd, seen=log)
+        if kind == "long":
+            h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+            if any("Exiting activity: LexiriseCard" in line for line in log):
+                raise RuntimeError(f"{cmd}: the card closed (the long-press's lift tapped the page)")
+            print(f"{cmd}: consumed")
+            continue
+        if expected is None:
+            h.wait_for("Exiting activity: LexiriseCard", CARD_CLOSE_WAIT_S)
+            continue
+        h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+        states = [(m.group(1), int(m.group(2))) for line in log if (m := CARD_VIEW_LOG.search(line))]
+        if not states or states[-1] != expected:
+            raise RuntimeError(f"{cmd}: the card is at {states[-1] if states else 'nothing logged'}, not {expected}")
+        print(f"{cmd}: {expected[0]}, tab {expected[1]}")
+    print("card-gestures OK")
+
+
+SETTINGS_ROWS_LOG = re.compile(r"\[LXSET\] rows (\d+)")  # LexiriseSettingsActivity, dev builds
+SETTINGS_ROWS_MIN, SETTINGS_ROWS_MAX = 4, 12  # settings_screen::visibleRows: the Account group .. every row
+
+
+def settings_smoke(h: Harness, outdir: str, shot=None) -> int:
+    """The device's Lexirise settings screen (P7): opens it (LEXI SETTINGS), checks it built its rows (the
+    count depends on which languages are on), saves a screenshot, and leaves with the Back swipe. Changes no
+    setting. Returns the row count."""
+    shot = shot or save_shot
+    os.makedirs(outdir, exist_ok=True)
+    log: list[str] = []
+    h.command("LEXI SETTINGS", "LX:OK LEXI", seen=log)
+    h.wait_for("Entering activity: LexiriseSettings", ACTIVITY_WAIT_S)
+    h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+    rows = [int(m.group(1)) for line in log if (m := SETTINGS_ROWS_LOG.search(line))]
+    if not rows or not SETTINGS_ROWS_MIN <= rows[-1] <= SETTINGS_ROWS_MAX:
+        raise RuntimeError(f"the settings screen built {rows[-1] if rows else 'no'} rows")
+    shot(h, os.path.join(outdir, "lexirise-settings.png"))
+    h.command(f"SWIPE {EDGE_INSET} 400 240 400")  # Back
+    h.wait_for("Exiting activity: LexiriseSettings", ACTIVITY_WAIT_S)
+    print(f"settings-smoke OK: {rows[-1]} rows, screenshot in {outdir}")
+    return rows[-1]
+
+
 def parse_fields(line: str) -> dict[str, str]:
     """The key=value fields of an LX:LEXI line."""
     return dict(tok.split("=", 1) for tok in line.split() if "=" in tok)
@@ -385,12 +458,14 @@ def lexi(h: Harness, args: list[str]) -> None:
               f"heap_trend={heap_slope(heap):+.0f}B/call stack_free_min={min(stack) if stack else '-'}")
         if failed or heap_leaks(heap):
             sys.exit("soak FAILED" + (" (free heap trending down)" if heap_leaks(heap) else ""))
+    elif sub == "settings":  # Settings → System → Lexirise (P7), over the current screen
+        print(h.command("LEXI SETTINGS", "LX:OK LEXI"))
     elif sub == "card":  # the card bench (P4): opens over the current screen; drive it with tap/button/home
         lang = args[1] if len(args) > 1 else "ja"
         low = len(args) > 2 and args[2].lower() == "low"
         print(h.command(f"LEXI CARD {lang}{' LOW' if low else ''}", "LX:OK LEXI"))
     else:
-        sys.exit("usage: lexi me | analyze ja|zh | soak [n] [cold] | card ja|zh [low]")
+        sys.exit("usage: lexi me | analyze ja|zh | soak [n] [cold] | card ja|zh [low] | settings")
 
 
 def main() -> None:
@@ -450,6 +525,16 @@ def main() -> None:
                 card_smoke(h, a.args[0] if a.args else "card-shots", a.args[1] if len(a.args) > 1 else "")
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"card-smoke FAILED: {e}")
+        elif c == "settings-smoke":
+            try:
+                settings_smoke(h, a.args[0] if a.args else "settings-shots")
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"settings-smoke FAILED: {e}")
+        elif c == "card-gestures":
+            try:
+                card_gestures(h)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"card-gestures FAILED: {e}")
         elif c == "smoke":
             try:
                 smoke(h, a.args[0] if a.args else "smoke-shots")

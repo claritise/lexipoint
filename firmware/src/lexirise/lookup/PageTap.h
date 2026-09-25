@@ -21,15 +21,11 @@ constexpr const char* kEmProbe = "\xE5\x9B\xBD";  // 国: one full-width charact
 // DictionaryWordSelectActivity measures its words: after ensureSdCardFontReady() on the page's text.
 text::PageModel pageModelFor(GfxRenderer& renderer, int fontId, const Page& page);
 
-// Everything about a tap on the page: the sentence, the tap's offset and the language (pure work).
-text::TapContext describeTap(const text::PageModel& page, text::TokenRef tap, const text::BookLanguage& book);
-
-// Whether a lookup in this book asks Lexirise now, or why not (Fallback.h: settings, key, a rejected key,
-// a rate limit's back-off).
-Gate lexiriseGate(const text::BookLanguage& book);
-// Lexirise is set up for lookups in this book (on, a key, the language allowed): whether it may be asked
-// *now* is lexiriseGate's (a rejected key, a rate limit). This one decides what doesn't change with
-// time: word select opens without a StarDict dictionary, a long-press is a lookup, the page is snapshot.
+// Lexirise is set up for lookups in this book (on, a key, the language allowed), from a fresh settings
+// snapshot. This decides what doesn't change with time: word select opens without a StarDict dictionary,
+// a long-press is a lookup, the page is snapshot. A lookup itself takes one snapshot and passes it to
+// Fallback.h's lexiriseConfigured / lexiriseGate (whether it may be asked *now*: a rejected key, a rate
+// limit) and text::describeTap.
 bool lexiriseConfigured(const text::BookLanguage& book);
 // True the first time it's asked each boot: "No Lexirise key" is said once, then StarDict answers quietly.
 bool takeNoKeyNotice();
