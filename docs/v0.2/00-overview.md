@@ -41,7 +41,7 @@
 | C11 | SRS review app on the device | **Yes, online-only: the study-session API is live** (2026-09-25) | v0.3 | Medium–large | Client, card UI |
 | C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/analyze/context`**, live 2026-09-25, returns a reading | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
-| C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes, once grammar comes back** (announced 2026-09-25) | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
+| C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes: the grammar pass is live** (2026-09-25); the second call also refines the split | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
 | C21 | Faster lookups: on-device caches (entries by lemma, chapter analysis, text-keyed cache, warm TLS) | **Yes, no Lexirise changes needed** | v0.1.x–v0.2, with C12–C13 | Small–medium each | Client, C12–C13, SD |
 | C23 | Slim down to CJK-learning firmware (remove CrossPoint features we don't need) | **Yes, after M: specced as `slimming.md`** (list approved by claritise 2026-09-25, "yes to all") | After M | Medium; saves ≈ 2.5–2.7 MB of 5.57 MB | M's "Taken from CrossPoint" record |
 | C24 | Release and beta (tagged release, install guide, 5–10 testers) | **Yes** | After P10 / M | Small–medium | `user-guide.md` |
@@ -349,7 +349,7 @@ CJK-learning firmware (C23).
 
 **Why later:** it's a big ask of Lexirise (compute and storage per uploaded book, a compact export the
 device can hold in memory, their policy on uploaded books). **Policy (claritise, 2026-09-25): build
-what we can without Lexirise first, and ask only for what's critical** (like `words/context`). Pitch
+what we can without Lexirise first, and ask only for what's critical** (like `analyze/context`). Pitch
 C20 after v0.3, once our own manga pipeline and the rest work, as the next step, and alongside a
 possible Xteink + Lexirise bundle.
 
