@@ -20,3 +20,14 @@ build/
 
 # Staging area for files to copy onto the reader SD card (fonts, test books). Never committed.
 sd-card/
+
+# Manga pipeline (tools/manga, docs/v0.2/manga.md): volumes, OCR output, converted books and cached API
+# responses are private and stay out of the repo.
+*.cbz
+*.cbr
+*.xtc
+*.xtch
+*.mokuro
+*.lexi.json
+_ocr/
+api-cache/

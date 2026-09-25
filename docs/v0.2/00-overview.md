@@ -29,6 +29,7 @@
 | C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, `PATCH suspended`, C3 |
 | C11 | SRS review app on the device | **Blocked on Lexirise** (no review endpoint) | v0.3 | Medium–large | Client, vocab mirror, card UI |
 | C10 | Sense and reading chosen from the sentence | **Yes, but it needs a source** | v0.2 | Depends on the source | The sentence (D5), `multipleReadings` |
+| C18 | Manga: tap a word in a speech bubble (sideways strips, OCR'd on the Mac) | **Yes: specced as `manga.md`; Mac pipeline built as a spike** | v0.2 | Medium: the device side; the card's orientation needs claritise | The card, lookup, saving, `analyze/text` (at conversion) |
 
 ---
 
@@ -209,6 +210,16 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
   resets dictionary-backed items to unknown), **Ignore** (`PATCH suspended: true`, for names and noise,
   and it removes A1 marks), and **Save sentence** (C3).
 
+## C18. Manga
+
+**Added 2026-09-25 (claritise).** Spec: `manga.md`; research: `../reference/manga-on-x4-research.md`.
+Hold the reader sideways; each page is 2–4 landscape strips in an XTCH. The Mac OCRs the volume
+(mokuro), splits the text into words with `analyze/text` (one call per page), cuts strips around the
+text boxes and writes a sidecar of word boxes, so a long-press on a word in a bubble opens the normal
+card. The pipeline (`tools/manga/`) ran on one 184-page volume: 613 strips, 10,364 words, all but 9
+shown whole on some strip. Owed: a panel check of the strips, a look at `matcha-reader`, and
+claritise's call on the card's orientation on a sideways strip (`manga.md` §6).
+
 ## C11. SRS review app on the device
 
 **The appeal:** e-ink suits flashcards well. They're static, button-driven, need no touch, and use
@@ -255,4 +266,4 @@ does mean this code will never go upstream, and it adds to the rebase cost.
 
 ## Suggested order after v0.1
 
-**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes"). **v0.2:** `page-annotations.md` build order (§5) → C10 (once Lexirise answers Q7) → C5. **v0.3:** C11 (once Lexirise answers Q8).
+**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes"). **v0.2:** `page-annotations.md` build order (§5) → C10 (once Lexirise answers Q7) → C5. **v0.3:** C11 (once Lexirise answers Q8). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7).
