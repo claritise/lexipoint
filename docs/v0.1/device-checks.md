@@ -100,3 +100,17 @@ Still owed for P11: a router on a new channel; away from the saved network (the 
 
 Not run: the web page's rows (needs File Transfer's WiFi; host tests cover `shows`), and a Han-only tap
 with Lexirise off (covered by `BookLanguage` and `StarDictChoice` tests).
+
+## 2026-09-26, `main` @ `30148173` (M, the first build from the Lexipoint repo), flashed and verify-flash matched
+
+| Check | Result |
+|---|---|
+| Boots, version | **pass**: `1.6.5-lexi.1-x4pro`, Home as before |
+| Opens a book (M gate 8) | **pass**: 活着 opens on its page |
+| Lexirise settings | **pass**: both Offline dictionary rows read "Same as reader" |
+| *Check for updates* (M gate 8) | **pass**: joined the saved network, asked `api.github.com/repos/claritise/lexipoint/releases/latest`, got 404 (no release yet), showed "Update failed" |
+
+Not checked over serial (for claritise, when convenient): the boot screen's "Lexipoint" (it passes too fast for a
+screenshot; the sleep screen is set to Cover), the router listing the reader as `Lexipoint-<MAC>`, File
+Transfer's hotspot `Lexipoint` and `lexipoint.local`, the web pages' title, heading and footer, USB Drive's name,
+and calibre connect.
