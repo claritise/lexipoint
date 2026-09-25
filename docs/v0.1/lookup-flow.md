@@ -304,6 +304,14 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   `WordBoxesTest`; on the device `lxctl reader-longpress` (the reader logs `[LXLP] long-press x y taken|left`).
   Device check owed: long-press a margin, the gap between paragraphs and an image (the menu or a page turn,
   nothing highlighted); long-press a word (the card, as before); a word at a line's end and the first line.
+- **Found on the device after the fix (2026-09-25):** "the menu still won't open" was CrossPoint's own **Home-pad
+  hold**, not a page long-press: the Home pad sits at the bottom middle, and its hold runs Settings → Controls →
+  **Long-press Menu**, which on claritise's reader is set to Dictionary: word select with the middle word
+  highlighted and nothing looked up (upstream behaviour, `LP_MENU_DICTIONARY`; Lexipoint never changed that
+  setting, whose default is Disabled). The reader menu is on **Long-press Menu → Reader Menu**, or **Show Reader
+  Menu → Tap** (a tap in the screen's middle third) / **Swipe Up**; the top-edge swipe is the frontlight panel.
+  With Lexipoint the Dictionary choice is redundant (a long-press on a word looks it up). After the P9 flash the
+  reader stopped answering on USB (no log, no `PING`, esptool couldn't connect): unexplained so far; replug owed.
 - **Each book's lookup language** (`languages.md` §1, step 3): see there.
 
 ### 5c. As built (P7)
