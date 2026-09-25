@@ -209,14 +209,15 @@ it's a stretch, the fallback is to let the rank row carry the level control inst
 | **Tap** (P10, claritise 2026-09-25: "changing words when the dictionary is open should be tap instead of hold") or long-press **another word** on the page | Replace the card with a new lookup |
 | **Tap the reading line** (Japanese only) | Switch all readings kana ⇄ romaji, with a toast. Remembered across lookups and reboots |
 
-**As built (P12):** the strips grow with the reader's font size (claritise: the card's strip row didn't
-expand with a bigger size). Each is set in the reader's page font; the card view's strip row is at least its
+**As built (P12):** the strips grow with the reader's font size (claritise: the card's strip row didn't expand
+with a bigger size). Each is set in the reader's page font; the card view's strip row is at least its
 reference 51 px and at least the line plus `kStripTextPadV` (4 px) above and below it, so the card grows
 upward; the detail view's strip band is at least its 80 px likewise, and the detail card below it starts lower
-(its body shorter). At the device's default 14 pt (NotoSerifCJK's line is 42 px: 50 ≤ 51) nothing moves;
-16 pt (48 px line) makes the row 56, 18 pt (54) 62 (the built-in fonts, 34–51 px lines at 12–18 pt: 51, 51, 53, 59); the detail view grows only past a 72 px line (an SD font
-of ~24 pt). Every line height a font file can have (1–255 px) keeps the card on screen, its targets inside
-it and the detail view's tabs clear of its header (`CardLayout.EveryPageLineHeightStaysOnScreen`).
+(its body shorter). At the device's default 14 pt (NotoSerifCJK's line is 42 px: 50 ≤ 51) nothing moves; 16 pt
+(48 px line) makes the row 56, 18 pt (54) 62 (the built-in fonts, 34–51 px lines at 12–18 pt: 51, 51, 53, 59);
+the detail view grows only past a 72 px line (an SD font of ~24 pt). Every line height a font file can have
+(1–255 px) keeps the card on screen, its targets inside it and the detail view's tabs clear of its header
+(`CardLayout.EveryPageLineHeightStaysOnScreen`).
 
 **As built (P11):** a strip's word is inverted by its own characters, not the whole token it sits in
 (the reader glues a word to its punctuation: 话。); the bench page wraps its lines at the panel instead of
