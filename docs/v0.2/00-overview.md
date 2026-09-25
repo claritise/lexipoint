@@ -8,6 +8,17 @@
 > supersedes a v0.1 decision. When an idea is promoted, it gets its own spec in this folder, and
 > a row in a v0.2 build order.
 
+> **Guiding principle (claritise, 2026-09-25): the device is a dedicated Lexirise client for 95% of
+> use.** A computer only for setup, getting content on, and genuinely complex UI (bulk edits, heavy
+> typing). When ranking, ask: *does this keep claritise from opening the Lexirise app or web app?*
+> If yes, it moves up (C11 reviews, C9 / C17 managing saved words, C10 / C19 trust in the card, C18
+> manga). Anything e-ink is bad at stays on the computer, and that's fine.
+>
+> **Second rule (claritise, 2026-09-25):** build what we can without Lexirise first, and ask
+> Lexirise only for what's critical (like `words/context`). Bigger asks (C20) wait until after v0.3.
+>
+> **Open items to confirm** are collected in "Open, to confirm" near the end.
+
 ## Triage
 
 | # | Idea | Verdict | When | Cost | Reuses from v0.1 |
@@ -32,6 +43,9 @@
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
 | C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes, once grammar comes back** (announced 2026-09-25) | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
 | C21 | Faster lookups: on-device caches (entries by lemma, chapter analysis, text-keyed cache, warm TLS) | **Yes, no Lexirise changes needed** | v0.1.x–v0.2, with C12–C13 | Small–medium each | Client, C12–C13, SD |
+| C23 | Slim down to CJK-learning firmware (remove CrossPoint features we don't need) | **Yes, after M** (claritise, 2026-09-25); keep / remove list needs claritise | After M | Medium | M's "Taken from CrossPoint" record |
+| C24 | Release and beta (tagged release, install guide, 5–10 testers) | **Yes** | After P10 / M | Small–medium | `user-guide.md` |
+| C25 | A backend interface (`VocabProvider`) for a second service | **Park** | — | Small | `LexiriseClient` |
 | C22 | One font for everything: a single CJK + Latin family | **Yes, as part of the slimming after M** (claritise, 2026-09-25) | After M | Small–medium; the font choice needs claritise | `languages.md` §5.1, the card's type sizes |
 | C18 | Manga: tap a word in a speech bubble (sideways strips, OCR'd on the Mac) | **Yes: specced as `manga.md`; Mac pipeline built as a spike** | v0.2 | Medium: the device side; the card's orientation needs claritise | The card, lookup, saving, `analyze/text` (at conversion) |
 
@@ -204,6 +218,11 @@ words.
   is part of the design.
 - **Design:** where the contextual sense and reading go on the card needs claritise's sign-off. The
   approved card is binding.
+- **Rule for saves (proposed 2026-09-25):** when the card shows a contextual reading or sense, **the save
+  uses it too**, not the dictionary default. A wrong reading saved with a real sentence gets drilled in
+  the SRS on a card that looks authoritative, and in CJK the reading is much of what's learned.
+  **To confirm:** whether `POST /v1/vocabulary` can carry a reading or sense override. Today it takes
+  a custom `translation` and `notes`, and nothing for the reading.
 
 ## C19. Grammar on the card
 
@@ -219,6 +238,13 @@ is in your SRS. StarDict can't do that.
 - **Design:** where the pattern goes on the card, with claritise's sign-off (the approved card is
   binding).
 - Response shape unknown until it's live. Read it before specifying.
+- **The second pass might also fix word boundaries (a guess, 2026-09-25).** `morphoPending` reads as
+  "morphological analysis still to come", and `../v0.1/lexirise-client.md` §2 already treats it as
+  "the word boundary may be rough". If the slower pass re-segments, the second call could return
+  とびら whole where the first split it as と + びら (`../reference/lexirise-api-notes.md`, tokenizer
+  notes). **Test once live:** call `analyze/text` twice on that sentence and compare the
+  occurrences. If boundaries change, the card must take the second call's word too, not only its
+  grammar, which makes C19 a bigger firmware change than written here.
 
 ## C12–C13. Page analysis and the vocab mirror
 
@@ -253,6 +279,14 @@ card. The pipeline (`tools/manga/`) ran on one 184-page volume: 613 strips, 10,3
 shown whole on some strip. Owed: a panel check of the strips, a look at `matcha-reader`, and
 claritise's call on the card's orientation on a sideways strip (`manga.md` §6).
 
+**The format as an open spec (2026-09-25, for later).** Once the device side works and the format has
+stopped moving, write it up as its own doc (e.g. `manga-format.md`): the strip layout, the XTCH use,
+the word-box sidecar, sample output from one volume, and a validator. It's needed for our own
+pipeline anyway, and it turns a future ask to Lexirise into "export this documented format"
+(claritise says Lexirise already ingests manga; not checked here). Open and documented, not
+proprietary: easier for Lexirise to adopt, reusable by other e-ink projects. Pitch it with C20, after
+v0.3, not while the format is still a spike.
+
 ## C20. Deeper Lexirise library integration (way down the line)
 
 **Added 2026-09-25 (claritise). An idea, not a plan.** Lexirise already takes uploads
@@ -278,10 +312,18 @@ nothing comes back to the device (C8). With a way back, the device could:
   scraping, and nothing that looks like redistributing authors' work.
 - **Before then, on our side:** make the device's web upload and library screens as painless as
   possible, so the version without syncing still feels decent.
+- **Manga from Lexirise's own ingestion:** export to our documented format (C18, "The format as an
+  open spec") instead of a new pipeline.
+- **A device sign-in flow is a prerequisite** for anything sold preinstalled: a code shown on the
+  device, confirmed on the phone, instead of pasting an API key into a web page. Lexirise would build
+  it. Not asked yet.
+- **The end state discussed (2026-09-25, not a plan):** an X4 Pro sold with Lexipoint preinstalled and a
+  year of Lexirise Pro included. That depends on the sign-in flow, library sync, and Lexirise and Xteink
+  agreeing a bundle, none of which we control. Beta retention numbers (C24) are what they'd want to see.
 
 **Gate (claritise, 2026-09-25):** pitch only after the manga pipeline and SRS reviews (C18, C11) work on
 the device, phase M (the standalone repo and rebrand) has landed, and Lexipoint has been slimmed down to a
-CJK-learning firmware (removing CrossPoint features it doesn't need; not yet a decision or phase).
+CJK-learning firmware (C23).
 
 **Why later:** it's a big ask of Lexirise (compute and storage per uploaded book, a compact export the
 device can hold in memory, their policy on uploaded books). **Policy (claritise, 2026-09-25): build
@@ -338,23 +380,63 @@ trap (`languages.md` §5); the font picker and the rest of CrossPoint's font mac
 Also worth doing when it's rebuilt: widen the glyph ranges to CJK Extension A and the non-BMP
 characters fiction uses (𠮟 renders as a box today, §5.1).
 
+## C23. Slim down to CJK-learning firmware
+
+**Added 2026-09-25 (claritise): after phase M, strip CrossPoint features Lexipoint doesn't need**, and
+make the firmware purpose-built for Japanese and Chinese learning with Lexirise. Phase M
+(`../v0.1/standalone-repo.md`) only restructures and rebrands; it removes nothing. This is its own
+decision and phase after M, **not yet a decision row or a phase**.
+
+Why: every removed feature frees heap and flash for TLS, the card, page analysis and grammar (memory is
+the real limit on this chip); a smaller settings and menu surface; nothing to merge since M ends upstream
+tracking.
+
+**Needs claritise, a keep / remove / unsure list.** Not drawn up yet. Starting points:
+- **Likely remove:** code for devices without touch (M already drops their envs), button-only flows,
+  network features unrelated to Lexirise, and the font machinery C22 makes redundant.
+- **Likely keep:** EPUB and TXT, ruby / furigana, sleep and battery, OTA, the StarDict fallback, the web
+  upload page, the dev harness.
+- **Unsure:** KOReader sync, OPDS, other reader formats, the reader settings a CJK reader still wants
+  (vertical text if it's ever added).
+
+Each removal gets a line in the "Taken from CrossPoint" record M sets up, so what was dropped stays findable.
+
+## C24. Release and beta
+
+**Added 2026-09-25.** People in the Lexirise community are already asking about buying an X4 Pro for this.
+Before anyone outside can use it:
+- **A tagged release** with a prebuilt firmware file (no release exists yet; M changes the release URL).
+- **Flashing steps and a "what you need" section** in `../user-guide.md`: the X4 Pro specifically (not the
+  X4 / X3), a Lexirise Pro key, WiFi, and for manga a Mac (C18).
+- **5–10 beta testers from the Discord.** Watch where setup fails and whether they still read with it
+  after two weeks. That answers whether it's a "no brainer" and is the evidence any Lexirise or Xteink
+  pitch needs.
+
+Open: known rough edges to fix or flag first (e.g. USB silent after a flash, seen in P9).
+
+## C25. A backend interface (parked)
+
+**Noted 2026-09-25, low priority.** Lexirise is the only service with every piece Lexipoint needs
+(tokenizing and state in one call, save with sentence, key auth). jpdb.io comes closest for Japanese, and
+LingQ possibly for more languages (neither checked recently). If a second backend is ever wanted, pull a
+`VocabProvider` interface out of `LexiriseClient` (analyze, lookup, save, key check). Also cheap insurance
+against depending on one vendor. Not planned.
+
 ## C11. SRS review app on the device
 
 **The appeal:** e-ink suits flashcards well. They're static, button-driven, need no touch, and use
 no battery between presses. Reviewing on the device you read on closes the loop:
 mine a word from the book, then review it from the same book.
 
-**What the API allows (tested 2026-09-24):**
-- **Reading the schedule: yes.** Items expose FSRS state (`next_review_at`, stability, difficulty,
-  reps, lapses). Page through all items (1 request per 200), filter `next_review_at <= now` on the
-  device, and cache it to SD for offline review.
-- **Recording a review: no.** There's no grade endpoint. `PATCH` only sets `proficiency` / `suspended`.
+**What the API allowed (tested 2026-09-24):** reading the schedule, yes (items expose FSRS state:
+`next_review_at`, stability, difficulty, reps, lapses; the due list had to be filtered on the device after
+paging everything); recording a review, no (no grade endpoint; `PATCH` only sets `proficiency` /
+`suspended`). Both are being fixed by the announced endpoints below.
 
-**Options:**
-1. **Ask Lexirise for a review endpoint** (e.g. `POST /v1/vocabulary/{id}/review {grade, reviewed_at}`).
-   With it, this is a clean feature: Lexirise stays the only scheduler, the device queues grades
-   offline with timestamps, and they flush on the next WiFi-up. **Recommended, and the only option
-   that doesn't create a second source of truth.**
+**Options (2026-09-24):**
+1. **Ask Lexirise for a review endpoint.** Recommended then as the only option that doesn't create a
+   second source of truth: Lexirise stays the only scheduler. **Asked, and being built** (below). The
+   offline grade queue with timestamps first planned here is **superseded** by the online-only decision.
 2. **Our own FSRS on the device.** This is technically easy (FSRS is small), but the device's
    schedule would drift from Lexirise's, and the app would show different due counts than the
    phone. **Don't do it.**
@@ -369,7 +451,7 @@ card). Not live yet.
 **Decision (claritise, 2026-09-25): review is online-only, grade only.** Lookups already need the
 network, and a phone hotspot covers the rest. So there's no offline queue, no `reviewed_at`, and no
 dedupe of synced reviews: the server's time is the review time, which is what FSRS needs. This
-supersedes the offline queue in option 1 and the SD cache above. Consequences:
+supersedes the offline queue and SD cache first planned in option 1. Consequences:
 - A review POST is **not idempotent**. After a dropped connection, don't resend (as with a save). At
   worst the reader grades that card again.
 - Fetch the due list once per session, so stepping between cards is local and only the grade goes
@@ -383,12 +465,40 @@ minute. It would need the date accessor already listed for P8 (`../v0.1/lexirise
 "Clock source"), plus an optional `reviewedAt` and a client ID per review from Lexirise. Not checked:
 whether the RTC survives a fully drained battery.
 
-**Firmware cost:** a new top-level activity (a Home menu entry: one more upstream hook) and a card
-activity. The local queue is no longer needed. That's close to the "vocab mirror" work (see the API-usage review), which
-it would share.
+**Firmware cost:** a new top-level activity (a Home menu entry) and a card activity. No local queue.
+It can share the vocab mirror (C13) for showing due counts offline.
 
-**Scope note:** upstream `SCOPE.md` rules out "interactive apps". That doesn't bind the fork, but it
-does mean this code will never go upstream, and it adds to the rebase cost.
+**Scope note:** upstream `SCOPE.md` rules out "interactive apps". That never bound the fork, and after
+phase M there's no upstream to rebase onto, so it no longer costs anything.
+
+## Open, to confirm
+
+Everything raised 2026-09-25 without a clear answer yet. Strike each one through with its answer and date
+when it's settled.
+
+**When Lexirise's new endpoints are live** (check the reference, `../reference/lexirise-api-notes.md`):
+1. Does `POST /v1/words/context` return the **reading**, or only the meaning? If only the meaning, the one follow-up worth sending (C10).
+2. `GET /v1/vocabulary/due`: does each card carry its content (word, reading, meaning, sentence) or only IDs? Is there a `limit` / pagination (64 KB body cap)? (C11)
+3. `POST /v1/vocabulary/{id}/review`: grade scale 1–4 = Again / Hard / Good / Easy? Does the response carry the next due date? (C11)
+4. The grammar pass: the response shape, and how long after the first call the second one returns grammar (C19).
+5. Does the second `analyze/text` call change **word boundaries** (とびら)? (C19)
+6. Were the reported bad data fixed (一緒 → ichiitoguchi, 𠮟る split, 一日中雨 as one token)? Re-test.
+
+**Lexirise, not asked yet:**
+7. Can a save carry a **reading or sense override**, so saves match the contextual card? (C10)
+8. Report the **とびら → と + びら** split (with the sentence). Not reported yet.
+9. A **device sign-in flow** (code on the device, confirmed on the phone), only before any bundle (C20).
+10. Does Lexirise already ingest manga and link to ebook sites, as claritise says? Not checked here (C18, C20).
+
+**On the device / measured by us:**
+11. Does the X4 Pro's RTC survive a fully drained battery? Matters only if offline review returns (C11).
+12. Lemma-cache hit rate over a chapter; time and memory of a whole-chapter `analyze/text`; TLS session resumption's heap cost on wolfSSL (C21).
+
+**Needs claritise:**
+13. The one font: which family (Noto Serif CJK or Sans), Chinese letterforms (JP forms, or ship JP + SC), and whether it replaces the UI fonts on the approved card (C22).
+14. The keep / remove / unsure list for slimming (C23).
+15. The card's orientation on a sideways manga strip (`manga.md` §6, already owed).
+16. The save-uses-context rule in C10 (proposed, not yet signed off).
 
 ## Questions to put to Lexirise
 
@@ -405,4 +515,4 @@ does mean this code will never go upstream, and it adds to the rebase cost.
 
 ## Suggested order after v0.1
 
-**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After M:** C22 with the rest of the slimming. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
+**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.

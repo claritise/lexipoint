@@ -135,7 +135,8 @@ this API. `dictionary/lookup` gives every sense in a fixed order. See v0.2 C10 f
   bounded by 。 on both sides, ruby excluded), so more context wouldn't help: the clue (a noun after
   の) is next to the word. Most likely a lexicon cost for the kana spelling of a word usually written
   in kanji. Kana-heavy books (children's, YA) are the weak spot. Chinese segmentation seems better
-  in use (claritise's impression, not measured). Not reported yet.
+  in use (claritise's impression, not measured). Not reported yet. Once the grammar pass is live, test
+whether a second `analyze/text` call returns とびら whole (v0.2 C19).
 - **Seen segmenting a whole manga volume** (2026-09-25, 178 `analyze/text` calls, one per page, the
   page's OCR'd text blocks joined with `\n`; `../v0.2/manga.md` §4):
   - `\n` comes back as its **own occurrence** with `isWordLike: false`, like punctuation. Blocks joined
