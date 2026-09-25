@@ -22,6 +22,8 @@ number. Filters take either the number or the label.
 | `PATCH /v1/vocabulary/{id}` | C9 (set the level from the card) | `proficiency` 0–4, `notes`, `customTranslation`, `tags`, `suspended`, … The `{id}` is the `saved_expression_id` from `stateByEntryId` |
 | `PUT /v1/vocabulary/{id}/tags` | C2 re-tagging only | **Replaces every tag.** Appending needs a read-modify-write |
 | `POST /v1/decks` | C4 | `deck_type` `snapshot` or **`dynamic`**. A dynamic deck with `rule_type: "user_tag_filter"` + `user_tags` fills itself from tagged vocabulary. Also `unit_type`, `parent_deck_id` (subdecks) |
+| `POST /v1/analyze/context` | C10 (live 2026-09-25) | Sentence + the word's `charStart` / `charEnd` → `meaning`, `conciseMeaning`, `reading` (when the offsets match one token). See "Reported to Lexirise" |
+| `GET /v1/study/summary`, `POST /v1/study/sessions`, `GET /v1/study/sessions/{id}`, `POST /v1/study/sessions/{id}/reviews` | C11 (live 2026-09-25) | Due counts; sessions with card content; batched, deduped reviews with `reviewedAt`. See "Study API" |
 | `POST /v1/uploads/chapters` | C8 | Multipart. `content_type: document` accepts **EPUB/TXT**. `external_id` / `Idempotency-Key` for idempotency. Processing is async (`/status`) |
 
 ## What the reference answers (open questions from the docs)
@@ -94,9 +96,9 @@ Lexirise schedules with **FSRS**, and each item exposes the schedule **read-only
 `proficiency_source` (`manual`), and the full `dictionary_entry` (with `system_tags`, rank and
 translations) embedded.
 
-- **There's no endpoint to record a review** *(one is being built: see "Reported to Lexirise" below)*. `PATCH /v1/vocabulary/{id}` accepts `proficiency`,
+- **There's no endpoint to record a review** *(superseded 2026-09-25: the study API records reviews, see "Study API" below)*. `PATCH /v1/vocabulary/{id}` accepts `proficiency`,
   `suspended` and so on, but no grade, and no FSRS fields.
-- **There's no "due" filter** *(`GET /v1/vocabulary/due` is being built)*. `sortId` has `last_review_at` but not `next_review_at`. Due cards
+- **There's no "due" filter** *(superseded 2026-09-25: `GET /v1/study/summary` counts due cards and a study session returns them)*. `sortId` has `last_review_at` but not `next_review_at`. Due cards
   have to be filtered on the device (`next_review_at <= now`) after paging everything, which is 1
   request per 200 items.
 - `GET /v1/me` → `apiKey` has `rateLimitMax: 1200` and `rateLimitTimeWindow: 3600000`, plus
@@ -201,23 +203,46 @@ The contextual meaning endpoint, empty `grammar[]`, a review endpoint plus a due
 
 **Replies:**
 - **2026-09-24:** the Lexirise developer is happy to support the use case with new endpoints.
-- **2026-09-25** (Lexirise's announcement bot): **being built, not live yet.** Lexirise will post in
-  the thread when they are.
+- **2026-09-25, earlier** (Lexirise's announcement bot): being built, announced as
+  `GET /v1/vocabulary/due`, `POST /v1/vocabulary/{id}/review` (grade 1–4) and `POST /v1/words/context`.
+- **2026-09-25, later: live and documented in the reference, in a different shape** (read 2026-09-25):
+  the study-session API and `POST /v1/analyze/context`, both below. The announced paths don't exist.
+  The reported readings (长得, 四月一日, 𠮟る, 一緒) and ～ことにした not being detected are **filed and
+  being worked on** separately. 一日中雨 and とびら (tokenizer notes) weren't in that list; とびら was
+  never reported.
 
-| Announced | What it does (as announced) | Check in the reference once live |
-|---|---|---|
-| `GET /v1/vocabulary/due` | The cards due now | Does each card carry its content (word, reading, meaning, the saved sentence) or only IDs? A `limit` / pagination? Our parser caps a body at 64 KB (`../v0.1/lexirise-client.md` §1), so a large backlog with sentences needs pages of ~20 |
-| `POST /v1/vocabulary/{id}/review` | Takes a grade **1–4**; the server runs the scheduler and returns the updated card | The grade scale (Again / Hard / Good / Easy expected). Does the response carry the next due date? Not idempotent: never resend after a dropped connection (same rule as a save) |
-| `POST /v1/words/context` | Sentence + word → the meaning in that context | **Does it return the reading too?** The announcement only says "meaning", and the reported cases were mostly readings (四月一日 → tsuitachi, 一枚上手 → uwate, 长得 → zhǎng). If it's meaning-only, ask for the reading: that's the one follow-up worth sending |
+### Study API (live 2026-09-25)
 
-- **Grammar explained:** `analyze/text` answers `morphoPending: true` for new text, and grammar comes
-  from a slower second pass that the API wasn't starting, so `grammar[]` stayed empty. The API will
-  start that pass, so **calling `analyze/text` again returns the grammar.** Not a bug on our side:
-  the v0.1 client skips `grammar` / `grammarStates` (`../v0.1/lexirise-client.md` §2) and doesn't
-  call again.
-- **Timestamp on reviews:** the second post asked for "grade + timestamp", but never said why, and the
-  announcement is grade only. That's fine for online reviews (server time is the review time). **No
-  follow-up needed: on-device review is online-only** (claritise, 2026-09-25; v0.2 C11).
-- **Bad data:** not mentioned in the announcement. Re-test 一緒, 𠮟る and 一日中雨 once the endpoints are live.
+| Endpoint | Body / query | Returns | Notes |
+|---|---|---|---|
+| `GET /v1/study/summary` | `language` (optional) | `dueCount`, `newCount`, `reviewedToday`, `newCards {dailyLimit, remainingToday}`, `today {cardCount, dueCount, newCount, estimatedMinutes}`, `languages[]`, `decks[] {deckId, title, language, unitType, itemCount, dueCount, newCount}` | "dueCount counts cards due now and newCount saved cards never studied" |
+| `POST /v1/study/sessions` | `language` (required); `mode` `study` (default) / `cram`; `source {type: all / deck / tags / vocabulary / recent / today, deckId, tags, vocabularyIds}`; `filters {proficiency, partOfSpeech, unitType}`; `directions` `forward` / `reverse` / `listen`; `limit` ≤ 180 | `sessionId`, `mode`, `language`, `cards[] {vocabularyId, direction, isNew, dueAt, unitType, text, reading, translation, sourceSentence {text, translation}, audioUrl, proficiency}` | 422 when there's nothing to study |
+| `GET /v1/study/sessions/{sessionId}` | — | Same as above | Resume. "Learning cards due within 20 minutes are included, as in the app" |
+| `POST /v1/study/sessions/{sessionId}/reviews` | `reviews[]` (≤ 200): `id` (UUID, ours), `vocabularyId`, `direction`, `rating` `again` / `hard` / `good` / `easy`, **`reviewedAt` (required, ISO)**, `durationMs` (optional) | `results[] {id, status: applied / duplicate / rejected, error?, card {vocabularyId, direction, dueAt, proficiency, state, suspended}}` | **A resent `id` is `duplicate`**: batches are safe to retry. Applied oldest first. Scheduled exactly like reviews in the app |
+
+- **Offline review is possible** with this API (timestamps, client ids, dedupe). v0.2 C11 keeps
+  claritise's online-only decision until it's reopened.
+- `reviewedAt` is required, so even online reviews need the device's real time (NTP after WiFi-up).
+- A 180-card session with sentences and translations may exceed our 64 KB body cap
+  (`../v0.1/lexirise-client.md` §1). **Measure** a real session's size; use a smaller `limit`.
+- `listen` needs audio; the X4 Pro has none.
+
+### `POST /v1/analyze/context` (live 2026-09-25)
+
+Body: `language`, `text` (≤ 1600 characters), **`charStart` / `charEnd` from `analyze/text`**, optional
+`question` (defaults to the word's meaning). Returns `meaning` (full), `conciseMeaning` (short) and
+`reading`, which is optional: returned "when the offsets match one token". "Only the answer uses a model."
+Works like the app's Context tab. Not tested from here yet: whether it gets 四月一日 → tsuitachi,
+一枚上手 → uwate, 长得 → zhǎng.
+
+### `morphoPending` (documented 2026-09-25)
+
+"When true, the response has fast tokens only. Call again later for grammar and refined segmentation."
+So the first answer's word boundaries **can change** on the second call, not only its grammar. The v0.1
+client uses the first answer and doesn't call again (`../v0.1/lexirise-client.md` §2), so today's card
+may show a rough split. v0.2 C19 has the plan. How long "later" is isn't documented: measure it.
+
+- **Earlier notes, now superseded:** "a grade-only endpoint, no follow-up needed" (the API takes
+  `reviewedAt` after all); "not idempotent: never resend" (reviews are deduped by `id`).
 - **Nothing gets better on the device by itself** except fixed server data. Grammar, contextual
   meaning and reviews each need firmware work (v0.2 C10, C11, C19).

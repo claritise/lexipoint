@@ -523,7 +523,8 @@ when it's settled.
 ~~10. Does Lexirise already ingest manga and link to ebook sites, as claritise says?~~ **Manga: yes**, comic OCR with tappable speech bubbles on Webtoon, Line Manga, Kakao and others (lexirise.app, 2026-09-25). **Ebook sites: not confirmed**, the site lists streaming, comic and podcast integrations only. **Data export: yes**, a Pro feature (C18, C20).
 
 **On the device / measured by us:**
-11. Does the X4 Pro's RTC survive a fully drained battery? Matters only if offline review returns (C11).
+11. Does the X4 Pro's RTC survive a fully drained battery? Matters only if offline review is reopened, which the API now supports (C11).
+17. **Reopen offline review?** The study API now takes `reviewedAt`, client ids and deduped batches, so offline review costs only our side (an SD queue and the RTC date accessor). claritise's call (C11).
 12. Lemma-cache hit rate over a chapter; time and memory of a whole-chapter `analyze/text`; TLS session resumption's heap cost on wolfSSL (C21).
 
 **Needs claritise:**
@@ -542,9 +543,9 @@ when it's settled.
 ~~4. A count or stats endpoint?~~ **Yes**: `totalCount` / `languageCount` (C7).
 ~~5. Server-side analysis of uploaded chapters?~~ **Not exposed** (C8 stays parked).
 ~~6. Tags: `:` and merge vs replace?~~ **`:` is fine. A re-POST replaces all tags. Tags can't be deleted through the API**, so keep the set small (C2).
-~~7. Is the app's *Context* tab (the contextual sense and reading) available through the API? Why are `grammar[]` / `grammarStates` always empty?~~ **`POST /v1/words/context` is being built** (C10; check it returns the reading). **Grammar:** the second pass behind `morphoPending` wasn't starting; the API will start it, and a second call returns grammar (C19). 2026-09-25.
-~~8. Could the API get a **review endpoint** (grade + timestamp → FSRS update), and a `due` filter on `GET /v1/vocabulary`?~~ **Being built:** `GET /v1/vocabulary/due` and `POST /v1/vocabulary/{id}/review` (grade 1–4, no timestamp). Fine, since review is online-only (C11). 2026-09-25.
+~~7. Is the app's *Context* tab (the contextual sense and reading) available through the API? Why are `grammar[]` / `grammarStates` always empty?~~ **Live: `POST /v1/analyze/context`**, with a reading (C10). **Grammar:** the second pass behind `morphoPending` now runs; calling again returns grammar and a refined split (C19). 2026-09-25.
+~~8. Could the API get a **review endpoint** (grade + timestamp → FSRS update), and a `due` filter on `GET /v1/vocabulary`?~~ **Live as the study API:** `GET /v1/study/summary`, `POST /v1/study/sessions`, `GET …/{sessionId}`, `POST …/{sessionId}/reviews` (again/hard/good/easy, `reviewedAt`, client ids, deduped batches) (C11). 2026-09-25.
 
 ## Suggested order after v0.1
 
-**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (once `words/context` and the grammar pass are live) → C5. **v0.3:** C11 (once the due and review endpoints are live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
+**v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (both unblocked 2026-09-25: `analyze/context` and the grammar pass are live) → C5. **v0.3:** C11 (unblocked 2026-09-25: the study API is live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.

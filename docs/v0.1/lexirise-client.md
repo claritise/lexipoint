@@ -79,7 +79,7 @@ Fields we keep (all others are skipped while streaming):
 | `occurrences[].{entryId, lemmaEntryId, word, lemma, transliteration, charStart, charEnd, isWordLike}` | All occurrences, compact (§4). **`lemma` is only present when it differs from `word`**, so fall back to `word` |
 | `entryMetaById[id].{transliteration, partOfSpeech[0..1], status, rank, frequencyScore}` | All IDs in `occurrences` (lookup-flow §6) |
 | `stateByEntryId[id].{saved_expression_id, proficiency, seen_count}` | Same |
-| `morphoPending` | Flag. If true, the word boundary may be rough. Show it anyway |
+| `morphoPending` | Flag. If true, the word boundary may be rough. Show it anyway. *(2026-09-25: the reference now says a `true` answer has "fast tokens only"; a later call gives grammar and refined segmentation. v0.1 keeps using the first answer; calling again is v0.2 C19.)* |
 | `grammar`, `grammarStates`, `user_tags`, `images`, `notes`, `updated_at` | Skip |
 
 ### `POST /v1/dictionary/lookup`
