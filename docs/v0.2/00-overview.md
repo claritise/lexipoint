@@ -265,6 +265,22 @@ nothing comes back to the device (C8). With a way back, the device could:
   C18. The biggest barrier removed for users without a Mac.
 - **Sync reading progress** with the app.
 
+**The pitch (notes, 2026-09-25):**
+- **Getting books onto the device is the everyday pain of e-readers**, and Kindle's real edge is that a
+  book is just *there*. Lexirise's web app as the place you sort your library, with the device syncing it,
+  is that experience for learners.
+- **Fandom readers are an audience:** people learning Chinese to read danmei in the original, or reading
+  Japanese web novels and fan works (AO3 and similar), mostly on phones today. claritise mentions that
+  Lexirise already has links to ebook sites (not checked here).
+- **Rights:** only the reader's own works and downloads (AO3 allows personal downloads). No bulk
+  scraping, and nothing that looks like redistributing authors' work.
+- **Before then, on our side:** make the device's web upload and library screens as painless as
+  possible, so the version without syncing still feels decent.
+
+**Gate (claritise, 2026-09-25):** pitch only after the manga pipeline and SRS reviews (C18, C11) work on
+the device, phase M (the standalone repo and rebrand) has landed, and Lexipoint has been slimmed down to a
+CJK-learning firmware (removing CrossPoint features it doesn't need; not yet a decision or phase).
+
 **Why later:** it's a big ask of Lexirise (compute and storage per uploaded book, a compact export the
 device can hold in memory, their policy on uploaded books). **Policy (claritise, 2026-09-25): build
 what we can without Lexirise first, and ask only for what's critical** (like `words/context`). Pitch
