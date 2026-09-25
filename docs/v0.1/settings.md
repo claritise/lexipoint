@@ -60,8 +60,9 @@ master **Lexirise lookups** toggle: when it's Off, everything below the Account 
 it answers that language's taps whenever Lexirise doesn't (Lexirise off, the language's Lookups off, no
 WiFi), so it always shows: with Lexirise off the screen is the Account group, the two dictionaries and
 "Language when a book doesn't say" (below); a language that's off collapses to its Lookups toggle and its
-Offline dictionary. The web page shows the same rows by the same rules (`LexirisePage.html`'s `WHEN`
-table, pinned by `scripts/lexipoint/test_lexirise_page.py`).
+Offline dictionary. The web page shows the same rows: the device sends which ones (`shows` in `GET
+/api/lexirise`, from `settings_screen::visibleRows`), so the page has no rule of its own (pinned by
+`scripts/lexipoint/test_lexirise_page.py` and `WebApiState.SaysWhichRowsShowByTheDeviceScreensRule`).
 **"Language when a book doesn't say"** shows whenever Han-only text uses it: always, except while Lexirise is
 on with just one language on (`Settings::defaultLanguageApplies()`). With Lexirise off only the offline
 dictionaries answer and the per-language switches don't apply; with Lexirise on and no language on, the
@@ -273,7 +274,6 @@ extra to keep pixel-perfect here beyond "uses the stock components".
   all three outcomes, turn Chinese off and on again (its rows hide and come back with values kept), and the reading setting and card tap staying in sync across a reboot.
 - On device (P13): turn Japanese off: Readings hides, its Offline dictionary stays; turn Lexirise off: the
   screen is the Account group, both dictionaries and "Language when a book doesn't say" (7 rows,
-  `lxctl settings-smoke`'s minimum), and the web page shows the same rows. Toggle Lexirise from the web
-  page with the device screen open and the cursor on "Language when a book doesn't say": the cursor stays
-  on it. Upgrade note: Lexirise off with only Chinese's switch on and the default at Japanese now reads
+  `lxctl settings-smoke`'s minimum), and the web page shows the same rows; turn Lexirise on with both
+  languages off: "Language when a book doesn't say" shows. Upgrade note: Lexirise off with only Chinese's switch on and the default at Japanese now reads
   Han-only text of an untagged book with the Japanese dictionary (the row shows, so it's visible).
