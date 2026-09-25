@@ -73,6 +73,9 @@ can't attribute ahead of time.
   The markers stay where they say *why* a base file was edited, and go where they only said "our code".
 - **The global rule "don't modify `util/Dictionary*`"** exists for merging from upstream. It ends with M.
   StarDict is still kept.
+- **Record every removal** in M's "Taken from CrossPoint" record (`../v0.1/firmware-base.md`, after M), so
+  what was dropped, and at which commit, stays findable (C23).
+- **Also keep** (C23): ruby and furigana, sleep and battery, and the dev harness.
 - **One cut, one commit**, each building and passing the host suite on its own, so a bad cut is easy to
   revert.
 

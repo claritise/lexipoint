@@ -43,7 +43,7 @@
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
 | C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes, once grammar comes back** (announced 2026-09-25) | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
 | C21 | Faster lookups: on-device caches (entries by lemma, chapter analysis, text-keyed cache, warm TLS) | **Yes, no Lexirise changes needed** | v0.1.x–v0.2, with C12–C13 | Small–medium each | Client, C12–C13, SD |
-| C23 | Slim down to CJK-learning firmware (remove CrossPoint features we don't need) | **Yes, after M** (claritise, 2026-09-25); keep / remove list needs claritise | After M | Medium | M's "Taken from CrossPoint" record |
+| C23 | Slim down to CJK-learning firmware (remove CrossPoint features we don't need) | **Yes, after M: specced as `slimming.md`** (list approved by claritise 2026-09-25, "yes to all") | After M | Medium; saves ≈ 2.5–2.7 MB of 5.57 MB | M's "Taken from CrossPoint" record |
 | C24 | Release and beta (tagged release, install guide, 5–10 testers) | **Yes** | After P10 / M | Small–medium | `user-guide.md` |
 | C25 | A backend interface (`VocabProvider`) for a second service | **Park** | — | Small | `LexiriseClient` |
 | C22 | One font for everything: a single CJK + Latin family | **Yes, as part of the slimming after M** (claritise, 2026-09-25) | After M | Small–medium; the font choice needs claritise | `languages.md` §5.1, the card's type sizes |
@@ -391,7 +391,7 @@ Why: every removed feature frees heap and flash for TLS, the card, page analysis
 the real limit on this chip); a smaller settings and menu surface; nothing to merge since M ends upstream
 tracking.
 
-**Needs claritise, a keep / remove / unsure list.** Not drawn up yet. Starting points:
+**Update 2026-09-25: the list is drawn up, measured and approved** (claritise, "yes to all"): `slimming.md`. KOReader sync, OPDS, Calibre, WebDAV, 33 UI translations, most hyphenation, the built-in reader fonts (with C22), extra themes and code for devices without touch go. EPUB, TXT, XTC (manga), StarDict, OTA and the web upload page stay. The starting points below are kept as history:
 - **Likely remove:** code for devices without touch (M already drops their envs), button-only flows,
   network features unrelated to Lexirise, and the font machinery C22 makes redundant.
 - **Likely keep:** EPUB and TXT, ruby / furigana, sleep and battery, OTA, the StarDict fallback, the web
@@ -496,7 +496,7 @@ when it's settled.
 
 **Needs claritise:**
 13. The one font: which family (Noto Serif CJK or Sans), Chinese letterforms (JP forms, or ship JP + SC), and whether it replaces the UI fonts on the approved card (C22).
-14. The keep / remove / unsure list for slimming (C23).
+14. ~~The keep / remove / unsure list for slimming (C23).~~ **Approved 2026-09-25: `slimming.md`.** Still open there: S1 (the font, which is item 13), S2 (a built-in fallback font), S3 (keeping TXT).
 15. The card's orientation on a sideways manga strip (`manga.md` §6, already owed).
 16. The save-uses-context rule in C10 (proposed, not yet signed off).
 
