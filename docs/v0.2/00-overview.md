@@ -518,7 +518,7 @@ when it's settled.
 
 **Lexirise, not asked yet:**
 7. Can a save carry a **reading or sense override**, so saves match the contextual card? (C10)
-8. Report the **とびら → と + びら** split (with the sentence). Not reported yet.
+8. The **とびら → と + びら** split: **don't report yet** (claritise, 2026-09-25). Test it once C19's second call is built; **report it only if it's still split after v0.2** (sentence and plan in `../reference/lexirise-api-notes.md`, tokenizer notes).
 9. A **device sign-in flow** (code on the device, confirmed on the phone), only before any bundle (C20).
 ~~10. Does Lexirise already ingest manga and link to ebook sites, as claritise says?~~ **Manga: yes**, comic OCR with tappable speech bubbles on Webtoon, Line Manga, Kakao and others (lexirise.app, 2026-09-25). **Ebook sites: not confirmed**, the site lists streaming, comic and podcast integrations only. **Data export: yes**, a Pro feature (C18, C20).
 

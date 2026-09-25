@@ -137,8 +137,16 @@ this API. `dictionary/lookup` gives every sense in a fixed order. See v0.2 C10 f
   bounded by 。 on both sides, ruby excluded), so more context wouldn't help: the clue (a noun after
   の) is next to the word. Most likely a lexicon cost for the kana spelling of a word usually written
   in kanji. Kana-heavy books (children's, YA) are the weak spot. Chinese segmentation seems better
-  in use (claritise's impression, not measured). Not reported yet. Once the grammar pass is live, test
-whether a second `analyze/text` call returns とびら whole (v0.2 C19).
+  in use (claritise's impression, not measured).
+  - **The sentence:** ときどきどこかの教室のとびらのあけしめされる音がだれもいない廊下にうつろにひびく。
+    Language `ja`. Expected: とびら as one noun (扉, door). Seen: と (particle) + びら (handbill), on the
+    first `analyze/text` answer, which the v0.1 card uses.
+  - **Likely cause (not confirmed):** `morphoPending: true` answers are "fast tokens only"
+    (documented 2026-09-25), so the refined second call may already split it correctly.
+  - **Plan (claritise, 2026-09-25): don't report it yet.** v0.2 adds the second call (C19). Test the
+    sentence then: if the refined answer returns とびら whole, it's fixed on our side and there's
+    nothing to report. **If it's still split after v0.2, report it to Lexirise** with this sentence,
+    both answers' occurrences, and the expected reading.
 - **Seen segmenting a whole manga volume** (2026-09-25, 178 `analyze/text` calls, one per page, the
   page's OCR'd text blocks joined with `\n`; `../v0.2/manga.md` §4):
   - `\n` comes back as its **own occurrence** with `isWordLike: false`, like punctuation. Blocks joined
