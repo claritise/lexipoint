@@ -29,3 +29,8 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 | `lxctl card-gestures` (P7) | **pass** |
 | `lxctl card-sentence` (P9) | **pass**: words 3 → 11, the wait at the sentence's last word and the jump into the bench's next sentence |
 | `lxctl settings-smoke` (P7) | **pass**: 12 rows |
+| `lxctl lexi me` (P1) | **pass**: `connected ok` (account details not recorded) |
+| `lxctl lexi analyze ja` / `zh` (P1) | **pass**: 彼は東京へ行った。 → 6 occurrences, 行った's lemma 行く, 437 ms; 我们明天去北京看朋友。 → 7, pinyin with tone marks, 374 ms |
+| `lxctl lexi soak 20` and `soak 20 cold` (P1) | **pass**: 20/20 each, free heap flat (+0 and −3 B/call), stack low-water 5688 B; the warm run's first call 6.8 s (WiFi join + TLS), then ~370 ms |
+| File Transfer, join a saved network (P1) | **pass**: joined (RSSI −62 dBm), web server up with mDNS `crosspoint.local` |
+| `websmoke.py` (P1) | **not run**: this Mac's Claude app is refused the local network (`No route to host` from the shell with and without its sandbox, and from the in-app browser), so nothing here can reach the reader's web pages. claritise: allow the app under System Settings → Privacy & Security → Local Network, or open the page from a phone |
