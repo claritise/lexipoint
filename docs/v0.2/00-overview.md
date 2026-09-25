@@ -640,4 +640,6 @@ when it's settled.
 
 ## Suggested order after v0.1
 
+**Now a plan:** `01-build-order.md` (2026-09-26) sequences this, with the changes it explains.
+
 **Next (pulled forward, claritise 2026-09-25):** the `morphoPending` second call from C19, on its own (re-call `analyze/text`, take the refined word, refresh the card); grammar on the card waits for C19 proper. Then test the とびら sentence. **v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (both unblocked 2026-09-25: `analyze/context` and the grammar pass are live) → C5. **v0.3:** C11 (unblocked 2026-09-25: the study API is live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
