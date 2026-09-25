@@ -427,7 +427,7 @@ Device check owed, with a card open:
   `AfterPopup` / `afterNotice` (what follows a notice); and `card::longPressReplacesCard` (P10:
   `card::pagePressLooksUp`, for taps too).
 - **Each language's own offline dictionary** (`settings.md` §1b): `lookup::chooseStarDict`. If the
-  language's folder can't be opened (removed from the card while its row is hidden, say), CrossPoint's
+  language's folder can't be opened (removed from the card, say), CrossPoint's
   own dictionary answers instead. One settings copy serves the whole lookup (gate, sentence, card). The tap is
   only described (sentence and language) when Lexirise is asked or a language has its own dictionary, so
   a plain StarDict lookup stays upstream's. A language's own dictionary makes the long-press a lookup
