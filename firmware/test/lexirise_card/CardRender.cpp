@@ -262,6 +262,8 @@ const char* targetName(const Target t) {
       return "undo";
     case Target::Card:
       return "card";
+    case Target::OwnWord:
+      return "word";
   }
   return "?";
 }

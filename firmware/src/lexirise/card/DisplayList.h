@@ -61,6 +61,7 @@ enum class Target : uint8_t {
   Action,       // index: the ⋯ action
   ToastUndo,    // the "… · Undo" toast (popup-ui.md §3.2): tapping it reverts the save
   Card,         // anywhere else on the card (swallows the tap)
+  OwnWord,      // P10: the card's word highlighted on the page: a tap or long-press there does nothing
 };
 
 struct Hit {

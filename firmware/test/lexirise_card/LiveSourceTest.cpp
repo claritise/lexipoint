@@ -5,6 +5,8 @@
 
 #include "FakeApi.h"
 #include "FakeMetrics.h"
+#include "lexirise/card/BenchFixtures.h"
+#include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardController.h"
 #include "lexirise/card/CardFrame.h"
 #include "lexirise/card/CardSession.h"
@@ -904,6 +906,61 @@ void openOnTheLastWord(LiveSource& source, CardController& c) {
 
 }  // namespace
 
+TEST(LiveSaving, ATapOnTheWordsOwnHighlightDoesNothingAndElsewhereLooksUp) {
+  // P10: a tap on the page looks up the word there, except the card's own word (already on the card): it
+  // would close and reopen the same card, with another request.
+  Saving s;
+  const Rect word = composeFrame(s.c, kMetrics).scene.wordOnPage;
+  ASSERT_GT(word.w, 0);
+  s.input.tap(word.x + word.w / 2, word.y + word.h / 2, ++s.now);
+  EXPECT_NE(s.session.handleInput(s.now).effect, Effect::Close);
+  s.show();
+  s.input.tap(word.right() + 60, word.y + word.h / 2, ++s.now);  // further along the line
+  const Outcome o = s.session.handleInput(s.now);
+  EXPECT_EQ(o.effect, Effect::Close);
+  ASSERT_TRUE(o.lookUpAt.has_value());
+  EXPECT_EQ(o.lookUpAt->x, word.right() + 60);
+}
+
+TEST(LiveSaving, TheCardsOwnWordTakesNoSwipeAndKeepsAWaitingStep) {
+  // P10 R4: the word's highlight is its own target, not the card: a swipe that starts on it isn't the card's.
+  Saving s;
+  const Rect word = composeFrame(s.c, kMetrics).scene.wordOnPage;
+  s.input.swipe(Swipe::Up, word.x + word.w / 2, word.y + word.h / 2, ++s.now);
+  s.session.handleInput(s.now);
+  EXPECT_EQ(s.c.state().view, View::Card);
+  s.show();
+  s.input.longPress(word.x + word.w / 2, word.y + word.h / 2, ++s.now);  // nor a long-press
+  EXPECT_NE(s.session.handleInput(s.now).effect, Effect::Close);
+}
+
+TEST(CardOwnWord, OnlyWhereTheReadersPageIsShownAndBehindTheCard) {
+  const auto ownWordHits = [](const DisplayList& card) {
+    int n = 0;
+    for (const Hit& h : card.hits) n += h.target == Target::OwnWord;
+    return n;
+  };
+  Saving s;
+  EXPECT_GT(ownWordHits(composeFrame(s.c, kMetrics).card), 0);
+  // A landscape book (its page isn't drawn under the card): no hit where the reader never drew the word.
+  EXPECT_EQ(ownWordHits(composeFrame(s.c, kMetrics, /*pageVisible=*/false).card), 0);
+  s.tap(Target::RankRow);  // the detail view covers the page
+  ASSERT_EQ(s.c.state().view, View::Expanded);
+  EXPECT_EQ(ownWordHits(composeFrame(s.c, kMetrics).card), 0);
+
+  // The bench's low word sits under the card: where they overlap, the card takes the touch.
+  BenchSource low(benchJapanese(), /*low=*/true);
+  CardController c(low, ReadingMode::Kana);
+  c.open(0);
+  c.tick(lexipoint::config::kBenchPhaseBMs);
+  const Frame frame = composeFrame(c, kMetrics);
+  ASSERT_FALSE(frame.scene.wordPieces.empty());
+  const Rect piece = frame.scene.wordPieces.front();
+  const Hit* hit = hitAt(frame.card.hits, piece.x + piece.w / 2, piece.y + piece.h / 2);
+  ASSERT_NE(hit, nullptr);
+  EXPECT_NE(hit->target, Target::OwnWord);
+}
+
 TEST(LiveSteps, PastTheLastWordIntoTheNextSentence) {
   TwoSentences rig;
   rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
@@ -1152,6 +1209,23 @@ TEST(LiveSteps, ALevelTappedWhileItWaitsKeepsTheCardAndItsUndo) {
   c.sourceChanged(1200);
   EXPECT_EQ(c.word(), 4);  // no jump under the user's Undo
   EXPECT_TRUE(c.state().toastUndo);
+}
+
+TEST(LiveSteps, ATapOnTheCardsOwnWordKeepsTheWait) {
+  // P10 R4: the word on the page isn't the card: a tap there changes nothing, the step still goes on.
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);  // waiting for 雨が降る。
+  const Hit ownWord{Target::OwnWord, 0, {}};
+  EXPECT_EQ(c.tap(&ownWord, 1100).effect, Effect::None);
+  EXPECT_TRUE(c.awaitingNext());
+  source.advance(1200);
+  c.sourceChanged(1200);
+  EXPECT_EQ(c.word(), 5);  // on into the next sentence
 }
 
 TEST(LiveSteps, ANextSentenceFailingLeavesASavesUndo) {

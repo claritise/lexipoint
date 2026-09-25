@@ -555,13 +555,20 @@ TEST(CardLongPress, OnTheCardOrOverTheDetailViewDoesNothing) {
   EXPECT_FALSE(o.lookUpAt.has_value());
 }
 
-TEST(CardLongPress, ATapCloseCarriesNoLookup) {
+TEST(CardLongPress, ATapOnThePageDoesWhatALongPressDoes) {
+  // P10: a tap outside the card closes it to look up the word there (word select goes back to the reader
+  // when there's none), as a long-press always did; a tap on the card doesn't.
   Swiping s;
   PendingInput in;
-  in.tap(100, 200, config::kBenchPhaseBMs + 10);
-  const Outcome o = handleInput(s.c, s.shown, in, config::kBenchPhaseBMs + 20);
+  in.tap(100, 200, s.now + 10);
+  const Outcome o = s.run(in, true);
   EXPECT_EQ(o.effect, Effect::Close);
-  EXPECT_FALSE(o.lookUpAt.has_value());
+  ASSERT_TRUE(o.lookUpAt.has_value());
+  EXPECT_EQ(o.lookUpAt->x, 100);
+  EXPECT_EQ(o.lookUpAt->y, 200);
+  PendingInput onCard;
+  onCard.tap(100, 600, s.now + 10);
+  EXPECT_NE(s.run(onCard, true).effect, Effect::Close);
 }
 
 TEST(CardSwipe, ASwipeOrLongPressOnTheOldCardDuringAStepIsDropped) {
@@ -586,9 +593,31 @@ TEST(CardSwipe, ATouchOnTheOtherViewsFrameIsDropped) {
 }
 
 TEST(CardLongPress, ReplacesOnlyALiveCardOverWordSelectsPage) {
-  EXPECT_TRUE(longPressReplacesCard(true, true));
-  EXPECT_FALSE(longPressReplacesCard(false, true));  // the bench: no word select under it
-  EXPECT_FALSE(longPressReplacesCard(true, false));  // a landscape book: its page isn't drawn under the card
+  EXPECT_TRUE(pagePressLooksUp(true, true));
+  EXPECT_FALSE(pagePressLooksUp(false, true));  // the bench: no word select under it
+  EXPECT_FALSE(pagePressLooksUp(true, false));  // a landscape book: its page isn't drawn under the card
+  const std::optional<PagePoint> at = PagePoint{120, 300};
+  EXPECT_TRUE(lookUpOnClose(at, true, true).has_value());
+  EXPECT_FALSE(lookUpOnClose(at, false, true).has_value());  // the bench: a tap just closes
+  EXPECT_FALSE(lookUpOnClose(at, true, false).has_value());  // landscape: a tap just closes
+  EXPECT_FALSE(lookUpOnClose(std::nullopt, true, true).has_value());
+}
+
+TEST(CardController, ATapOnThePageClosesToLookUpTheWordThere) {
+  // P10 (claritise, 2026-09-25): "changing words when the dictionary is open should be tap instead of hold".
+  BenchSource source(benchJapanese(), false);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  const Outcome o = c.tap(nullptr, 0, PagePoint{120, 300});
+  EXPECT_EQ(o.effect, Effect::Close);
+  ASSERT_TRUE(o.lookUpAt.has_value());  // word select looks up the word there, or goes back if there's none
+  EXPECT_EQ(o.lookUpAt->x, 120);
+  EXPECT_EQ(o.lookUpAt->y, 300);
+  EXPECT_FALSE(c.tap(nullptr, 0).lookUpAt.has_value());  // no point given: a plain close
+  const Hit rank = hit(Target::RankRow);
+  c.tap(&rank, 0);
+  ASSERT_EQ(c.state().view, View::Expanded);
+  EXPECT_EQ(c.tap(nullptr, 0, PagePoint{120, 300}).effect, Effect::None);  // the detail view covers the page
 }
 
 TEST(CardSwipe, NothingOpensOrChangesTabBeforeTheWordArrives) {

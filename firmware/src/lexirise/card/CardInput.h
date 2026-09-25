@@ -47,9 +47,16 @@ inline bool swipeClearOfEdges(const int startX, const int startY, const int endX
          startY < screenHeight - config::kCardSwipeEdgeMarginPx;
 }
 
-// A long-press replaces the card (popup-ui.md §3.2) only on a live card with word select's page under it, in
-// the same coordinates (not the bench, not a landscape page). It's always consumed either way.
-inline bool longPressReplacesCard(const bool live, const bool pageUnderCard) { return live && pageUnderCard; }
+// A tap or a long-press on the page outside the card looks the word there up in its place (popup-ui.md §3.2;
+// the tap since P10) only on a live card with word select's page under it, in the same coordinates (not the
+// bench, not a landscape page); elsewhere a tap just closes the card and a long-press does nothing. A
+// long-press is always consumed either way.
+inline bool pagePressLooksUp(const bool live, const bool pageUnderCard) { return live && pageUnderCard; }
+// The point a closing card hands word select: a tap's or long-press's, kept only where pagePressLooksUp.
+inline std::optional<PagePoint> lookUpOnClose(const std::optional<PagePoint>& at, const bool live,
+                                              const bool pageUnderCard) {
+  return pagePressLooksUp(live, pageUnderCard) ? at : std::nullopt;
+}
 
 // The card's swipe for a swipe's endpoints (the SDK's dominant-axis rule, as MappedInputManager::wasSwipe);
 // nullopt when the SDK names no direction.

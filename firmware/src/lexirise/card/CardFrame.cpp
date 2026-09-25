@@ -17,6 +17,12 @@ Frame composeFrame(const CardController& controller, const TextMetrics& metrics,
   state.strip = f.scene.strip;
   state.contextSentence = f.scene.sentence;
   f.card = layoutCard(controller.currentWord(), state, metrics, controller.strings());
+  // P10: the word's own highlight on the page, piece by piece (a word can break over lines), behind
+  // everything the card draws: a tap or long-press on it does nothing (the word is already looked up), where
+  // anywhere else on the page it would close the card to look that word up.
+  if (f.pageShown) {
+    for (const Rect& piece : f.scene.wordPieces) f.card.hits.push_back(Hit{Target::OwnWord, 0, piece});
+  }
   return f;
 }
 

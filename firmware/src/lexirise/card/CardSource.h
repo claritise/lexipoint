@@ -25,7 +25,8 @@ enum class CallFailure : uint8_t {
 // line for the strips and the sentence for the Context tab.
 struct PageScene {
   DisplayList page;
-  Rect wordOnPage;
+  Rect wordOnPage;               // every piece of the word, in one box (is any of it covered: D17)
+  std::vector<Rect> wordPieces;  // each piece's own box (a word can break over lines)
   StripLine strip;
   MarkedText sentence;  // the word marked
 };

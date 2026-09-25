@@ -102,7 +102,7 @@ void LexiriseCardActivity::readGestures(const unsigned long now) {
   // A long-press is always taken (consumed, so the finger's lift isn't also a tap on the card), and it
   // replaces the card (popup-ui.md §3.2) only where word select's page is what's under the card (not the
   // bench, not a landscape page), in the same coordinates.
-  if (mappedInput.wasScreenLongPress(x, y) && longPressReplacesCard(live_ != nullptr, pageUnderCard_)) {
+  if (mappedInput.wasScreenLongPress(x, y) && pagePressLooksUp(live_ != nullptr, pageUnderCard_)) {
     input_.longPress(x, y, now);
   }
   // Card swipes (up / down / tabs). The edge swipes stay CrossPoint's: Back arrives as Button::Back.
@@ -199,7 +199,7 @@ void LexiriseCardActivity::apply(const Outcome& outcome) {
   }
   if (outcome.effect == Effect::Close) {
     LiveOutcome closed;
-    closed.lookUpAt = outcome.lookUpAt;
+    closed.lookUpAt = lookUpOnClose(outcome.lookUpAt, live_ != nullptr, pageUnderCard_);  // a tap's too (P10)
     return end(closed);
   }
   if (outcome.effect == Effect::Redraw) redraw();

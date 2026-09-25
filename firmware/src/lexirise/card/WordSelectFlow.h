@@ -11,9 +11,9 @@
 
 namespace lexipoint::card {
 
-// Where word select goes as an answer closes: the word a long-press on the page landed on (`lookUpAt`, and
-// `wordThere`: it's on a word); else back to the reader when a long-press on the page opened word select
-// (`touchEntry`); else its page again. A long-press that found no word closes as any close would.
+// Where word select goes as an answer closes: the word a tap or long-press on the page landed on (`lookUpAt`,
+// and `wordThere`: it's on a word); else back to the reader when a long-press on the page opened word select
+// (`touchEntry`); else its page again. A tap or long-press that found no word closes as any close would.
 enum class CloseStep : uint8_t { Redraw, BackToReader, LookUp };
 inline CloseStep closeStep(const std::optional<PagePoint>& lookUpAt, const bool wordThere, const bool touchEntry) {
   if (lookUpAt && wordThere) return CloseStep::LookUp;
@@ -21,7 +21,7 @@ inline CloseStep closeStep(const std::optional<PagePoint>& lookUpAt, const bool 
 }
 
 // What waits for the notice on screen to be read, at most one thing: StarDict's turn after a Lexirise notice,
-// or the rest of a card's close whose saves went unsent (with its long-press point, if any).
+// or the rest of a card's close whose saves went unsent (with its tap or long-press point, if any).
 struct AfterPopup {
   enum class Kind : uint8_t { RunStarDict, FinishClose } kind = Kind::RunStarDict;
   std::optional<PagePoint> lookUpAt{};  // FinishClose

@@ -26,7 +26,8 @@ Examples:
   lxctl.py card-gestures              # the card's swipes (up, down, tabs) checked from the log (P7)
   lxctl.py card-sentence              # the side button on into the next sentence, from the log (P9)
   lxctl.py settings-smoke [outdir]    # opens Settings → Lexirise, checks its rows, a screenshot (P7)
-  lxctl.py reader-longpress [x y]     # a book open, upright portrait: a long-press is taken only on a word (P9);
+  lxctl.py reader-longpress [x y]     # a book open, upright portrait: a long-press looks up a word, and does
+                                      # nothing off the text (P9, P10);
                                       # x y: a point on a word (default the page's middle)
 """
 
@@ -419,37 +420,100 @@ def card_sentence(h: Harness, sleep=time.sleep) -> list[int]:
     return seen
 
 
-# reader-longpress (lookup-flow.md §5e): the reader's "[LXLP] long-press x y taken|left" (EpubReaderActivity,
-# dev builds). The bottom margin's middle is never a word, and its lift is no page turn (the turn zones are
-# the outer thirds) nor the menu (the centre third); the page's middle is a word on a page of running text.
-READER_LONGPRESS_LOG = re.compile(r"\[LXLP\] long-press (-?\d+) (-?\d+) (taken|left)")
+# reader-longpress (lookup-flow.md §5e): the reader's "[LXLP] long-press x y taken|ignored|left"
+# (EpubReaderActivity, dev builds; lookup::longPressUseName). Off the text: the bottom margin's middle is always
+# the lookup's zone; the left margin at mid-page is where a lift that wasn't consumed would turn the page back
+# (so it shows P10's "nothing"), and it's CrossPoint's own while its hold action (Long-press Behavior) is on.
+# On a page of running text, its middle is a word. An ignored press must open nothing and redraw no page.
+READER_LONGPRESS_LOG = re.compile(r"\[LXLP\] long-press (-?\d+) (-?\d+) (taken|ignored|left)")
 READER_OFF_TEXT = (240, 796)
+READER_SIDE_OFF_TEXT = (3, 400)
 READER_ON_TEXT = (240, 400)
+READER_PAGE_DRAWN = "[ERS] Rendered page"  # EpubReaderActivity::render, a page drawn (a turn, a reflow)
+# P10: with the card open (it covers the bottom of the screen: CardMetrics.h, the card view's frame from about
+# y 550), a tap on the page above it looks up the word there: the card closes and another opens, or, with no
+# word there, word select goes back to the reader.
+READER_RETAP = (240, 150)
+CARD_OPENED = "Entering activity: LexiriseCard"
+DEFINITION_OPENED = "Entering activity: DictionaryDefinition"  # StarDict answered instead of Lexirise
+
+
+def collect_until(h: Harness, patterns: tuple[str, ...], timeout: float) -> list[str]:
+    """Device log lines, in order, up to and including the first holding one of `patterns`; TimeoutError if
+    none comes."""
+    deadline = time.time() + timeout
+    lines: list[str] = []
+    while True:
+        line = h.read_line(deadline)
+        if line is None:
+            raise TimeoutError(f"timed out waiting for any of {patterns}")
+        lines.append(line)
+        if any(p in line for p in patterns):
+            return lines
+
+
+def retap(h: Harness, seen: list[str], at: tuple[int, int] = READER_RETAP) -> str:
+    """After a long-press on a word (`seen`: the log so far): once its card is open, a tap on the page above
+    the card. Returns "card" (the word there looked up: another card), "reader" (no word there: back to the
+    reader) or "none" (StarDict answered, no card: not checked)."""
+    opened = next((line for line in seen if CARD_OPENED in line or DEFINITION_OPENED in line), None)
+    if opened is None:
+        opened = collect_until(h, (CARD_OPENED, DEFINITION_OPENED), LEXI_CALL_TIMEOUT_S)[-1]
+    if DEFINITION_OPENED in opened:
+        return "none"
+    h.command("SYNC", timeout=SYNC_TIMEOUT_S)
+    h.command(f"TAP {at[0]} {at[1]}")
+    collect_until(h, ("Exiting activity: LexiriseCard",), CARD_CLOSE_WAIT_S)  # the tap closed the card
+    after = collect_until(h, ("Entering activity: LexiriseCard", "Exiting activity: DictionaryWordSelect"),
+                          LEXI_CALL_TIMEOUT_S)
+    if CARD_OPENED not in after[-1]:
+        return "reader"
+    # The new card's lookup blocks its loop: wait it out, or a Back sent now would land after it and a spare
+    # one would leave the book.
+    h.command("SYNC", timeout=SYNC_TIMEOUT_S)
+    return "card"
 READER_BACKS_MAX = 3  # Back: the card or definition → the reader, plus spares
 
 
-def reader_longpress(h: Harness, on_text: tuple[int, int] = READER_ON_TEXT) -> dict[str, bool]:
-    """P9 on the device, with a book open in the reader (upright portrait): a long-press in the bottom margin
-    isn't taken (no word select, the bug was word select with nothing under the finger), and one on a word
-    (`on_text`) is, and opens word select. Anything opened is closed with the Back swipe. Returns whether each
-    press was taken."""
-    taken: dict[str, bool] = {}
-    for name, (x, y) in (("margin", READER_OFF_TEXT), ("word", on_text)):
+def reader_longpress(h: Harness, on_text: tuple[int, int] = READER_ON_TEXT) -> dict[str, str]:
+    """P9/P10 on the device, with a book open in the reader (upright portrait) and something to look words up
+    with: a long-press in the bottom margin is ignored (consumed, nothing opens; the P9 bug was word select
+    with nothing under the finger), and one on a word (`on_text`) is taken and opens word select. Anything
+    opened is closed with the Back swipe. Returns each press's use."""
+    uses: dict[str, str] = {}
+    for name, (x, y) in (("margin", READER_OFF_TEXT), ("side", READER_SIDE_OFF_TEXT), ("word", on_text)):
         log: list[str] = []
         h.command(f"LONG {x} {y}", seen=log)
         h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
         decisions = [m.group(3) for line in log if (m := READER_LONGPRESS_LOG.search(line))]
         if not decisions:
             raise RuntimeError(f"{name}: the reader logged no long-press (is a book open in the reader?)")
-        taken[name] = decisions[-1] == "taken"
+        uses[name] = decisions[-1]
+        taken = uses[name] == "taken"
         opened = any("Entering activity: DictionaryWordSelect" in line for line in log)
-        if name == "margin" and taken[name]:
-            raise RuntimeError("a long-press in the bottom margin was taken")
-        if opened != taken[name]:
-            raise RuntimeError(f"{name}: taken={taken[name]} but word select {'opened' if opened else 'did not open'}")
-        if name == "word" and not taken[name]:
+        if name == "side" and uses[name] == "left":
+            print(f"side ({x}, {y}): left to CrossPoint (its hold action owns the sides): not checked")
+            continue
+        if name in ("margin", "side") and uses[name] != "ignored":
+            where = "bottom margin" if name == "margin" else "left margin"
+            raise RuntimeError(f"a long-press in the {where} was {uses[name]}, not ignored"
+                               + (" (is a dictionary or a Lexirise key set up?)" if uses[name] == "left" else ""))
+        if uses[name] == "ignored":
+            acted = [line for line in log if "Entering activity:" in line or READER_PAGE_DRAWN in line]
+            if acted:
+                raise RuntimeError(f"an ignored long-press at ({x}, {y}) still did something: {acted[0]}")
+        if opened != taken:
+            raise RuntimeError(f"{name}: taken={taken} but word select {'opened' if opened else 'did not open'}")
+        if name == "word" and not taken:
             raise RuntimeError(f"a long-press at ({x}, {y}) wasn't taken: open a page with text there, or pass "
                                "the point of a word")
+        if opened and name == "word":
+            uses["retap"] = retap(h, log)
+            found = {"card": "its word looked up", "reader": "no word there: back to the reader",
+                     "none": "no card (StarDict answered): not checked"}[uses["retap"]]
+            print(f"tap on the page above the card: {found}")
+            if uses["retap"] == "reader":
+                continue  # word select has already closed
         if opened:
             for _ in range(READER_BACKS_MAX):
                 h.command(f"SWIPE {EDGE_INSET} 400 240 400")  # Back
@@ -460,9 +524,9 @@ def reader_longpress(h: Harness, on_text: tuple[int, int] = READER_ON_TEXT) -> d
                     continue
             else:
                 raise RuntimeError(f"{name}: word select didn't close")
-        print(f"{name} ({x}, {y}): {'taken' if taken[name] else 'left to the reader'}")
+        print(f"{name} ({x}, {y}): {uses[name]}")
     print("reader-longpress OK")
-    return taken
+    return uses
 
 
 def card_gestures(h: Harness, sleep=time.sleep) -> None:

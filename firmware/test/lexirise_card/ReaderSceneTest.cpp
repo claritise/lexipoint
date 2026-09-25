@@ -82,6 +82,14 @@ TEST(ReaderScene, AWordAcrossTokensAndLinesCoversThemAll) {
   EXPECT_EQ(scene.wordOnPage.bottom(), 140 + 36);  // down to the second line
   EXPECT_EQ(scene.strip.lineNumber, 1);            // the strip is the first line
   EXPECT_EQ(scene.strip.activeFirst, 3);
+  // Each piece keeps its own box (P10: the card's own word is only those, not the whole of both lines).
+  ASSERT_EQ(scene.wordPieces.size(), 2u);
+  EXPECT_EQ(scene.wordPieces[0], (Rect{98 - kPad, 100, 26 + 2 * kPad, 36}));
+  EXPECT_EQ(scene.wordPieces[1], (Rect{20 - kPad, 140, 26 + 2 * kPad, 36}));
+  for (const Rect& piece : scene.wordPieces) {
+    EXPECT_FALSE(piece.contains(46 + 13, 100 + 18));  // は, on the first line
+    EXPECT_FALSE(piece.contains(98 + 13, 140 + 18));  // 。, on the second
+  }
 }
 
 TEST(ReaderScene, NoHighlightInTheExpandedViewButTheSameBoxes) {

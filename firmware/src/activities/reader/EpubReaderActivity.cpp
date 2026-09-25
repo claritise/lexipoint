@@ -609,16 +609,17 @@ void EpubReaderActivity::loop() {
         SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_ON ||
             SETTINGS.touchReaderControls == CrossPointSettings::TOUCH_READER_INVERTED_TAP};
     const bool fired = mappedInput.peekScreenLongPress(pressX, pressY);
-    // Taken (consumed) only when the lookup owns the zone, can answer, and the press is on a word:
-    // otherwise it stays CrossPoint's, and its lift is a tap (the menu, a page turn).
+    // The lookup's when it owns the zone and can answer: on a word it looks it up, anywhere else it does
+    // nothing. Either way it's consumed, so its lift is no tap. Otherwise it stays CrossPoint's.
+    using lexipoint::lookup::LongPressUse;
     std::unique_ptr<Page> pressed;
-    const bool taken = lexipoint::lookup::takeLongPress(
+    const LongPressUse use = lexipoint::lookup::longPressUse(
         fired ? std::optional<int>(pressX) : std::nullopt, rules, [this] { return dictionaryLookupsAvailable(); },
         [&] { return (pressed = pageWithWordAt(pressX, pressY)) != nullptr; });
     // Debug level (dev builds): `lxctl reader-longpress` checks it.
-    if (fired) LOG_DBG("LXLP", "long-press %d %d %s", pressX, pressY, taken ? "taken" : "left");
-    if (taken) {
-      mappedInput.wasScreenLongPress(pressX, pressY);  // consume: the finger lift mustn't tap word select
+    if (fired) LOG_DBG("LXLP", "long-press %d %d %s", pressX, pressY, lexipoint::lookup::longPressUseName(use));
+    if (lexipoint::lookup::consumes(use)) mappedInput.wasScreenLongPress(pressX, pressY);  // no tap on lift
+    if (use == LongPressUse::LookUp) {
       openDictionaryWordSelect(pressX, pressY, std::move(pressed));
       return;
     }

@@ -26,10 +26,10 @@ Outcome handleInput(CardController& controller, const ShownTargets& targets, con
       if (!shown || shown->step != controller.steps() || shown->view != controller.state().view) continue;
       const Hit* hit = hitAt(shown->hits, e.x, e.y);
       if (e.kind == InputEvent::Kind::Tap) {
-        o = controller.tap(hit, e.ms);
+        o = controller.tap(hit, e.ms, PagePoint{e.x, e.y});
       } else if (e.kind == InputEvent::Kind::LongPress) {
         o = controller.longPress(hit, e.x, e.y);
-      } else if (hit) {  // a swipe, started on the card
+      } else if (hit && hit->target != Target::OwnWord) {  // a swipe, started on the card (not the page's word)
         o = controller.swipe(e.swipe);
       }
     }

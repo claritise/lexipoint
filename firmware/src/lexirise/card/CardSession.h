@@ -24,7 +24,7 @@ struct LiveOutcome {
   // and why the last one failed: word select says so, since the card can't any more.
   int unsentSaves = 0;
   api::ApiError unsentError = api::ApiError::None;
-  // Closed by a long-press on the page outside the card: the word there is looked up next.
+  // Closed by a tap or a long-press on the page outside the card: the word there is looked up next.
   std::optional<PagePoint> lookUpAt{};
 };
 

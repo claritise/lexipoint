@@ -165,12 +165,16 @@ void CardController::clearToast() {
   failureToast_ = false;
 }
 
-Outcome CardController::tap(const Hit* hit, const unsigned long nowMs) {
+Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std::optional<PagePoint> at) {
+  if (hit && hit->target == Target::OwnWord) return {};  // P10: the word on the page: it's already on the card
   // Anything done on the card while it waits for the next sentence is about this word: the card stays (the
   // jump would clear a save's Undo toast just made). The words still arrive; the next step goes to them.
   if (hit) pendingStep_ = -1;
-  if (!hit) {  // the page outside the card: close (the expanded view covers the page)
-    return {state_.view == View::Card ? Effect::Close : Effect::None, false};
+  if (!hit) {  // the page outside the card: close, to look up the word there (the expanded view covers the page)
+    if (state_.view != View::Card) return {};
+    Outcome o{Effect::Close, false};
+    o.lookUpAt = at;
+    return o;
   }
   switch (hit->target) {
     case Target::Level: {
@@ -222,6 +226,7 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs) {
       }
       return {Effect::Redraw, false};
     case Target::Card:
+    case Target::OwnWord:  // handled above; here for the switch's completeness
       return {};
   }
   return {};

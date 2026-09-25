@@ -574,7 +574,7 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
 // opened this, so back to the reader; opened from the menu, back to choosing a word (popup-ui.md §3).
 void DictionaryWordSelectActivity::answerClosed() { finishClose(std::nullopt); }
 
-// LEXIPOINT: where a closed answer goes (card::closeStep): the word a long-press on the page landed on (looked
+// LEXIPOINT: where a closed answer goes (card::closeStep): the word a tap or long-press on the page landed on (looked
 // up on the next loop() once this page is back on screen; the card used this page's own coordinates), back to
 // the reader, or this page.
 void DictionaryWordSelectActivity::finishClose(const std::optional<lexipoint::card::PagePoint>& lookUpAt) {

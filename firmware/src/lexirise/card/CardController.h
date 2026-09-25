@@ -41,7 +41,8 @@ struct Outcome {
   Effect effect = Effect::None;
   bool readingChanged = false;       // persist the Japanese reading (settings.md: `reading`)
   std::vector<LevelChange> changes;  // in the order they were made (a batch can hold T, then its Undo)
-  // Close: a long-press on the page outside the card, to be looked up next (popup-ui.md §3.2).
+  // Close: a tap or a long-press on the page outside the card, where the word is to be looked up next
+  // (popup-ui.md §3.2; the caller drops it where the page isn't word select's: pagePressLooksUp).
   std::optional<PagePoint> lookUpAt;
 };
 
@@ -67,8 +68,9 @@ class CardController {
   // back from that word, as it would have before the jump.
   bool step(int direction, unsigned long nowMs, std::optional<unsigned long> pressedAtMs = std::nullopt);
   bool awaitingNext() const { return pendingStep_ >= 0; }
-  Outcome tap(const Hit* hit, unsigned long nowMs);  // nullptr: outside the card
-  Outcome home();                                    // expanded → card; card → close
+  // nullptr: outside the card, at `at` (P10: in card view the card closes to look up the word there, if any).
+  Outcome tap(const Hit* hit, unsigned long nowMs, std::optional<PagePoint> at = std::nullopt);
+  Outcome home();  // expanded → card; card → close
   // Up: the detail view. Down: back to the card, or from the card, close. Left / right: the detail view's
   // next / previous tab, stopping at the ends (popup-ui.md §3.2).
   Outcome swipe(Swipe direction);

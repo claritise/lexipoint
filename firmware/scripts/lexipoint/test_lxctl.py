@@ -456,11 +456,17 @@ class FakeSentenceHarness:
 
 
 class FakeReaderHarness:
-    """The reader's side of reader-longpress: each LONG logs its decision from `takes` (x, y → taken), and a
-    taken one enters word select, which the first Back swipe (or `backs_needed`-th) closes."""
+    """The reader's side of reader-longpress: each LONG logs its use from `use` (x, y → taken | ignored | left),
+    and a taken one (or one `opens` says) enters word select, which the `backs_needed`-th Back swipe closes."""
 
-    def __init__(self, takes, opens=None, backs_needed=1, logs=True):
-        self.takes, self.opens, self.backs_needed, self.logs = takes, opens, backs_needed, logs
+    def __init__(self, use, opens=None, backs_needed=1, logs=True, lift=None, retap="card", answer="late"):
+        self.use, self.opens, self.backs_needed, self.logs = use, opens, backs_needed, logs
+        self.lift = lift  # (x, y) → a log line the press's lift caused (a page turn, the menu), or None
+        self.retap = retap  # what a tap above an open card does: "card" (another card), "reader", None (nothing)
+        self.stream: list[str] = []  # lines read_line hands out
+        # How the looked-up word's answer arrives: "sync" (in the long-press's own SYNC log, as on the device),
+        # "late" (after it), or "stardict" (StarDict's definition, no card).
+        self.answer = answer
         self.pending: list[str] = []
         self.backs = 0
         self.open = False
@@ -469,19 +475,34 @@ class FakeReaderHarness:
     def command(self, cmd, expect=None, timeout=0, seen=None):
         self.sent.append(cmd)
         if cmd.startswith("LONG "):
-            x, y = map(int, cmd.split()[1:])
-            taken = self.takes((x, y))
+            p = tuple(map(int, cmd.split()[1:]))
+            use = self.use(p)
             if self.logs:
-                self.pending.append(f"[1] [DBG] [LXLP] long-press {x} {y} {'taken' if taken else 'left'}")
-            if (self.opens or self.takes)((x, y)):
+                self.pending.append(f"[1] [DBG] [LXLP] long-press {p[0]} {p[1]} {use}")
+            if self.opens(p) if self.opens else use == "taken":
                 self.open = True
                 self.pending.append("[1] [INF] [ACT] Entering activity: DictionaryWordSelect")
+                answer = {"stardict": "[1] [DBG] [ACT] Entering activity: DictionaryDefinition"}.get(
+                    self.answer, "[1] [DBG] [ACT] Entering activity: LexiriseCard")
+                (self.pending if self.answer in ("sync", "stardict") else self.stream).append(answer)
+            if self.lift and (line := self.lift(p)):
+                self.pending.append(line)
         elif cmd == "SYNC" and seen is not None:
             seen.extend(self.pending)
             self.pending = []
         elif cmd.startswith("SWIPE ") and self.open:
             self.backs += 1
+        elif cmd.startswith("TAP ") and self.open and self.retap and self.answer != "stardict":
+            self.stream.append("[3] [DBG] [ACT] Exiting activity: LexiriseCard")
+            if self.retap == "card":
+                self.stream.append("[3] [DBG] [ACT] Entering activity: LexiriseCard")
+            else:
+                self.stream.append("[3] [DBG] [ACT] Exiting activity: DictionaryWordSelect")
+                self.open = False
         return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
 
     def wait_for(self, pattern, timeout):
         if pattern.startswith("Exiting activity: DictionaryWordSelect") and self.backs >= self.backs_needed:
@@ -490,47 +511,103 @@ class FakeReaderHarness:
         raise TimeoutError(pattern)
 
 
+def uses(word="taken", margin="ignored", side="ignored", at=None):
+    """A reader whose word point is `at` (default the page's middle)."""
+    word_at = at or lxctl.READER_ON_TEXT
+    return lambda p: word if p == word_at else (side if p == lxctl.READER_SIDE_OFF_TEXT else margin)
+
+
 class ReaderLongPress(unittest.TestCase):
-    def test_the_margin_is_left_and_a_word_opens_word_select(self):
-        h = FakeReaderHarness(lambda p: p == lxctl.READER_ON_TEXT)
-        self.assertEqual(lxctl.reader_longpress(h), {"margin": False, "word": True})
+    def test_the_margin_is_ignored_and_a_word_opens_word_select(self):
+        h = FakeReaderHarness(uses())
+        self.assertEqual(lxctl.reader_longpress(h),
+                         {"margin": "ignored", "side": "ignored", "word": "taken", "retap": "card"})
         self.assertFalse(h.open)
+        tap = h.sent.index(f"TAP {lxctl.READER_RETAP[0]} {lxctl.READER_RETAP[1]}")
+        first_back = next(i for i, c in enumerate(h.sent) if c.startswith("SWIPE"))
+        self.assertIn("SYNC", h.sent[tap:first_back])  # the new card's lookup waited out before any Back
 
-    def test_a_word_press_not_taken_fails(self):
-        # The feature broken the other way: nothing is ever taken.
-        with self.assertRaisesRegex(RuntimeError, r"at \(240, 400\) wasn't taken"):
-            lxctl.reader_longpress(FakeReaderHarness(lambda p: False))
+    def test_a_tap_above_the_card_with_no_word_goes_back_to_the_reader(self):
+        h = FakeReaderHarness(uses(), retap="reader")
+        self.assertEqual(lxctl.reader_longpress(h)["retap"], "reader")
+        self.assertFalse(any(c.startswith("SWIPE") for c in h.sent))  # nothing left to close
 
-    def test_the_word_can_be_given(self):
-        h = FakeReaderHarness(lambda p: p == (100, 200))
-        self.assertEqual(lxctl.reader_longpress(h, (100, 200)), {"margin": False, "word": True})
-        self.assertIn("LONG 100 200", h.sent)
+    def test_the_card_already_in_the_long_press_log_is_not_waited_for(self):
+        # On the device the card opens on word select's first loop, before the SYNC reply.
+        h = FakeReaderHarness(uses(), answer="sync")
+        self.assertEqual(lxctl.reader_longpress(h)["retap"], "card")
+
+    def test_stardict_answering_skips_the_tap(self):
+        h = FakeReaderHarness(uses(), answer="stardict")
+        self.assertEqual(lxctl.reader_longpress(h)["retap"], "none")
+        self.assertFalse(any(c.startswith("TAP") for c in h.sent))
+
+    def test_a_tap_above_the_card_that_does_nothing_fails(self):
+        with self.assertRaises(TimeoutError):
+            lxctl.reader_longpress(FakeReaderHarness(uses(), retap=None))
+
+    def test_the_side_left_to_crosspoints_hold_action_is_not_checked(self):
+        h = FakeReaderHarness(uses(side="left"))
+        self.assertEqual(lxctl.reader_longpress(h)["side"], "left")
+
+    def test_an_ignored_press_whose_lift_turned_the_page_fails(self):
+        # P10: "ignored" must mean nothing happened; a lift that wasn't consumed turns the page back.
+        turned = lambda p: "[2] [DBG] [ERS] Rendered page in 700ms" if p == lxctl.READER_SIDE_OFF_TEXT else None
+        with self.assertRaisesRegex(RuntimeError, r"at \(3, 400\) still did something: .*Rendered page"):
+            lxctl.reader_longpress(FakeReaderHarness(uses(), lift=turned))
+
+    def test_an_ignored_press_whose_lift_opened_the_menu_fails(self):
+        menu = lambda p: "[2] [DBG] [ACT] Entering activity: EpubReaderMenu" if p == lxctl.READER_OFF_TEXT else None
+        with self.assertRaisesRegex(RuntimeError, "still did something: .*EpubReaderMenu"):
+            lxctl.reader_longpress(FakeReaderHarness(uses(), lift=menu))
+
+    def test_a_margin_left_to_the_reader_fails(self):
+        # P10: off the text a long-press does nothing; "left" means its lift would tap the page.
+        with self.assertRaisesRegex(RuntimeError, "bottom margin was left, not ignored.*dictionary or a Lexirise key"):
+            lxctl.reader_longpress(FakeReaderHarness(uses(margin="left")))
 
     def test_the_margin_taken_fails(self):
-        with self.assertRaisesRegex(RuntimeError, "bottom margin was taken"):
-            lxctl.reader_longpress(FakeReaderHarness(lambda p: True))
+        with self.assertRaisesRegex(RuntimeError, "was taken, not ignored"):
+            lxctl.reader_longpress(FakeReaderHarness(uses(margin="taken")))
+
+    def test_a_word_press_not_taken_fails(self):
+        with self.assertRaisesRegex(RuntimeError, r"at \(240, 400\) wasn't taken"):
+            lxctl.reader_longpress(FakeReaderHarness(uses(word="ignored")))
+
+    def test_the_word_can_be_given(self):
+        h = FakeReaderHarness(uses(at=(100, 200)))
+        self.assertEqual(lxctl.reader_longpress(h, (100, 200))["word"], "taken")
+        self.assertIn("LONG 100 200", h.sent)
 
     def test_word_select_without_the_press_being_taken_fails(self):
         # The P9 bug: word select opened with no word under the finger.
-        h = FakeReaderHarness(lambda p: False, opens=lambda p: p == lxctl.READER_ON_TEXT)
-        with self.assertRaisesRegex(RuntimeError, "taken=False but word select opened"):
+        h = FakeReaderHarness(uses(word="ignored"), opens=lambda p: p == lxctl.READER_ON_TEXT)
+        with self.assertRaisesRegex(RuntimeError, "still did something: .*DictionaryWordSelect"):
             lxctl.reader_longpress(h)
 
     def test_no_decision_logged_means_no_book_open(self):
         with self.assertRaisesRegex(RuntimeError, "is a book open"):
-            lxctl.reader_longpress(FakeReaderHarness(lambda p: False, logs=False))
+            lxctl.reader_longpress(FakeReaderHarness(uses(), logs=False))
 
     def test_word_select_is_closed_with_up_to_three_backs(self):
-        h = FakeReaderHarness(lambda p: p == lxctl.READER_ON_TEXT, backs_needed=3)
+        h = FakeReaderHarness(uses(), backs_needed=3)
         lxctl.reader_longpress(h)
         self.assertFalse(h.open)
         with self.assertRaisesRegex(RuntimeError, "didn't close"):
-            lxctl.reader_longpress(FakeReaderHarness(lambda p: p == lxctl.READER_ON_TEXT, backs_needed=4))
+            lxctl.reader_longpress(FakeReaderHarness(uses(), backs_needed=4))
 
-    def test_the_log_pattern_matches_the_firmware(self):
+    def test_the_page_drawn_line_matches_the_firmware(self):
         src = open(os.path.join(REPO, "src", "activities", "reader", "EpubReaderActivity.cpp")).read()
-        self.assertIn('LOG_DBG("LXLP", "long-press %d %d %s", pressX, pressY, taken ? "taken" : "left")', src)
-        self.assertTrue(lxctl.READER_LONGPRESS_LOG.search("[9] [DBG] [LXLP] long-press 240 796 left"))
+        self.assertIn('LOG_DBG("ERS", "Rendered page in %dms"', src)
+
+    def test_the_log_matches_the_firmware(self):
+        src = open(os.path.join(REPO, "src", "activities", "reader", "EpubReaderActivity.cpp")).read()
+        self.assertIn('LOG_DBG("LXLP", "long-press %d %d %s", pressX, pressY, lexipoint::lookup::longPressUseName(use))',
+                      src)
+        names = open(os.path.join(REPO, "src", "lexirise", "lookup", "LongPress.h")).read()
+        for name in ("left", "taken", "ignored"):
+            self.assertIn(f'return "{name}";', names)
+            self.assertTrue(lxctl.READER_LONGPRESS_LOG.search(f"[9] [DBG] [LXLP] long-press 240 796 {name}"))
 
 
 class CardSentence(unittest.TestCase):

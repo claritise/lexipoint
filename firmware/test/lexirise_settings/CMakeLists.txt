@@ -4,6 +4,7 @@ add_executable(LexiriseSettingsTest
   SettingsPatchTest.cpp
   SettingsScreenTest.cpp
   BookLanguagesTest.cpp
+  LongPressMenuTest.cpp
   ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsStore.cpp
   ${REPO_ROOT}/src/lexirise/settings/SafeFile.cpp

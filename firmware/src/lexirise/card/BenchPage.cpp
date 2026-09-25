@@ -40,6 +40,7 @@ Scene layoutPage(const BenchBook& book, const int word, const bool low, const bo
         strip.activeLast = i;
         scene.wordOnPage = {card::metrics::kBenchPagePadLeft + x - card::metrics::kHighlightPadH, top,
                             w + 2 * card::metrics::kHighlightPadH, lh};
+        scene.wordPieces.push_back(scene.wordOnPage);
       }
       const bool whole = drawn && active && highlight && highlightCodepoints <= 0;
       if (whole) scene.page.fill(scene.wordOnPage);

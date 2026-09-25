@@ -92,6 +92,10 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // option lists depend on the SD font registry), so the generic loop skips them.
   doc["fontFamily"] = fontFamily;
   doc["fontSize"] = fontPointSize;
+#if LEXIRISE
+  // LEXIPOINT: a dynamic entry in SettingsList (Long-press Menu without Dictionary), so saved here.
+  doc["longPressMenuFunction"] = longPressMenuFunction;
+#endif
   // SD card font family name — not in SettingsList, save manually
   if (sdFontFamilyName[0] != '\0') {
     doc["sdFontFamilyName"] = sdFontFamilyName;
@@ -205,6 +209,16 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   }
   fontPointSize = storedFontSize;
 
+#if LEXIRISE
+  // LEXIPOINT: Long-press Menu, a dynamic entry (the generic loop skips it); a stored Dictionary (word select's
+  // lookup mode, no longer offered) becomes Reader Menu, and the file is rewritten.
+  {
+    const auto loaded = lexipoint::long_press_menu::load(doc["longPressMenuFunction"] | longPressMenuFunction,
+                                                         BoardConfig::hasHomeKey());
+    longPressMenuFunction = loaded.value;
+    needsResave = needsResave || loaded.resave;
+  }
+#endif
   // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
   const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
   fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);

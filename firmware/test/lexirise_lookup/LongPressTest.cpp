@@ -37,8 +37,9 @@ TEST(LongPress, OnlyTakenWhenSomethingCanAnswer) {
   EXPECT_TRUE(lookupsAvailable(false, true));
 }
 
-TEST(LongPress, TakenOnlyWhenFiredOwnedAvailableAndOnAWord) {
-  using lexipoint::lookup::takeLongPress;
+TEST(LongPress, UsedOnlyWhenFiredOwnedAndAvailable) {
+  using lexipoint::lookup::longPressUse;
+  using lexipoint::lookup::LongPressUse;
   int asked = 0;
   int measured = 0;
   const auto available = [&asked](const bool answer) {
@@ -54,22 +55,41 @@ TEST(LongPress, TakenOnlyWhenFiredOwnedAvailableAndOnAWord) {
     };
   };
   const LongPressRules on = rules(true, true);
-  EXPECT_FALSE(takeLongPress(std::nullopt, on, available(true), onWord(true)));  // no long-press this frame
-  EXPECT_FALSE(takeLongPress(150, on, available(true), onWord(true)));           // CrossPoint's zone (touch-down point)
+  EXPECT_EQ(longPressUse(std::nullopt, on, available(true), onWord(true)), LongPressUse::Leave);  // none this frame
+  EXPECT_EQ(longPressUse(150, on, available(true), onWord(true)), LongPressUse::Leave);           // CrossPoint's zone
   EXPECT_EQ(asked, 0);  // the settings aren't read for a frame the lookup can't take
-  EXPECT_TRUE(takeLongPress(165, on, available(true), onWord(true)));
-  EXPECT_FALSE(takeLongPress(165, on, available(false), onWord(true)));  // nothing can answer: stays CrossPoint's
+  EXPECT_EQ(longPressUse(165, on, available(true), onWord(true)), LongPressUse::LookUp);
+  EXPECT_EQ(longPressUse(165, on, available(false), onWord(true)), LongPressUse::Leave);  // nothing can answer
   EXPECT_EQ(asked, 2);
   EXPECT_EQ(measured, 1);  // the page isn't loaded when nothing could answer
-  EXPECT_TRUE(takeLongPress(10, rules(false, true), available(true), onWord(true)));
+  EXPECT_EQ(longPressUse(10, rules(false, true), available(true), onWord(true)), LongPressUse::LookUp);
 }
 
-TEST(LongPress, APressOffTheTextStaysCrossPoints) {
-  // A margin, an image, blank space: its lift is CrossPoint's tap (the reader menu in the centre, a page
-  // turn at the sides), never word select with nothing looked up.
-  using lexipoint::lookup::takeLongPress;
+TEST(LongPress, APressOffTheTextDoesNothing) {
+  // A margin, an image, blank space (claritise, 2026-09-25: "keep it doing nothing"): taken and dropped, so
+  // its lift isn't a tap either (no menu, no page turn), and no word select.
+  using lexipoint::lookup::longPressUse;
+  using lexipoint::lookup::LongPressUse;
   const auto yes = [] { return true; };
   const auto no = [] { return false; };
-  EXPECT_FALSE(takeLongPress(240, rules(false, true), yes, no));
-  EXPECT_FALSE(takeLongPress(240, rules(true, true), yes, no));
+  EXPECT_EQ(longPressUse(240, rules(false, true), yes, no), LongPressUse::Ignore);
+  EXPECT_EQ(longPressUse(240, rules(true, true), yes, no), LongPressUse::Ignore);
+  EXPECT_EQ(longPressUse(10, rules(true, true), yes, no), LongPressUse::Leave);   // CrossPoint's hold zone: its own
+  EXPECT_EQ(longPressUse(240, rules(false, true), no, no), LongPressUse::Leave);  // nothing can answer: a slow tap
+}
+
+TEST(LongPress, ALookUpAndAnIgnoredPressAreConsumed) {
+  using lexipoint::lookup::consumes;
+  using lexipoint::lookup::LongPressUse;
+  EXPECT_TRUE(consumes(LongPressUse::LookUp));
+  EXPECT_TRUE(consumes(LongPressUse::Ignore));  // its lift must not turn the page or open the menu
+  EXPECT_FALSE(consumes(LongPressUse::Leave));  // CrossPoint's: its lift is a slow tap
+}
+
+TEST(LongPress, LogNames) {
+  using lexipoint::lookup::LongPressUse;
+  using lexipoint::lookup::longPressUseName;
+  EXPECT_STREQ(longPressUseName(LongPressUse::Leave), "left");
+  EXPECT_STREQ(longPressUseName(LongPressUse::LookUp), "taken");
+  EXPECT_STREQ(longPressUseName(LongPressUse::Ignore), "ignored");
 }

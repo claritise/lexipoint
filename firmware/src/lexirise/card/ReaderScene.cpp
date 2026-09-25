@@ -68,6 +68,7 @@ PageScene readerScene(const ReaderPage& page, const text::BuiltSentence& sentenc
     const int x = token.x + metrics.pageWidth(text::utf8Codepoints(token.text, 0, piece.first), token.style);
     const Rect box{x - metrics::kHighlightPadH, line.y,
                    metrics.pageWidth(part, token.style) + 2 * metrics::kHighlightPadH, lh};
+    scene.wordPieces.push_back(box);
     if (highlight) {
       scene.page.fill(box);
       scene.page.text(Font::Page, x, line.y, part, false, token.style);

@@ -56,9 +56,12 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   if (Frontlight.present()) {
     items.push_back({MenuAction::FRONTLIGHT, StrId::STR_FRONTLIGHT});
   }
-  items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
 #if LEXIRISE
-  items.push_back({MenuAction::LOOKUP_LANGUAGE, StrId::STR_LEXI_BOOK_LANGUAGE});  // LEXIPOINT
+  // LEXIPOINT: no Look Up (word select's lookup mode): a long-press on a word looks it up. Its place holds the
+  // book's lookup language.
+  items.push_back({MenuAction::LOOKUP_LANGUAGE, StrId::STR_LEXI_BOOK_LANGUAGE});
+#else
+  items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
 #endif
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});

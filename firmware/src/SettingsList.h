@@ -17,6 +17,9 @@
 #include "ReaderFontSizes.h"
 #include "activities/settings/SettingsActivity.h"
 #include "util/DictionaryRegistry.h"
+#if LEXIRISE
+#include "lexirise/settings/LongPressMenu.h"  // LEXIPOINT
+#endif
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
 // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
@@ -185,6 +188,23 @@ inline std::vector<StrId> buildLongPressMenuValues() {
   return {VALUES, VALUES + count};
 }
 
+#if LEXIRISE
+// LEXIPOINT: Long-press Menu without Dictionary (word select's lookup mode): lexirise/settings/LongPressMenu.h.
+static_assert(lexipoint::long_press_menu::kKoSync == CrossPointSettings::LP_MENU_KOSYNC &&
+                  lexipoint::long_press_menu::kDisabled == CrossPointSettings::LP_MENU_DISABLED &&
+                  lexipoint::long_press_menu::kBookmark == CrossPointSettings::LP_MENU_BOOKMARK &&
+                  lexipoint::long_press_menu::kDictionary == CrossPointSettings::LP_MENU_DICTIONARY &&
+                  lexipoint::long_press_menu::kReaderMenu == CrossPointSettings::LP_MENU_READER_MENU,
+              "LongPressMenu.h mirrors CrossPointSettings::LP_MENU_*");
+inline std::vector<StrId> lexiriseLongPressMenuLabels() {
+  const auto all = buildLongPressMenuValues();  // upstream's, where a stored value is its position
+  std::vector<StrId> labels;
+  for (const uint8_t value : lexipoint::long_press_menu::offered(BoardConfig::hasHomeKey()))
+    labels.push_back(all[value]);
+  return labels;
+}
+#endif
+
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
 // ACTION-type entries and entries without a key are device-only.
@@ -317,8 +337,21 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                            StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS),
+#if LEXIRISE
+        // LEXIPOINT: without Dictionary; saved by CrossPointSettings::toJson / fromJson (a dynamic entry).
+        SettingInfo::DynamicEnum(
+            StrId::STR_LONG_PRESS_MENU, lexiriseLongPressMenuLabels(),
+            [] {
+              return lexipoint::long_press_menu::indexOf(SETTINGS.longPressMenuFunction, BoardConfig::hasHomeKey());
+            },
+            [](uint8_t index) {
+              SETTINGS.longPressMenuFunction = lexipoint::long_press_menu::valueAt(index, BoardConfig::hasHomeKey());
+            },
+            "longPressMenuFunction", StrId::STR_CAT_CONTROLS),
+#else
         SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &CrossPointSettings::longPressMenuFunction,
                           buildLongPressMenuValues(), "longPressMenuFunction", StrId::STR_CAT_CONTROLS),
+#endif
 #if FREEINK_CAP_TOUCH
         SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
                           {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH,
