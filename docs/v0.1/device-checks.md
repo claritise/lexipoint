@@ -22,7 +22,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 | Tap another word with the card open (P10 §5h) | **pass**: 那 → 经历: the card closed and the tapped word's card opened |
 | Side buttons through a sentence and into the next (P9) | **pass**: 经历 → … → 话 → 这首歌深深… (the next sentence, its strip restarting there); the detail view's strip puts each word at the left edge with what fits after it; punctuation is skipped; the line counter follows (6/11 → 9/11) |
 | Save and Undo (P5) | **pass**: T on 深深 → toast "Saved as tracked · Undo" → the save sent after its window (`POST /v1/vocabulary` 200); ⋯ → Undo save → `DELETE` + `PATCH` (notes, tags cleared) 200, the card back to "not saved". A second try's Undo tap came before the toast's frame was on screen, so it counted as a page tap and closed the card (by design: taps are matched to the frame shown), which sent the save |
-| **Left over:** 深深 saved as tracked (tag `xteink`) in claritise's account from that second try: Lexirise's analysis has since split 深深 into 深 + 深 on every path, so no card for 深深 can be reached to undo it. The dev key (`~/.lexirise_key`) is on another account. claritise to delete it in Lexirise | **done**: claritise deleted it in Lexirise (2026-09-26) |
+| **Left over:** 深深 saved as tracked (tag `xteink`) in claritise's account from that second try: Lexirise's analysis has since split 深深 into 深 + 深 on every path, so no card for 深深 can be reached to undo it. The dev key (`~/.lexirise_key`) is on another account. claritise to delete it in Lexirise | **owed (claritise)**: still saved on 2026-09-26 (V1 device check); reachable from the card again |
 | Button press during the card's first network call (P9 §5d, known) | seen: a side-button press made and released while the card's first lookup blocked (WiFi join + TLS) was never seen, as documented |
 | **Bug found:** the card view's strip highlights the whole glued token (话。 with its full stop inverted), while the detail view's strip and the page highlight only 话 | **open** |
 | `lxctl card-smoke` (P4 gate) | **pass**: all 21 reference states driven and shot on the device (upright portrait, default side buttons) |
@@ -53,7 +53,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
   (`config::kWifiConnectMs`), and twice the join ran out (right after File Transfer let WiFi go). Joining with the
   last BSSID/channel (a fast scan) would save ~3 s on every lookup that needs WiFi and make the limit comfortable.
   Done in P11 (`offline-and-errors.md` §5, as built P11).
-- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row). A second try (2026-09-25, P10 build): long-presses on either 深 still analyse as 深 + 深, so no card for 深深 can be reached from the reader; claritise deleted it in Lexirise (2026-09-26). That session's first WiFi join after the restart failed at 6 s again (the case P11 fixes), the next took 3.5 s.
+- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row). A second try (2026-09-25, P10 build): long-presses on either 深 still analyse as 深 + 深, so no card for 深深 can be reached from the reader; claritise to delete it in Lexirise (V1 made it reachable from the card again, 2026-09-26: it still shows tracked). That session's first WiFi join after the restart failed at 6 s again (the case P11 fixes), the next took 3.5 s.
 - **Nit:** the More panel shows "Lookup langu…" beside "Chinese (Simplified)".
 
 ### Still owed on the device (need claritise, or a proxy)
@@ -114,3 +114,11 @@ Not checked over serial (for claritise, when convenient): the boot screen's "Lex
 screenshot; the sleep screen is set to Cover), the router listing the reader as `Lexipoint-<MAC>`, File
 Transfer's hotspot `Lexipoint` and `lexipoint.local`, the web pages' title, heading and footer, USB Drive's name,
 and calibre connect.
+
+## 2026-09-26, `main` @ `f352b16e` (v0.2 V1), flashed and verify-flash matched
+
+| Check | Result |
+|---|---|
+| 这首歌深深地打动了我 (活着, p. 1): long-press 深 | **pass**: the card shows **深深** whole (shēn shēn, HSK 6, adverb, "deeply, profoundly", #4,184), highlighted as one piece on the strip. The log: ① `analyze/text` 200 (already refined), then `analyze: the word-level split (fast)`, a second `analyze/text` 200 **0.7 s** later, then `dictionary/lookup` 200. Tap to card: 9.1 s to ① (WiFi joined first), +0.7 s for the word-level call |
+| Stepping (right side button) | **pass**: 深深 → 地 in one step (not 深 → 深) |
+| Left over | 深深 shows **tracked** (tag `xteink`): the save/Undo test's leftover (below, 2026-09-25) is still in claritise's account, and V1 makes it reachable from the card again |
