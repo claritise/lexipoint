@@ -80,6 +80,32 @@ Config keys: `tag_book=1`, `tag_chapter=0`, `tag_session=0`.
 
 **Tested 2026-09-24:** tags with `:` survive. There's **no API to delete a tag name**, so `book:<slug>` leaves one permanent tag per book, which is acceptable. Chapter and session tags would pile up, which is another reason they're off by default. Re-tagging an already-saved word must be done with `PUT …/tags` holding the full list (a re-POST replaces everything).
 
+**As built (V2):** only `book:<slug>` (and the user's own Tags, `xteink` by default); chapter and session tags
+stay unbuilt. The setting is "Tag with book title" (`tag_book`, on by default; `../v0.1/settings.md` §1).
+- **The slug** (`text/BookSlug`): the title's ASCII letters lower-cased and its digits kept; every other run of
+  bytes (spaces, punctuation, accented and CJK letters) one `-`, none at the ends: *Norwegian Wood* →
+  `norwegian-wood`, *Café au lait!* → `caf-au-lait` (é is dropped, not folded to e), *1Q84* → `1q84`,
+  *ノルウェイの森 Norwegian Wood* → `norwegian-wood`. At most 35 bytes (cut at a `-` in its second half), so
+  `book:<slug>` fits in 40 bytes, Lexipoint's own cap on a tag (`config::kMaxTagLength`; no Lexirise limit on a
+  tag's length is known).
+- **A title with fewer than 3 ASCII letters and digits** (活着, 変身, any Japanese or Chinese title) is `h` + 8 hex
+  digits of the FNV-1a 32-bit hash of the UTF-8 title trimmed at both ends (of spaces and control characters; 活着 →
+  `book:h98593b64`). The title, not the OPF identifier this section first suggested: it's the same on every device
+  and every edition with that title (so two copies of one book share a tag, and V3's deck), and it's what the
+  record below keys. An untitled book hashes its path (a title of only spaces or control characters counts as
+  none, for the tag and the record alike).
+- **A save carries up to `kMaxTags` + 1 tags:** the user's (at most 8), then the book's, unless the user already
+  typed it. No Lexirise limit on the number of tags is known.
+- **Why ASCII:** a tag name can never be deleted from the account (`../reference/lexirise-api-notes.md`), so each
+  should be short, predictable and plain; non-ASCII tag names were never tested against Lexirise, and a
+  CJK title would also give a different tag for each spelling or edition's punctuation.
+- **Two books with one title share a tag**, on purpose (the same book, twice). Two titles that fold to one slug
+  (*Café* and *Cafe*) share one too.
+- **The record for V4** (`settings/BookTags`): `/.lexirise/book-tags.ini`, `<slug>=<title>` lines, newest last,
+  up to 100 books; a slug is written the first time a card opens in its book while the setting is on (one SD write
+  per book, none per tap), and keeps its first title. An untitled book is recorded by its file name. A failed
+  write doesn't stop the save (the next card tries again). A book saved on another device has no line here.
+
 ## C3. Sentence save
 
 **Why yes:** v0.1 already builds the sentence (D5) and sends it as `notes`. A sentence card is

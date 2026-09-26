@@ -33,7 +33,7 @@ class FakeApi final : public api::LexiriseApi {
   std::deque<api::ApiResponse> writeReplies;
   std::vector<std::string> analyzed;  // the sentences
   std::vector<std::string> analyzedWords;
-  std::vector<std::string> looked;    // the headwords
+  std::vector<std::string> looked;  // the headwords
   std::vector<net::Request> written;
 
   api::ApiResponse analyze(Language, const std::string_view sentence) override {

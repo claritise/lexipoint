@@ -43,6 +43,7 @@ and behaves like the rest of Settings, with no new UI components.
 | | Offline dictionary | same | the global dictionary | ✓ | ✓ | |
 | **General** | Language when a book doesn't say | Japanese / Chinese | Japanese | ✓ | ✓ | `languages.md` §1 step 2. It spans both languages, so it lives here |
 | | Tags | text | `xteink` | ✓ keyboard | ✓ | Comma-separated. Tags can't be deleted through the API (`../reference/lexirise-api-notes.md`), so the help text says so |
+| | Tag with book title | On / Off | On | ✓ | ✓ | (V2, `../v0.2/00-overview.md` C2) Each saved word also gets `book:<slug>`, the book title's ASCII slug (a Japanese or Chinese title: a short hash). One tag name per book, kept on the account for good (tags can't be deleted). Shown with Tags, while Lexirise is on |
 | | Keep WiFi on after a lookup | Off (connect each time) / 1 / 2 / **5** / 10 min | 5 min | ✓ | ✓ | D10 |
 | **Advanced** | Server | URL | `https://api.lexirise.app` | — | ✓ | Web only, so it can't be mistyped on the device. For a local proxy |
 
@@ -87,7 +88,7 @@ take lookups away from the common case to protect a rare one that a book's Looku
 `popup-ui.md`), the level saved by a tap (you pick it every time with T L F K), and timeouts.
 
 **Added later, hidden until built** (each ships with its feature, never as a dead toggle):
-`Tag with book title` (C2), `Deck per book` (C4), `Page marks` and the other annotation toggles
+`Deck per book` (C4), `Page marks` and the other annotation toggles
 (`../v0.2/page-annotations.md`), and `Skip to unknown words` (A3).
 
 ## 1a. The web page (`/lexirise`)
@@ -111,6 +112,7 @@ same URL shown for uploading books).
  General
    Language when a book doesn't say   Japanese ▾   (hidden while Lexirise is on with one language on)
    Tags                      [ xteink ]
+   Tag with book title       [on]
    Keep WiFi on after a lookup        5 min ▾
  Advanced ▸  Server  [ https://api.lexirise.app ]
 ```
@@ -240,6 +242,7 @@ stardict=cedict
 [general]
 default_language=ja
 tags=xteink
+tag_book=1
 wifi_idle_min=5
 
 [advanced]
@@ -252,6 +255,10 @@ base_url=https://api.lexirise.app
 - This **replaces** the flat keys shown in `lexirise-client.md` §5 and `languages.md` §1
   (`languages=`, `stardict_ja=`, `language=`). Those docs point here. **The old flat keys are still
   read once and migrated** into sections on the first save, so a hand-written early config keeps working.
+- **`tag_book`** (V2): `1` adds each book's `book:<slug>` to its saves. A file from before V2 has no line, so
+  it's on (the default) and written on the next save. Each slug's title is kept apart, in
+  `/.lexirise/book-tags.ini` (`<slug>=<title>` lines, newest last, the oldest forgotten past 100 books), written
+  the first time a card opens in a book while this is on (`settings/BookTags`).
 - **`reading` lives in `[ja]`** (it moved from `state.ini`, which is dropped).
 - Unknown keys are **kept** on rewrite, so a newer firmware's settings survive a downgrade.
 - A missing file means all defaults with no key, so Lexirise is effectively off until a key is set.
@@ -278,3 +285,7 @@ extra to keep pixel-perfect here beyond "uses the stock components".
   `lxctl settings-smoke`'s minimum), and the web page shows the same rows; turn Lexirise on with both
   languages off: "Language when a book doesn't say" shows. Upgrade note: Lexirise off with only Chinese's switch on and the default at Japanese now reads
   Han-only text of an untagged book with the Japanese dictionary (the row shows, so it's visible).
+- V2: `tag_book` read, written and defaulted on for a file from before it (`SettingsTest`), patched from the web
+  page and toggled by the device row (`SettingsPatchTest`, `WebApiTest`, `SettingsScreenTest`); the slug
+  (`test/lexirise_language/BookSlugTest.cpp`) and `book-tags.ini` (`BookTagsTest.cpp`). With Lexirise on, the
+  screen has 13 rows (`lxctl settings-smoke`'s maximum).

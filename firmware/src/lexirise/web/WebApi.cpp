@@ -26,7 +26,8 @@ struct PageRow {
 constexpr PageRow kPageRows[] = {
     {"jaLookups", settings_screen::Row::JaLookups}, {"jaReading", settings_screen::Row::JaReading},
     {"zhLookups", settings_screen::Row::ZhLookups}, {"defaultLanguage", settings_screen::Row::DefaultLanguage},
-    {"tags", settings_screen::Row::Tags},           {"wifiIdle", settings_screen::Row::WifiIdle},
+    {"tags", settings_screen::Row::Tags},           {"tagBook", settings_screen::Row::TagBook},
+    {"wifiIdle", settings_screen::Row::WifiIdle},
 };
 
 // Which of them show: the device screen's own (settings_screen::visibleRows), so the page has no rule of its
@@ -72,8 +73,8 @@ class PatchVisitor final : public json::Visitor {
   void fail(const Path& path) {
     if (error || path.depth() == 0 || path.isIndex(0)) return;
     static constexpr const char* kFields[] = {
-        "enabled", "key", "clearKey",   "defaultLanguage", "tags",        "wifiIdleMin", "baseUrl",
-        "ja",      "zh",  "ja.enabled", "ja.reading",      "ja.stardict", "zh.enabled",  "zh.stardict"};
+        "enabled", "key", "clearKey",   "defaultLanguage", "tags",        "tagBook",    "wifiIdleMin", "baseUrl",
+        "ja",      "zh",  "ja.enabled", "ja.reading",      "ja.stardict", "zh.enabled", "zh.stardict"};
     std::string name = path.at(0).key;
     if (path.depth() >= 2 && !path.isIndex(1)) name += "." + path.at(1).key;
     for (const char* field : kFields) {
@@ -124,6 +125,8 @@ class PatchVisitor final : public json::Visitor {
       }
     } else if (key == "tags") {
       readString(path, type, text, out_.tags);
+    } else if (key == "tagBook") {
+      readBool(path, type, text, out_.tagBook);
     } else if (key == "wifiIdleMin") {
       // A small whole number; range is SettingsPatch's job.
       int value = 0;
@@ -205,6 +208,7 @@ std::string stateJson(const Settings& s, const api::KeyStatus& status, const std
       .add("zh", net::JsonObject().add("enabled", s.chinese.enabled).add("stardict", s.chinese.stardict))
       .add("defaultLanguage", languageCode(s.defaultLanguage))
       .add("tags", s.tags)
+      .add("tagBook", s.tagBook)
       .add("wifiIdleMin", s.wifiIdleMin)
       .add("baseUrl", s.baseUrl)
       .add("defaultBaseUrl", config::kDefaultBaseUrl)

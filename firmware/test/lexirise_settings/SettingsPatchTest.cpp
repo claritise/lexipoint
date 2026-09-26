@@ -58,12 +58,14 @@ TEST(SettingsPatch, InvalidFieldRejectsTheWholePatch) {
   SettingsPatch p;
   p.enabled = false;
   p.tags = "new";
+  p.tagBook = false;
   p.baseUrl = "http://insecure.example";
   const auto r = applyPatch(s, p);
   EXPECT_FALSE(r.ok);
   EXPECT_STREQ(r.field, "baseUrl");
   EXPECT_TRUE(s.enabled);  // nothing applied
   EXPECT_EQ(s.tags, lexipoint::config::kDefaultTags);
+  EXPECT_TRUE(s.tagBook);
 
   const std::pair<SettingsPatch, const char*> bad[] = {
       {[] {
@@ -110,6 +112,7 @@ TEST(SettingsPatch, AppliesEveryField) {
   p.chineseStardict = "";
   p.defaultLanguage = Language::Chinese;
   p.tags = " a , b ,a ";
+  p.tagBook = false;
   p.wifiIdleMin = 0;
   p.baseUrl = " https://staging.example.com/ ";
   ASSERT_TRUE(applyPatch(s, p).ok);
@@ -120,6 +123,7 @@ TEST(SettingsPatch, AppliesEveryField) {
   EXPECT_EQ(s.chinese.stardict, "");
   EXPECT_EQ(s.defaultLanguage, Language::Chinese);
   EXPECT_EQ(s.tags, "a,b");
+  EXPECT_FALSE(s.tagBook);
   EXPECT_EQ(s.wifiIdleMin, 0);
   EXPECT_EQ(s.baseUrl, "https://staging.example.com");
 }

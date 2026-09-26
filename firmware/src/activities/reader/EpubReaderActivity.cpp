@@ -374,7 +374,8 @@ void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int to
   auto wordSelect = std::make_unique<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
                                                                    orientedMarginLeft, orientedMarginTop);
 #if LEXIRISE
-  wordSelect->setBook(lexipoint::lookup::bookLanguageFor(epub->getLanguage(), epub->getPath()));  // LEXIPOINT
+  wordSelect->setBook(lexipoint::lookup::bookLanguageFor(epub->getLanguage(), epub->getPath()),  // LEXIPOINT
+                      epub->getTitle(), epub->getPath());
   if (touchX >= 0) wordSelect->setInitialTouch(touchX, touchY);
 #endif
   startActivityForResult(std::move(wordSelect), [this](const ActivityResult&) { requestUpdate(); });

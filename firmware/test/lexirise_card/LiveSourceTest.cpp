@@ -3,6 +3,10 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "FakeApi.h"
 #include "FakeMetrics.h"
 #include "lexirise/card/BenchFixtures.h"
@@ -176,8 +180,8 @@ struct Saving {
   PendingInput input;
   CardSession session;
   unsigned long now = 0;
-  explicit Saving(const bool complete = true)
-      : source(rig.api, rig.tap(1, 0), rig.page, {"xteink"}),
+  explicit Saving(const bool complete = true, std::vector<std::string> tags = {"xteink"})
+      : source(rig.api, rig.tap(1, 0), rig.page, std::move(tags)),
         c(source, ReadingMode::Kana),
         session(c, targets, input, &source) {
     rig.api.analyzeReplies = {apiOk(kAnalyze)};
@@ -254,6 +258,16 @@ TEST(LiveSave, ANewWordIsSavedAsD9SaysThenItsLevelIsPatched) {
   EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Patch);
   EXPECT_EQ(s.rig.api.written[1].path, "/v1/vocabulary/901");
   EXPECT_EQ(s.rig.api.written[1].body, R"({"proficiency":4})");
+}
+
+TEST(LiveSave, TheBookTagGoesWithTheSave) {
+  Saving s(/*complete=*/true, {"xteink", "book:h98593b64"});  // bookSaveTags' list for 活着
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  s.level(1);
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 1u);
+  EXPECT_NE(s.rig.api.written[0].body.find(R"("tags":["xteink","book:h98593b64"])"), std::string::npos)
+      << s.rig.api.written[0].body;
 }
 
 TEST(LiveSave, ASaveBeforePhaseBWaitsForTheTranslation) {
@@ -1481,13 +1495,14 @@ TEST(LiveWholeWords, ARefinedSentenceIsShownWordByWord) {
 
 TEST(LiveWholeWords, TheNextSentenceAsksForItsOwnWords) {
   TwoSentences rig;
-  const std::string firstPass = std::string(kAnalyze).insert(std::string(kAnalyze).size() - 1, R"(,"morphoPending":true)");
-  rig.api.analyzeReplies = {apiOk(firstPass),
-                            apiOk(R"({"occurrences":[{"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,)"
-                                  R"("entryId":11},{"word":"が","isWordLike":true,"charStart":1,"charEnd":2,"entryId":12},)"
-                                  R"({"word":"降","isWordLike":true,"charStart":2,"charEnd":3,"entryId":14},)"
-                                  R"({"word":"る","isWordLike":true,"charStart":3,"charEnd":4,"entryId":15},)"
-                                  R"({"word":"。","isWordLike":false,"charStart":4,"charEnd":5}],"morphoPending":false})")};
+  const std::string firstPass =
+      std::string(kAnalyze).insert(std::string(kAnalyze).size() - 1, R"(,"morphoPending":true)");
+  rig.api.analyzeReplies = {
+      apiOk(firstPass), apiOk(R"({"occurrences":[{"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,)"
+                              R"("entryId":11},{"word":"が","isWordLike":true,"charStart":1,"charEnd":2,"entryId":12},)"
+                              R"({"word":"降","isWordLike":true,"charStart":2,"charEnd":3,"entryId":14},)"
+                              R"({"word":"る","isWordLike":true,"charStart":3,"charEnd":4,"entryId":15},)"
+                              R"({"word":"。","isWordLike":false,"charStart":4,"charEnd":5}],"morphoPending":false})")};
   rig.api.wordsReplies = {apiOk(R"({"occurrences":[)"
                                 R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
                                 R"({"word":"が","isWordLike":true,"charStart":1,"charEnd":2,"entryId":12},)"
@@ -1520,11 +1535,11 @@ TEST(LiveWholeWords, AWholeWordTwiceInASentenceIsOneEntry) {
       R"({"word":"一","isWordLike":true,"charStart":4,"charEnd":5,"entryId":11,"lemmaEntryId":11},)"
       R"({"word":"边","isWordLike":true,"charStart":5,"charEnd":6,"entryId":12},)"
       R"({"word":"。","isWordLike":false,"charStart":6,"charEnd":7}],"morphoPending":false})")};
-  r.rig.api.wordsReplies = {apiOk(
-      R"({"occurrences":[{"word":"一边","isWordLike":true,"charStart":0,"charEnd":2,"entryId":20},)"
-      R"({"word":"吃饭","isWordLike":true,"charStart":2,"charEnd":4,"entryId":13},)"
-      R"({"word":"一边","isWordLike":true,"charStart":4,"charEnd":6,"entryId":20},)"
-      R"({"word":"。","isWordLike":false,"charStart":6,"charEnd":7}],"entryMetaById":{"20":{"rank":1092}}})")};
+  r.rig.api.wordsReplies = {
+      apiOk(R"({"occurrences":[{"word":"一边","isWordLike":true,"charStart":0,"charEnd":2,"entryId":20},)"
+            R"({"word":"吃饭","isWordLike":true,"charStart":2,"charEnd":4,"entryId":13},)"
+            R"({"word":"一边","isWordLike":true,"charStart":4,"charEnd":6,"entryId":20},)"
+            R"({"word":"。","isWordLike":false,"charStart":6,"charEnd":7}],"entryMetaById":{"20":{"rank":1092}}})")};
   r.rig.api.lookupReplies = {apiOk(R"({"word":"一边","translations":[{"translation":"while"}]})")};
   r.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":5}})"), apiOk("{}")};
   LiveSource source(r.rig.api, r.rig.tap(0, 0), r.rig.page);

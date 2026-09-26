@@ -11,6 +11,7 @@
 #if LEXIRISE
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "lexirise/card/ReaderScene.h"       // LEXIPOINT
 #include "lexirise/card/WordSelectFlow.h"    // LEXIPOINT
@@ -39,8 +40,13 @@ class DictionaryWordSelectActivity final : public Activity {
   void render(RenderLock&&) override;
 
 #if LEXIRISE
-  // LEXIPOINT: the book's language inputs (lookup::bookLanguageFor), so a tap can pick its language.
-  void setBook(const lexipoint::text::BookLanguage& bookLanguage) { book = bookLanguage; }
+  // LEXIPOINT: the book's language inputs (lookup::bookLanguageFor), so a tap can pick its language, and its
+  // title and path, for the book tag on its saves.
+  void setBook(const lexipoint::text::BookLanguage& bookLanguage, std::string title, std::string path) {
+    book = bookLanguage;
+    bookTitle = std::move(title);
+    bookPath = std::move(path);
+  }
   // LEXIPOINT: opened by a long-press on the page: select the word there and look it up at once.
   void setInitialTouch(const int x, const int y) {
     initialTouchX = x;
@@ -88,6 +94,8 @@ class DictionaryWordSelectActivity final : public Activity {
   std::vector<WordBox> words;
 #if LEXIRISE
   std::optional<lexipoint::text::BookLanguage> book;  // LEXIPOINT
+  std::string bookTitle;                              // LEXIPOINT: setBook()
+  std::string bookPath;                               // LEXIPOINT
   lexipoint::text::PageModel pageModel;               // LEXIPOINT: built in extractWords()
   lexipoint::card::ReaderPage readerPage;             // LEXIPOINT: the same page, as drawn (the live card)
   int initialTouchX = -1;                             // LEXIPOINT: setInitialTouch()

@@ -2,8 +2,9 @@
 
 // A small text file on the SD card replaced crash-safely (settings.md §3): write .tmp, move the old file
 // to .bak, move .tmp into place, drop .bak. At every point either the file or its .bak is complete, and
-// readSafely() finishes or undoes each step. Used by config.ini (SettingsStore) and books.ini
-// (BookLanguages). Tests: test/lexirise_settings/SettingsStoreTest.cpp, BookLanguagesTest.cpp.
+// readSafely() finishes or undoes each step. Used by config.ini (SettingsStore), books.ini
+// (BookLanguages) and book-tags.ini (BookTags). Tests: test/lexirise_settings/SettingsStoreTest.cpp,
+// BookLanguagesTest.cpp, BookTagsTest.cpp.
 
 #include <cstddef>
 #include <string>
@@ -56,6 +57,8 @@ inline constexpr SafeFilePaths kSettingsFile{kSettingsDir,        kSettingsPath,
 inline constexpr SafeFilePaths kBookLanguagesFile{kSettingsDir,          kBookLanguagesPath,
                                                   kBookLanguagesTmpPath, kBookLanguagesBackupPath,
                                                   kBookLanguagesBadPath, kBookLanguagesMaxBytes};
+inline constexpr SafeFilePaths kBookTagsFile{kSettingsDir,        kBookTagsPath,    kBookTagsTmpPath,
+                                             kBookTagsBackupPath, kBookTagsBadPath, kBookTagsMaxBytes};
 }  // namespace config
 
 }  // namespace lexipoint

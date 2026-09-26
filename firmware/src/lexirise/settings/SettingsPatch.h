@@ -23,6 +23,7 @@ struct SettingsPatch {
   std::optional<std::string> chineseStardict;
   std::optional<Language> defaultLanguage;
   std::optional<std::string> tags;
+  std::optional<bool> tagBook;
   std::optional<int> wifiIdleMin;
   std::optional<std::string> baseUrl;
 };

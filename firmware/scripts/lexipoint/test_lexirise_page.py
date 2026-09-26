@@ -83,6 +83,7 @@ class VisibilityRules(unittest.TestCase):
                 "zh.stardict": None,
                 "defaultLanguage": "defaultLanguage",
                 "tags": "tags",
+                "tagBook": "tagBook",
                 "wifiIdleMin": "wifiIdle",
                 "baseUrl": None,  # under Advanced, as before
             },

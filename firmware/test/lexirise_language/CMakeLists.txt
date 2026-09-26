@@ -1,6 +1,8 @@
 add_executable(LexiriseLanguageTest
   BookLanguageTest.cpp
+  BookSlugTest.cpp
   ${REPO_ROOT}/src/lexirise/text/BookLanguage.cpp
+  ${REPO_ROOT}/src/lexirise/text/BookSlug.cpp
   ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
   ${REPO_ROOT}/src/lexirise/net/Http.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp

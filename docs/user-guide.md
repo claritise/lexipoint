@@ -111,18 +111,20 @@ language** to that book's language; it's remembered for that book (Auto goes bac
 | | API key, Account, Test connection | §3 |
 | Japanese | Lookups · Readings (kana / romaji) · Offline dictionary | |
 | Chinese (Simplified) | Lookups · Offline dictionary | |
-| General | Language when a book doesn't say (unless Lexirise is on with just one language on) · Tags · Keep WiFi on after a lookup | |
+| General | Language when a book doesn't say (unless Lexirise is on with just one language on) · Tags · Tag with book title · Keep WiFi on after a lookup | |
 
 A language's rows hide while its Lookups are off (its Offline dictionary stays: it answers that language's
 taps then), and come back with their values. With Lexirise lookups off, the screen keeps the Account group,
 both Offline dictionaries and Language when a book doesn't say. **Tags** are added to
-every word you save (default `xteink`); Lexirise can't delete tags, so choose them with care. The server
+every word you save (default `xteink`); Lexirise can't delete tags, so choose them with care. **Tag with book
+title** (on by default) also tags each word with its book, `book:` and the title in plain letters (a Japanese or
+Chinese title becomes a short code, like `book:h98593b64`), so you can find a book's words in Lexirise. The server
 address is on the web page only (under Advanced), for a local proxy; changing it asks for the key again.
 
 ## 7. Privacy and safety
 
 - **What's sent:** for each lookup, the sentence around the tapped word and its language, to Lexirise
-  (`api.lexirise.app`) over TLS, which the device verifies. Saving sends the word, its meaning, your level, the tags you set, and the sentence (as the saved word's
+  (`api.lexirise.app`) over TLS, which the device verifies. Saving sends the word, its meaning, your level, the tags you set (and the book's), and the sentence (as the saved word's
   note, so you see where you met it).
   Nothing else about your books or reading is sent.
 - **The key** is stored in `/.lexirise/config.ini` on the SD card **in plain text**, like the reader's

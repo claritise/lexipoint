@@ -37,6 +37,7 @@ enum class Row : uint8_t {
   // General
   DefaultLanguage,
   Tags,
+  TagBook,
   WifiIdle,
 };
 constexpr size_t kRowCount = static_cast<size_t>(Row::WifiIdle) + 1;

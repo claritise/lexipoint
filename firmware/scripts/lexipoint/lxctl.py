@@ -559,7 +559,7 @@ def card_gestures(h: Harness, sleep=time.sleep) -> None:
 SETTINGS_ROWS_LOG = re.compile(r"\[LXSET\] rows (\d+)")  # LexiriseSettingsActivity, dev builds
 # settings_screen::visibleRows: Lexirise off (the Account group, the two offline dictionaries and the default
 # language) .. every row
-SETTINGS_ROWS_MIN, SETTINGS_ROWS_MAX = 7, 12
+SETTINGS_ROWS_MIN, SETTINGS_ROWS_MAX = 7, 13
 
 
 def settings_smoke(h: Harness, outdir: str, shot=None) -> int:

@@ -69,6 +69,7 @@ PatchResult applyPatch(Settings& settings, const SettingsPatch& patch) {
   if (patch.chineseStardict) settings.chinese.stardict = *patch.chineseStardict;
   if (patch.defaultLanguage) settings.defaultLanguage = *patch.defaultLanguage;
   if (patch.tags) settings.tags = normaliseTags(*patch.tags);
+  if (patch.tagBook) settings.tagBook = *patch.tagBook;
   if (patch.wifiIdleMin) settings.wifiIdleMin = *patch.wifiIdleMin;
   if (baseUrl) settings.baseUrl = *baseUrl;
   return result;

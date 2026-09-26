@@ -68,6 +68,8 @@ StrId labelFor(const Row row) {
       return StrId::STR_LEXI_SET_DEFAULT_LANGUAGE;
     case Row::Tags:
       return StrId::STR_LEXI_SET_TAGS;
+    case Row::TagBook:
+      return StrId::STR_LEXI_SET_TAG_BOOK;
     case Row::WifiIdle:
       break;
   }
@@ -280,6 +282,8 @@ std::string LexiriseSettingsActivity::valueFor(const Row row, const Settings& se
       return I18N.get(languageName(settings.defaultLanguage));
     case Row::Tags:
       return settings.tags;
+    case Row::TagBook:
+      return onOff(settings.tagBook);
     case Row::WifiIdle:
       break;
   }

@@ -297,7 +297,7 @@ TEST(WholeWordsLookup, ARefinedAnswerGetsTheWholeWordBack) {
   EXPECT_EQ(card.reading, "shēnshēn");
   EXPECT_EQ(card.partOfSpeech, "adverb");
   EXPECT_EQ(card.rank, 4180u);
-  EXPECT_TRUE(card.saved);  // the whole word's own saved state
+  EXPECT_TRUE(card.saved);               // the whole word's own saved state
   EXPECT_EQ(sentence.words.size(), 5u);  // stepping goes word by word: 这 首 歌 深深 地
 }
 

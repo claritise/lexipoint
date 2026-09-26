@@ -6,6 +6,7 @@
 #include <Logging.h>
 
 #include "BookLanguages.h"
+#include "BookTags.h"
 #include "SettingsStore.h"
 
 namespace lexipoint {
@@ -62,6 +63,11 @@ SettingsStore& settingsStore() {
 
 BookLanguageStore& bookLanguageStore() {
   static BookLanguageStore store(halFiles());
+  return store;
+}
+
+BookTagStore& bookTagStore() {
+  static BookTagStore store(halFiles());
   return store;
 }
 

@@ -23,6 +23,7 @@ Group groupOf(const Row row) {
       return Group::Chinese;
     case Row::DefaultLanguage:
     case Row::Tags:
+    case Row::TagBook:
     case Row::WifiIdle:
       break;
   }
@@ -45,6 +46,7 @@ Edit editFor(const Row row) {
     case Row::ZhLookups:
     case Row::ZhDictionary:
     case Row::DefaultLanguage:
+    case Row::TagBook:
     case Row::WifiIdle:
       break;
   }
@@ -71,6 +73,7 @@ Rows visibleRows(const Settings& settings) {
   if (settings.defaultLanguageApplies()) add(Row::DefaultLanguage);
   if (lexirise) {
     add(Row::Tags);
+    add(Row::TagBook);
     add(Row::WifiIdle);
   }
   return out;
@@ -169,6 +172,9 @@ std::optional<SettingsPatch> tapPatch(const Row row, const Settings& settings,
       break;
     case Row::DefaultLanguage:
       patch.defaultLanguage = settings.defaultLanguage == Language::Japanese ? Language::Chinese : Language::Japanese;
+      break;
+    case Row::TagBook:
+      patch.tagBook = !settings.tagBook;
       break;
     case Row::WifiIdle:
       patch.wifiIdleMin = nextWifiIdle(settings.wifiIdleMin);

@@ -40,6 +40,7 @@ struct Settings {
   // [general]
   Language defaultLanguage = Language::Japanese;
   std::string tags = config::kDefaultTags;  // comma-separated, normalised
+  bool tagBook = true;                      // each save also carries its book's tag (BookTags.h)
   int wifiIdleMin = config::kWifiIdleDefaultMin;
   // [advanced]
   std::string baseUrl = config::kDefaultBaseUrl;

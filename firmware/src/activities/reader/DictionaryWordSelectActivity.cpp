@@ -21,6 +21,7 @@
 #include "lexirise/lookup/PageTap.h"             // LEXIPOINT
 #include "lexirise/lookup/StarDictCandidates.h"  // LEXIPOINT
 #include "lexirise/lookup/StarDictChoice.h"      // LEXIPOINT
+#include "lexirise/settings/BookTags.h"          // LEXIPOINT
 #endif
 
 namespace {
@@ -536,8 +537,9 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
   auto next = [this, book = *book, settings](const lexipoint::text::TapContext& current) {
     return lexipoint::text::describeNextSentence(pageModel, current, book, settings);
   };
+  auto tags = lexipoint::bookSaveTags(settings, bookTitle, bookPath, lexipoint::bookTagStore());
   auto source = std::make_unique<lexipoint::card::LiveSource>(lexipoint::service(), std::move(context), readerPage,
-                                                              lexipoint::tagList(settings.tags), std::move(next));
+                                                              std::move(tags), std::move(next));
   // The page stays this activity's: the card draws it under itself while it's open.
   auto drawPage = [this](GfxRenderer& r) { page->render(r, fontId, marginLeft, marginTop); };
   popup = Popup::None;

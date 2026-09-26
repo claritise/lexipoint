@@ -157,6 +157,7 @@ class Applier {
       s_.tags = normaliseTags(e.value);
       return;
     }
+    if (e.key == "tag_book") return setBool(e, s_.tagBook);
     if (e.key == "wifi_idle_min") return setWifiIdle(e);
     keep(e);
   }
@@ -316,6 +317,7 @@ std::string serializeSettings(const Settings& s) {
   out.append("\n[general]\n");
   appendLine(out, "default_language", languageCode(s.defaultLanguage));
   appendLine(out, "tags", s.tags);
+  appendLine(out, "tag_book", s.tagBook ? "1" : "0");
   appendLine(out, "wifi_idle_min", std::to_string(s.wifiIdleMin));
   appendExtras(out, s, "general");
 

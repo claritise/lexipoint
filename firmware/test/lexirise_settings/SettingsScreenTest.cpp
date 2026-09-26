@@ -28,9 +28,10 @@ void tap(Settings& s, const Row row, const std::vector<std::string>& dictionarie
 }  // namespace
 
 TEST(SettingsScreen, AllRowsShowWithDefaults) {
-  EXPECT_EQ(rowsOf(Settings()), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection,
-                                                  Row::JaLookups, Row::JaReading, Row::JaDictionary, Row::ZhLookups,
-                                                  Row::ZhDictionary, Row::DefaultLanguage, Row::Tags, Row::WifiIdle}));
+  EXPECT_EQ(rowsOf(Settings()),
+            (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
+                              Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary,
+                              Row::DefaultLanguage, Row::Tags, Row::TagBook, Row::WifiIdle}));
 }
 
 TEST(SettingsScreen, LexiriseOffLeavesTheAccountGroupAndWhatTheOfflineDictionariesUse) {
@@ -50,19 +51,19 @@ TEST(SettingsScreen, ALanguageOffCollapsesToItsToggleAndDictionaryAndHidesTheDef
   s.chinese.enabled = false;
   EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
                                          Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary,
-                                         Row::Tags, Row::WifiIdle}));
+                                         Row::Tags, Row::TagBook, Row::WifiIdle}));
   s.chinese.enabled = true;
   s.japanese.enabled = false;
-  EXPECT_EQ(rowsOf(s),
-            (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
-                              Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::Tags, Row::WifiIdle}));
+  EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
+                                         Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::Tags, Row::TagBook,
+                                         Row::WifiIdle}));
   s.chinese.enabled = false;  // none on: StarDict answers Han-only text by the default language, so it shows
   EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
                                          Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::DefaultLanguage,
-                                         Row::Tags, Row::WifiIdle}));
+                                         Row::Tags, Row::TagBook, Row::WifiIdle}));
 }
 
-TEST(SettingsScreen, EverySwitchCombinationShowsSevenToTwelveRows) {
+TEST(SettingsScreen, EverySwitchCombinationShowsSevenToThirteenRows) {
   // lxctl's SETTINGS_ROWS_MIN / MAX (settings-smoke) are these bounds; test_lxctl pins them to the Row list.
   size_t fewest = screen::kRowCount, most = 0;
   for (int bits = 0; bits < 8; bits++) {
@@ -114,7 +115,7 @@ TEST(SettingsScreen, EditsByRow) {
   EXPECT_EQ(screen::editFor(Row::TestConnection), screen::Edit::Test);
   EXPECT_EQ(screen::editFor(Row::Account), screen::Edit::None);
   for (const Row row : {Row::Lookups, Row::JaLookups, Row::JaReading, Row::JaDictionary, Row::ZhLookups,
-                        Row::ZhDictionary, Row::DefaultLanguage, Row::WifiIdle}) {
+                        Row::ZhDictionary, Row::DefaultLanguage, Row::TagBook, Row::WifiIdle}) {
     EXPECT_EQ(screen::editFor(row), screen::Edit::Patch);
     EXPECT_TRUE(screen::tapPatch(row, Settings(), {}).has_value());
   }
@@ -137,6 +138,19 @@ TEST(SettingsScreen, TogglesAndChoicesFlip) {
   EXPECT_EQ(s.defaultLanguage, Language::Chinese);
   tap(s, Row::DefaultLanguage);
   EXPECT_EQ(s.defaultLanguage, Language::Japanese);
+}
+
+TEST(SettingsScreen, TagWithBookTitleTogglesInTheGeneralGroupAfterTags) {
+  Settings s;
+  ASSERT_TRUE(s.tagBook);  // on by default (C2)
+  tap(s, Row::TagBook);
+  EXPECT_FALSE(s.tagBook);
+  EXPECT_TRUE(screen::shows(screen::visibleRows(s), Row::TagBook));  // off still shows, to turn it back on
+  tap(s, Row::TagBook);
+  EXPECT_TRUE(s.tagBook);
+  EXPECT_EQ(screen::groupOf(Row::TagBook), Group::General);
+  s.enabled = false;  // a Lexirise save's tag: hidden with Lexirise, like Tags
+  EXPECT_FALSE(screen::shows(screen::visibleRows(s), Row::TagBook));
 }
 
 TEST(SettingsScreen, DictionaryCyclesThroughTheGlobalOneAndEachFolder) {

@@ -692,14 +692,14 @@ class SettingsSmoke(unittest.TestCase):
         return h, n
 
     def test_opens_checks_the_rows_and_leaves_with_back(self):
-        h, n = self.run_smoke(12)
-        self.assertEqual(n, 12)
+        h, n = self.run_smoke(13)
+        self.assertEqual(n, 13)
         self.assertTrue(h.left)
         self.assertEqual(h.sent[0], "LEXI SETTINGS")
         self.assertTrue(any(c.startswith("SWIPE") for c in h.sent))
 
     def test_no_rows_or_too_many_fail(self):
-        for rows in (None, 3, 13):
+        for rows in (None, 3, lxctl.SETTINGS_ROWS_MAX + 1):
             with self.assertRaises(RuntimeError):
                 self.run_smoke(rows)
 

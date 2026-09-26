@@ -24,6 +24,14 @@ constexpr const char* kBookLanguagesBackupPath = "/.lexirise/books.ini.bak";
 constexpr const char* kBookLanguagesBadPath = "/.lexirise/books.ini.bad";
 constexpr size_t kBookLanguagesMax = 100;         // books remembered; setting one more forgets the oldest
 constexpr size_t kBookLanguagesMaxBytes = 32768;  // ~100 typical paths; long ones forget the oldest sooner
+// Each book tag's title (V2): `<slug>=<title>` lines, newest last, so a saved word's `book:<slug>` can name its book.
+constexpr const char* kBookTagsPath = "/.lexirise/book-tags.ini";
+constexpr const char* kBookTagsTmpPath = "/.lexirise/book-tags.ini.tmp";
+constexpr const char* kBookTagsBackupPath = "/.lexirise/book-tags.ini.bak";
+constexpr const char* kBookTagsBadPath = "/.lexirise/book-tags.ini.bad";
+constexpr size_t kBookTagsMax = 100;           // books remembered (held in RAM once read); one more forgets the oldest
+constexpr size_t kBookTagsMaxBytes = 16384;    // 100 slugs with the longest titles
+constexpr size_t kBookTagTitleMaxBytes = 120;  // a title is cut (at a character) to this in the record
 // The longest FAT/exFAT long name in UTF-8: 255 UTF-16 units, up to 3 bytes each (web/HiddenPath.h).
 constexpr size_t kMaxFatNameBytes = 255 * 3;
 
@@ -151,6 +159,11 @@ constexpr size_t kMaxTagLength = 40;
 constexpr size_t kMaxDictionaryNameLength = 64;
 constexpr size_t kMaxBaseUrlLength = 128;
 constexpr const char* kDefaultTags = "xteink";
+// The book tag (C2, V2): kBookTagPrefix + the title's slug (text/BookSlug.h). Tag names can't be deleted from an
+// account, so it's one per book, and whole within a user tag's length.
+constexpr char kBookTagPrefix[] = "book:";
+constexpr size_t kBookSlugMaxBytes = kMaxTagLength - (sizeof(kBookTagPrefix) - 1);
+constexpr size_t kBookSlugMinAlnum = 3;  // fewer ASCII letters and digits (a Japanese title): a hash instead
 
 // The longest one Lexirise call can block (WiFi join, NTP, TCP + handshake, the request). The web page
 // polls a queued key check for this long, and lxctl's LEXI wait is checked against it (test_lxctl).
