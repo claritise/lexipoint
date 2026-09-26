@@ -17,6 +17,7 @@
 
 #include "CardController.h"
 #include "CardSource.h"
+#include "LiveWord.h"
 #include "ReaderScene.h"
 #include "lexirise/deck/BookDeck.h"
 #include "lexirise/lookup/LexiriseLookup.h"
@@ -47,17 +48,21 @@ class LiveSource final : public CardSource {
   struct Fetched {
     enum class Kind : uint8_t { None, Analysis, Entry, Write } kind = Kind::None;
     lookup::LookupReport report;  // Analysis
-    lookup::AnalyzedSentence analysis;
     size_t tapped = 0;
     size_t sentence = 0;  // Analysis: which (0: the tapped one)
     int index = 0;        // Entry: the word, and its card with phase B filled in
     lookup::LookupCard card;
     api::ApiError error = api::ApiError::None;
-    std::string savedExpressionId;  // Write: a new save's id (empty for a level change or a removal)
-    bool clearFailed = false;       // Write: removed (DELETE), but its notes and tags weren't cleared
-    bool saveRetry = false;         // Entry: the lookup again, for a save, after it failed once
-    std::string unreadable;         // a response we couldn't read: its start, for the log
-    uint32_t retryAfterS = 0;       // Write refused with 429: seconds until Lexirise may be asked
+    std::string savedExpressionId;          // Write: a new save's id (empty for a level change or a removal)
+    bool clearFailed = false;               // Write: removed (DELETE), but its notes and tags weren't cleared
+    bool saveRetry = false;                 // Entry: the lookup again, for a save, after it failed once
+    std::string unreadable;                 // a response we couldn't read: its start, for the log
+    uint32_t retryAfterS = 0;               // Write refused with 429: seconds until Lexirise may be asked
+    std::vector<lookup::LookupCard> cards;  // Analysis: each word's card ...
+    std::vector<FormName> names;            // ... and its form's name, worked out here, not under RenderLock
+    // A cut continuing the one before it: that cut's last word, named again now its next character is known.
+    int renamed = -1;
+    FormName renamedName;
   };
   // A write Lexirise refused or didn't answer: the word goes back to `back.to` (what Lexirise has; its
   // `from` is what the user had set), why, and for a 429 how long until it may be asked again.
@@ -84,6 +89,15 @@ class LiveSource final : public CardSource {
   // the card's state: fetchDeck() and applyDeck() run outside RenderLock (CardSession::shouldFetchDeck says
   // when). `store` outlives the card; setBookDeck reads its file (word select, before the card opens).
   void setBookDeck(deck::BookDeck bookDeck, deck::DeckStore& store);
+  // V2's book-tag record, for "Met before"'s book titles (C14). Read here, as the card opens (not under RenderLock);
+  // `titles` outlives the card.
+  void setBookTitles(BookTagStore& titles);
+#if LEXIPOINT_DEV_HARNESS
+  // Dev builds: a clock (millis) to log how long a sentence's forms take to name, and the stack left:
+  // "[LXCARD] names <n> words <ms> ms, stack <bytes> B free".
+  using Clock = unsigned long (*)();
+  void setClock(const Clock clock) { clock_ = clock; }
+#endif
   bool hasDeckWork() const { return deckDue().has_value(); }
   deck::DeckCall fetchDeck();  // one call (network I/O) for the book deck's next step; step None when there's none
   void applyDeck(const deck::DeckCall& call);
@@ -93,7 +107,13 @@ class LiveSource final : public CardSource {
   // save's, when a save waits for its word's translation); a next sentence the card waits for; the next
   // write that is ready. `closing`: only what the queued writes need, all of them now (no analysis).
   Fetched fetch(unsigned long nowMs, bool closing = false) const;
-  Advance apply(Fetched fetched);  // under RenderLock on the device
+  // Under RenderLock on the device. Changed: the words or their phases changed (the controller syncs). Whatever
+  // it answers, a change to what the focused word shows (a copy's "Met before" after a write, an earlier cut's
+  // word once the next cut joins, a lookup that changed the word on screen) is told by takeShownChanged(); what's
+  // drawn is the CardWord and the controller's state, so a lookup that changes neither isn't drawn again.
+  Advance apply(Fetched fetched);
+  // Whether the focused word was rebuilt showing something new since the last call (then cleared): draw it.
+  bool takeShownChanged();
   Advance advance(const unsigned long nowMs = 0) { return apply(fetch(nowMs)); }
   api::ApiError error() const { return error_; }
 
@@ -136,6 +156,10 @@ class LiveSource final : public CardSource {
   std::vector<CardWord> words_;
   int start_ = 0;
   int focused_ = 0;
+  bool shownChanged_ = false;
+#if LEXIPOINT_DEV_HARNESS
+  Clock clock_ = nullptr;
+#endif
   api::ApiError error_ = api::ApiError::None;
   std::vector<std::string> tags_;
   std::deque<LevelChange> writes_;
@@ -150,6 +174,17 @@ class LiveSource final : public CardSource {
   deck::DeckStore* decks_ = nullptr;
   bool savesCarryBookTag_ = false;
   std::vector<std::string> deckKeys_;  // the book deck's store key per language, in kLanguages order
+  BookTagList titles_;                 // V2's record as the card opened (empty: none)
+  // cardWord with its sentence and the book titles; the form's name kept from the word as built so far.
+  // `named`: its form's name worked out already (else the one shown now is reused when it's for the same form).
+  CardWord wordFor(int index, const FormName* named = nullptr) const;
+  PageSentence pageSentence(size_t sentence) const;
+  // words_[index] built again (wordFor); a change on the focused word sets shownChanged_.
+  void rebuild(int index, const FormName* named = nullptr);
+  // The consecutive sentences_ that are cuts of one long sentence with `sentence` (first, last).
+  std::pair<size_t, size_t> cutChain(size_t sentence) const;
+  // analysis(): when `sentence` continues a cut sentence, the last word of the cut before, named again (f.renamed).
+  void renameLastWordBefore(size_t sentence, Fetched& f) const;
 
   // A new save went through in `language`: when it carried the book tag, its deck is wanted.
   void savedWithBookTag(Language language);

@@ -11,6 +11,7 @@
 
 #include "CardMetrics.h"
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/text/Utf8Prefix.h"
 #include "lexirise/text/Utf8Units.h"
 
 namespace lexipoint::card {
@@ -155,18 +156,10 @@ std::string withEllipsis(const TextMetrics& metrics, const Font font, std::strin
   line = trimRight(std::move(line));
   while (!line.empty() && metrics.width(font, line + kEllipsis) > width) {
     size_t end = line.size() - 1;
-    while (end > 0 && (static_cast<unsigned char>(line[end]) & 0xC0) == 0x80) end--;
+    while (end > 0 && text::isContinuationByte(line[end])) end--;
     line = trimRight(line.substr(0, end));
   }
   return line + kEllipsis;
-}
-
-// Without the paragraph indent (U+3000) at either end.
-std::string trimIdeographicSpace(std::string s) {
-  static constexpr const char kSpace[] = "\xE3\x80\x80";
-  while (s.rfind(kSpace, 0) == 0) s.erase(0, 3);
-  while (s.size() >= 3 && s.compare(s.size() - 3, 3, kSpace) == 0) s.erase(s.size() - 3);
-  return s;
 }
 
 // The text as it is when it fits in `width`, else cut with …
@@ -713,7 +706,8 @@ class Layout {
         f.paragraph(Font::UiSmall, note);  // grey in the reference: black (deviation 1)
         f.gap(m::kParagraphGap);
         const int box = pct(m::kSentenceText, m::kSentenceLineHeightPct);
-        f.paragraph(Font::ReaderMedium, kOpenQuote + trimIdeographicSpace(s_.contextSentence.text) + kCloseQuote, box);
+        f.paragraph(Font::ReaderMedium,
+                    kOpenQuote + std::string(text::trimmedSpaces(s_.contextSentence.text)) + kCloseQuote, box);
         f.gap(m::kParagraphGap);
         if (w_.metBefore) {
           MarkedText met = *w_.metBefore;
@@ -731,7 +725,10 @@ class Layout {
         f.paragraph(Font::ReaderMedium, s_.contextSentence.text, box, &s_.contextSentence, true);
         f.gap(m::kContextGap);
         if (w_.metBefore) {
-          f.paragraph(Font::UiSmall, std::string(str_.metBefore) + str_.separator + w_.metBeforeBook);
+          // "Met before · <book>", or just "Met before" for a book saved on another device (no title here).
+          std::string metLabel = str_.metBefore;
+          if (!w_.metBeforeBook.empty()) metLabel += std::string(str_.separator) + w_.metBeforeBook;
+          f.paragraph(Font::UiSmall, metLabel);
           f.gap(m::kLabelGap);
           f.paragraph(Font::ReaderMedium, w_.metBefore->text, box, &*w_.metBefore);
         } else {
@@ -790,7 +787,9 @@ class Layout {
       out_.text(Font::ReaderMedium, kContentX, centred(f.y(), box, lh(Font::ReaderMedium)), shown);
       const int x = kContentX + tw(Font::ReaderMedium, shown) + tw(Font::Ui, " ");
       if (x < kContentRight) {  // no room left for the label beside a form cut to the full width
-        out_.text(Font::Ui, x, centred(f.y(), box, lh(Font::Ui)), fitText(m_, Font::Ui, form.label, kContentRight - x));
+        std::string label = form.dictionaryForm ? str_.dictionaryForm : form.label;
+        out_.text(Font::Ui, x, centred(f.y(), box, lh(Font::Ui)),
+                  fitText(m_, Font::Ui, std::move(label), kContentRight - x));
       }
       f.gap(box);
     }

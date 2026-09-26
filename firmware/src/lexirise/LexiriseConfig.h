@@ -156,7 +156,20 @@ constexpr size_t kLoggedBodyBytes = 128;      // of a response we couldn't read 
 constexpr size_t kMaxSavedIdBytes = 64;       // a saved-expression id (it goes into a request path)
 constexpr size_t kMaxScoreChars = 24;         // a frequency_score as JSON text ("0.4861234")
 constexpr size_t kMaxDisplayFieldBytes = 64;  // /v1/me user.name and user.plan
-constexpr size_t kJsonMaxDepth = 12;          // Lexirise responses nest ~5 deep; the reader recurses
+// A saved word's notes (the sentence it was saved with: "Met before", C14) are kept to this, cut at a character: a
+// sentence Lexipoint saves is at most kMaxSentenceUnits UTF-16 units, kMaxUtf8BytesPerUtf16Unit bytes each at most
+// (a BMP character is one unit and up to 3 bytes; a non-BMP one two units and 4 bytes).
+constexpr size_t kMaxUtf8BytesPerUtf16Unit = 3;
+constexpr size_t kMaxSavedNoteBytes = kMaxUtf8BytesPerUtf16Unit * kMaxSentenceUnits;
+constexpr size_t kMaxSavedTags = 16;  // a saved word's user_tags read (the book tag among them)
+// "Met before" leaves out the sentence on the page itself: also a cut of the same long sentence (cut around another
+// tap), or a sentence inside the other, when the two share at least this share of the longer.
+constexpr size_t kSameSentenceOverlapPercent = 50;
+// A saved note at least this share of kMaxSentenceUnits long may be a cut the cap made (Lexipoint saves the cut
+// sentence): inside the page's sentence at any length it's the same sentence. A shorter one can't be told from a
+// short sentence of its own.
+constexpr size_t kCutNoteMinPercentOfCap = 80;
+constexpr size_t kJsonMaxDepth = 12;  // Lexirise responses nest ~5 deep; the reader recurses
 
 // Settings value bounds.
 constexpr int kWifiIdleChoicesMin[] = {0, 1, 2, 5, 10};  // "Keep WiFi on after a lookup" (0 = off)

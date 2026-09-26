@@ -342,3 +342,69 @@ Responses kept in `research/decks/` (gitignored).
   camelCase, and log an unreadable answer's first bytes (`LXDECK`).
 - Deleting decks: `DELETE /v1/decks/{id}` isn't used; a deck the user deletes is found missing (404) and made again
   on the book's next save. A user who doesn't want it turns **Deck per book** off.
+
+## How `analyze/text` splits conjugated verbs (v0.2 V4, measured 2026-09-27)
+
+Why: C16's namer (`../v0.2/00-overview.md` C16) names a form from the occurrence it's handed (`word`, `lemma`) and
+the page's next character. Rounds of V4's review kept guarding against splits nobody had seen (書け · ない named
+"imperative"), so this measures them. `tools/lexirise/probe_splits.py` (read-only, dev key, run from the Mac;
+raw responses in `research/v4-splits/`, gitignored) sent 28 Japanese sentences written for the probe, each holding
+one risky form, and recorded the occurrences covering it in the first answer, the refined answer (polled until
+`morphoPending` was false) and the `fast: true` answer on the refined sentence. Five more sentences with する verbs
+were sent once, by hand; they're the tool's last five sentences now, so a rerun measures them the same way. The real namer (`conjugationOf`) was then run on each measured token with its next character.
+
+- **Conjugated verbs come back whole,** with the plain verb as the lemma, in the first, refined and `fast`
+  answers alike: 書けない‹書く›, 書けば‹書く›, 書こう‹書く›, 書けず‹書く›, 食べたがる‹食べる›, したがる‹する›,
+  見ていたかった‹見る›, 食べちゃう‹食べる›, 着いたら‹着く›, 読んだり‹読む›, 書け‹書く› before ！, 食べろ‹食べる›,
+  and a six-step 食べさせられていませんでした‹食べる›. **None of the feared stem splits (書け · ない, 書け · ば,
+  書こ · う, 食べ · たがる) happened.** The potential's lemma is the plain verb (書ける‹書く›), which is what C16
+  assumes.
+- **Some tokens are longer than the verb:** 食べないで‹食べる› (first and refined), 行けそうだ‹行く› (refined) and
+  降るかもしれない‹降る› (first answer, already refined: seen before). They go unnamed or get a longer form's name;
+  no wrong label.
+- **Splits did happen, just rarely:** 行けそう was 行け‹行く› · そう in the first answer and in `fast` (the next
+  character そ leaves 行け unnamed, C16's follower rule: the defence is needed); 勝てっこない came back as
+  勝 · てっこない‹てる› (a bad split; neither piece gets a name). `fast` on the refined sentence cut
+  降るかもしれない to …しれない. **So the namer's guards against a cut stem stay:** they fire rarely, and when they do
+  they only drop a name.
+- **The bare potential stem is real:** 日本語が話せ、 came back as 話せ‹話す›, the case V4 round 16 fixed (no name
+  before 、).
+- **The lemma can change between passes:** なれない was ‹なれる› first and ‹なる› refined. The namer names it
+  "negative" and "potential negative" respectively: both right.
+- **A する verb's lemma is the noun:** 勉強した‹勉強›, 勉強しています‹勉強›, 電話して‹電話›, 心配させる‹心配›,
+  結婚している‹結婚›, 掃除させられた‹掃除›. Generating forward from 勉強 finds nothing, so every する verb went
+  unnamed (V4 R19 names them from noun + する).
+- **Nouns and する, measured 2026-09-27** (first and `fast` answers agree; these sentences are in the tool too):
+  - a noun that isn't a する verb isn't merged with what follows: 二人 · して‹する› · 笑った, 皆 · して‹する› ·
+    騒い‹騒ぐ› · だ, やっと · 彼氏 · できた‹できる›, 友達 · できた‹できる›;
+  - a real する noun is: 勉強できる‹勉強› (so the namer's noun + する gate keeps でき);
+  - one-kanji verbs come back with their own lemma: 愛した‹愛す› (not 愛), 話した‹話す›, 貸して‹貸す› (and
+    お金‹金›), 出した‹出す›; so the gate never takes a one-kanji lemma for a する noun;
+  - 食べないです is 食べない‹食べる› · です‹だ›: 食べない before で is left unnamed (it could be 食べないで cut short;
+    one character can't tell), no wrong label; もう書いたらしい comes back whole, 書いたらしい‹書く› (unnamed).
+  - **The refined pass on the same sentences** (re-run the same day with `probe_splits.py`'s `probe()` on its
+    last sixteen sentences; every one came back already refined, within 2 s): no new merges, and the same tokens
+    as the first answer except two. 愛した's lemma became ‹愛する› (named "past" either way); 騒いだ was whole
+    (騒いだ‹騒ぐ›, "past") where the first answer had 騒い · だ, while `fast` still splits it 騒い · だ, which is
+    what the card rejoins with (v0.2 V1), so the card shows 騒い unnamed. No wrong label on any of them.
+- **Timing:** the refined pass arrived 34–195 s after the first call (two sentences were already refined; one,
+  勝てっこない, was still pending at 180 s: the run used `--wait 180`; the tool's default is 150).
+- **Result on the card, measured tokens through the real namer:** no wrong label. Named: 書けない "potential
+  negative", 書けば "-ba conditional", 書こう "volitional", 食べたがる "-tagaru", 食べないで "negative te-form",
+  着いたら "-tara conditional", 書け before ！ "imperative", 呼ばれた "passive past", 寒くなかった "negative past".
+  Unnamed (names lost, allowed): 書けず, 見ていたかった, 読んだり, 食べちゃう, the six-step form, 行けそうだ,
+  降るかもしれない, the する verbs (before R19).
+- **Still for the device:** these are the server's answers; whether the card's offsets and next character line
+  up with them on a real page is V4's device check (`../v0.1/device-checks.md`).
+
+## A saved word's notes and tags in `analyze/text` (v0.2 V4, measured 2026-09-26)
+
+The brief's example (`../v0.1/context-brief.md`) shows `stateByEntryId[id]` with `notes` (a string or null) and
+`user_tags` (objects `{id, name}`), beside `saved_expression_id`, `entry_id`, `proficiency`, `expression_text`,
+`seen_count`, `updated_at`, `images`. **Live, read-only (the dev key, `analyze/text` on a sentence holding the dev
+account's one saved word, whose notes and tags had been cleared):** its state held only `saved_expression_id`,
+`entry_id`, `proficiency`, `seen_count`: no `notes` or `user_tags` keys at all, not even as null. So either they're
+left out when empty, or the analysis doesn't carry them any more. `dictionary/lookup` carries no saved state.
+Responses kept in `research/v4/` (gitignored). **Open (V4's device check):** save a word from a book, then look it
+up in another sentence: does its state carry `notes` and `user_tags`, and in which shape? V4 reads the documented
+shape (and plain-string tags); without them the card says "First time you've met this word." as before.

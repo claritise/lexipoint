@@ -22,9 +22,6 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
   lastActivityMs_ = nowMs;
   answer.clearFailed = fetched.clearFailed;
   answer.unreadable = fetched.unreadable;
-  // A lookup for the word on screen changes what it shows (a save's retry fills the meaning in, or gives
-  // another reason for none), even when the controller sees no change of phase or level.
-  const bool onScreen = fetched.kind == LiveSource::Fetched::Kind::Entry && fetched.index == controller_.word();
   switch (live_->apply(std::move(fetched))) {
     case LiveSource::Advance::NotFound:
       answer.ended = LiveOutcome{LiveOutcome::Kind::NotFound, live_->error()};
@@ -33,11 +30,14 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
       answer.ended = LiveOutcome{LiveOutcome::Kind::Unavailable, live_->error()};
       return answer;
     case LiveSource::Advance::Changed:
-      answer.redraw = controller_.sourceChanged(nowMs) || onScreen;
+      answer.redraw = controller_.sourceChanged(nowMs);
       break;
     case LiveSource::Advance::Idle:
       break;
   }
+  // The word on screen shows something new even when the controller sees no change of phase or level (a lookup's
+  // meaning, a copy's "Met before" after a write, an earlier cut's word once the next cut joins): LiveSource::apply.
+  if (live_->takeShownChanged()) answer.redraw = true;
   if (const auto failed = live_->takeFailedWrite()) {  // Lexirise didn't take a level change: put it back
     controller_.levelFailed(failed->back.word, failed->back.to, nowMs, callFailure(failed->error), failed->back.from,
                             failed->retryAfterS);

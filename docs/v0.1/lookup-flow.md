@@ -241,7 +241,8 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   never shows a saved-expression id. The glue between input, card and network is `card::CardSession`
   (pure, host-tested through laid-out frames and taps).
 - **Not yet:** the Kanji/Chars tab stays empty on a live card (Lexirise's `breakdown` would need a lookup per
-  character: v0.2), the Form tab lists only the book's form, "Met before" is never filled, the Context tab
+  character: v0.2), ~~the Form tab lists only the book's form, "Met before" is never filled,~~ (Superseded
+  2026-09-26: V4 names the form and fills "Met before", §5i) the Context tab
   has no page number, the ⋯ tab's v0.2 actions say "Not in this version yet", and "Saving…" isn't shown
   (the level shows at once instead). Errors beyond the save toast are P6 (`offline-and-errors.md`).
 
@@ -433,6 +434,14 @@ Device check owed, with a card open:
   a plain StarDict lookup stays CrossPoint's. A language's own dictionary makes the long-press a lookup
   (`lookup::anyStarDict`) unless the book's override or metadata names the other language; an untagged
   or non-CJK-tagged book counts, as it does for Lexirise.
+
+### 5i. As built (v0.2 V4): Met before, and the form's name
+
+A word's card (`card::cardWord`) also carries, from the analysis it came in, the sentence a saved word was saved
+with (`stateByEntryId`'s `notes`) and the book it was saved from (its `book:<slug>` tag, titled from V2's
+`book-tags.ini`): the Context tab's "Met before", unless it's this very sentence. A Japanese word in a conjugated
+form gets its form's name and the steps from its dictionary form (`text/Conjugation`), with no call: when and how,
+`../v0.2/00-overview.md` C16; "Met before", C14.
 
 ## 6. Left/Right on the card
 

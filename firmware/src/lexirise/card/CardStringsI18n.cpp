@@ -42,6 +42,7 @@ CardStrings cardStringsFromI18n() {
   s.metBefore = tr(STR_LEXI_CARD_MET_BEFORE);
   s.firstTime = tr(STR_LEXI_CARD_FIRST_TIME);
   s.notInflected = tr(STR_LEXI_CARD_NOT_INFLECTED);
+  s.dictionaryForm = tr(STR_LEXI_CARD_DICTIONARY_FORM);
   s.actionUndo = tr(STR_LEXI_CARD_ACTION_UNDO);
   s.actions[0] = tr(STR_LEXI_CARD_ACTIONS_0);
   s.actions[1] = tr(STR_LEXI_CARD_ACTIONS_1);

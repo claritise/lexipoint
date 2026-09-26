@@ -113,7 +113,7 @@ TEST(WholeWords, TheSameSpanKeepsTheRefinedLemma) {
   pieces.occurrences[0].lemma = "飲む";
   AnalyzeResult fast;
   fast.occurrences = {occ("飲んだ", 0, 3, 50)};
-  pieces.state[51] = {"8", 3, 0};  // 飲む saved: the word-level answer never names the lemma's entry
+  pieces.state[51] = {"8", 3, 0, {}, {}};  // 飲む saved: the word-level answer never names the lemma's entry
   const AnalyzeResult merged = wholeWords(pieces, fast);
   EXPECT_EQ(merged.occurrences[0].lemma, "飲む");
   EXPECT_EQ(merged.occurrences[0].lemmaEntryId, 51u);
@@ -124,9 +124,9 @@ TEST(WholeWords, TheSameSpanKeepsTheRefinedLemma) {
 TEST(WholeWords, TheWordLevelAnswersStateIsTheFresher) {
   // The refined answer can be a cached one: for the same entry, the word-level answer's state wins.
   AnalyzeResult pieces = refined();
-  pieces.state[10] = {"5", 1, 0};
+  pieces.state[10] = {"5", 1, 0, {}, {}};
   AnalyzeResult fast = words();
-  fast.state[10] = {"5", 3, 0};
+  fast.state[10] = {"5", 3, 0, {}, {}};
   const AnalyzeResult merged = wholeWords(pieces, fast);
   ASSERT_NE(merged.stateFor(10), nullptr);
   EXPECT_EQ(merged.stateFor(10)->proficiency, 3);
@@ -136,7 +136,7 @@ TEST(WholeWords, AWordUnsavedSinceTheRefinedAnswerWasCachedIsNotSaved) {
   // The refined answer (possibly cached) still says 他 (entry 10) is saved; the fresher word-level answer names 他
   // and has no state for it: it isn't saved any more. The pieces' own states still come through.
   AnalyzeResult pieces = refined();
-  pieces.state[10] = {"5", 2, 0};
+  pieces.state[10] = {"5", 2, 0, {}, {}};
   const AnalyzeResult merged = wholeWords(pieces, words());
   EXPECT_EQ(merged.stateFor(10), nullptr);
   ASSERT_NE(merged.stateFor(12), nullptr);  // 边: not one of the word-level answer's words

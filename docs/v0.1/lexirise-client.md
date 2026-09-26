@@ -79,8 +79,9 @@ Fields we keep (all others are skipped while streaming):
 | `occurrences[].{entryId, lemmaEntryId, word, lemma, transliteration, charStart, charEnd, isWordLike}` | All occurrences, compact (§4). **`lemma` is only present when it differs from `word`**, so fall back to `word` |
 | `entryMetaById[id].{transliteration, partOfSpeech[0..1], status, rank, frequencyScore}` | All IDs in `occurrences` (lookup-flow §6) |
 | `stateByEntryId[id].{saved_expression_id, proficiency, seen_count}` | Same |
+| `stateByEntryId[id].{notes, user_tags[].name}` | (v0.2 V4, C14) The sentence the word was saved with, cut to `config::kMaxSavedNoteBytes` at a character (a long note never fails the answer), and the tags' names (objects `{id, name}` or plain strings; the first `kMaxSavedTags`; one over `kMaxTokenBytes` is skipped, never failing the answer): "Met before" and its book |
 | `morphoPending` | Flag. If true, the word boundary may be rough. Show it anyway. *(2026-09-25: the reference now says a `true` answer has "fast tokens only"; a later call gives grammar and refined segmentation. v0.1 keeps using the first answer; calling again is v0.2 C19.)* |
-| `grammar`, `grammarStates`, `user_tags`, `images`, `notes`, `updated_at` | Skip |
+| `grammar`, `grammarStates`, `images`, `updated_at` | Skip |
 
 ### `POST /v1/dictionary/lookup`
 

@@ -24,11 +24,14 @@ struct CharInfo {
   std::string reading;  // kana (ja) or pinyin (zh)
   std::string romaji;   // ja only
   std::string gloss;
+  bool operator==(const CharInfo&) const = default;
 };
 
 struct FormInfo {
   std::string form;
-  std::string label;  // "te-form: “troublesome, and…”"
+  std::string label;            // "te-form: “troublesome, and…”"
+  bool dictionaryForm = false;  // the first row: labelled CardStrings::dictionaryForm instead
+  bool operator==(const FormInfo&) const = default;
 };
 
 // A sentence with one span marked (underlined, or inverted in the Context tab's own sentence).
@@ -36,6 +39,7 @@ struct MarkedText {
   std::string text;
   size_t markStart = 0;  // bytes
   size_t markLength = 0;
+  bool operator==(const MarkedText&) const = default;
 };
 
 // Why phase B brought no meaning (offline-and-errors.md §1): the meaning row says it.
@@ -60,11 +64,12 @@ struct CardWord {
   float frequency = 0;  // frequency_score, 0-1
   std::vector<CharInfo> chars;
   std::vector<FormInfo> forms;
-  std::optional<MarkedText> metBefore;  // a sentence from another book
+  std::optional<MarkedText> metBefore;  // the sentence it was saved with, when it isn't this one (C14)
   std::string metBeforeBook;
-  bool examplesOnlyTraditional = false;      // Lexirise's only examples are Traditional (a Simplified book)
-  std::string traditionalForm;               // the word in Traditional characters, for that note (選擇)
-  NoMeaning noMeaning = NoMeaning::Offline;  // Phase::Unanswered: why
+  bool examplesOnlyTraditional = false;              // Lexirise's only examples are Traditional (a Simplified book)
+  std::string traditionalForm;                       // the word in Traditional characters, for that note (選擇)
+  NoMeaning noMeaning = NoMeaning::Offline;          // Phase::Unanswered: why
+  bool operator==(const CardWord&) const = default;  // everything drawn is here
 };
 
 // One line of the page, for the strips: its tokens at their x positions (relative to the line's start).
@@ -131,6 +136,7 @@ struct CardStrings {
   const char* metBefore = "Met before";
   const char* firstTime = "First time you've met this word.";
   const char* notInflected = "Not inflected here: this is the dictionary form.";
+  const char* dictionaryForm = "dictionary form";  // the Form tab's first row
   const char* actionUndo = "Undo save";
   const char* actions[3] = {"Save the sentence as a card", "Ignore this word", "Look up later"};
   const char* line = "line";

@@ -82,9 +82,7 @@ BenchBook makeJa() {
     w.rank = 29774;
     w.frequency = 0.181f;
     w.chars = {{"煩", "はん", "han", "vexation, trouble"}};
-    w.forms = {{"煩わしい", "dictionary form"},
-               {"煩わしく", "adverbial stem"},
-               {"煩わしくて", "te-form: “troublesome, and…”"}};
+    w.forms = {{"煩わしい", "", true}, {"煩わしく", "adverbial stem"}, {"煩わしくて", "te-form: “troublesome, and…”"}};
     w.metBeforeBook = "ノルウェイの森";
     w.metBefore = marked("人づきあいが<u>煩わしい</u>と思うこともある。");
     b.words.push_back(std::move(w));

@@ -592,6 +592,28 @@ TEST(LiveDeck, AStepWaitsForAnIdleCard) {
   EXPECT_TRUE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));
 }
 
+TEST(LiveSource, ASavedWordMetInAnotherBookShowsWhere) {
+  // 本 (entry 3) was saved from another book, recorded here (V2).
+  Rig rig;
+  std::string analyze = kAnalyze;
+  const std::string saved = R"("3":{"saved_expression_id":77,"proficiency":3})";
+  analyze.replace(analyze.find(saved), saved.size(),
+                  R"("3":{"saved_expression_id":77,"proficiency":3,"notes":"古い本を読む。",)"
+                  R"("user_tags":[{"id":1,"name":"xteink"},{"id":2,"name":"book:kokoro"}]})");
+  rig.api.analyzeReplies = {apiOk(analyze)};
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::BookTagStore titles(files);
+  titles.remember("kokoro", "Kokoro");
+  LiveSource source(rig.api, rig.tap(0, 2), rig.page);  // tapped 本
+  source.setBookTitles(titles);
+  source.advance();
+  const CardWord& hon = source.word(source.startWord());
+  ASSERT_TRUE(hon.metBefore);
+  EXPECT_EQ(hon.metBefore->text, "古い本を読む。");
+  EXPECT_EQ(hon.metBeforeBook, "Kokoro");
+  EXPECT_FALSE(source.word(0).metBefore);  // 彼: not saved
+}
+
 TEST(LiveSave, ASaveBeforePhaseBWaitsForTheTranslation) {
   Saving s(/*complete=*/false);
   s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":5}})")};
@@ -862,6 +884,38 @@ TEST(LiveSession, ASaveAfterAFailedLookupRetriesItOnce) {
   EXPECT_EQ(s.rig.api.looked.size(), 2u);  // once more, for the save
   ASSERT_EQ(s.rig.api.written.size(), 1u);
   EXPECT_NE(s.rig.api.written[0].body.find(R"("translation":"to read")"), std::string::npos);
+}
+
+TEST(LiveSession, ARetriedLookupThatChangesNothingOnScreenIsntDrawnAgain) {
+  // What the card draws is the word and the controller's state: a retry that fails alike changes neither.
+  Saving s(/*complete=*/false);
+  s.rig.api.lookupReplies = {apiFailure(ApiError::RateLimited), apiFailure(ApiError::RateLimited)};
+  s.fetchOne();  // B fails
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":1}})")};
+  s.level(1);
+  s.now += lexipoint::config::kToastMs;
+  const CardSession::Answer retry = s.fetchOne();  // the lookup again, for the save, on screen
+  EXPECT_EQ(s.rig.api.looked.size(), 2u);
+  EXPECT_FALSE(retry.redraw);
+}
+
+TEST(LiveSession, ALookupForAWordOffScreenIsntDrawnAndNoFlagLingers) {
+  Saving s(/*complete=*/false);
+  s.rig.api.lookupReplies = {apiFailure(ApiError::RateLimited), apiOk(R"({"word":"を"})"), apiOk(kLookupYomu)};
+  s.fetchOne();  // 読む's B fails
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":1}})")};
+  s.level(1);
+  s.step(-1);  // を
+  s.now += lexipoint::config::kToastMs;
+  const CardSession::Answer onScreen = s.fetchOne();  // を's lookup: its meaning, drawn
+  ASSERT_EQ(s.rig.api.looked, (std::vector<std::string>{"読む", "を"}));
+  EXPECT_TRUE(onScreen.redraw);
+  const CardSession::Answer offScreen = s.fetchOne();  // 読む's again, for the save: off screen
+  ASSERT_EQ(s.rig.api.looked.size(), 3u);
+  EXPECT_FALSE(offScreen.redraw);
+  const CardSession::Answer write = s.fetchOne();  // the save: nothing new on screen, no flag left over
+  ASSERT_EQ(s.rig.api.written.size(), 1u);
+  EXPECT_FALSE(write.redraw);
 }
 
 TEST(LiveSession, AFailureDropsTheChangesOnTheSameWordElsewhereInTheSentence) {
@@ -1379,6 +1433,135 @@ TEST(LiveSteps, AWordAlreadySavedCarriesItsLevelIntoTheNextSentence) {
   EXPECT_EQ(source.sameWord(6), (std::vector<int>{4, 6}));
 }
 
+TEST(LiveSteps, AWordSavedHereIsMetBeforeInTheNextSentence) {
+  TwoSentences rig;
+  // The next sentence has 読んだ again; Lexirise's answer for it doesn't carry the save's sentence.
+  constexpr const char* kAgain =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":1,"charEnd":4,"entryId":5,"lemmaEntryId":6}],)"
+      R"("stateByEntryId":{"6":{"saved_expression_id":901,"proficiency":3}}})";
+  rig.model.lines[1].tokens = {"雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAgain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {"xteink", "book:kokoro"}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const Hit fresh{Target::Level, 2, {}};
+  for (const LevelChange& ch : c.tap(&fresh, 1000).changes) source.queue(ch);
+  source.advance(1000 + config::kToastMs);  // the save goes (POST)
+  ASSERT_EQ(rig.api.written.size(), 1u);
+  EXPECT_FALSE(source.word(4).metBefore);  // saved from this very sentence
+  c.step(+1, 5000);
+  while (source.extending()) source.advance(6000);
+  c.sourceChanged(6000);
+  ASSERT_EQ(source.wordCount(), 7);
+  const CardWord& again = source.word(6);
+  ASSERT_TRUE(again.metBefore);  // the sentence the save sent, though the answer didn't carry it
+  EXPECT_EQ(again.metBefore->text, "彼は本を読んだ。");
+}
+
+TEST(LiveSteps, ASaveLandingAfterTheNextSentenceUpdatesItsCopy) {
+  TwoSentences rig;
+  constexpr const char* kAgain =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":1,"charEnd":4,"entryId":5,"lemmaEntryId":6}]})";
+  rig.model.lines[1].tokens = {"雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAgain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {"xteink"}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const Hit fresh{Target::Level, 2, {}};
+  for (const LevelChange& ch : c.tap(&fresh, 1000).changes) source.queue(ch);  // in its Undo window
+  c.step(+1, 1100);
+  source.advance(1200);  // the next sentence first: its 読んだ isn't saved yet
+  c.sourceChanged(1200);
+  ASSERT_EQ(source.wordCount(), 7);
+  EXPECT_FALSE(source.word(6).metBefore);
+  while (source.hasPendingWrites()) source.advance(1000 + config::kToastMs);  // the save lands
+  ASSERT_EQ(rig.api.written.size(), 1u);
+  ASSERT_TRUE(source.word(6).metBefore);  // the copy follows the save
+  EXPECT_EQ(source.word(6).metBefore->text, "彼は本を読んだ。");
+  EXPECT_FALSE(source.word(4).metBefore);  // the sentence it was saved from
+}
+
+namespace {
+
+// A save landing after the next sentence's copy of the word was built: the session redraws when that copy is on
+// screen (its "Met before" appears now), not when it's elsewhere.
+CardSession::Answer saveLandsWithTheCopy(const bool onScreen) {
+  TwoSentences rig;
+  constexpr const char* kAgain =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":1,"charEnd":4,"entryId":5,"lemmaEntryId":6}]})";
+  rig.model.lines[1].tokens = {"雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAgain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu), apiOk(R"({"word":"雨"})"), apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {"xteink"}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session(c, targets, input, &source);
+  c.open(0);
+  const auto drain = [&](const unsigned long t) {
+    while (session.hasWork(t) && rig.api.written.empty()) session.apply(session.fetch(t), t);
+  };
+  drain(10);  // A and B
+  const Hit fresh{Target::Level, 2, {}};
+  for (const LevelChange& ch : c.tap(&fresh, 1000).changes) source.queue(ch);  // in its Undo window
+  c.step(+1, 1100);
+  drain(1200);  // the next sentence and 雨's lookup, not the save (still in its window)
+  if (onScreen) {
+    EXPECT_TRUE(c.step(+1, 1400));  // onto the copy of 読んだ
+    drain(1500);                    // its lookup
+  }
+  EXPECT_EQ(c.word(), onScreen ? 6 : 5);
+  EXPECT_FALSE(source.word(6).metBefore);
+  EXPECT_TRUE(rig.api.written.empty());
+  const unsigned long landed = 1000 + config::kToastMs;
+  const CardSession::Answer answer = session.apply(session.fetch(landed), landed);  // the save lands
+  EXPECT_EQ(rig.api.written.size(), 1u);
+  EXPECT_TRUE(source.word(6).metBefore);
+  return answer;
+}
+
+}  // namespace
+
+TEST(LiveSteps, ASaveLandingWhileItsCopyIsOnScreenRedrawsIt) {
+  EXPECT_TRUE(saveLandsWithTheCopy(/*onScreen=*/true).redraw);
+  EXPECT_FALSE(saveLandsWithTheCopy(/*onScreen=*/false).redraw);  // off screen: nothing to draw
+}
+
+TEST(LiveSteps, RemovingTheSaveClearsItsCopysMetBefore) {
+  TwoSentences rig;
+  constexpr const char* kAgain =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":1,"charEnd":4,"entryId":5,"lemmaEntryId":6}]})";
+  rig.model.lines[1].tokens = {"雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAgain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})"), apiOk("{}"), apiOk("{}")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {"xteink"}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  source.queue({4, Level::None, Level::Fresh, 1000});
+  while (source.hasPendingWrites()) source.advance(1000);  // saved
+  c.step(+1, 1100);
+  while (source.extending()) source.advance(1200);
+  ASSERT_TRUE(source.word(6).metBefore);
+  source.queue({4, Level::Fresh, Level::None, 2000});  // removed (⋯ Undo save): DELETE, then the clear
+  while (source.hasPendingWrites()) source.advance(2000);
+  ASSERT_EQ(rig.api.written.size(), 3u);
+  EXPECT_FALSE(source.word(6).metBefore);  // the copy follows
+}
+
 TEST(LiveSteps, APunctuationOnlySentenceIsSkippedAndThePageEndStops) {
   TwoSentences rig;
   // After 読んだ。: a line of dots (no word in it), then the rain.
@@ -1880,4 +2063,285 @@ TEST(LiveWholeWords, AWholeWordTwiceInASentenceIsOneEntry) {
   c.step(+1, 12000);  // the second 一边
   EXPECT_EQ(c.currentWord().word, "一边");
   EXPECT_EQ(c.state().level, Level::Fresh);
+}
+
+// C16 end to end: each form's name, worked out while the analysis is fetched (outside RenderLock), is what the card
+// shows after phase A, after phase B, and after a save and its removal (every copy of the saved word).
+TEST(LiveNames, EachFormsNameHoldsThroughBAndASaveAndItsRemoval) {
+  Rig rig;
+  TextLine line;
+  line.tokens = {"書いた", "本", "を", "読んだ", "し", "、", "また", "読んだ", "。"};
+  line.startsParagraph = true;
+  rig.model.lines = {line};
+  rig.page.lines = {{100,
+                     {{"書いた", 20, 78},
+                      {"本", 98, 26},
+                      {"を", 124, 26},
+                      {"読んだ", 150, 78},
+                      {"し", 228, 26},
+                      {"、", 254, 26},
+                      {"また", 280, 52},
+                      {"読んだ", 332, 78},
+                      {"。", 410, 26}}}};
+  rig.api.analyzeReplies = {apiOk(
+      R"({"occurrences":[)"
+      R"({"word":"書いた","lemma":"書く","isWordLike":true,"charStart":0,"charEnd":3,"entryId":10,"lemmaEntryId":11},)"
+      R"({"word":"本","isWordLike":true,"charStart":3,"charEnd":4,"entryId":3,"lemmaEntryId":3},)"
+      R"({"word":"を","isWordLike":true,"charStart":4,"charEnd":5,"entryId":4},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":5,"charEnd":8,"entryId":5,"lemmaEntryId":6},)"
+      R"({"word":"し","isWordLike":true,"charStart":8,"charEnd":9,"entryId":7},)"
+      R"({"word":"、","isWordLike":false,"charStart":9,"charEnd":10},)"
+      R"({"word":"また","isWordLike":true,"charStart":10,"charEnd":12,"entryId":8},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":12,"charEnd":15,"entryId":5,"lemmaEntryId":6},)"
+      R"({"word":"。","isWordLike":false,"charStart":15,"charEnd":16}]})")};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})"), apiOk("{}"), apiOk("{}")};
+  LiveSource source(rig.api, rig.tap(0, 3), rig.page);  // tapped the first 読んだ
+  CardController c(source, ReadingMode::Kana);
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session(c, targets, input, &source);
+  c.open(0);
+  constexpr int kKaita = 0, kHon = 1, kYonda = 3, kYondaAgain = 6;
+  const auto expectNames = [&source](const char* when) {
+    for (const int w : {kYonda, kYondaAgain}) {
+      EXPECT_EQ(source.word(w).conjugation, "past") << when << " " << w;
+      ASSERT_EQ(source.word(w).forms.size(), 2u) << when << " " << w;
+      EXPECT_EQ(source.word(w).forms[0].form, "読む") << when;
+      EXPECT_EQ(source.word(w).forms[1].form, "読んだ") << when;
+    }
+    EXPECT_EQ(source.word(kKaita).conjugation, "past") << when;
+    ASSERT_EQ(source.word(kKaita).forms.size(), 2u) << when;
+    EXPECT_EQ(source.word(kKaita).forms[0].form, "書く") << when;
+    EXPECT_TRUE(source.word(kHon).conjugation.empty()) << when;  // the dictionary form: no name, no forms
+    EXPECT_TRUE(source.word(kHon).forms.empty()) << when;
+  };
+  session.apply(session.fetch(1), 1);  // A
+  ASSERT_EQ(c.word(), kYonda);
+  expectNames("after A");
+  session.apply(session.fetch(2), 2);  // B (lookups keep the form and the dictionary form: the name is kept)
+  EXPECT_EQ(rig.api.looked, std::vector<std::string>{"読む"});
+  expectNames("after B");
+  source.queue({kYonda, Level::None, Level::Fresh});
+  while (session.hasWork(10000)) session.apply(session.fetch(10000), 10000);
+  ASSERT_EQ(rig.api.written.size(), 1u);  // the save
+  expectNames("after the save");
+  source.queue({kYonda, Level::Fresh, Level::None});
+  while (session.hasWork(20000)) session.apply(session.fetch(20000), 20000);
+  ASSERT_EQ(rig.api.written.size(), 3u);  // DELETE, then the clear
+  expectNames("after the removal");
+}
+
+namespace {
+
+// One sentence over the cap, which the card has as two cuts, with 本 in each; 本 was saved from cut `savedFrom`
+// (its note that cut).
+struct LongSentence {
+  FakeApi api;
+  PageModel model;
+  ReaderPage page;
+  TapContext tap;
+  std::string firstCut, secondCut;
+  explicit LongSentence(const int savedFrom) {
+    TextLine line;
+    line.tokens.push_back("本");
+    for (int i = 0; i < 125; i++) line.tokens.push_back("あ");
+    line.tokens.push_back("本");
+    for (int i = 0; i < 10; i++) line.tokens.push_back("い");
+    line.tokens.push_back("。");
+    line.startsParagraph = true;
+    model.lines = {line};
+    page.lines.push_back({100, {}});
+    for (const std::string& t : line.tokens) page.lines[0].tokens.push_back({t, 20, 26});
+    tap.sentence = buildSentence(model, {0, 0}, Script::Japanese);
+    tap.language.language = Language::Japanese;
+    const auto second = lexipoint::text::buildSentenceAfter(model, *tap.sentence, Script::Japanese);
+    EXPECT_TRUE(tap.sentence->truncatedRight);
+    EXPECT_TRUE(second && second->truncatedLeft);
+    firstCut = tap.sentence->text;
+    secondCut = second->text;
+    const size_t hon = secondCut.find("本");
+    const uint32_t at = lexipoint::text::utf16Length(std::string_view(secondCut).substr(0, hon));
+    const std::string saved = R"("stateByEntryId":{"3":{"saved_expression_id":77,"proficiency":2,"notes":")" +
+                              (savedFrom == 1 ? firstCut : secondCut) + R"("}})";
+    api.analyzeReplies = {
+        apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":0,"charEnd":1,"entryId":3,)"
+              R"("lemmaEntryId":3}],)" +
+              saved + "}"),
+        apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":)" + std::to_string(at) + R"(,"charEnd":)" +
+              std::to_string(at + 1) + R"(,"entryId":3,"lemmaEntryId":3}],)" + saved + "}")};
+    api.lookupReplies = {apiOk(R"({"word":"本"})"), apiOk(R"({"word":"本"})")};
+  }
+  LiveSource::NextSentence next() {
+    return [this](const TapContext& current) {
+      TapContext t;
+      t.sentence = lexipoint::text::buildSentenceAfter(model, *current.sentence, Script::Japanese);
+      if (t.sentence) t.language.language = Language::Japanese;
+      return t;
+    };
+  }
+};
+
+}  // namespace
+
+TEST(LiveSteps, ASavedWordsCopyInTheNextCutOfTheSameLongSentenceIsntMetBefore) {
+  LongSentence rig(/*savedFrom=*/1);
+  LiveSource source(rig.api, rig.tap, rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  EXPECT_FALSE(source.word(0).metBefore);  // saved from this very cut
+  c.step(+1, 1000);                        // on into the second cut
+  while (source.hasWork(1100)) {
+    source.advance(1100);
+    c.sourceChanged(1100);
+  }
+  ASSERT_EQ(source.wordCount(), 2);
+  EXPECT_EQ(rig.api.analyzed[1], rig.secondCut);
+  EXPECT_FALSE(source.word(1).metBefore);  // the same long sentence, cut: not "Met before"
+}
+
+TEST(LiveSteps, AWordSavedFromTheNextCutLosesItsMetBeforeOnceThatCutComes) {
+  LongSentence rig(/*savedFrom=*/2);
+  LiveSource source(rig.api, rig.tap, rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  EXPECT_TRUE(source.word(0).metBefore);  // the second cut isn't on the card yet: it reads as another sentence
+  c.step(+1, 1000);
+  while (source.hasWork(1100)) {
+    source.advance(1100);
+    c.sourceChanged(1100);
+  }
+  ASSERT_EQ(source.wordCount(), 2);
+  EXPECT_FALSE(source.word(0).metBefore);  // rebuilt against the sentence joined back
+  EXPECT_FALSE(source.word(1).metBefore);
+}
+
+TEST(LiveSteps, AnEarlierCutsWordOnScreenIsRedrawnWhenTheNextCutJoins) {
+  // On 本 in the first cut (its note the second cut: "Met before" shows), a step on starts the next cut loading and a
+  // step back cancels it: the card stays on 本. When the cut lands, 本's "Met before" goes, and is drawn.
+  LongSentence rig(/*savedFrom=*/2);
+  LiveSource source(rig.api, rig.tap, rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session(c, targets, input, &source);
+  c.open(0);
+  for (unsigned long t = 1; session.hasWork(t) && t < 10; t++) session.apply(session.fetch(t), t);  // A, B
+  ASSERT_EQ(c.word(), 0);
+  EXPECT_TRUE(source.word(0).metBefore);
+  c.step(+1, 1000);
+  c.step(-1, 1010);
+  bool redrawn = false;
+  for (unsigned long t = 1100; session.hasWork(t) && t < 1200; t++) {
+    redrawn = session.apply(session.fetch(t), t).redraw || redrawn;
+  }
+  ASSERT_EQ(source.wordCount(), 2);
+  EXPECT_EQ(c.word(), 0);
+  EXPECT_FALSE(source.word(0).metBefore);
+  EXPECT_TRUE(redrawn);
+}
+
+TEST(LiveSteps, AVerbEndingACutIsNamedOnceTheNextCutShowsWhatFollows) {
+  // 書け ends the first cut (the cap cut right after it): what follows is unknown, and 書け could be 書ける, 書けば…
+  // cut short, so it has no name. The next cut starts with と (書けと): 書け is the imperative.
+  FakeApi api;
+  PageModel model;
+  TextLine line;
+  line.tokens.push_back("本");
+  for (int i = 0; i < 117; i++) line.tokens.push_back("あ");
+  for (const char* t : {"書け", "と", "言", "った", "。"}) line.tokens.push_back(t);
+  line.startsParagraph = true;
+  model.lines = {line};
+  ReaderPage page;
+  page.lines.push_back({100, {}});
+  for (const std::string& t : line.tokens) page.lines[0].tokens.push_back({t, 20, 26});
+  TapContext tap;
+  tap.sentence = buildSentence(model, {0, 0}, Script::Japanese);
+  tap.language.language = Language::Japanese;
+  ASSERT_TRUE(tap.sentence && tap.sentence->truncatedRight);
+  ASSERT_EQ(tap.sentence->text.substr(tap.sentence->text.size() - 6), "書け");
+  api.analyzeReplies = {
+      apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":0,"charEnd":1,"entryId":3},)"
+            R"({"word":"書け","lemma":"書く","isWordLike":true,"charStart":118,"charEnd":120,"entryId":4,)"
+            R"("lemmaEntryId":5}]})"),
+      apiOk(R"({"occurrences":[{"word":"と","isWordLike":true,"charStart":0,"charEnd":1,"entryId":6},)"
+            R"({"word":"言った","lemma":"言う","isWordLike":true,"charStart":1,"charEnd":4,"entryId":7,)"
+            R"("lemmaEntryId":8}]})")};
+  api.lookupReplies = {apiOk(R"({"word":"本"})"), apiOk(R"({"word":"書く"})"), apiOk(R"({"word":"と"})")};
+  LiveSource source(api, tap, page, {}, [&model](const TapContext& current) {
+    TapContext t;
+    t.sentence = lexipoint::text::buildSentenceAfter(model, *current.sentence, Script::Japanese);
+    if (t.sentence) t.language.language = Language::Japanese;
+    return t;
+  });
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  EXPECT_TRUE(source.word(1).conjugation.empty());  // what follows 書け isn't on the card yet
+  c.step(+1, 1000);
+  c.step(+1, 1010);  // past 書け: the next cut loads
+  while (source.hasWork(1100)) {
+    source.advance(1100);
+    c.sourceChanged(1100);
+  }
+  ASSERT_EQ(source.wordCount(), 4);
+  EXPECT_EQ(source.word(1).conjugation, "imperative");  // 書け + と
+  EXPECT_EQ(source.word(3).conjugation, "past");        // 言った, in the new cut
+}
+
+TEST(LiveSteps, AVerbEndingACutStaysUnnamedWhenThePieceAfterItHasNoWord) {
+  // 書け ends the first cut; the rest of the sentence is only "……", which has no word, so the card goes on to the next
+  // paragraph's sentence in its place. That one isn't 書け's neighbour: 書け isn't named from it.
+  FakeApi api;
+  PageModel model;
+  TextLine line;
+  line.tokens.push_back("本");
+  for (int i = 0; i < 117; i++) line.tokens.push_back("あ");
+  line.tokens.push_back("書け");
+  line.tokens.push_back("……");
+  line.startsParagraph = true;
+  TextLine rain;
+  rain.tokens = {"と", "雨", "が", "降る", "。"};
+  rain.startsParagraph = true;
+  model.lines = {line, rain};
+  ReaderPage page;
+  for (const TextLine& l : model.lines) {
+    page.lines.push_back({100, {}});
+    for (const std::string& t : l.tokens) page.lines.back().tokens.push_back({t, 20, 26});
+  }
+  TapContext tap;
+  tap.sentence = buildSentence(model, {0, 0}, Script::Japanese);
+  tap.language.language = Language::Japanese;
+  ASSERT_TRUE(tap.sentence && tap.sentence->truncatedRight);
+  api.analyzeReplies = {
+      apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":0,"charEnd":1,"entryId":3},)"
+            R"({"word":"書け","lemma":"書く","isWordLike":true,"charStart":118,"charEnd":120,"entryId":4,)"
+            R"("lemmaEntryId":5}]})"),
+      apiOk(R"({"occurrences":[]})"),
+      apiOk(R"({"occurrences":[{"word":"と","isWordLike":true,"charStart":0,"charEnd":1,"entryId":6},)"
+            R"({"word":"雨","isWordLike":true,"charStart":1,"charEnd":2,"entryId":7}]})")};
+  api.lookupReplies = {apiOk(R"({"word":"本"})"), apiOk(R"({"word":"書く"})")};
+  LiveSource source(api, tap, page, {}, [&model](const TapContext& current) {
+    TapContext t;
+    t.sentence = lexipoint::text::buildSentenceAfter(model, *current.sentence, Script::Japanese);
+    if (t.sentence) t.language.language = Language::Japanese;
+    return t;
+  });
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  c.step(+1, 1000);
+  c.step(+1, 1010);
+  while (source.extending()) source.advance(1100);
+  c.sourceChanged(1200);
+  ASSERT_EQ(api.analyzed.size(), 3u);
+  EXPECT_EQ(api.analyzed[1], "……");
+  ASSERT_EQ(source.wordCount(), 4);
+  EXPECT_TRUE(source.word(1).conjugation.empty());  // not named from と, the next paragraph's first word
 }

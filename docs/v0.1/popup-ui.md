@@ -126,6 +126,11 @@ can't render an exact size, use the nearest size and **log it in the P4 ledger n
 4. The reference's device frame, side-button and Home-pad drawings are illustration only.
 
 - **Chinese:** the reading is pinyin with tone marks, and there is no surface-form line (`languages.md` §3).
+- **As built (v0.2 V4):** the surface line's conjugation and the Form tab's steps are filled from
+  `text/Conjugation` (Japanese; a form it can't name shows alone, unnamed), and the Context tab's "Met before" from
+  the saved word's notes and book tag. **A change to the approved design, approved by claritise 2026-09-26** ("Ok
+  sure to the met before"): "Met before" alone, without " · ", when there's no book title (a book saved on another
+  device). Nothing moved.
 - **Reading on top, small; lemma large.** Same order as furigana. Show the reading as **kana**. If
   `transliteration` comes back in romaji (the brief's example has `"neko"`), convert it or show it
   as is. P0 checks what `ja` actually returns.

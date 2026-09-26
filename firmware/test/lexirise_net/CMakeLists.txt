@@ -27,12 +27,14 @@ add_executable(LexiriseNetTest
   ${REPO_ROOT}/src/lexirise/settings/SettingsScreen.cpp
   ${REPO_ROOT}/src/lexirise/web/WebApi.cpp
   ${REPO_ROOT}/src/lexirise/LexiriseService.cpp
+  ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
 target_compile_definitions(LexiriseNetTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseNetTest PRIVATE
   ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/test/lexirise_fakes
   ${REPO_ROOT}/test/lexirise_fakes/stubs
 )

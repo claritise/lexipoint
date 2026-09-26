@@ -6,6 +6,7 @@
 
 using lexipoint::text::isAllKatakana;
 using lexipoint::text::kanaReading;
+using lexipoint::text::katakanaToHiragana;
 using lexipoint::text::romajiToHiragana;
 
 namespace {
@@ -86,4 +87,13 @@ TEST(Kana, KatakanaWordsAreTheirOwnReading) {
   EXPECT_EQ(kanaReading("ビール", "bīru").value_or(""), "ビール");
   EXPECT_EQ(kanaReading("煩わしい", "wazurawashii").value_or(""), "わずらわしい");
   EXPECT_FALSE(kanaReading("一緒", "ic hi"));  // → the card shows the romaji
+}
+
+TEST(Kana, KatakanaFoldsToHiragana) {
+  EXPECT_EQ(katakanaToHiragana("キレる"), "きれる");
+  EXPECT_EQ(katakanaToHiragana("ヴァイオリン"), "ゔぁいおりん");
+  EXPECT_EQ(katakanaToHiragana("コーヒー"), "こーひー");  // ー kept
+  EXPECT_EQ(katakanaToHiragana("ヽヾ"), "ゝゞ");
+  EXPECT_EQ(katakanaToHiragana("食べるabc"), "食べるabc");
+  EXPECT_EQ(katakanaToHiragana(""), "");
 }

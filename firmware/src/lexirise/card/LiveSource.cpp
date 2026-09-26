@@ -2,13 +2,20 @@
 
 #include "LiveSource.h"
 
+#include <Logging.h>
+#if LEXIPOINT_DEV_HARNESS
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#endif
 #include <Utf8.h>
 
 #include <algorithm>
 #include <iterator>
+#include <utility>
 
 #include "LiveWord.h"
 #include "lexirise/api/Requests.h"
+#include "lexirise/text/Utf8Prefix.h"
 #include "lexirise/text/Utf8Units.h"
 #include "lexirise/util/Timing.h"
 
@@ -128,6 +135,76 @@ void LiveSource::setBookDeck(deck::BookDeck bookDeck, deck::DeckStore& store) {
   decks_->load();
 }
 
+void LiveSource::setBookTitles(BookTagStore& titles) { titles_ = titles.list(); }
+
+void LiveSource::rebuild(const int index, const FormName* named) {
+  CardWord rebuilt = wordFor(index, named);
+  if (index == focused_ && !(rebuilt == words_[index])) shownChanged_ = true;
+  words_[index] = std::move(rebuilt);
+}
+
+bool LiveSource::takeShownChanged() { return std::exchange(shownChanged_, false); }
+
+CardWord LiveSource::wordFor(const int index, const FormName* named) const {
+  const auto i = static_cast<size_t>(index);
+  FormName shown;
+  if (!named && i < words_.size() && !words_[i].word.empty()) {
+    const CardWord& w = words_[i];
+    shown = {w.surface, w.word, w.conjugation, w.forms};
+    named = &shown;
+  }
+  // "Met before" compares the sentence as far as the card has it: a long one the cap cut into consecutive pieces
+  // (one cut on the right, the next on the left) is joined back, and each piece compared too. sentences_' neighbours
+  // are next to each other on the page (extend() adds the one right after), so the pieces join without a gap. Joined
+  // as they are: a space the builder would put between a Latin piece and the next isn't added (Japanese and Chinese,
+  // the card's languages, have none).
+  const auto [first, last] = cutChain(sentenceOf_[i]);
+  const auto built = [this](const size_t s) -> const text::BuiltSentence& { return *sentences_[s].tap.sentence; };
+  PageSentence page = pageSentence(sentenceOf_[i]);
+  std::string joined;
+  page.whole.clear();
+  page.whole.reserve(last - first + 2);
+  if (first != last) {
+    for (size_t s = first; s <= last; s++) joined += built(s).text;
+    page.whole.push_back({joined, built(first).truncatedLeft, built(last).truncatedRight});
+  }
+  for (size_t s = first; s <= last; s++)
+    page.whole.push_back({built(s).text, built(s).truncatedLeft, built(s).truncatedRight});
+  return cardWord(cards_[i], page, &titles_, named);
+}
+
+void LiveSource::renameLastWordBefore(const size_t sentence, Fetched& f) const {
+  if (sentence == 0) return;
+  const text::BuiltSentence& before = *sentences_[sentence - 1].tap.sentence;
+  const text::BuiltSentence& cut = *sentences_[sentence].tap.sentence;
+  // sentences_[sentence - 1] is the page neighbour only when this one continues it: a cut on the right followed by
+  // one cut on the left (a punctuation-only piece replaced by the sentence after it is neither: laterSentenceFailed).
+  if (!before.truncatedRight || !cut.truncatedLeft) return;
+  // The word ending the cut before: its next character was unknown (the cap cut there), and is this cut's first.
+  int last = -1;
+  for (int w = 0; w < wordCount(); w++) {
+    if (sentenceOf_[w] == sentence - 1 && (last < 0 || cards_[w].charEnd > cards_[last].charEnd)) last = w;
+  }
+  if (last < 0 || cards_[last].charEnd != text::utf16Length(before.text)) return;
+  const std::string joined = before.text + cut.text;
+  f.renamed = last;
+  f.renamedName = formNameOf(cards_[last], PageSentence::single(joined, cut.truncatedRight));
+}
+
+std::pair<size_t, size_t> LiveSource::cutChain(const size_t sentence) const {
+  const auto built = [this](const size_t s) -> const text::BuiltSentence& { return *sentences_[s].tap.sentence; };
+  size_t first = sentence;
+  while (first > 0 && built(first).truncatedLeft && built(first - 1).truncatedRight) first--;
+  size_t last = sentence;
+  while (last + 1 < sentences_.size() && built(last).truncatedRight && built(last + 1).truncatedLeft) last++;
+  return {first, last};
+}
+
+PageSentence LiveSource::pageSentence(const size_t sentence) const {
+  const text::BuiltSentence& built = *sentences_[sentence].tap.sentence;
+  return PageSentence::single(built.text, built.truncatedRight, built.truncatedLeft);
+}
+
 void LiveSource::savedWithBookTag(const Language language) {
   if (!decks_ || !savesCarryBookTag_) return;
   for (size_t i = 0; i < std::size(kLanguages); i++) {
@@ -226,8 +303,32 @@ LiveSource::Fetched LiveSource::analysis(const size_t sentence) const {
   Fetched f;
   f.kind = Fetched::Kind::Analysis;
   f.sentence = sentence;
-  f.report = lookup::analyzeTap(api_, sentences_[sentence].tap, f.analysis, f.tapped);
+  lookup::AnalyzedSentence analyzed;  // only for the cards: dropped when this returns, not carried into apply()
+  f.report = lookup::analyzeTap(api_, sentences_[sentence].tap, analyzed, f.tapped);
   f.unreadable = f.report.bodyHead;
+  if (f.report.outcome == lookup::LookupOutcome::Card) {
+    // Each form's name now, outside RenderLock: apply() only takes it (C16's search, run for every word). The
+    // card's phase A waits for all of them: naming the tapped word alone first would need another pass to name the
+    // rest, and a word stepped onto before it ran would show unnamed; the dev log says how long it takes.
+#if LEXIPOINT_DEV_HARNESS
+    const unsigned long start = clock_ ? clock_() : 0;
+#endif
+    f.cards.reserve(analyzed.words.size());
+    f.names.reserve(analyzed.words.size());
+    const PageSentence page = pageSentence(sentence);
+    for (size_t i = 0; i < analyzed.words.size(); i++) {
+      f.cards.push_back(lookup::cardFor(analyzed, i));
+      f.names.push_back(formNameOf(f.cards.back(), page));
+    }
+#if LEXIPOINT_DEV_HARNESS
+    if (clock_) {
+      // And the stack this task never used so far (bytes): the search's frames are its deepest here.
+      LOG_INF("LXCARD", "names %u words %lu ms, stack %u B free", static_cast<unsigned>(f.cards.size()),
+              clock_() - start, static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
+    }
+#endif
+    renameLastWordBefore(sentence, f);
+  }
   return f;
 }
 
@@ -244,7 +345,10 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
       error_ = fetched.error;
       if (fetched.saveRetry) saveRetried_[fetched.index] = true;
       cards_[fetched.index] = std::move(fetched.card);
-      words_[fetched.index] = cardWord(cards_[fetched.index]);
+      // Its phase is the controller's to compare (Advance::Changed). Phase B keeps the form and the dictionary form
+      // (lookup::completeCard doesn't touch them), so the name shown is reused, not worked out again here under
+      // RenderLock with this cut alone (which would lose a rename from the next cut).
+      rebuild(fetched.index);
       return Advance::Changed;
     case Fetched::Kind::Write: {
       error_ = fetched.error;
@@ -269,7 +373,11 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
       }
       std::optional<api::EntryState> saved = card.saved;
       if (!fetched.savedExpressionId.empty()) {
-        saved = api::EntryState{fetched.savedExpressionId, 0, 0};
+        saved.emplace();
+        saved->savedExpressionId = fetched.savedExpressionId;
+        // What the save sent, as Lexirise now holds it: a later sentence's "Met before" (C14).
+        saved->notes = std::string(text::utf8Prefix(sentenceFor(change.word).text, config::kMaxSavedNoteBytes));
+        saved->userTags = tags_;
         createdIds_.push_back(fetched.savedExpressionId);
         savedWithBookTag(card.language);  // a new save (POST) carries the tags
       }
@@ -282,8 +390,11 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
       } else if (saved) {
         saved->proficiency = proficiencyOf(change.to);
       }
-      for (const int w : same) cards_[w].saved = saved;  // one entry in Lexirise
-      return Advance::Idle;                              // the card already shows it
+      for (const int w : same) {  // one entry in Lexirise
+        cards_[w].saved = saved;
+        rebuild(w);  // its "Met before" follows (a copy analysed before the save landed too)
+      }
+      return Advance::Idle;  // the card already shows the level; a copy on screen that changed: takeShownChanged()
     }
   }
   return Advance::Idle;
@@ -291,9 +402,9 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
 
 LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
   const int first = wordCount();
-  for (size_t i = 0; i < fetched.analysis.words.size(); i++) {
-    cards_.push_back(lookup::cardFor(fetched.analysis, i));
-    words_.push_back(cardWord(cards_.back()));
+  for (lookup::LookupCard& card : fetched.cards) {
+    cards_.push_back(std::move(card));
+    words_.emplace_back();  // filled below, once its saved state is settled
     sentenceOf_.push_back(fetched.sentence);
     saveRetried_.push_back(false);
   }
@@ -304,10 +415,26 @@ LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
   for (int w = first; w < wordCount(); w++) {
     for (const int e : sameWord(w)) {
       if (e < first) {
-        cards_[w].saved = cards_[e].saved;
+        std::optional<api::EntryState> known = cards_[e].saved;
+        // A save made here holds the sentence and tags it sent; one this card only saw keeps the analysis's.
+        if (known && cards_[w].saved && known->notes.empty()) {
+          known->notes = cards_[w].saved->notes;
+          known->userTags = cards_[w].saved->userTags;
+        }
+        cards_[w].saved = std::move(known);
         break;
       }
     }
+    const auto k = static_cast<size_t>(w - first);
+    words_[w] = wordFor(w, k < fetched.names.size() ? &fetched.names[k] : nullptr);  // "Met before" as saved now
+  }
+  // A cut continuing the one before it (a long sentence the cap cut): the word ending the cut before gets the name
+  // worked out with its next character (analysis()), and the earlier cuts' words compare their "Met before" against
+  // the sentence joined back now (their names kept).
+  if (fetched.renamed >= 0 && fetched.renamed < first) rebuild(fetched.renamed, &fetched.renamedName);
+  const size_t chainFirst = cutChain(fetched.sentence).first;
+  for (int w = 0; w < first; w++) {
+    if (w != fetched.renamed && sentenceOf_[w] >= chainFirst && sentenceOf_[w] < fetched.sentence) rebuild(w);
   }
   // The tapped sentence opens on the tapped word; a later one on its first (where the card steps to).
   if (fetched.sentence == 0) start_ = focused_ = first + static_cast<int>(fetched.tapped);

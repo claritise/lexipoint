@@ -10,12 +10,14 @@ add_executable(LexiriseDeckTest
   ${REPO_ROOT}/src/lexirise/net/JsonWriter.cpp
   ${REPO_ROOT}/src/lexirise/api/Requests.cpp
   ${REPO_ROOT}/src/lexirise/api/Responses.cpp
+  ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
 target_compile_definitions(LexiriseDeckTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseDeckTest PRIVATE
   ${REPO_ROOT}/src
+  ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/test/lexirise_fakes
   ${REPO_ROOT}/test/lexirise_fakes/stubs
 )

@@ -98,8 +98,10 @@ MarkedText marked(const std::string& withU) {
                               for c in w["ch"])
             out.append("    w.chars = {" + chars + "};\n")
             if w.get("form"):
-                out.append("    w.forms = {" + ", ".join("{" + cstr(f[0]) + ", " + cstr(f[1]) + "}" for f in w["form"])
-                           + "};\n")
+                # The reference's "dictionary form" row is the card's own string (CardStrings::dictionaryForm).
+                forms = ", ".join("{" + cstr(f[0]) + (', "", true}' if f[1] == "dictionary form"
+                                                      else ", " + cstr(f[1]) + "}") for f in w["form"])
+                out.append("    w.forms = {" + forms + "};\n")
             if w.get("met"):
                 out.append(f"    w.metBeforeBook = {cstr(w['met'][0])};\n    w.metBefore = marked({cstr(w['met'][1])});\n")
             if w.get("trad"):

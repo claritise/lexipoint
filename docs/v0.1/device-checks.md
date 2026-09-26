@@ -22,7 +22,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
 | Tap another word with the card open (P10 §5h) | **pass**: 那 → 经历: the card closed and the tapped word's card opened |
 | Side buttons through a sentence and into the next (P9) | **pass**: 经历 → … → 话 → 这首歌深深… (the next sentence, its strip restarting there); the detail view's strip puts each word at the left edge with what fits after it; punctuation is skipped; the line counter follows (6/11 → 9/11) |
 | Save and Undo (P5) | **pass**: T on 深深 → toast "Saved as tracked · Undo" → the save sent after its window (`POST /v1/vocabulary` 200); ⋯ → Undo save → `DELETE` + `PATCH` (notes, tags cleared) 200, the card back to "not saved". A second try's Undo tap came before the toast's frame was on screen, so it counted as a page tap and closed the card (by design: taps are matched to the frame shown), which sent the save |
-| **Left over:** 深深 saved as tracked (tag `xteink`) in claritise's account from that second try: Lexirise's analysis has since split 深深 into 深 + 深 on every path, so no card for 深深 can be reached to undo it. The dev key (`~/.lexirise_key`) is on another account. claritise to delete it in Lexirise | **owed (claritise)**: still saved on 2026-09-26 (V1 device check); reachable from the card again |
+| **Left over:** 深深 saved as tracked (tag `xteink`) in claritise's account from that second try: Lexirise's analysis has since split 深深 into 深 + 深 on every path, so no card for 深深 can be reached to undo it. The dev key (`~/.lexirise_key`) is on another account. claritise to delete it in Lexirise | ~~**owed (claritise)**: still saved on 2026-09-26 (V1 device check); reachable from the card again~~ **Superseded, resolved:** claritise keeps it in their account (2026-09-26, "Keep the word in lexirise its fine") |
 | Button press during the card's first network call (P9 §5d, known) | seen: a side-button press made and released while the card's first lookup blocked (WiFi join + TLS) was never seen, as documented |
 | **Bug found:** the card view's strip highlights the whole glued token (话。 with its full stop inverted), while the detail view's strip and the page highlight only 话 | **open** |
 | `lxctl card-smoke` (P4 gate) | **pass**: all 21 reference states driven and shot on the device (upright portrait, default side buttons) |
@@ -53,7 +53,7 @@ Book: a Simplified Chinese novel (EPUB), portrait, Show Reader Menu = Tap, Long-
   (`config::kWifiConnectMs`), and twice the join ran out (right after File Transfer let WiFi go). Joining with the
   last BSSID/channel (a fast scan) would save ~3 s on every lookup that needs WiFi and make the limit comfortable.
   Done in P11 (`offline-and-errors.md` §5, as built P11).
-- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row). A second try (2026-09-25, P10 build): long-presses on either 深 still analyse as 深 + 深, so no card for 深深 can be reached from the reader; claritise to delete it in Lexirise (V1 made it reachable from the card again, 2026-09-26: it still shows tracked). That session's first WiFi join after the restart failed at 6 s again (the case P11 fixes), the next took 3.5 s.
+- **Leftover in claritise's account:** 深深, tracked, tag `xteink` (see the save/Undo row). A second try (2026-09-25, P10 build): long-presses on either 深 still analyse as 深 + 深, so no card for 深深 can be reached from the reader; claritise to delete it in Lexirise (V1 made it reachable from the card again, 2026-09-26: it still shows tracked). **Superseded, resolved:** claritise keeps it (2026-09-26, "Keep the word in lexirise its fine"). That session's first WiFi join after the restart failed at 6 s again (the case P11 fixes), the next took 3.5 s.
 - **Nit:** the More panel shows "Lookup langu…" beside "Chinese (Simplified)".
 
 ### Still owed on the device (need claritise, or a proxy)
@@ -122,3 +122,29 @@ and calibre connect.
 | 这首歌深深地打动了我 (活着, p. 1): long-press 深 | **pass**: the card shows **深深** whole (shēn shēn, HSK 6, adverb, "deeply, profoundly", #4,184), highlighted as one piece on the strip. The log: ① `analyze/text` 200 (already refined), then `analyze: the word-level split (fast)`, a second `analyze/text` 200 **0.7 s** later, then `dictionary/lookup` 200. Tap to card: 9.1 s to ① (WiFi joined first), +0.7 s for the word-level call |
 | Stepping (right side button) | **pass**: 深深 → 地 in one step (not 深 → 深) |
 | Left over | 深深 shows **tracked** (tag `xteink`): the save/Undo test's leftover (below, 2026-09-25) is still in claritise's account, and V1 makes it reachable from the card again |
+
+## v0.2 V4: still owed on the device
+
+V4 (Met before, and the conjugation) is built and host-tested on `lexi/V4`; its ledger row in
+`../v0.2/01-build-order.md` links here. What's owed on the device:
+
+- **Met before:** a saved word met in another book (and whether the live state carries `notes` and `user_tags` at
+  all: not seen yet, `../reference/lexirise-api-notes.md`, "A saved word's notes and tags"; and that a note the user
+  wrote in the app, not a sentence, shows as "Met before": it would); a word saved on another device ("Met before"
+  without a book title); a copy of a saved word in another sentence shows "Met before" after a save; a short line of
+  dialogue as its own sentence whose saved copy is inside a longer sentence ("Met before" shown); changing the font
+  size so a sentence's page break moves, then tapping a saved word again (no "Met before" of its own sentence).
+- **Long sentences (over the 120-character cap):** a sentence repeating a saved word, stepping into its second cut
+  (no "Met before"); the tapped word in the first cut, saved from the second (its "Met before" gone once the second
+  cut loads); step on, then back before the next cut arrives (the word's "Met before" updates on screen); a verb
+  ending the first cut, stepped past (named once the next cut loads); a verb split across a page turn (書け | ない),
+  stepped onto with the side buttons (unnamed).
+- **The conjugation:** a conjugated verb (食べさせられた, 行って), an i-adjective's te-form, a five-step form
+  (食べさせられていません named, unnamed when でした follows), and a する verb (勉強した named "past", its Form tab
+  from 勉強する); a page with 話しは or 見出し (a noun with okurigana し: unnamed); しようがない (unnamed: "no way to", not
+  a volitional). How `analyze/text` splits conjugated verbs is measured from the Mac
+  (`../reference/lexirise-api-notes.md`, "How analyze/text splits conjugated verbs"); on the device, only that the
+  card's offsets and next character line up with those tokens on a real page.
+- **Timing and stack:** `[LXCARD] names <n> words <ms> ms, stack <bytes> B free` (dev build) on a long Japanese
+  sentence: how long the names hold phase A back, and how much of the loop task's stack is left (host estimate of the
+  search's frames: about 2.3 KB at its deepest).

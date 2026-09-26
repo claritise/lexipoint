@@ -71,6 +71,9 @@ void LexiriseCardActivity::onEnter() {
     loggedWord_ = controller_.word();  // the smoke log starts from the word it opened on
     nextDueMs_ = controller_.nextDueMs();
   }
+#if LEXIPOINT_DEV_HARNESS
+  if (live_) live_->setClock(millis);  // "[LXCARD] names <n> words <ms> ms, stack <bytes> B free"
+#endif
   if (live_) service().holdWifi(true);  // one WiFi join per card, whatever the idle setting
   redraw();
 }

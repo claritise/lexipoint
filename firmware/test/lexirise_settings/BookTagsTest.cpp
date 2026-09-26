@@ -145,6 +145,18 @@ TEST(BookTagStore, LoadsOnFirstUseAndSavesANewSlug) {
   EXPECT_EQ(files.files[config::kBookTagsPath], "kokoro=Kokoro\nsanshiro=Sanshiro\n");
 }
 
+TEST(BookTagStore, AListIsACopyLoadedFirst) {
+  lexipoint::fakes::FakeFiles files;
+  files.files[config::kBookTagsPath] = "kokoro=Kokoro\n";
+  BookTagStore store(files);
+  const BookTagList copy = store.list();  // loads on first use
+  ASSERT_EQ(copy.size(), 1u);
+  EXPECT_EQ(copy[0].title, "Kokoro");
+  EXPECT_TRUE(store.remember("sanshiro", "Sanshiro"));
+  EXPECT_EQ(copy.size(), 1u);  // a copy: the store's later changes aren't in it
+  EXPECT_EQ(store.list().size(), 2u);
+}
+
 TEST(BookTagStore, AFailedWriteIsRetriedByTheNextRemember) {
   lexipoint::fakes::FakeFiles files;
   BookTagStore store(files);

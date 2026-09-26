@@ -1,6 +1,10 @@
 add_executable(LexiriseKanaTest
   KanaTest.cpp
+  ConjugationTest.cpp
+  Utf8PrefixTest.cpp
   ${REPO_ROOT}/src/lexirise/text/Kana.cpp
+  ${REPO_ROOT}/src/lexirise/text/Conjugation.cpp
+  ${REPO_ROOT}/src/lexirise/text/Punctuation.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 

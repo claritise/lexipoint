@@ -343,15 +343,130 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
 
 ## C14–C17. Maxing out the card
 
-- **C14 "Met before":** for a saved word, `stateByEntryId` already carries your `notes` (the sentence
-  it was saved with) and `user_tags` (so `book:<slug>` tells us which book). The card shows it as
-  "Met in *Norwegian Wood*: 「…」". Meeting a word again in a new context is how it sticks.
+- **C14 "Met before":** for a saved word, `stateByEntryId` already carries your `notes` (the sentence it was saved
+  with) and `user_tags` (so `book:<slug>` tells us which book). ~~The card shows it as "Met in *Norwegian Wood*:
+  「…」".~~ (Superseded 2026-09-26: "Met before · <title>" over the sentence; As built below.) Meeting a word again in
+  a new context is how it sticks.
+  - **As built (V4):** `stateByEntryId`'s `notes` and `user_tags` are parsed (`api::EntryState`; the note cut to
+    `kMaxSavedNoteBytes` at a character, the first `kMaxSavedTags` tags, an over-long tag skipped). The Context
+    tab's "Met before" (and the Examples tab's own sentences) show the sentence the word was saved with, the word
+    underlined (its dictionary form, its form here, a する verb's noun, or the dictionary form's stem when it's two
+    characters or more: 煩わし- in 煩わしかった; unmarked when none is in it), under "Met before · <title>" when one of its
+    tags is a `book:<slug>` this device recorded (V2's `book-tags.ini`, loaded as the card opens), or just "Met
+    before" for a book saved on another device (a change to the approved card, approved by claritise 2026-09-26: "Ok
+    sure to the met before"). **Decided:** the sentence it was saved from (this one, ignoring spaces at the ends, or
+    a cut of it: `card::sameSentence`) isn't shown: it's not a new context; another sentence of the same book is, so
+    the current book counts. A save made on this card carries its sentence and tags into every copy of the word, so
+    a later sentence's copy shows it (and loses it when the save is removed); a save or its removal landing while
+    such a copy is on screen redraws it (`LiveSource::takeShownChanged`, which `CardSession` draws on). The live
+    answer's state hasn't been seen carrying notes or tags yet (the reference notes, "A saved word's notes and
+    tags"): without them the card stays "First time you've met this word."
+
+    The rule, one principle a side: the page's cut flags (`truncatedLeft` / `truncatedRight`) are trusted and its
+    text is never guessed at; whether the note was cut can't be known, so only a note near the cap
+    (`kCutNoteMinPercentOfCap` of `kMaxSentenceUnits`) is taken to be a cut. A long sentence the card has in
+    consecutive cuts is compared joined back and cut by cut (and a word already shown is compared again once the
+    next cut comes, and drawn again if it's on screen: `LiveSource::takeShownChanged`, set whenever the word on
+    screen is rebuilt showing something new; what's drawn is the `CardWord` and the controller's state, so a lookup
+    that changes neither, a retry that fails alike, isn't drawn again). The book titles are V2's record as the card
+    opened (`BookTagStore::list`), so `card::cardWord` stays pure.
+
+    | The note and the page's sentence | Same sentence? |
+    |---|---|
+    | equal | yes |
+    | the page's inside the note, at least `kSameSentenceOverlapPercent` of it | yes |
+    | the page's inside the note, cut (flags) wherever the note goes on | yes: the page cut it there |
+    | the page's inside the note, otherwise (「分かった」 in 「分かった」と彼は言って…) | no |
+    | the note's inside the page's, at least `kSameSentenceOverlapPercent` of it | yes |
+    | the note's inside the page's, the note near the cap | yes: a cut the cap made |
+    | the note's inside the page's, otherwise (行こう。 in それじゃあ、みんなで一緒に行こう。) | no |
+    | two cuts overlapping by `kSameSentenceOverlapPercent` of the longer | yes |
+    | anything else | no |
+
+    Known limits:
+
+    - a short note the page top or bottom cut (a reflow moved the break since) reads as another sentence;
+    - the tapped long sentence's text before its tap-centred cut is never on the card (`extend()` adds only later
+      cuts), so a note saved from an earlier cut that overlaps the card's cuts by less than
+      `kSameSentenceOverlapPercent` shows as "Met before" for the same long sentence;
+    - a short page fragment the page top cut (「と言った。」) that ends some other saved sentence reads as that
+      sentence, so its "Met before" is hidden (a length floor would instead show the same sentence as "Met before"
+      when the fragment is the note's own: hiding is the safer mistake);
+    - the word is underlined at its first match in the note, which can be an earlier, unrelated one (食べ in 食べ物
+      before the 食べ of 食べた): cosmetic.
 - **C15 Other readings:** `multipleReadings.alternatives` → `ichinichi · also tsuitachi`. It
   doesn't disambiguate (C10 would), but it doesn't hide the right answer either.
-- **C16 Conjugation** (the card also gets a **Form** tab with the steps from dictionary form to page form): compare the surface form and the lemma with a small on-device rule table
-  (the KOReader Japanese plugin's deinflection rules are the reference): 煩わしくて → te-form,
-  食べさせられた → causative-passive past. Shown as one line under the word. Japanese only. Chinese
-  doesn't inflect, but 了/过/着 could get an aspect note later.
+- **C16 Conjugation** (the card also gets a **Form** tab with the steps from dictionary form to page form): compare
+  the surface form and the lemma with a small on-device rule table ~~(the KOReader Japanese plugin's deinflection
+  rules are the reference)~~ (Superseded 2026-09-26: written clean-room from Japanese grammar, no other project's
+  rules; As built below): 煩わしくて → te-form, 食べさせられた → causative-passive past. Shown as one line under the word.
+  Japanese only. Chinese doesn't inflect, but 了/过/着 could get an aspect note later.
+  - **As built (V4)** (`text/Conjugation`): **written from Japanese grammar for Lexipoint, clean-room** (no rule
+    data from KOReader, Yomichan/Yomitan or any other project, whatever their license; the build order's "KOReader
+    as the reference" was not followed for that reason). It conjugates the dictionary form forward, up to five steps
+    (the progressive's te-form isn't counted as one): polite, negative, past, te-form, progressive -te iru/-te ru
+    (after a passive too: 言われている), -tai, -tagaru (not from a progressive: no 見ていたい), potential, passive, causative,
+    causative-passive, volitional (and godan's casual 帰ろ), imperative (くれる's くれ is left unnamed: it's also its
+    continuative, くれ-ます), -ba and -tara conditionals, and the dictionary form's continuative (-masu stem: 食べ, 書き;
+    not a derived verb's, which would take the imperative's name away: 書け, 帰れ are "imperative" where nothing follows
+    them that could make them another form, below); i-adjectives' adverbial stem, negative, past, te-form,
+    conditionals; godan sound changes, 行く, する, 来る, いい and its compounds. analyze/text gives a する verb's lemma as its
+    noun (勉強した‹勉強›: `../reference/lexirise-api-notes.md`, "How analyze/text splits conjugated verbs"), so when the
+    page's form goes on from a noun of two characters or more ending in a kanji or katakana (勉強, テスト, お話; one kanji
+    alone is a godan す verb's stem as often, and a one-kanji する verb comes back with its own lemma, 愛した‹愛す›) as a
+    form of する does (し, さ, す, でき), the noun + する is searched too (without its bare continuative: 話し‹話› and 見出し‹見出›,
+    nouns whose lemma comes back without their okurigana, stay unnamed, as does 勉強し), together with the lemma (the
+    ambiguity rule holds), and the Form tab starts from 勉強する; the measured tokens are pinned by a test
+    (`ConjugationTest` TheTokensAnalyzeTextGaveNameAsMeasured). It names the chain that reaches the page's form:
+    食べさせられた → "causative-passive past" (食べる → 食べさせる → 食べさせられる → 食べさせられた), 煩わしくて → "te-form" (煩わしい → 煩わしく → 煩わしくて).
+    Ichidan られる is "passive or potential" (it's both). A る verb's class, where the spelling hides it, comes from
+    short word lists written from grammar knowledge (not copied from any dictionary or deinflector data;
+    `ruVerbClass`): a kanji right before る is godan (帰る, 切る, 取る, 知る) unless it's one of the few ichidan ones (見る,
+    着る, 寝る, 出る, 出来る… and compounds: 夢見る); an i/e-row kana before る with a kanji directly before it is ichidan (食べる,
+    起きる, 落ちる) unless it's a listed godan one (混じる, 捻じる, and rarer or older okurigana spellings of godan verbs: 蘇える,
+    罵しる, 入いる, 帰える; older ichidan spellings like 顧る are listed ichidan); anything else before る that isn't kana (〆る
+    for 締める, 々, ヵ ヶ, ー, Latin) says nothing, so the verb is tried as both classes; otherwise (two or more kana after
+    the last kanji, or kana alone) that kana run decides, katakana read as hiragana: godan when it is, or ends in, a
+    listed kana godan verb with no ichidan verb spelled the same (しゃべる, はいる, にぎる…; 見くびる, 踏みにじる, 食いちぎる end in one;
+    しる, ちる and いじる only as the whole run, since おちる, みちる, めいじる end in them), else it's tried as both classes (かえる:
+    帰る or 変える; すべる: 滑る or 統べる; ひねる: 捻る or 陳ねる; 見つける, 生まれる, 使いきる, キレる). A form two readings name differently gets no
+    name (かえろ, キレろ, 見つけられた, くれ, 書いてない: 書いている's or 書いてある's negative), and so does a form it can't reach (見れ, 食べれ:
+    regional); a verb tried as both classes gets no godan imperative (かえれ, たべれ), since it's also the ichidan
+    reading's regional one. 来る's ら-less potential is "potential" (来れる). A dictionary form's own irregularities
+    (くれる's くれ, 行く's 行って, 来る's spelling) apply to it alone, never to a verb derived from it (くれさせ, くれて). The card
+    passes the page's next character: when the form and it begin any longer form the search generates, or the
+    dictionary form (書け + な: 書けない; 書け + ば; 書こ + う; 食べ + ら: 食べられる; 見 + る; 書いた + ら), the analysis may have cut that
+    form short, so the form gets no name (some are lost: 書け + よ, since 書けよう is a form). When what follows isn't
+    known (the word ends a sentence the page bottom or the length cap cut, so the rest may be on the next page:
+    書け|ない; or its place in the sentence isn't known), any longer form starting with the form takes its name away
+    (書け, 書いた, 読んだ at a cut go unnamed; 書きました keeps its name); when the card goes on into the next cut of such a
+    sentence, the word that ended the cut before is named again with what follows it (worked out with that cut's
+    analysis, outside RenderLock). A bare stem or short form (an imperative, a continuative, a casual volitional, a
+    past) before a hiragana keeps its name only when that kana is on the form's list of followers (`followersOf`:
+    `kAfterGodanImperative`, `kAfterImperative`, `kAfterCasualVolitional`, `kAfterContinuative`, `kAfterPast`, and
+    `kAfterProgressivePast`, without か け が since the search builds no -tai / -tagaru from a progressive for the
+    longer-form check to catch 見ていたかった, 見ていたがる; each with why its kana are safe in `Conjugation.cpp`, and pinned by
+    a test that tries every hiragana after each): any other may be the rest of another form (行け + そう: 行けそう, a
+    potential's; 書け + ず; 食べ + ず; 書いた + り: -tari; 食べた + が: 食べたがる; 勝て + っ: 勝てっこない), so the form gets no name.
+    Punctuation, kanji, katakana or the sentence's end keep it, except for a godan imperative (書け), which is the
+    potential's continuative in written prose as often (日本語が話せ、英語も…; 字が読め本も…): it keeps its name only at the
+    sentence's end or before what ends a sentence or a quote (`endsAClause`: the sentence builder's Japanese
+    terminators, its closers for every script, the ellipsis, and a few more: ｡ ｣ 〉 ≫ ‼ ⁉), never before 、, a kanji
+    or katakana. A volitional that isn't godan (食べよう, しよう) is also the continuative + よう "way" (しようがない, 食べようもない): it
+    keeps its name only before its own particles (`kAfterNonGodanVolitional`: と か よ ね っ ぜ な); a godan one (書こう)
+    isn't (書きよう differs). The other short forms are what they look like before 、 (食べ、飲み; 帰ろ、; 書いた、). The Form tab
+    then shows the page's form alone, as before. The name fills the card's surface line; the steps fill the Form
+    tab, from "dictionary form" (a card string, `CardStrings::dictionaryForm`). A form's name is worked out once per
+    word, when the sentence's analysis arrives, outside RenderLock (phase B reuses phase A's; one word's search, at
+    its slowest, about 0.24 ms: measured 2026-09-26 on a Mac, a host build at -O2, the mean of 200 runs of
+    `conjugationOf` over the slowest forms found, かえらせられませんでした of かえる and a 30-character string of one kana); a dev
+    build logs how long a sentence's names take, `[LXCARD] names <n> words <ms> ms, stack <bytes> B free` (the loop
+    task's stack never used so far). Japanese only. The step names are English grammar terms, like Lexirise's
+    part-of-speech pill. Known limits (pinned in `ConjugationTest` KnownLimits): a kana godan verb ending in する
+    (こする) is read as a する verb, so most of its forms go unnamed (こすった; こすれば, the same either way, is named); 問うて
+    goes unnamed (the rule gives 問って); a lemma its spelling misreads keeps the misreading: 居る is listed ichidan
+    (いる), so 居ろ is "imperative", though for おる (the same kanji, godan) it's the casual volitional (the lemma's
+    reading isn't used).
 - **C17 Actions** (the detail view's last tab; ▲▼ picks, ⏎ runs. Also on the card, "more" moves to **hold ⏎**, since ▲▼ now changes the level): **Undo save** (`DELETE /v1/vocabulary/{id}`, which
   resets dictionary-backed items to unknown), **Ignore** (`PATCH suspended: true`, for names and noise,
   and it removes A1 marks), and **Save sentence** (C3).

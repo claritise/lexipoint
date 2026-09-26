@@ -504,3 +504,15 @@ TEST(SentenceAfter, AContinuationEndsAtAClauseBreakLikeATap) {
   EXPECT_EQ(next->text, clause + "；");  // the next clause, whole
   EXPECT_TRUE(next->truncatedRight);
 }
+
+TEST(Utf16Length, CountsEveryCharacterOfTheView) {
+  EXPECT_EQ(utf16Length("食べる"), 3u);
+  EXPECT_EQ(utf16Length("\xF0\x9F\x98\x80"
+                        "a"),
+            3u);  // a non-BMP character counts 2
+  EXPECT_EQ(utf16Length("\x80\x80"
+                        "a"),
+            2u);                                            // a run of stray continuation bytes: one
+  EXPECT_EQ(utf16Length(std::string_view("a\0b", 3)), 3u);  // NUL doesn't end it
+  EXPECT_EQ(utf16Length(""), 0u);
+}

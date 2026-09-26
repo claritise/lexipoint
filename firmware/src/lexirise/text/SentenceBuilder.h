@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Punctuation.h"
@@ -67,6 +68,6 @@ std::optional<BuiltSentence> buildSentenceAfter(const PageModel& page, const Bui
 std::optional<BuiltSentence> buildSentenceFrom(const PageModel& page, const SentenceChar& first, Script script);
 
 // UTF-16 code units in a UTF-8 string (a non-BMP character counts 2), the unit of Lexirise offsets.
-uint32_t utf16Length(const std::string& utf8);
+uint32_t utf16Length(std::string_view utf8);
 
 }  // namespace lexipoint::text

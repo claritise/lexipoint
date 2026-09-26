@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "CharClass.h"
+#include "Utf8Prefix.h"
 #include "Utf8Units.h"
 #include "lexirise/LexiriseConfig.h"
 
@@ -455,9 +456,15 @@ std::optional<BuiltSentence> buildSentenceFrom(const PageModel& page, const Sent
   return builder.buildFrom(static_cast<size_t>(piece));
 }
 
-uint32_t utf16Length(const std::string& utf8) {
+// Every character of the view counts (NUL too: its length decides, not a terminator); a run of stray continuation
+// bytes, a broken character, counts as one unit.
+uint32_t utf16Length(std::string_view utf8) {
   uint32_t total = 0;
-  for (const uint32_t cp : decode(utf8)) total += utf16Units(cp);
+  while (!utf8.empty()) {
+    const std::string_view character = utf8FirstChars(utf8, 1);
+    total += utf16Units(utf8FirstCodepoint(character));
+    utf8.remove_prefix(character.size());
+  }
   return total;
 }
 

@@ -49,6 +49,8 @@ struct EntryState {
   std::string savedExpressionId;  // as sent (a number or a string); empty: not saved
   int proficiency = 0;            // 0-4
   uint32_t seenCount = 0;
+  std::string notes;                  // the sentence it was saved with, cut to config::kMaxSavedNoteBytes (C14)
+  std::vector<std::string> userTags;  // user_tags' names (objects {id, name} or plain strings), the first kMaxSavedTags
 };
 
 struct AnalyzeResult {

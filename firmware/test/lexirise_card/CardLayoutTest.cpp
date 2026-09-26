@@ -960,3 +960,41 @@ TEST(CardFrame, WithThePageNotShownTheWordCountsAsCoveredAndGetsItsStrip) {
   EXPECT_FALSE(hidden.pageShown);                    // no page, no highlight
   EXPECT_LT(hidden.card.card.y, shown.card.card.y);  // the card view's strip, above the card
 }
+
+TEST(CardLayout, MetBeforeWithoutABookTitleIsTheLabelAlone) {
+  // Context tab (2): "Met before · <book>" (the bench's), or "Met before" when the book isn't recorded here (C14).
+  const auto withBook = build(benchJapanese(), 2, View::Expanded, false, 2);
+  ASSERT_TRUE(withBook.word.metBefore);
+  const std::string sep = CardStrings().separator;
+  EXPECT_NE(textCommand(withBook.list, std::string("Met before") + sep + withBook.word.metBeforeBook), nullptr);
+  Built b = withBook;
+  b.word.metBeforeBook.clear();
+  b.list = layoutCard(b.word, b.state, kMetrics);
+  EXPECT_NE(textCommand(b.list, "Met before"), nullptr);
+  EXPECT_EQ(textCommand(b.list, std::string("Met before") + sep), nullptr);
+}
+
+TEST(CardLayout, TheFormTabListsEachStep) {
+  Built b = build(benchJapanese(), 2, View::Expanded, false, 4);
+  b.word.forms = {{"食べる", "dictionary form"}, {"食べさせる", "causative"}, {"食べさせられた", "past"}};
+  b.list = layoutCard(b.word, b.state, kMetrics);
+  for (const char* form : {"食べる", "食べさせる", "食べさせられた"}) EXPECT_NE(textCommand(b.list, form), nullptr);
+  EXPECT_NE(textCommand(b.list, "causative"), nullptr);
+}
+
+TEST(CardLayout, TheFormTabsFirstRowIsLabelledFromTheCardStrings) {
+  Built b = build(benchJapanese(), 2, View::Expanded, false, 4);
+  b.word.forms = {{"食べる", "", true}, {"食べた", "past"}};
+  CardStrings strings;
+  strings.dictionaryForm = "Grundform";
+  b.list = layoutCard(b.word, b.state, kMetrics, strings);
+  EXPECT_NE(textCommand(b.list, "Grundform"), nullptr);  // CardStrings::dictionaryForm, not the row's own label
+  EXPECT_NE(textCommand(b.list, "past"), nullptr);
+}
+
+TEST(CardLayout, TheExamplesTabsSentenceIsTrimmedOfSpacesAndBreaks) {
+  Built b = build(benchJapanese(), 2, View::Expanded, false, 1);
+  b.state.contextSentence = {"\xE3\x80\x80 本を読む。\n", 0, 0};  // the paragraph indent, a space, a line break
+  b.list = layoutCard(b.word, b.state, kMetrics);
+  EXPECT_NE(textCommand(b.list, "「本を読む。」"), nullptr);
+}

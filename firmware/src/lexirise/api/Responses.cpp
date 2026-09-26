@@ -144,7 +144,8 @@ class AnalyzeVisitor final : public json::Visitor {
 
  private:
   // entryMetaById.<id>.{transliteration, partOfSpeech[0], rank} and
-  // stateByEntryId.<id>.{saved_expression_id, proficiency, seen_count}. Other fields are skipped.
+  // stateByEntryId.<id>.{saved_expression_id, proficiency, seen_count, notes, user_tags[].name}. Other fields
+  // are skipped.
   void entryValue(const Path& path, const Type type, const std::string_view text) {
     uint32_t id = 0;
     if (!toUint32(Type::Number, path.at(1).key, id)) return;  // the key is the id's digits
@@ -165,9 +166,20 @@ class AnalyzeVisitor final : public json::Visitor {
       }
       return;
     }
-    if (path.depth() != 3) return;
+    const bool tagName = path.keyIs(2, "user_tags") && path.isIndex(3) && type == Type::String &&
+                         (path.depth() == 4 || (path.depth() == 5 && path.keyIs(4, "name")));
+    if (!tagName && path.depth() != 3) return;  // a field not read (images, a tag's id)
     EntryState& state = out_.state[id];
-    if (path.keyIs(2, "saved_expression_id")) {
+    if (tagName) {
+      // A tag's name, as an object's `name` or a plain string; one too long to be ours is skipped.
+      if (state.userTags.size() < config::kMaxSavedTags && !text.empty() && text.size() <= config::kMaxTokenBytes) {
+        state.userTags.emplace_back(text);
+      }
+      return;
+    }
+    if (path.keyIs(2, "notes")) {
+      if (type == Type::String) state.notes.assign(utf8Prefix(text, config::kMaxSavedNoteBytes));  // never fails
+    } else if (path.keyIs(2, "saved_expression_id")) {
       if (type == Type::Number || type == Type::String) takeString(Type::String, text, state.savedExpressionId);
     } else if (path.keyIs(2, "proficiency")) {
       uint32_t value = 0;

@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <cstring>
 
+#include "CharClass.h"
+
 namespace lexipoint::text {
 namespace {
 
@@ -307,6 +309,22 @@ bool isAllKatakana(const std::string_view text) {
     if (!katakana) return false;
   }
   return true;
+}
+
+std::string katakanaToHiragana(const std::string_view text) {
+  constexpr uint32_t kFirst = 0x30A1;  // ァ
+  constexpr uint32_t kLast = chars::kSmallKatakanaKe;
+  constexpr uint32_t kIterationMark = 0x30FD;     // ヽ (and ヾ after it)
+  constexpr uint32_t kKatakanaToHiragana = 0x60;  // ァ U+30A1 → ぁ U+3041
+  const std::string s(text);
+  std::string out;
+  out.reserve(s.size());
+  const auto* p = reinterpret_cast<const unsigned char*>(s.c_str());
+  while (uint32_t cp = utf8NextCodepoint(&p)) {
+    if ((cp >= kFirst && cp <= kLast) || cp == kIterationMark || cp == kIterationMark + 1) cp -= kKatakanaToHiragana;
+    utf8AppendCodepoint(cp, out);
+  }
+  return out;
 }
 
 std::optional<std::string> kanaReading(const std::string_view surface, const std::string_view romaji) {

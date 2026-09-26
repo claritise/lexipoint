@@ -21,4 +21,7 @@ std::optional<std::string> romajiToHiragana(std::string_view romaji);
 // All katakana letters (and ー, ・): the word is its own reading.
 bool isAllKatakana(std::string_view text);
 
+// Katakana letters folded to hiragana (キレる → きれる; ヴ → ゔ, ヽ → ゝ); ー, ヷ-ヺ and everything else kept.
+std::string katakanaToHiragana(std::string_view text);
+
 }  // namespace lexipoint::text

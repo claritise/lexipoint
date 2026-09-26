@@ -20,6 +20,11 @@ inline bool isLatinSpace(const uint32_t cp) { return cp == ' ' || cp == 0x00A0 |
 // The Japanese/Chinese full-width space (paragraph indent, and after ？！ between sentences).
 constexpr uint32_t kIdeographicSpace = 0x3000;
 
+// A space (ASCII or the ideographic paragraph indent) or a line break: what a sentence's ends are trimmed of.
+inline bool isSpaceOrBreak(const uint32_t cp) {
+  return cp == ' ' || cp == '\n' || cp == '\r' || cp == '\t' || cp == kIdeographicSpace;
+}
+
 inline bool isLatinHyphen(const uint32_t cp) { return cp == '-' || cp == 0x2010; }
 
 // ASCII or full-width digits and letters: after a bare full stop they mean 3.50 / ３．５ / Ｕ．Ｓ．, not a
@@ -68,6 +73,13 @@ inline bool isKana(const uint32_t cp) {
   return (cp >= 0x3041 && cp <= 0x3096) || (cp >= 0x309D && cp <= 0x309F) || (cp >= 0x30A1 && cp <= 0x30FA) ||
          (cp >= 0x30FD && cp <= 0x30FF);
 }
+
+// Hiragana letters and its iteration marks (ゝゞ).
+inline bool isHiragana(const uint32_t cp) { return (cp >= 0x3041 && cp <= 0x3096) || (cp >= 0x309D && cp <= 0x309F); }
+
+// The small katakana ヵ and ヶ: kana by Unicode, but mostly counters (一ヶ月: 箇, 個) rather than a sound.
+constexpr uint32_t kSmallKatakanaKa = 0x30F5;  // ヵ
+constexpr uint32_t kSmallKatakanaKe = 0x30F6;  // ヶ
 
 // Han ideographs (Unified, Extensions A-H, Compatibility).
 inline bool isHan(const uint32_t cp) {

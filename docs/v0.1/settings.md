@@ -259,7 +259,9 @@ base_url=https://api.lexirise.app
   (`languages=`, `stardict_ja=`, `language=`). Those docs point here. **The old flat keys are still
   read once and migrated** into sections on the first save, so a hand-written early config keeps working.
 - **`tag_book`** (V2): `1` adds each book's `book:<slug>` to its saves. A file from before V2 has no line, so
-  it's on (the default) and written on the next save. Each slug's title is kept apart, in
+  it's on (the default) and written on the next save. Each slug's title is kept apart (also for "Met before"'s book
+  titles, copied as a card opens: `BookTagStore::list` via `LiveSource::setBookTitles`, v0.2 V4, `../v0.2/00-overview.md`
+  C14), in
   `/.lexirise/book-tags.ini` (`<slug>=<title>` lines, newest last, the oldest forgotten past 100 books), written
   the first time a card opens in a book while this is on (`settings/BookTags`).
 - **`deck_per_book`** (V3): `1` gives each tagged book a Lexirise deck. The decks' ids are kept apart, in

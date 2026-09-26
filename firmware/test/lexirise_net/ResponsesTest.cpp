@@ -272,3 +272,62 @@ TEST(ResponsesDecks, AListOfSomethingElseIsntAnEmptyList) {
     EXPECT_EQ(lexipoint::api::parseDeckList(bad, decks), ParseStatus::Malformed) << bad;
   }
 }
+
+TEST(ResponsesAnalyze, ASavedWordsNotesAndTags) {
+  // The documented shape (context-brief.md): user_tags as {id, name}; plain strings are read too.
+  const std::string longNote(lexipoint::config::kMaxSavedNoteBytes + 30, 'a');
+  const std::string body =
+      std::string(R"({"occurrences":[{"word":"猫","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)") +
+      R"("stateByEntryId":{"5":{"saved_expression_id":987,"entry_id":5,"proficiency":2,"seen_count":8,)"
+      R"("notes":"猫が好き。","user_tags":[{"id":12,"name":"xteink"},{"id":13,"name":"book:kokoro"}],"images":null},)"
+      R"("6":{"saved_expression_id":1,"proficiency":1,"notes":null,"user_tags":["book:x",""]},)"
+      R"("7":{"saved_expression_id":2,"notes":")" +
+      longNote + R"("}}})";
+  AnalyzeResult r;
+  ASSERT_EQ(parseAnalyze(body, r), ParseStatus::Ok);  // a long note never fails the analysis
+  const auto* cat = r.stateFor(5);
+  ASSERT_NE(cat, nullptr);
+  EXPECT_EQ(cat->notes, "猫が好き。");
+  EXPECT_EQ(cat->userTags, (std::vector<std::string>{"xteink", "book:kokoro"}));
+  EXPECT_EQ(r.stateFor(6)->notes, "");  // null
+  EXPECT_EQ(r.stateFor(6)->userTags, std::vector<std::string>{"book:x"});
+  EXPECT_EQ(r.stateFor(7)->notes.size(), lexipoint::config::kMaxSavedNoteBytes);  // cut
+  // As seen live (2026-09-26): no notes or user_tags at all.
+  AnalyzeResult bare;
+  ASSERT_EQ(
+      parseAnalyze(R"({"occurrences":[{"word":"猫","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)"
+                   R"("stateByEntryId":{"5":{"saved_expression_id":1,"entry_id":5,"proficiency":0,"seen_count":1}}})",
+                   bare),
+      ParseStatus::Ok);
+  EXPECT_TRUE(bare.stateFor(5)->notes.empty());
+  EXPECT_TRUE(bare.stateFor(5)->userTags.empty());
+}
+
+TEST(ResponsesAnalyze, ANoteIsCutAtACharacter) {
+  std::string note;
+  while (note.size() + 3 <= lexipoint::config::kMaxSavedNoteBytes + 1) note += "字";  // 3 bytes each, past the cap
+  const std::string body =
+      std::string(R"({"occurrences":[{"word":"字","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)") +
+      R"("stateByEntryId":{"5":{"saved_expression_id":1,"notes":")" + note + R"("}}})";
+  AnalyzeResult r;
+  ASSERT_EQ(parseAnalyze(body, r), ParseStatus::Ok);
+  const std::string& kept = r.stateFor(5)->notes;
+  EXPECT_LE(kept.size(), lexipoint::config::kMaxSavedNoteBytes);
+  EXPECT_EQ(kept.size() % 3, 0u);  // whole characters
+}
+
+TEST(ResponsesAnalyze, ASavedWordsTagsAreCappedAndAnOverLongOneSkipped) {
+  std::string tags;
+  for (size_t i = 0; i < lexipoint::config::kMaxSavedTags + 4; i++) {
+    tags += (i ? "," : "") + std::string(R"({"name":"t)") + std::to_string(i) + R"("})";
+  }
+  const std::string longTag(lexipoint::config::kMaxTokenBytes + 1, 'x');
+  const std::string body =
+      std::string(R"({"occurrences":[{"word":"猫","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)") +
+      R"("stateByEntryId":{"5":{"saved_expression_id":1,"user_tags":[{"name":")" + longTag + R"("},)" + tags + "]}}}";
+  AnalyzeResult r;
+  ASSERT_EQ(parseAnalyze(body, r), ParseStatus::Ok);  // an over-long tag never fails the answer
+  const auto& kept = r.stateFor(5)->userTags;
+  ASSERT_EQ(kept.size(), lexipoint::config::kMaxSavedTags);
+  EXPECT_EQ(kept.front(), "t0");  // the long one skipped
+}

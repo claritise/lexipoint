@@ -7,6 +7,7 @@ add_executable(LexiriseCardTest
   ${REPO_ROOT}/src/lexirise/card/LiveWord.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LookupCard.cpp
   ${REPO_ROOT}/src/lexirise/text/Kana.cpp
+  ${REPO_ROOT}/src/lexirise/text/Conjugation.cpp
   LiveWordTest.cpp
   ReaderSceneTest.cpp
   LiveSourceTest.cpp

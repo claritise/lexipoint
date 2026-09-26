@@ -44,6 +44,7 @@ class BookTagStore {
   explicit BookTagStore(SettingsFiles& files) : files_(files) {}
 
   std::optional<std::string> title(std::string_view slug);
+  BookTagList list();  // a copy (loaded first): a card reads it once, as it opens
   // Records a slug's title unless it's listed: only a new slug writes. False: not saved (memory unchanged).
   bool remember(std::string_view slug, std::string_view title);
 

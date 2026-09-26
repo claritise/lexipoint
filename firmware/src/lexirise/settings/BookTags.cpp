@@ -136,6 +136,12 @@ std::optional<std::string> BookTagStore::title(const std::string_view slug) {
   return bookTitleIn(list_, slug);
 }
 
+BookTagList BookTagStore::list() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  loadLocked();
+  return list_;
+}
+
 bool BookTagStore::remember(const std::string_view slug, const std::string_view title) {
   std::lock_guard<std::mutex> lock(mutex_);
   loadLocked();
