@@ -222,3 +222,43 @@ TEST(LexiriseClient, AnOverLimitBodyKeepsItsStatusForTheLog) {
   EXPECT_EQ(r.error, ApiError::Malformed);
   EXPECT_EQ(r.status, 200);
 }
+
+TEST(LexiriseClient, SaysWhetherTheRequestLeft) {
+  // A creation (POST /v1/decks) whose answer is lost may have happened only once the request was written.
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  const Request create{Method::Post, "/v1/decks", "{}"};
+  for (const OpenError open : {OpenError::ConnectFailed, OpenError::Timeout, OpenError::TlsFailed}) {
+    conn.openResults = {open};
+    EXPECT_FALSE(client.send(create).sent) << static_cast<int>(open);
+  }
+  conn.failNextWrite = true;  // a fresh session that can't be written to
+  const auto unwritten = client.send(create);
+  EXPECT_EQ(unwritten.error, ApiError::Network);
+  EXPECT_FALSE(unwritten.sent);
+
+  conn.reads = {"HTTP/1.1 200 OK\r\n", FakeConnection::kStall};  // written, then the answer timed out
+  const auto timedOut = client.send(create);
+  EXPECT_EQ(timedOut.error, ApiError::Timeout);
+  EXPECT_TRUE(timedOut.sent);
+  conn.reads = {"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nabc", FakeConnection::kClose};  // cut short
+  EXPECT_TRUE(client.send(create).sent);
+  conn.reads = {ok("{}")};
+  EXPECT_TRUE(client.send(create).sent);
+  // A stale keep-alive session: written, then dropped before any answer. Not resent, and it may have arrived.
+  conn.reads = {ok("{}")};
+  ASSERT_TRUE(client.send(kMe).ok());
+  conn.reads = {FakeConnection::kClose};
+  const auto stale = client.send(create);
+  EXPECT_EQ(stale.error, ApiError::Network);
+  EXPECT_TRUE(stale.sent);
+  // A GET on a stale session is retried: written, dropped, then the retry can't connect. It was sent once.
+  conn.reads = {ok("{}")};
+  ASSERT_TRUE(client.send(kMe).ok());
+  conn.reads = {FakeConnection::kClose};
+  conn.openResults = {OpenError::ConnectFailed};
+  const auto retried = client.send(kMe);
+  EXPECT_EQ(retried.error, ApiError::Network);
+  EXPECT_TRUE(retried.sent);
+}

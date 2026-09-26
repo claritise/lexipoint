@@ -38,11 +38,15 @@ struct ApiResponse {
   int status = 0;  // HTTP status when one was received
   uint32_t retryAfterS = 0;
   std::string body;  // 2xx only
+  // The whole request was written to the server, so it may have acted on it whatever the error (a read timeout,
+  // a cut answer). False: it never left (no connection, a failed connect or write, a refusal before the network).
+  bool sent = false;
   bool ok() const { return error == ApiError::None; }
 };
 
 // Maps an HTTP status (and Retry-After) to the error the provider acts on.
 ApiError classifyStatus(int status);
+constexpr int kHttpNotFound = 404;  // a deck deleted in Lexirise (ApiError::Http with this status)
 
 class LexiriseClient {
  public:

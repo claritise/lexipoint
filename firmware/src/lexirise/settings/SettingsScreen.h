@@ -38,6 +38,7 @@ enum class Row : uint8_t {
   DefaultLanguage,
   Tags,
   TagBook,
+  DeckPerBook,  // shown while TagBook is on: the deck is filled by the book tag
   WifiIdle,
 };
 constexpr size_t kRowCount = static_cast<size_t>(Row::WifiIdle) + 1;

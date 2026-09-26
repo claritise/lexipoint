@@ -148,11 +148,15 @@ bool BookTagStore::remember(const std::string_view slug, const std::string_view 
   return true;
 }
 
+std::string bookRecordTitle(const std::string_view title, const std::string_view path) {
+  return lineTitle(text::isUntitled(title) ? fileTitle(path) : title);
+}
+
 std::vector<std::string> bookSaveTags(const Settings& settings, const std::string_view title,
                                       const std::string_view path, BookTagStore& store) {
   if (!settings.tagBook) return saveTags(settings, {});
   const std::string slug = text::bookSlug(title, path);
-  if (!store.remember(slug, text::isUntitled(title) ? fileTitle(path) : title)) {
+  if (!store.remember(slug, bookRecordTitle(title, path))) {
     LOG_ERR(kLogTag, "Couldn't record the book tag's title");
   }
   return saveTags(settings, config::kBookTagPrefix + slug);

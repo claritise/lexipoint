@@ -93,12 +93,14 @@ ApiResponse LexiriseClient::send(const net::Request& request) {
   deadlineSet_ = false;
   const bool reused = connection_.isOpen();
   if (attempt(request, reused, response) == Attempt::StaleSession) {
+    const bool sent = response.sent;
     response = ApiResponse();
     if (request.retryable()) {
       attempt(request, false, response);
     } else {
       response.error = ApiError::Network;  // it may have reached the server: never sent twice
     }
+    response.sent = response.sent || sent;
   }
   return response;
 }
@@ -133,6 +135,7 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
     out.error = ApiError::Network;
     return Attempt::Done;
   }
+  out.sent = true;
 
   net::ResponseParser parser;
   char buffer[config::kHttpReadChunkBytes];

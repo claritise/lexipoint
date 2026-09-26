@@ -45,12 +45,12 @@ TEST(WebApiState, SaysWhichRowsShowByTheDeviceScreensRule) {
   Settings s;
   EXPECT_NE(stateJson(s, KeyStatus(), {})
                 .find(R"("shows":{"jaLookups":true,"jaReading":true,"zhLookups":true,"defaultLanguage":true,)"
-                      R"("tags":true,"tagBook":true,"wifiIdle":true})"),
+                      R"("tags":true,"tagBook":true,"deckPerBook":true,"wifiIdle":true})"),
             std::string::npos);
   s.enabled = false;  // P13: the offline dictionaries answer; the default language picks for Han-only text
   EXPECT_NE(stateJson(s, KeyStatus(), {})
                 .find(R"("shows":{"jaLookups":false,"jaReading":false,"zhLookups":false,"defaultLanguage":true,)"
-                      R"("tags":false,"tagBook":false,"wifiIdle":false})"),
+                      R"("tags":false,"tagBook":false,"deckPerBook":false,"wifiIdle":false})"),
             std::string::npos);
   s.enabled = true;
   s.chinese.enabled = false;  // one language on: it is the answer
@@ -64,6 +64,7 @@ TEST(WebApiState, CarriesSettingsChoicesAndStatus) {
   s.chinese.enabled = false;
   s.tags = "a,\"b";
   s.tagBook = false;
+  s.deckPerBook = false;
   KeyStatus connected;
   connected.state = KeyState::Connected;
   connected.me.name = "Reader";
@@ -72,7 +73,7 @@ TEST(WebApiState, CarriesSettingsChoicesAndStatus) {
   ASSERT_TRUE(isValidJson(json)) << json;
   EXPECT_NE(json.find(R"("reading":"romaji")"), std::string::npos);
   EXPECT_NE(json.find(R"("zh":{"enabled":false)"), std::string::npos);
-  EXPECT_NE(json.find(R"("tags":"a,\"b","tagBook":false)"), std::string::npos);
+  EXPECT_NE(json.find(R"("tags":"a,\"b","tagBook":false,"deckPerBook":false)"), std::string::npos);
   EXPECT_NE(json.find(R"("wifiIdleMin":[0,1,2,5,10])"), std::string::npos);
   EXPECT_NE(json.find(R"("dictionaries":["jmdict","cedict"])"), std::string::npos);
   EXPECT_NE(json.find(R"("status":{"state":"connected","name":"Reader","plan":"pro"})"), std::string::npos);
@@ -92,11 +93,11 @@ TEST(WebApiState, CarriesSettingsChoicesAndStatus) {
 TEST(WebApiPatch, ReadsEveryField) {
   SettingsPatch p;
   ASSERT_EQ(
-      parsePatch(
-          R"({"enabled":false,"key":"lx_x","clearKey":true,"ja":{"enabled":true,"reading":"romaji",)"
-          R"("stardict":"jmdict"},"zh":{"enabled":false,"stardict":""},"defaultLanguage":"zh",)"
-          R"("tags":"a,b","tagBook":false,"wifiIdleMin":10,"baseUrl":"https://x.example","unknown":{"deep":[1]}})",
-          p),
+      parsePatch(R"({"enabled":false,"key":"lx_x","clearKey":true,"ja":{"enabled":true,"reading":"romaji",)"
+                 R"("stardict":"jmdict"},"zh":{"enabled":false,"stardict":""},"defaultLanguage":"zh",)"
+                 R"("tags":"a,b","tagBook":false,"deckPerBook":false,"wifiIdleMin":10,"baseUrl":"https://x.example",)"
+                 R"("unknown":{"deep":[1]}})",
+                 p),
       nullptr);
   EXPECT_EQ(p.enabled, false);
   EXPECT_EQ(p.apiKey, "lx_x");
@@ -109,6 +110,7 @@ TEST(WebApiPatch, ReadsEveryField) {
   EXPECT_EQ(p.defaultLanguage, Language::Chinese);
   EXPECT_EQ(p.tags, "a,b");
   EXPECT_EQ(p.tagBook, false);
+  EXPECT_EQ(p.deckPerBook, false);
   EXPECT_EQ(p.wifiIdleMin, 10);
   EXPECT_EQ(p.baseUrl, "https://x.example");
 }
@@ -140,6 +142,7 @@ TEST(WebApiPatch, WrongTypesNameTheField) {
       {R"({"wifiIdleMin":"5"})", "wifiIdleMin"},
       {R"({"tags":["a"]})", "tags"},
       {R"({"tagBook":1})", "tagBook"},
+      {R"({"deckPerBook":"on"})", "deckPerBook"},
       {R"({"baseUrl":{"x":1}})", "baseUrl"},
   };
   for (const auto& [body, field] : cases) {

@@ -143,6 +143,55 @@ has no deck field, but `POST /v1/decks` supports **dynamic decks** with `rule_ty
 it gets recreated. Saves never touch the deck, so they can't fail because of it. Also, **`GET /v1/decks` first**, in case a
 deck with that title exists from another device or a reinstall. Reuse it instead of duplicating.
 
+**As built (V3):** the setting "Deck per book" (`deck_per_book`, on; shown while Tag with book title is on, since
+the tag fills the deck). The deck is `Lexipoint: <title>` (the title V2's `book-tags.ini` recorded for the slug,
+so every card names it the same), a `dynamic` `user_tag_filter` deck of `word`s on `book:<slug>`, in the saved
+word's language (a card with words of both languages makes one per language). No parent deck: a subdeck would
+need a second deck made and kept, for no gain yet.
+- **When:** the work is per book and per boot, kept in the deck store, not in a card. A save (the POST, which
+  carries the tags) that went through marks the book's deck wanted; then any card open in that book, once it has
+  been idle `config::kDeckIdleMs` (3 s since it opened, its last input or answer, or a finger lifted from the
+  screen; no write queued, the Undo window included; nothing due on the card, so never under a "Save failed ·
+  Retry" toast) with Deck per book still on (re-read when the settings
+  change, `SettingsWatch`), sends the next step, one call at a time: a recorded deck is checked once per boot
+  (`GET /v1/decks/{id}?limit=1`; a 404 forgets it); an unrecorded one is looked for in
+  `GET /v1/decks?language=` and reused (a dynamic word deck on the tag, else a deck with the title whose type
+  and unit are a dynamic word deck's or aren't said; never one that says the other language (a language it
+  can't read doesn't count against it), since a book's ja
+  and zh decks share title and tag, and never someone else's: its ownership decides when the list says, else a
+  starred one counts as someone else's), else created (`POST /v1/decks`). A close sends only the queued writes,
+  as before V3: a deck step never runs at close or under the render lock. A step blocks the idle card's loop
+  like a write: a tap made during it waits for that one request, and a side-button press made and released
+  during it is lost (the buttons are read between loop passes; rare, one to three calls per book per boot). A
+  new book takes two idle windows after its save's Undo window, the list and then the creation, by design: a
+  reader who closes each card quickly gets the deck on a later card in the book. A save that is undone still
+  leaves the deck wanted (it may be made empty, and fills as words are saved). The ids go into
+  `/.lexirise/decks.ini` (`<ja|zh>:<slug>=<id>`, newest last, 100 at most).
+- **No deck twice, as far as the answers can be read:** the parsers take the reference's names and their
+  camelCase forms (`id` / `deckId` / `deck_id`, the list under `decks` or `data` or bare, the creation under
+  `deck` or `data` or flat). A creation needs a readable and whole list without the deck first: a list whose
+  entries can't be read is an error, never "no deck", and so is part of a list (cut at `kMaxDecksListed`, an
+  entry dropped for an id it can't use, or a `hasMore` / `nextOffset` saying there's more). **At most one
+  creation per book per boot reaches Lexirise** (`ApiResponse::sent`: the whole request was written), whatever
+  came back: a creation whose answer was lost (an unreadable 2xx, a read timeout, a cut answer, a 5xx) is found
+  by a later list, this boot or the next. One that never left (a failed connect, a connect timeout, a failed
+  write, offline) is tried again on the next tagged save. A duplicate needs Lexirise to make the deck and lose
+  the answer, and then a later boot's whole list to miss our own deck, so the device check must confirm the
+  list's real field names. (An earlier build of V3 kept a "pending" line for a lost answer; it never changed a
+  creation, since the one-creation-per-boot rule and the whole-list rule already cover it, and was removed. Such
+  a `=?` line is ignored when read.)
+- **Failures are quiet:** offline, 429 or an unreadable list stops the work until the book's next tagged save.
+  Nothing is shown on the card (its look is unchanged). A record the card can't save is still kept in memory,
+  so no call repeats this boot, and a later boot finds the deck again through the list.
+- **Code:** `deck/BookDeck` (the decision `nextStep` / `answer` on a `DeckState`, `findBookDeck`, `sendDeckStep`,
+  the store `DeckStore`), the requests and parsers in `api/` (`deckListRequest`, `deckRequest`,
+  `createDeckRequest`, `parseDeckList`, `parseCreatedDeck`), `LiveSource::setBookDeck` / `fetchDeck` /
+  `applyDeck`, the idle rule `CardSession::shouldFetchDeck`, and one call in word select's `openLexiriseCard`.
+- **Measured:** the deck list's real entries are unseen (the account had none; read-only probes only), so the
+  device check (V3's gate) confirms the shape; an unreadable deck answer's first bytes are logged (`LXDECK`) for
+  it. Every build logs each deck step as it starts (`[LXDECK] step <kind> <key>`, one to three lines per book per
+  boot); only dev builds log the card's level buttons (`[LXCARD] level …`), for `lxctl deck-smoke`. See `../reference/lexirise-api-notes.md`, "Decks".
+
 ## C5. Difficulty preview
 
 **Why yes:** it helps you pick a book at your level, it's a small UI (one number on the book info

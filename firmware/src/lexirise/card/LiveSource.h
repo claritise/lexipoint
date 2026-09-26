@@ -18,6 +18,7 @@
 #include "CardController.h"
 #include "CardSource.h"
 #include "ReaderScene.h"
+#include "lexirise/deck/BookDeck.h"
 #include "lexirise/lookup/LexiriseLookup.h"
 
 namespace lexipoint::card {
@@ -78,6 +79,15 @@ class LiveSource final : public CardSource {
   // changes are dropped (they were built on it). Taken by CardSession after apply().
   std::optional<FailedWrite> takeFailedWrite();
 
+  // The book's deck (C4, V3; deck/BookDeck.h): a new save carrying its tag marks the deck wanted in the store
+  // (memory only), and the deck's next step waits for no write to be queued. The call and its answer stay out of
+  // the card's state: fetchDeck() and applyDeck() run outside RenderLock (CardSession::shouldFetchDeck says
+  // when). `store` outlives the card; setBookDeck reads its file (word select, before the card opens).
+  void setBookDeck(deck::BookDeck bookDeck, deck::DeckStore& store);
+  bool hasDeckWork() const { return deckDue().has_value(); }
+  deck::DeckCall fetchDeck();  // one call (network I/O) for the book deck's next step; step None when there's none
+  void applyDeck(const deck::DeckCall& call);
+
   bool hasWork(unsigned long nowMs) const;  // fetch() would call the network
   // At most one call, in this order: the tapped sentence's analysis; the focused word's lookup (and a
   // save's, when a save waits for its word's translation); a next sentence the card waits for; the next
@@ -132,6 +142,18 @@ class LiveSource final : public CardSource {
   std::optional<FailedWrite> failedWrite_;
   std::vector<std::string> createdIds_;  // items this card saved (their removal clears them too)
   std::vector<bool> saveRetried_;        // per word: its lookup was retried for a save
+  struct DueDeck {
+    size_t language;  // index in kLanguages (and deckKeys_)
+    deck::DeckStep step;
+  };
+  std::optional<deck::BookDeck> bookDeck_;
+  deck::DeckStore* decks_ = nullptr;
+  bool savesCarryBookTag_ = false;
+  std::vector<std::string> deckKeys_;  // the book deck's store key per language, in kLanguages order
+
+  // A new save went through in `language`: when it carried the book tag, its deck is wanted.
+  void savedWithBookTag(Language language);
+  std::optional<DueDeck> deckDue() const;  // the book deck's next step, once no write is queued
 
   // Sends one write (a save, a level change, or a removal's two calls) for `card`.
   api::ApiResponse send(const LevelChange& change, const lookup::LookupCard& card, std::string& newId,

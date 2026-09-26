@@ -105,12 +105,7 @@ void LexiriseService::tick() {
   if (sessionActive_ && clock_() - lastCallMs_ >= config::kTlsIdleCloseMs) closeSession();
 
   // Re-read the idle setting only when the settings changed: no settings copy on every loop pass.
-  const uint32_t revision = store_.revision();
-  if (!wifiIdleKnown_ || revision != wifiIdleRevision_) {
-    wifiIdleMin_ = store_.snapshot().wifiIdleMin;
-    wifiIdleRevision_ = revision;
-    wifiIdleKnown_ = true;
-  }
+  if (wifiIdleWatch_.changed(store_)) wifiIdleMin_ = store_.snapshot().wifiIdleMin;
   if (!wifiHeld_ && wifi_.tick(wifiIdleMin_)) closeSession();
 }
 

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -83,5 +84,37 @@ struct SaveResult {
   std::string savedExpressionId;
 };
 ParseStatus parseSave(std::string_view body, SaveResult& out);
+
+// A book's deck (C4, V3). The live shapes are unseen (lexirise-api-notes.md, Decks), so the parsers take the
+// reference's snake_case names and their camelCase forms, and `id`, `deckId` or `deck_id`.
+struct DeckSummary {
+  std::string id;  // as sent (a number or a string)
+  std::string title;
+  std::string deckType;  // "snapshot" / "dynamic"; empty: not sent
+  std::string unitType;  // "word" / "sentence"
+  std::string ruleType;  // "user_tag_filter" / "saved_vocab_query"
+  std::vector<std::string> userTags;
+  std::string language;       // "ja" / "zh" when the entry says; empty: not said
+  std::optional<bool> owned;  // when the entry says whose it is
+  bool starred = false;
+  // Another user's deck, never the book's: as its ownership says, else a starred one (the list holds the decks the
+  // user owns or starred).
+  bool othersDeck() const { return owned ? !*owned : starred; }
+};
+// GET /v1/decks: the list under `decks` or `data`, or a bare array. The first config::kMaxDecksListed entries are
+// read; one without a usable id is skipped. Malformed when there are entries but none is readable (an id, and a
+// title or a type): a shape this can't read must never look like "the book has no deck". `complete` (optional):
+// whether this is the whole list: every entry read (none cut at the cap or skipped as unreadable), and no sign of
+// another page (a true `hasMore` / `has_more`, a `nextOffset` / `next_offset` that isn't null, a `totalCount` /
+// `total_count` above the entries that came).
+ParseStatus parseDeckList(std::string_view body, std::vector<DeckSummary>& out, bool* complete = nullptr);
+
+// POST /v1/decks: the new deck, under `deck` or `data`, or at the top. Its type and rule when sent.
+struct CreatedDeck {
+  std::string id;
+  std::string deckType;
+  std::string ruleType;
+};
+ParseStatus parseCreatedDeck(std::string_view body, CreatedDeck& out);
 
 }  // namespace lexipoint::api

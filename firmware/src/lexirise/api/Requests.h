@@ -47,7 +47,25 @@ std::optional<net::Request> setProficiencyRequest(std::string_view id, int profi
 std::optional<net::Request> removeRequest(std::string_view id);
 std::optional<net::Request> clearRequest(std::string_view id);
 
-// A request path for the log: a vocabulary item's id (the user's saved expression) is left out.
+// A book's deck (C4, V3). GET /v1/decks?language=: the decks the user owns or starred in that language.
+net::Request deckListRequest(Language language);
+// GET /v1/decks/{id}, one item's page: whether the deck still exists (404 once deleted). nullopt for an id that
+// isn't plain.
+std::optional<net::Request> deckRequest(std::string_view id);
+// POST /v1/decks: a dynamic deck of words filled by one tag (`user_tag_filter`). Not idempotent: a repeat makes
+// a second deck.
+struct NewDeck {
+  Language language = Language::Japanese;
+  std::string_view title;
+  std::string_view tag;
+};
+net::Request createDeckRequest(const NewDeck& deck);
+
+// An id as it may go into a request path (a saved expression's, a deck's): digits, letters, '-' and '_', at most
+// `maxBytes`.
+bool isPlainId(std::string_view id, size_t maxBytes);
+
+// A request path for the log: a vocabulary item's or a deck's id is left out.
 std::string loggablePath(std::string_view path);
 
 // "Lexipoint/<ver> CrossPoint/<ver>".

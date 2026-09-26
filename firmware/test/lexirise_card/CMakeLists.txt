@@ -11,6 +11,10 @@ add_executable(LexiriseCardTest
   ReaderSceneTest.cpp
   LiveSourceTest.cpp
   ${REPO_ROOT}/src/lexirise/card/LiveSource.cpp
+  ${REPO_ROOT}/src/lexirise/deck/BookDeck.cpp
+  ${REPO_ROOT}/src/lexirise/settings/BookTags.cpp
+  ${REPO_ROOT}/src/lexirise/settings/SafeFile.cpp
+  ${REPO_ROOT}/src/lexirise/text/BookSlug.cpp
   ${REPO_ROOT}/src/lexirise/card/CardSession.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LexiriseLookup.cpp
   ${REPO_ROOT}/src/lexirise/lookup/WholeWords.cpp
@@ -35,6 +39,7 @@ target_compile_definitions(LexiriseCardTest PRIVATE LEXIRISE=1)
 target_include_directories(LexiriseCardTest PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/test/lexirise_fakes
+  ${REPO_ROOT}/test/lexirise_fakes/stubs
   ${REPO_ROOT}/lib/GfxRenderer
   ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/freeink-sdk/libs/ui/FreeInkUI/include

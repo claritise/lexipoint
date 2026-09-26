@@ -18,6 +18,7 @@
 #include "lexirise/LexiriseService.h"            // LEXIPOINT
 #include "lexirise/card/LexiriseCardActivity.h"  // LEXIPOINT
 #include "lexirise/card/ReaderPageFor.h"         // LEXIPOINT
+#include "lexirise/deck/BookDeck.h"              // LEXIPOINT
 #include "lexirise/lookup/PageTap.h"             // LEXIPOINT
 #include "lexirise/lookup/StarDictCandidates.h"  // LEXIPOINT
 #include "lexirise/lookup/StarDictChoice.h"      // LEXIPOINT
@@ -540,6 +541,10 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
   auto tags = lexipoint::bookSaveTags(settings, bookTitle, bookPath, lexipoint::bookTagStore());
   auto source = std::make_unique<lexipoint::card::LiveSource>(lexipoint::service(), std::move(context), readerPage,
                                                               std::move(tags), std::move(next));
+  // The book's deck, filled by its tag (C4): the card makes sure it exists once a save went through.
+  if (auto deck = lexipoint::deck::bookDeckFor(settings, bookTitle, bookPath, lexipoint::bookTagStore())) {
+    source->setBookDeck(std::move(*deck), lexipoint::deck::deckStore());
+  }
   // The page stays this activity's: the card draws it under itself while it's open.
   auto drawPage = [this](GfxRenderer& r) { page->render(r, fontId, marginLeft, marginTop); };
   popup = Popup::None;

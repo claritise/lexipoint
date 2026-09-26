@@ -7,6 +7,9 @@
 #include <HalDisplay.h>
 #include <Logging.h>
 
+#include <cstdio>
+#include <string>
+
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/LexiriseService.h"
 #include "lexirise/card/BenchSource.h"
@@ -64,6 +67,7 @@ void LexiriseCardActivity::onEnter() {
     // (the bench's page is laid out for the card's).
     pageUnderCard_ = card == current || !drawPage_;
     controller_.open(millis());
+    session_.opened(millis());
     loggedWord_ = controller_.word();  // the smoke log starts from the word it opened on
     nextDueMs_ = controller_.nextDueMs();
   }
@@ -80,7 +84,8 @@ void LexiriseCardActivity::loop() {
   readGestures(now);
   // A step keeps when its press was first seen: one held through a blocking call (the next sentence's
   // analysis) is first seen just after it, and mustn't count after the jump (CardController::step). A press
-  // made and released entirely during the call is never seen at all.
+  // made and released entirely during a call (that analysis, a write, or a book deck step on an idle card) is
+  // never seen at all: the side buttons are only read between loop passes.
   if (mappedInput.wasReleased(MappedInputManager::Button::PageForward)) {
     input_.step(+1, now, now - mappedInput.getHeldTime());
   }
@@ -93,7 +98,20 @@ void LexiriseCardActivity::loop() {
   const bool due = !input_.empty() || (nextDueMs_ && timing::reached(now, *nextDueMs_));
   if (due && !RenderLock::peek()) handleQueuedInput(now);
   // The network call waits until what was asked for is on screen (CardSession::shouldFetch).
-  if (live_ && !finishing_ && session_.shouldFetch(millis(), RenderLock::peek())) fetchAnswer();
+  if (live_ && !finishing_ && session_.shouldFetch(millis(), RenderLock::peek())) {
+    fetchAnswer();
+  } else if (live_ && !finishing_ && deckStepDue()) {
+    session_.applyDeck(session_.fetchDeck(), millis());  // blocking, like a write; no redraw: nothing shown changes
+  }
+}
+
+bool LexiriseCardActivity::deckStepDue() {
+  if (deckSettings_.changed(settingsStore())) session_.setDeckAllowed(deck::deckAllowed(settingsStore().snapshot()));
+  int x = 0;
+  int y = 0;
+  const bool touching = mappedInput.isScreenTouchHeld(x, y);
+  if (touching) session_.touched(millis());
+  return session_.shouldFetchDeck(millis(), RenderLock::peek(), touching, nextDueMs_);
 }
 
 void LexiriseCardActivity::readGestures(const unsigned long now) {
@@ -166,7 +184,8 @@ void LexiriseCardActivity::logAnswer(const CardSession::Answer& answer) const {
 
 void LexiriseCardActivity::flushWrites(const bool lockHeld) {
   // The card stays on screen meanwhile. A write that fails now can't be shown on the card: the session
-  // counts it, and word select says so after the card (LiveOutcome::unsentSaves).
+  // counts it, and word select says so after the card (LiveOutcome::unsentSaves). The book's deck waits for a
+  // later idle card (CardSession::shouldFetchDeck).
   while (session_.hasPendingWrites()) {
     LiveSource::Fetched fetched = session_.fetch(millis(), /*closing=*/true);
     CardSession::Answer answer;
@@ -235,11 +254,38 @@ void LexiriseCardActivity::redraw() {
   requestUpdate();
 }
 
+#if LEXIPOINT_DEV_HARNESS
+void LexiriseCardActivity::logLevelButtons(const std::vector<Hit>& hits) {
+  // lxctl deck-smoke taps L where the card drew it: "level <i> <x> <y> <w> <h> <saved 0|1>", when they change.
+  const int saved = controller_.state().level == Level::None ? 0 : 1;
+  std::string lines;
+  for (const Hit& hit : hits) {
+    if (hit.target != Target::Level) continue;
+    char line[64];
+    std::snprintf(line, sizeof(line), "level %d %d %d %d %d %d", hit.index, hit.rect.x, hit.rect.y, hit.rect.w,
+                  hit.rect.h, saved);
+    lines += line;
+    lines += '\n';
+  }
+  if (lines == loggedLevels_) return;
+  loggedLevels_ = lines;
+  size_t start = 0;
+  while (start < lines.size()) {
+    const size_t end = lines.find('\n', start);
+    LOG_INF("LXCARD", "%s", lines.substr(start, end - start).c_str());
+    start = end + 1;
+  }
+}
+#endif
+
 void LexiriseCardActivity::render(RenderLock&&) {
   const CardFonts fonts = resolveCardFonts(renderer);
   const RendererMetrics metrics(renderer, fonts);
   const Frame frame = composeFrame(controller_, metrics, pageUnderCard_);
   targets_.drawing(frame.card.hits, controller_.steps(), controller_.state().view);
+#if LEXIPOINT_DEV_HARNESS
+  logLevelButtons(frame.card.hits);
+#endif
 
   renderer.clearScreen();
   // Scan, prewarm the SD glyphs, then draw for real (the reader's pattern).

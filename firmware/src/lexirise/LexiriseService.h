@@ -58,6 +58,8 @@ class LexiriseService final : public api::LexiriseApi {
   // A /v1/vocabulary write. One that isn't safe to resend (the save's POST, an upsert) starts on a fresh
   // session (lookup-flow.md §7): a reused keep-alive session that turned stale would fail it unretried.
   api::ApiResponse write(const net::Request& request) override;
+  // A /v1/decks call: the creation (a POST) on a fresh session too, like a save.
+  api::ApiResponse deck(const net::Request& request) override { return write(request); }
 
   // Main-loop tick: a queued key check, the idle TLS close, and the WiFi idle teardown.
   void tick();
@@ -89,8 +91,7 @@ class LexiriseService final : public api::LexiriseApi {
   bool sessionActive_ = false;  // a call ran since the last close: the idle close is armed
   unsigned long lastCallMs_ = 0;
   bool wifiHeld_ = false;
-  bool wifiIdleKnown_ = false;
-  uint32_t wifiIdleRevision_ = 0;
+  SettingsWatch wifiIdleWatch_;
   int wifiIdleMin_ = 0;
 };
 

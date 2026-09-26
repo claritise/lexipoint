@@ -32,6 +32,13 @@ constexpr const char* kBookTagsBadPath = "/.lexirise/book-tags.ini.bad";
 constexpr size_t kBookTagsMax = 100;           // books remembered (held in RAM once read); one more forgets the oldest
 constexpr size_t kBookTagsMaxBytes = 16384;    // 100 slugs with the longest titles
 constexpr size_t kBookTagTitleMaxBytes = 120;  // a title is cut (at a character) to this in the record
+// Each book's Lexirise deck (V3): `<language>:<slug>=<deck id>` lines, newest last.
+constexpr const char* kDecksPath = "/.lexirise/decks.ini";
+constexpr const char* kDecksTmpPath = "/.lexirise/decks.ini.tmp";
+constexpr const char* kDecksBackupPath = "/.lexirise/decks.ini.bak";
+constexpr const char* kDecksBadPath = "/.lexirise/decks.ini.bad";
+constexpr size_t kDecksMax = 100;         // decks remembered; one more forgets the oldest (found again by the list)
+constexpr size_t kDecksMaxBytes = 16384;  // kDecksMax of the longest lines (checked below, with the slug's size)
 // The longest FAT/exFAT long name in UTF-8: 255 UTF-16 units, up to 3 bytes each (web/HiddenPath.h).
 constexpr size_t kMaxFatNameBytes = 255 * 3;
 
@@ -164,6 +171,23 @@ constexpr const char* kDefaultTags = "xteink";
 constexpr char kBookTagPrefix[] = "book:";
 constexpr size_t kBookSlugMaxBytes = kMaxTagLength - (sizeof(kBookTagPrefix) - 1);
 constexpr size_t kBookSlugMinAlnum = 3;  // fewer ASCII letters and digits (a Japanese title): a hash instead
+// A book's deck (C4, V3): a dynamic deck on its book tag, titled kDeckTitlePrefix + the book's title. The type,
+// unit and rule names are the reference's (lexirise-api-notes.md, Decks), sent and matched as they are.
+constexpr const char* kDeckTitlePrefix = "Lexipoint: ";
+constexpr const char* kDeckTypeDynamic = "dynamic";
+constexpr const char* kDeckUnitWord = "word";
+constexpr const char* kDeckRuleTagFilter = "user_tag_filter";
+constexpr size_t kMaxDeckIdBytes = 64;   // a deck id as sent (it goes into a request path)
+constexpr size_t kMaxDecksListed = 256;  // GET /v1/decks entries read; past it, the rest are ignored
+constexpr size_t kMaxDeckTagsRead = 16;  // a listed deck's user_tags read (a book deck has one)
+constexpr size_t kDeckWorkMax = 32;      // book decks (book and language) kept in memory since boot
+// decks.ini's longest line, `<ja|zh>:<slug>=<id>\n`: the file never drops a deck for size before kDecksMax.
+constexpr size_t kLanguageCodeBytes = 2;  // "ja" / "zh" (Settings.h languageCode)
+static_assert(kDecksMax * (kLanguageCodeBytes + 1 + kBookSlugMaxBytes + 1 + kMaxDeckIdBytes + 1) <= kDecksMaxBytes,
+              "decks.ini fits kDecksMax of the longest lines");
+// A card starts its book's deck work only once it has been idle this long (no input, no answer, no write
+// waiting): a deck call blocks the loop, so it keeps clear of stepping and a save's Undo window.
+constexpr unsigned long kDeckIdleMs = 3000;
 
 // The longest one Lexirise call can block (WiFi join, NTP, TCP + handshake, the request). The web page
 // polls a queued key check for this long, and lxctl's LEXI wait is checked against it (test_lxctl).

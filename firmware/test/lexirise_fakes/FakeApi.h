@@ -16,6 +16,7 @@ inline api::ApiResponse apiOk(std::string body) {
   api::ApiResponse r;
   r.status = 200;
   r.body = std::move(body);
+  r.sent = true;
   return r;
 }
 
@@ -31,10 +32,12 @@ class FakeApi final : public api::LexiriseApi {
   std::deque<api::ApiResponse> wordsReplies;  // analyzeWords: none scripted = offline (the refined answer stands)
   std::deque<api::ApiResponse> lookupReplies;
   std::deque<api::ApiResponse> writeReplies;
-  std::vector<std::string> analyzed;  // the sentences
+  std::deque<api::ApiResponse> deckReplies;  // none scripted: offline
+  std::vector<std::string> analyzed;         // the sentences
   std::vector<std::string> analyzedWords;
   std::vector<std::string> looked;  // the headwords
   std::vector<net::Request> written;
+  std::vector<net::Request> decked;
 
   api::ApiResponse analyze(Language, const std::string_view sentence) override {
     analyzed.emplace_back(sentence);
@@ -51,6 +54,10 @@ class FakeApi final : public api::LexiriseApi {
   api::ApiResponse write(const net::Request& request) override {
     written.push_back(request);
     return next(writeReplies);
+  }
+  api::ApiResponse deck(const net::Request& request) override {
+    decked.push_back(request);
+    return next(deckReplies);
   }
 
  private:

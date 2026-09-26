@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstring>
 #include <set>
 #include <string>
 
@@ -25,6 +26,7 @@ TEST(Settings, DefaultsFromEmptyFile) {
   EXPECT_EQ(s.defaultLanguage, Language::Japanese);
   EXPECT_EQ(s.tags, config::kDefaultTags);
   EXPECT_TRUE(s.tagBook);
+  EXPECT_TRUE(s.deckPerBook);
   EXPECT_EQ(s.wifiIdleMin, config::kWifiIdleDefaultMin);
   EXPECT_EQ(s.baseUrl, config::kDefaultBaseUrl);
   EXPECT_FALSE(r.migratedLegacyKeys);
@@ -32,11 +34,11 @@ TEST(Settings, DefaultsFromEmptyFile) {
 }
 
 TEST(Settings, ParsesSections) {
-  const ParseResult r =
-      parseSettings("[account]\nenabled=0\napi_key=" + kKey +
-                    "\n[ja]\nenabled=1\nreading=romaji\nstardict=jmdict\n[zh]\nenabled=off\nstardict=cedict\n"
-                    "[general]\ndefault_language=zh\ntags=xteink, book:test\ntag_book=0\nwifi_idle_min=10\n"
-                    "[advanced]\nbase_url=https://example.test/\n");
+  const ParseResult r = parseSettings(
+      "[account]\nenabled=0\napi_key=" + kKey +
+      "\n[ja]\nenabled=1\nreading=romaji\nstardict=jmdict\n[zh]\nenabled=off\nstardict=cedict\n"
+      "[general]\ndefault_language=zh\ntags=xteink, book:test\ntag_book=0\ndeck_per_book=0\nwifi_idle_min=10\n"
+      "[advanced]\nbase_url=https://example.test/\n");
   const Settings& s = r.settings;
   EXPECT_FALSE(s.enabled);
   EXPECT_EQ(s.apiKey, kKey);
@@ -47,6 +49,7 @@ TEST(Settings, ParsesSections) {
   EXPECT_EQ(s.defaultLanguage, Language::Chinese);
   EXPECT_EQ(s.tags, "xteink,book:test");
   EXPECT_FALSE(s.tagBook);
+  EXPECT_FALSE(s.deckPerBook);
   EXPECT_EQ(s.wifiIdleMin, 10);
   EXPECT_EQ(s.baseUrl, "https://example.test");  // trailing slash dropped
   EXPECT_TRUE(r.warnings.empty());
@@ -60,8 +63,9 @@ TEST(Settings, RoundTripIsStable) {
   s.chinese.enabled = false;
   s.tags = "a,b";
   s.tagBook = false;
+  s.deckPerBook = false;
   const std::string text = serializeSettings(s);
-  EXPECT_NE(text.find("tags=a,b\ntag_book=0\n"), std::string::npos);
+  EXPECT_NE(text.find("tags=a,b\ntag_book=0\ndeck_per_book=0\n"), std::string::npos);
   const ParseResult r = parseSettings(text);
   EXPECT_EQ(serializeSettings(r.settings), text);
   EXPECT_TRUE(r.warnings.empty());
@@ -78,10 +82,11 @@ TEST(Settings, HandEditingQuirks) {
 }
 
 TEST(Settings, InvalidValuesFallBackWithWarningsThatNeverContainTheKey) {
-  const ParseResult r = parseSettings(
-      "[account]\nenabled=maybe\napi_key=not-a-key-" + kKey +
-      "\n[ja]\nreading=hiragana\nstardict=../etc\n[general]\ndefault_language=ko\ntag_book=maybe\nwifi_idle_min=7\n"
-      "[advanced]\nbase_url=http://plain.test\n");
+  const ParseResult r =
+      parseSettings("[account]\nenabled=maybe\napi_key=not-a-key-" + kKey +
+                    "\n[ja]\nreading=hiragana\nstardict=../"
+                    "etc\n[general]\ndefault_language=ko\ntag_book=maybe\ndeck_per_book=2\nwifi_idle_min=7\n"
+                    "[advanced]\nbase_url=http://plain.test\n");
   const Settings& s = r.settings;
   EXPECT_TRUE(s.enabled);
   EXPECT_FALSE(s.hasApiKey());
@@ -89,9 +94,10 @@ TEST(Settings, InvalidValuesFallBackWithWarningsThatNeverContainTheKey) {
   EXPECT_TRUE(s.japanese.stardict.empty());
   EXPECT_EQ(s.defaultLanguage, Language::Japanese);
   EXPECT_TRUE(s.tagBook);
+  EXPECT_TRUE(s.deckPerBook);
   EXPECT_EQ(s.wifiIdleMin, config::kWifiIdleDefaultMin);
   EXPECT_EQ(s.baseUrl, config::kDefaultBaseUrl);  // plain http is refused: the key would cross the LAN in clear
-  EXPECT_EQ(r.warnings.size(), 8u);
+  EXPECT_EQ(r.warnings.size(), 9u);
   for (const auto& w : r.warnings) EXPECT_EQ(w.find("lx_"), std::string::npos) << w;
 }
 
@@ -132,9 +138,10 @@ TEST(Settings, UnknownKeysAndSectionsSurvive) {
 TEST(Settings, AFileFromBeforeTagBookTurnsItOnAndWritesIt) {
   const ParseResult r = parseSettings("[general]\ndefault_language=ja\ntags=xteink\nwifi_idle_min=5\n");
   EXPECT_TRUE(r.settings.tagBook);
+  EXPECT_TRUE(r.settings.deckPerBook);
   EXPECT_TRUE(r.warnings.empty());
   const std::string out = serializeSettings(r.settings);
-  EXPECT_NE(out.find("tags=xteink\ntag_book=1\nwifi_idle_min=5\n"), std::string::npos);
+  EXPECT_NE(out.find("tags=xteink\ntag_book=1\ndeck_per_book=1\nwifi_idle_min=5\n"), std::string::npos);
   EXPECT_TRUE(parseSettings(out).settings.extras.empty());  // a known key, not kept as an unknown one
 }
 
@@ -211,4 +218,11 @@ TEST(Settings, EveryLanguageIsListedOnceWithItsOwnGroup) {
   EXPECT_EQ(&s.language(lexipoint::Language::Japanese), &s.japanese);
   EXPECT_EQ(&s.language(lexipoint::Language::Chinese), &s.chinese);
   EXPECT_EQ(s.enabledLanguageCount(), 2);
+}
+
+TEST(Settings, EveryLanguageCodeHasTheLengthDecksIniCountsOn) {
+  // config::kLanguageCodeBytes sizes decks.ini's longest line (LexiriseConfig.h static_assert).
+  for (const Language language : kLanguages) {
+    EXPECT_EQ(std::strlen(languageCode(language)), config::kLanguageCodeBytes);
+  }
 }

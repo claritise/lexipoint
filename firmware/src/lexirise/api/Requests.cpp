@@ -11,6 +11,8 @@ namespace lexipoint::api {
 using text::utf8Prefix;
 
 constexpr const char* kVocabularyPath = "/v1/vocabulary";
+constexpr const char* kDecksPath = "/v1/decks";
+constexpr const char* kDeckProbeQuery = "?limit=1";  // one item's page: only whether the deck is there matters
 
 net::Request meRequest() { return {net::Method::Get, "/v1/me", ""}; }
 
@@ -48,24 +50,23 @@ net::Request lookupRequest(const Language language, const std::string_view lemma
 
 namespace {
 
-// A saved-expression id as it may appear in a path: digits, letters, '-' and '_', and not too long.
-bool isPlainId(const std::string_view id) {
-  if (id.empty() || id.size() > config::kMaxSavedIdBytes) return false;
-  for (const char c : id) {
-    const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_';
-    if (!ok) return false;
-  }
-  return true;
-}
-
 std::optional<net::Request> vocabularyItem(const net::Method method, const std::string_view id, std::string body) {
-  if (!isPlainId(id)) return std::nullopt;
+  if (!isPlainId(id, config::kMaxSavedIdBytes)) return std::nullopt;
   net::Request request{method, std::string(kVocabularyPath) + "/" + std::string(id), std::move(body)};
   request.idempotent = true;  // setting a value (or deleting) twice changes nothing more
   return request;
 }
 
 }  // namespace
+
+bool isPlainId(const std::string_view id, const size_t maxBytes) {
+  if (id.empty() || id.size() > maxBytes) return false;
+  for (const char c : id) {
+    const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_';
+    if (!ok) return false;
+  }
+  return true;
+}
 
 net::Request saveRequest(const SaveWord& word) {
   net::JsonObject body;
@@ -92,9 +93,32 @@ std::optional<net::Request> clearRequest(const std::string_view id) {
       net::JsonObject().addNull("notes").addNull("customTranslation").add("tags", std::vector<std::string>{}).str());
 }
 
+net::Request deckListRequest(const Language language) {
+  return {net::Method::Get, std::string(kDecksPath) + "?language=" + languageCode(language), ""};
+}
+
+std::optional<net::Request> deckRequest(const std::string_view id) {
+  if (!isPlainId(id, config::kMaxDeckIdBytes)) return std::nullopt;
+  return net::Request{net::Method::Get, std::string(kDecksPath) + "/" + std::string(id) + kDeckProbeQuery, ""};
+}
+
+net::Request createDeckRequest(const NewDeck& deck) {
+  return {net::Method::Post, kDecksPath,
+          net::JsonObject()
+              .add("title", deck.title)
+              .add("language", languageCode(deck.language))
+              .add("unit_type", config::kDeckUnitWord)
+              .add("deck_type", config::kDeckTypeDynamic)
+              .add("rule_type", config::kDeckRuleTagFilter)
+              .add("user_tags", std::vector<std::string>{std::string(deck.tag)})
+              .str()};  // not idempotent: a second deck
+}
+
 std::string loggablePath(const std::string_view path) {
-  const std::string prefix = std::string(kVocabularyPath) + "/";
-  if (path.size() > prefix.size() && path.substr(0, prefix.size()) == prefix) return prefix + "{id}";
+  for (const char* collection : {kVocabularyPath, kDecksPath}) {
+    const std::string prefix = std::string(collection) + "/";
+    if (path.size() > prefix.size() && path.substr(0, prefix.size()) == prefix) return prefix + "{id}";
+  }
   return std::string(path);
 }
 

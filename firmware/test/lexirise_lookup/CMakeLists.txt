@@ -10,6 +10,8 @@ add_executable(LexiriseLookupTest
   ${REPO_ROOT}/src/lexirise/lookup/WholeWords.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LookupCard.cpp
   ${REPO_ROOT}/src/lexirise/api/Responses.cpp
+  ${REPO_ROOT}/src/lexirise/api/Requests.cpp
+  ${REPO_ROOT}/src/lexirise/net/JsonWriter.cpp
   ${REPO_ROOT}/src/lexirise/net/JsonReader.cpp
   ${REPO_ROOT}/src/lexirise/text/BookLanguage.cpp
   ${REPO_ROOT}/src/lexirise/settings/Settings.cpp

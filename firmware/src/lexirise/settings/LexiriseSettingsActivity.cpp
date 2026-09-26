@@ -70,6 +70,8 @@ StrId labelFor(const Row row) {
       return StrId::STR_LEXI_SET_TAGS;
     case Row::TagBook:
       return StrId::STR_LEXI_SET_TAG_BOOK;
+    case Row::DeckPerBook:
+      return StrId::STR_LEXI_SET_DECK_PER_BOOK;
     case Row::WifiIdle:
       break;
   }
@@ -284,6 +286,8 @@ std::string LexiriseSettingsActivity::valueFor(const Row row, const Settings& se
       return settings.tags;
     case Row::TagBook:
       return onOff(settings.tagBook);
+    case Row::DeckPerBook:
+      return onOff(settings.deckPerBook);
     case Row::WifiIdle:
       break;
   }

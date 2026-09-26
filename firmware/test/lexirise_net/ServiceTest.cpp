@@ -176,6 +176,17 @@ TEST(Service, ASaveStartsOnAFreshSessionALevelChangeReusesIt) {
   EXPECT_EQ(rig.conn.opens, 2);  // a PATCH is safe to resend: the session is reused
 }
 
+TEST(Service, ADeckCreationStartsOnAFreshSessionAListReusesIt) {
+  Rig rig;
+  rig.conn.reads = {httpOk(R"({"decks":[]})"), httpOk(R"({"decks":[]})"), httpOk(R"({"deck":{"id":12}})")};
+  EXPECT_TRUE(rig.service.deck(lexipoint::api::deckListRequest(lexipoint::Language::Japanese)).ok());
+  EXPECT_EQ(rig.conn.opens, 1);
+  EXPECT_TRUE(rig.service.deck(lexipoint::api::deckListRequest(lexipoint::Language::Japanese)).ok());
+  EXPECT_EQ(rig.conn.opens, 1);  // a GET is safe to resend: the session is reused
+  EXPECT_TRUE(rig.service.deck(lexipoint::api::createDeckRequest({lexipoint::Language::Japanese, "t", "book:k"})).ok());
+  EXPECT_EQ(rig.conn.opens, 2);  // the POST would make a second deck if resent: a new session
+}
+
 TEST(Service, AHeldWifiOutlastsTheIdleRuleUntilReleased) {
   Rig rig;
   rig.wifi.owned = true;

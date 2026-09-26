@@ -158,6 +158,7 @@ class Applier {
       return;
     }
     if (e.key == "tag_book") return setBool(e, s_.tagBook);
+    if (e.key == "deck_per_book") return setBool(e, s_.deckPerBook);
     if (e.key == "wifi_idle_min") return setWifiIdle(e);
     keep(e);
   }
@@ -318,6 +319,7 @@ std::string serializeSettings(const Settings& s) {
   appendLine(out, "default_language", languageCode(s.defaultLanguage));
   appendLine(out, "tags", s.tags);
   appendLine(out, "tag_book", s.tagBook ? "1" : "0");
+  appendLine(out, "deck_per_book", s.deckPerBook ? "1" : "0");
   appendLine(out, "wifi_idle_min", std::to_string(s.wifiIdleMin));
   appendExtras(out, s, "general");
 

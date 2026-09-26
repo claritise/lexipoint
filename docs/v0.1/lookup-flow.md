@@ -454,3 +454,12 @@ v0.1 takes the first. The page highlight follows the card's word.
 may take a while to press Save). The payload is in D9. If it succeeds, the card flips to "saved ·
 tracked". If it fails, it shows an inline error with Confirm = retry (`offline-and-errors.md` §3).
 The card never closes on its own after a save. The user dismisses it with Back.
+
+**The book's deck (v0.2 V3, C4):** a save that carried the book tag and went through marks the book's deck
+wanted (per book, per boot, in the deck store). A card open in that book, once idle for `config::kDeckIdleMs`
+(no input, no finger on the screen, no toast up) with no write queued, sends the deck's next step, one call at a time, never told on the card
+(`CardSession::shouldFetchDeck`, `deck/BookDeck`): a recorded deck is checked once per boot; else the user's
+decks are listed and the book's reused, else one is made. A close sends only the writes; the deck waits for a
+later idle card in the book, and a failure for the book's next tagged save. A deck step blocks the idle card
+like a write: a side-button press made and released during it is lost (rarely: one to three calls per book per
+boot).

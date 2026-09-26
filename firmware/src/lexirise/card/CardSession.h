@@ -89,12 +89,35 @@ class CardSession {
 
   bool hasPendingWrites() const { return live_ && live_->hasPendingWrites(); }
 
+  // The book's deck (LiveSource::setBookDeck): its next call runs only on an idle card, and never as the card
+  // closes: nothing else to fetch or send (a write in its Undo window included), nothing to draw or handle, and no
+  // input or answer for config::kDeckIdleMs. The call blocks the loop like any other: a tap made during it waits
+  // for it (one request), and a side-button press made and released during it is lost (rare: one to three calls
+  // per book per boot). A new book takes two idle windows after its save's Undo window: the list, then the
+  // creation.
+  // A finger is on the screen (a swipe or a long-press on its way): the idle time starts again.
+  void touched(const unsigned long nowMs) { lastActivityMs_ = nowMs; }
+  // `touching`: a finger is on the screen (see touched()): not idle. `cardDueMs`: when the
+  // card next has something to do (CardController::nextDueMs, the loop's copy): a toast still up ("Save failed ·
+  // Retry" on the same network a deck call would wait on) or a phase to come, so not idle either.
+  bool shouldFetchDeck(unsigned long nowMs, bool rendering, bool touching,
+                       std::optional<unsigned long> cardDueMs) const;
+  // Book decks may be made (deck::deckAllowed): set when the card opens and whenever the settings change (the web
+  // page can turn Deck per book off while a card is open).
+  void setDeckAllowed(const bool allowed) { deckAllowed_ = allowed; }
+  void opened(const unsigned long nowMs) { lastActivityMs_ = nowMs; }  // the idle time starts when the card opens
+  deck::DeckCall fetchDeck() { return live_ ? live_->fetchDeck() : deck::DeckCall{}; }
+  // Outside RenderLock: the card's state doesn't change, only the deck store.
+  void applyDeck(const deck::DeckCall& call, unsigned long nowMs);
+
  private:
   CardController& controller_;
   ShownTargets& targets_;
   PendingInput& input_;
   LiveSource* live_;
   std::atomic<bool> drawPending_{false};  // redrawAsked(), not yet frameShown()
+  unsigned long lastActivityMs_ = 0;      // the card's opening, its last input, answer or deck call (loop task)
+  bool deckAllowed_ = true;
   int unsentSaves_ = 0;
   api::ApiError unsentError_ = api::ApiError::None;
 };

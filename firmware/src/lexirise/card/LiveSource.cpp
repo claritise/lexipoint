@@ -5,6 +5,7 @@
 #include <Utf8.h>
 
 #include <algorithm>
+#include <iterator>
 
 #include "LiveWord.h"
 #include "lexirise/api/Requests.h"
@@ -115,6 +116,44 @@ bool LiveSource::writeReady(const unsigned long nowMs, const bool closing) const
 
 bool LiveSource::hasWork(const unsigned long nowMs) const {
   return loadingSentence().has_value() || lookupDue(nowMs, false) >= 0 || writeReady(nowMs, false);
+}
+
+void LiveSource::setBookDeck(deck::BookDeck bookDeck, deck::DeckStore& store) {
+  savesCarryBookTag_ = std::find(tags_.begin(), tags_.end(), bookDeck.tag()) != tags_.end();
+  deckKeys_.clear();
+  deckKeys_.reserve(std::size(kLanguages));
+  for (const Language language : kLanguages) deckKeys_.push_back(deck::deckKey(language, bookDeck.slug));
+  bookDeck_ = std::move(bookDeck);
+  decks_ = &store;
+  decks_->load();
+}
+
+void LiveSource::savedWithBookTag(const Language language) {
+  if (!decks_ || !savesCarryBookTag_) return;
+  for (size_t i = 0; i < std::size(kLanguages); i++) {
+    if (kLanguages[i] == language) decks_->want(deckKeys_[i]);
+  }
+}
+
+std::optional<LiveSource::DueDeck> LiveSource::deckDue() const {
+  // The saves go first; a card whose saves don't carry the tag has no say in the deck.
+  if (!writes_.empty() || !decks_ || !savesCarryBookTag_ || !decks_->anyWanted()) return std::nullopt;
+  for (size_t i = 0; i < std::size(kLanguages); i++) {
+    const deck::DeckStep step = decks_->next(deckKeys_[i]);
+    if (step != deck::DeckStep::None) return DueDeck{i, step};
+  }
+  return std::nullopt;
+}
+
+deck::DeckCall LiveSource::fetchDeck() {
+  const std::optional<DueDeck> due = deckDue();
+  if (!due) return {};
+  return deck::sendDeckStep(api_, *bookDeck_, kLanguages[due->language], due->step,
+                            decks_->state(deckKeys_[due->language]).id);
+}
+
+void LiveSource::applyDeck(const deck::DeckCall& call) {
+  if (decks_ && call.step != deck::DeckStep::None) decks_->apply(call);
 }
 
 std::optional<LiveSource::FailedWrite> LiveSource::takeFailedWrite() {
@@ -232,6 +271,7 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
       if (!fetched.savedExpressionId.empty()) {
         saved = api::EntryState{fetched.savedExpressionId, 0, 0};
         createdIds_.push_back(fetched.savedExpressionId);
+        savedWithBookTag(card.language);  // a new save (POST) carries the tags
       }
       const bool ours =
           saved && std::find(createdIds_.begin(), createdIds_.end(), saved->savedExpressionId) != createdIds_.end();

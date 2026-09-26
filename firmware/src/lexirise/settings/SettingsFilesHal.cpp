@@ -8,6 +8,7 @@
 #include "BookLanguages.h"
 #include "BookTags.h"
 #include "SettingsStore.h"
+#include "lexirise/deck/BookDeck.h"
 
 namespace lexipoint {
 namespace {
@@ -68,6 +69,11 @@ BookLanguageStore& bookLanguageStore() {
 
 BookTagStore& bookTagStore() {
   static BookTagStore store(halFiles());
+  return store;
+}
+
+deck::DeckStore& deck::deckStore() {
+  static DeckStore store(halFiles());
   return store;
 }
 

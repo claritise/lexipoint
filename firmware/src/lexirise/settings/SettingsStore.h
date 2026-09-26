@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -64,5 +65,20 @@ class SettingsStore {
 
 // The device-wide store over the SD card (SettingsFilesHal.cpp; not linked into host tests).
 SettingsStore& settingsStore();
+
+// Whether the settings changed since the last call (true on the first): a loop re-reads a setting only then, with
+// no settings copy on every pass. One per reader.
+class SettingsWatch {
+ public:
+  bool changed(const SettingsStore& store) {
+    const uint32_t revision = store.revision();
+    if (seen_ == revision) return false;
+    seen_ = revision;
+    return true;
+  }
+
+ private:
+  std::optional<uint32_t> seen_;
+};
 
 }  // namespace lexipoint

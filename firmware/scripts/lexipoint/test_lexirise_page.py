@@ -84,6 +84,7 @@ class VisibilityRules(unittest.TestCase):
                 "defaultLanguage": "defaultLanguage",
                 "tags": "tags",
                 "tagBook": "tagBook",
+                "deckPerBook": "deckPerBook",
                 "wifiIdleMin": "wifiIdle",
                 "baseUrl": None,  # under Advanced, as before
             },

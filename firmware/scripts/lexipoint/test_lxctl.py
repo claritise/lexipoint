@@ -692,8 +692,8 @@ class SettingsSmoke(unittest.TestCase):
         return h, n
 
     def test_opens_checks_the_rows_and_leaves_with_back(self):
-        h, n = self.run_smoke(13)
-        self.assertEqual(n, 13)
+        h, n = self.run_smoke(14)
+        self.assertEqual(n, 14)
         self.assertTrue(h.left)
         self.assertEqual(h.sent[0], "LEXI SETTINGS")
         self.assertTrue(any(c.startswith("SWIPE") for c in h.sent))
@@ -839,6 +839,224 @@ class ReleaseEnvsExcludeHarness(unittest.TestCase):
         for path in sorted(__import__("glob").glob(os.path.join(REPO, ".pio/build/*release*/firmware.bin"))):
             with open(path, "rb") as f:
                 self.assertNotIn(b"LX:PONG", f.read(), path)
+
+
+def deck_line(ms: int, method: str, path: str, status: int) -> str:
+    return f"[{ms}] [INF] [LXS] {method} {path} -> {status} (ok)"
+
+
+def step_line(ms: int, kind: str, key: str = "ja:kokoro") -> str:
+    return f"[{ms}] [INF] [LXDECK] step {kind} {key}"
+
+
+def recorded_line(ms: int, key: str = "ja:kokoro") -> str:
+    return f"[{ms}] [INF] [LXDECK] Deck {key}: recorded"
+
+
+SAVE = deck_line(1000, "POST", "/v1/vocabulary", 200)
+CLOSED = ["[9000] [INF] [ACT] Exiting activity: LexiriseCard"]
+
+
+def new_book(list_at=4000, list_took=500, create_at=None):
+    """A new book's card: the save, the list (idle 3 s after the save), the creation (idle 3 s after the list's
+    answer), then "recorded"."""
+    listed = list_at + list_took
+    create_at = create_at if create_at is not None else listed + 3000
+    return [SAVE, step_line(list_at, "list"), deck_line(listed, "GET", "/v1/decks?language=ja", 200),
+            step_line(create_at, "create"), deck_line(create_at + 400, "POST", "/v1/decks", 200),
+            recorded_line(create_at + 401)]
+
+
+def checked_card(at=4100):
+    return [SAVE, step_line(at, "check"), deck_line(at + 300, "GET", "/v1/decks/{id}", 200)]
+
+
+class DeckSmokeRules(unittest.TestCase):
+    """deck-smoke's rules (V3), on synthetic logs: never run against a device here."""
+
+    def test_a_new_book_lists_creates_and_records_then_the_next_card_calls_nothing(self):
+        self.assertEqual(lxctl.check_deck_cards([(new_book(), CLOSED), ([SAVE], CLOSED)]), ["created", "none"])
+
+    def test_a_book_recorded_before_is_checked_once(self):
+        self.assertEqual(lxctl.check_deck_cards([(checked_card(), CLOSED), ([SAVE], CLOSED)]), ["checked", "none"])
+
+    def test_a_deck_from_another_device_is_found(self):
+        found = [SAVE, step_line(4000, "list"), deck_line(4300, "GET", "/v1/decks?language=ja", 200),
+                 recorded_line(4301)]
+        self.assertEqual(lxctl.check_deck_cards([(found, CLOSED)]), ["found"])
+
+    def test_a_deleted_deck_is_listed_and_made_again(self):
+        gone = [SAVE, step_line(4000, "check"), deck_line(4200, "GET", "/v1/decks/{id}", 404),
+                step_line(7300, "list"), deck_line(7600, "GET", "/v1/decks?language=ja", 200),
+                step_line(10700, "create"), deck_line(11000, "POST", "/v1/decks", 200), recorded_line(11001)]
+        self.assertEqual(lxctl.check_deck_cards([(gone, CLOSED)]), ["created"])
+
+    def test_a_step_before_the_idle_time_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "list step started 1500 ms"):
+            lxctl.check_deck_cards([(new_book(list_at=2500), CLOSED)])
+
+    def test_a_slow_call_is_timed_from_its_start(self):
+        # The list started on time and took 5 s: its answer line comes late, and that's fine.
+        self.assertEqual(lxctl.check_deck_cards([(new_book(list_took=5000), CLOSED)]), ["created"])
+
+    def test_a_creation_too_soon_after_the_list_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "create step started 1000 ms"):
+            lxctl.check_deck_cards([(new_book(create_at=5500), CLOSED)])
+
+    def test_a_deck_call_while_closing_fails(self):
+        closing = [step_line(9000, "list"), deck_line(9100, "GET", "/v1/decks?language=ja", 200)] + CLOSED
+        with self.assertRaisesRegex(RuntimeError, "while closing"):
+            lxctl.check_deck_cards([(new_book(), closing)])
+
+    def test_a_card_after_the_deck_settled_calling_again_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "after the deck was settled"):
+            lxctl.check_deck_cards([(new_book(), CLOSED), (checked_card(), CLOSED)])
+
+    def test_two_creations_or_checks_in_one_card_fail(self):
+        twice = new_book() + [step_line(12000, "create"), deck_line(12300, "POST", "/v1/decks", 200)]
+        with self.assertRaisesRegex(RuntimeError, "second deck creation"):
+            lxctl.check_deck_cards([(twice, CLOSED)])
+        checked_twice = checked_card() + [step_line(8000, "check"), deck_line(8300, "GET", "/v1/decks/{id}", 200)]
+        with self.assertRaisesRegex(RuntimeError, "checked twice"):
+            lxctl.check_deck_cards([(checked_twice, CLOSED)])
+
+    def test_steps_out_of_order_fail(self):
+        backwards = [SAVE, step_line(4000, "create"), deck_line(4300, "POST", "/v1/decks", 200),
+                     step_line(7400, "list"), deck_line(7700, "GET", "/v1/decks?language=ja", 200)]
+        with self.assertRaisesRegex(RuntimeError, "list after create"):
+            lxctl.check_deck_cards([(backwards, CLOSED)])
+
+    def test_a_creation_not_recorded_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "recorded none"):
+            lxctl.check_deck_cards([(new_book()[:-1], CLOSED)])
+
+    def test_no_save_or_no_deck_call_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "saved no new word"):
+            lxctl.check_deck_cards([([deck_line(1000, "PATCH", "/v1/vocabulary/{id}", 200)], CLOSED)])
+        with self.assertRaisesRegex(RuntimeError, "waited 12 s"):
+            lxctl.check_deck_cards([([SAVE], CLOSED)], watch_s=12)
+
+    def test_steps_for_two_book_decks_fail(self):
+        zh = [SAVE, step_line(4000, "list", "zh:kokoro"), deck_line(4300, "GET", "/v1/decks?language=zh", 200),
+              recorded_line(4301, "zh:kokoro")]
+        with self.assertRaisesRegex(RuntimeError, "more than one book deck"):
+            lxctl.check_deck_cards([(new_book(), CLOSED), (zh, CLOSED)])
+
+    def test_a_step_exactly_at_the_idle_time_passes(self):
+        self.assertEqual(lxctl.check_deck_cards([(new_book(list_at=4000), CLOSED)]), ["created"])
+        with self.assertRaisesRegex(RuntimeError, "list step started 2999 ms"):
+            lxctl.check_deck_cards([(new_book(list_at=3999), CLOSED)])
+
+    def test_level_buttons_are_the_last_set_logged(self):
+        log = ["[1] [INF] [LXCARD] level 0 273 570 42 37 0", "[1] [INF] [LXCARD] level 1 316 570 42 37 0",
+               "[2] [INF] [LXCARD] level 0 273 546 42 37 1", "[2] [INF] [LXCARD] level 1 316 546 42 37 1"]
+        self.assertEqual(lxctl.level_buttons(log), {0: (273, 546, 42, 37, True), 1: (316, 546, 42, 37, True)})
+        self.assertEqual(lxctl.level_buttons(["[1] [INF] [LXS] GET /v1/me -> 200 (ok)"]), {})
+
+    def test_the_constants_and_log_lines_match_the_firmware(self):
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        self.assertEqual(lxctl.DECK_IDLE_MS, c["kDeckIdleMs"])
+        model = open(os.path.join(REPO, "src/lexirise/card/CardModel.h"), encoding="utf-8").read()
+        levels = re.search(r"enum class Level : \w+ \{([^}]*)\}", model).group(1)
+        self.assertIn(f"Learning = {lxctl.DECK_SAVE_LEVEL}", levels)  # L, the card's level button index
+        # The watch outlasts the Undo window and two idle windows, with time for three calls.
+        self.assertGreater(lxctl.DECK_WATCH_S * 1000, c["kToastMs"] + 2 * c["kDeckIdleMs"] + 3000)
+        usages = device_usages()
+        for cmd in [f"LONG {x} {y}" for x, y in lxctl.DECK_WORDS] + ["TAP 337 588", "HOME"]:
+            self.assertRegex(cmd, usages[cmd.split()[0]])
+        service = open(os.path.join(REPO, "src/lexirise/LexiriseService.cpp"), encoding="utf-8").read()
+        self.assertIn('"%s %s -> %d (%s)"', service)
+        deck = open(os.path.join(REPO, "src/lexirise/deck/BookDeck.cpp"), encoding="utf-8").read()
+        self.assertIn('"Deck %s: %s"', deck)
+        self.assertIn('"step %s %s"', deck)
+        for kind in ("check", "list", "create"):
+            self.assertIn(f'return "{kind}";', deck)
+        card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
+        self.assertIn('"level %d %d %d %d %d %d"', card)
+        self.assertRegex(card, r"#if LEXIPOINT_DEV_HARNESS\s+logLevelButtons")  # dev builds only
+
+    def test_it_refuses_to_run_without_the_flag(self):
+        argv = sys.argv
+        sys.argv = ["lxctl.py", "--port", "/dev/null-none", "deck-smoke"]
+        opened = []
+        real = lxctl.open_serial
+        lxctl.open_serial = lambda port: opened.append(port)
+        try:
+            with self.assertRaises(SystemExit) as e:
+                lxctl.main()
+            self.assertIn("claritise's OK", str(e.exception))
+            self.assertEqual(opened, [])  # the port is never opened
+        finally:
+            lxctl.open_serial = real
+            sys.argv = argv
+
+
+class FakeDeckHarness:
+    """The device's side of deck-smoke: a LONG opens a card (or StarDict's definition), its SYNC logs the level
+    buttons, the TAP on L logs `after_tap` (the save and the deck's lines), HOME logs the close."""
+
+    def __init__(self, after_tap, levels=True, saved=0, stardict=False, closing=None):
+        self.after_tap, self.levels, self.saved, self.stardict = after_tap, levels, saved, stardict
+        self.closing = closing or []
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LONG "):
+            self.stream.append("[1] [DBG] [ACT] Entering activity: "
+                               + ("DictionaryDefinition" if self.stardict else "LexiriseCard"))
+        elif cmd == "SYNC" and seen is not None and self.levels:
+            seen += [f"[2] [INF] [LXCARD] level {i} {273 + 43 * i} 546 42 37 {self.saved}" for i in range(4)]
+        elif cmd.startswith("TAP "):
+            self.stream += self.after_tap
+        elif cmd == "HOME" and seen is not None:
+            seen += self.closing
+            self.stream.append("[9] [DBG] [ACT] Exiting activity: LexiriseCard")
+        return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class DeckSmokeDriver(unittest.TestCase):
+    def test_a_card_taps_l_where_the_card_drew_it_and_stops_once_recorded(self):
+        h = FakeDeckHarness(new_book() + ["[20000] [INF] [LXS] GET /v1/me -> 200 (ok)"])
+        opened, closing = lxctl.deck_card(h, (240, 150), watch_s=0.01)
+        self.assertEqual([c.split()[0] for c in h.sent], ["LONG", "SYNC", "TAP", "HOME"])
+        self.assertEqual(h.sent[2], f"TAP {273 + 43 + 21} {546 + 18}")  # L's centre, as logged
+        self.assertTrue(lxctl.DECK_RECORDED_LOG.search(opened[-1]))  # stopped on "recorded"
+        self.assertTrue(any("Exiting activity: LexiriseCard" in line for line in closing))  # the close's log
+        self.assertTrue(any("GET /v1/me" in line for line in closing))  # what came after the stop, with the close
+        self.assertFalse(any("GET /v1/me" in line for line in opened))
+
+    def test_a_card_stops_on_a_found_check(self):
+        h = FakeDeckHarness(checked_card() + ["[20000] [INF] [LXS] GET /v1/me -> 200 (ok)"])
+        opened, _ = lxctl.deck_card(h, (240, 150), watch_s=0.01)
+        self.assertIn("GET /v1/decks/{id} -> 200", opened[-1])
+
+    def test_stardict_no_levels_or_a_saved_word_raise(self):
+        for harness, message in ((FakeDeckHarness([], stardict=True), "StarDict"),
+                                 (FakeDeckHarness([], levels=False), "no level buttons"),
+                                 (FakeDeckHarness([], saved=1), "saved already")):
+            with self.assertRaisesRegex(RuntimeError, message):
+                lxctl.deck_card(harness, (240, 150), watch_s=0.01)
+
+    def test_the_smoke_runs_both_words_and_checks_them(self):
+        class TwoCards(FakeDeckHarness):
+            def __init__(self):
+                super().__init__(new_book())
+                self.cards = 0
+
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                if cmd.startswith("TAP "):
+                    self.cards += 1
+                    self.after_tap = new_book() if self.cards == 1 else [SAVE]
+                return super().command(cmd, expect, timeout, seen)
+
+        h = TwoCards()
+        self.assertEqual(lxctl.deck_smoke(h, watch_s=0.01), ["created", "none"])
+        self.assertEqual([c.split()[0] for c in h.sent].count("LONG"), 2)
 
 
 if __name__ == "__main__":

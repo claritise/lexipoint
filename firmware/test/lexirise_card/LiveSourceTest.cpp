@@ -9,6 +9,7 @@
 
 #include "FakeApi.h"
 #include "FakeMetrics.h"
+#include "Fakes.h"
 #include "lexirise/card/BenchFixtures.h"
 #include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardController.h"
@@ -268,6 +269,327 @@ TEST(LiveSave, TheBookTagGoesWithTheSave) {
   ASSERT_EQ(s.rig.api.written.size(), 1u);
   EXPECT_NE(s.rig.api.written[0].body.find(R"("tags":["xteink","book:h98593b64"])"), std::string::npos)
       << s.rig.api.written[0].body;
+}
+
+namespace {
+
+// The card loop's deck check at `nowMs`: the card's due work (a toast's end) handled first, as the loop does, then
+// CardSession::shouldFetchDeck with the loop's copy of when the card is next due.
+bool deckStepDue(Saving& s, const unsigned long nowMs, const bool rendering, const bool touching) {
+  s.c.tick(nowMs);
+  if (touching) s.session.touched(nowMs);
+  return s.session.shouldFetchDeck(nowMs, rendering, touching, s.c.nextDueMs());
+}
+
+// Cards in the book "Kokoro" with Deck per book on (C4, V3): their saves carry book:kokoro, and the book's deck is
+// kept in a decks.ini on a fake card, shared by every card as on the device.
+struct DeckBook {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::deck::DeckStore decks{files};
+};
+
+struct DeckSaving {
+  Saving s{/*complete=*/true, {"xteink", "book:kokoro"}};
+  explicit DeckSaving(DeckBook& book) {
+    s.source.setBookDeck({"kokoro", "Lexipoint: Kokoro"}, book.decks);
+    s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  }
+  void save() {
+    s.level(1);
+    s.drain();
+  }
+  // The card left idle: its deck steps, each once the card has been idle long enough.
+  int idle() {
+    int calls = 0;
+    for (int i = 0; i < 8; i++) {
+      s.now += config::kDeckIdleMs;
+      if (!deckStepDue(s, s.now, false, false)) continue;
+      s.session.applyDeck(s.session.fetchDeck(), s.now);
+      calls++;
+    }
+    return calls;
+  }
+};
+
+constexpr const char* kNoBookDeck =
+    R"({"decks":[{"id":3,"title":"JLPT N5","deck_type":"snapshot","unit_type":"word"}]})";
+constexpr const char* kCreated = R"({"success":true,"deck":{"id":12}})";
+
+}  // namespace
+
+TEST(LiveDeck, ANewBooksDeckIsMadeOnceTheCardIsIdleAfterTheSave) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.s.rig.api.deckReplies = {apiOk(kNoBookDeck), apiOk(kCreated)};
+  d.save();
+  EXPECT_TRUE(d.s.rig.api.decked.empty());  // the save alone: the deck waits for an idle card
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now, false, false));
+  EXPECT_EQ(d.idle(), 2);
+  ASSERT_EQ(d.s.rig.api.written.size(), 1u);  // the save, untouched
+  ASSERT_EQ(d.s.rig.api.decked.size(), 2u);
+  EXPECT_EQ(d.s.rig.api.decked[0].path, "/v1/decks?language=ja");
+  EXPECT_EQ(d.s.rig.api.decked[1].method, lexipoint::net::Method::Post);
+  EXPECT_NE(d.s.rig.api.decked[1].body.find(R"("user_tags":["book:kokoro"])"), std::string::npos);
+  EXPECT_NE(d.s.rig.api.decked[1].body.find(R"("title":"Lexipoint: Kokoro")"), std::string::npos);
+  EXPECT_EQ(book.files.files[config::kDecksPath], "ja:kokoro=12\n");
+
+  d.s.level(3);  // a level change later: a PATCH, and no more deck calls
+  d.s.drain();
+  EXPECT_EQ(d.idle(), 0);
+}
+
+TEST(LiveDeck, TheBooksDeckFromAnotherDeviceIsReused) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.s.rig.api.deckReplies = {apiOk(R"({"decks":[{"deckId":"d_7","title":"My Kokoro deck","deckType":"dynamic",)"
+                                   R"("unitType":"word","ruleType":"user_tag_filter","userTags":["book:kokoro"]}]})")};
+  d.save();
+  EXPECT_EQ(d.idle(), 1);  // found (camelCase): none created
+  EXPECT_EQ(book.files.files[config::kDecksPath], "ja:kokoro=d_7\n");
+}
+
+TEST(LiveDeck, ARecordedDeckIsCheckedOnceAndA404MakesItAgain) {
+  DeckBook book;
+  book.files.files[config::kDecksPath] = "ja:kokoro=7\n";
+  DeckSaving d(book);
+  d.s.rig.api.deckReplies = {apiOk(R"({"success":true,"deck":{"id":7},"items":[],"totalCount":0,"hasMore":false})")};
+  d.save();
+  EXPECT_EQ(d.idle(), 1);
+  EXPECT_EQ(d.s.rig.api.decked[0].path, "/v1/decks/7?limit=1");
+  DeckSaving next(book);  // the next card, same boot: checked already
+  next.save();
+  EXPECT_EQ(next.idle(), 0);
+
+  DeckBook deleted;  // deleted in Lexirise
+  deleted.files.files[config::kDecksPath] = "ja:kokoro=7\n";
+  DeckSaving g(deleted);
+  lexipoint::api::ApiResponse notFound = apiFailure(ApiError::Http);
+  notFound.status = 404;
+  g.s.rig.api.deckReplies = {notFound, apiOk(R"({"decks":[]})"), apiOk(R"({"success":true,"deck":{"id":13}})")};
+  g.save();
+  EXPECT_EQ(g.idle(), 3);
+  EXPECT_EQ(deleted.files.files[config::kDecksPath], "ja:kokoro=13\n");
+}
+
+TEST(LiveDeck, A404WhoseForgetCantBeSavedDoesntLoop) {
+  DeckBook book;
+  book.files.files[config::kDecksPath] = "ja:kokoro=7\n";
+  DeckSaving d(book);
+  lexipoint::api::ApiResponse notFound = apiFailure(ApiError::Http);
+  notFound.status = 404;
+  d.s.rig.api.deckReplies = {notFound, apiFailure(ApiError::NoWifi)};
+  d.save();
+  book.files.failWriteOf = config::kDecksTmpPath;
+  EXPECT_EQ(d.idle(), 2);  // the 404, then the list (offline): no second GET of the gone deck
+  EXPECT_EQ(d.s.rig.api.decked[1].path, "/v1/decks?language=ja");
+}
+
+TEST(LiveDeck, ACreationWhoseAnswerIsLostIsFoundByALaterBootsList) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.s.rig.api.deckReplies = {apiOk(R"({"decks":[]})"), apiOk(R"({"ok":true})")};  // created, but no id to read
+  d.save();
+  EXPECT_EQ(d.idle(), 2);
+  EXPECT_EQ(book.files.files.count(config::kDecksPath), 0u);
+
+  DeckSaving second(book);  // the next card with a save, same boot: only the list, and no second creation
+  second.s.rig.api.deckReplies = {apiOk(R"({"decks":[]})")};
+  second.save();
+  EXPECT_EQ(second.idle(), 1);
+  EXPECT_EQ(second.s.rig.api.decked[0].method, lexipoint::net::Method::Get);
+
+  lexipoint::deck::DeckStore reboot(book.files);  // a later boot: the list shows the deck made before
+  Saving later{/*complete=*/true, {"xteink", "book:kokoro"}};
+  later.source.setBookDeck({"kokoro", "Lexipoint: Kokoro"}, reboot);
+  later.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":903}})")};
+  later.rig.api.deckReplies = {
+      apiOk(R"({"decks":[{"id":40,"title":"Lexipoint: Kokoro","deck_type":"dynamic",)"
+            R"("unit_type":"word","rule_type":"user_tag_filter","user_tags":["book:kokoro"]}]})")};
+  later.level(1);
+  later.drain();
+  later.now += config::kDeckIdleMs;
+  ASSERT_TRUE(deckStepDue(later, later.now, false, false));
+  later.session.applyDeck(later.session.fetchDeck(), later.now);
+  EXPECT_EQ(book.files.files[config::kDecksPath], "ja:kokoro=40\n");
+}
+
+TEST(LiveDeck, OnlyAReadableWholeListLeadsToACreation) {
+  for (const char* list :
+       {R"({"decks":[{"weird":1}]})",                                                    // unreadable
+        R"({"decks":[],"hasMore":true})",                                                // another page
+        R"({"decks":[{"id":3,"title":"a"},{"id":"x/1","title":"Lexipoint: Kokoro"}]})",  // a dropped entry
+        R"([1,2])"}) {                                                                   // not decks
+    DeckBook book;
+    DeckSaving d(book);
+    d.s.rig.api.deckReplies = {apiOk(list), apiOk(kCreated)};
+    d.save();
+    EXPECT_EQ(d.idle(), 1) << list;
+    EXPECT_EQ(d.s.rig.api.decked.size(), 1u) << list;  // never on to Create
+  }
+}
+
+TEST(LiveDeck, TheOtherLanguagesDeckOfTheBookIsntTaken) {
+  DeckBook book;
+  DeckSaving d(book);
+  // The server ignored ?language=: the book's Chinese deck (same title and tag) is listed with the Japanese one's.
+  d.s.rig.api.deckReplies = {apiOk(R"({"decks":[{"id":5,"title":"Lexipoint: Kokoro","deck_type":"dynamic",)"
+                                   R"("unit_type":"word","rule_type":"user_tag_filter","user_tags":["book:kokoro"],)"
+                                   R"("language":"zh"}]})"),
+                             apiOk(kCreated)};
+  d.save();
+  EXPECT_EQ(d.idle(), 2);  // not taken: its own deck is made
+  EXPECT_EQ(book.files.files[config::kDecksPath], "ja:kokoro=12\n");
+}
+
+TEST(LiveDeck, EachLanguageOfTheBookGetsItsOwnDeck) {
+  DeckBook book;
+  book.decks.want("zh:kokoro");  // an earlier card in the book saved a Chinese word
+  DeckSaving d(book);
+  d.s.rig.api.deckReplies = {apiOk(R"({"decks":[]})"), apiOk(kCreated), apiOk(R"({"decks":[]})"),
+                             apiOk(R"({"success":true,"deck":{"id":13}})")};
+  d.save();  // a Japanese word
+  EXPECT_EQ(d.idle(), 4);
+  EXPECT_EQ(d.s.rig.api.decked[0].path, "/v1/decks?language=ja");
+  EXPECT_EQ(d.s.rig.api.decked[2].path, "/v1/decks?language=zh");
+  EXPECT_NE(d.s.rig.api.decked[3].body.find(R"("language":"zh")"), std::string::npos);
+  EXPECT_EQ(book.files.files[config::kDecksPath], "ja:kokoro=12\nzh:kokoro=13\n");
+}
+
+TEST(LiveDeck, DeckPerBookTurnedOffWhileTheCardIsOpenStopsIt) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.s.rig.api.deckReplies = {apiOk(kNoBookDeck), apiOk(kCreated)};
+  d.save();
+  d.s.session.setDeckAllowed(false);  // from the web page (LexiriseCardActivity reads it when the settings change)
+  EXPECT_EQ(d.idle(), 0);
+  d.s.session.setDeckAllowed(true);
+  EXPECT_EQ(d.idle(), 2);
+}
+
+TEST(LiveDeck, NoStepWhileASaveFailedToastIsUp) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.save();  // tagged and saved: the deck is wanted
+  d.s.rig.api.writeReplies = {apiFailure(ApiError::Network)};
+  d.s.level(3);  // a level change that fails: "Save failed · Retry", on the same network a deck call would use
+  d.s.drain();
+  ASSERT_NE(d.s.c.state().toast.find("Retry"), std::string::npos);
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));         // idle, but the toast is up
+  EXPECT_TRUE(deckStepDue(d.s, d.s.now + config::kFailureToastMs + 1, false, false));  // gone
+}
+
+TEST(LiveDeck, AFingerOnTheScreenIsntIdle) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.save();
+  d.s.now += config::kDeckIdleMs;
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now, false, /*touching=*/true));                // mid-swipe or long-press
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs - 1, false, false));  // idle from the lift
+  EXPECT_TRUE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));
+}
+
+TEST(LiveDeck, OfflineOrA429SkipsQuietlyUntilALaterSave) {
+  for (const ApiError error : {ApiError::NoWifi, ApiError::RateLimited}) {
+    DeckBook book;
+    DeckSaving d(book);
+    d.s.rig.api.deckReplies = {apiFailure(error)};
+    d.save();
+    EXPECT_EQ(d.idle(), 1);  // one try, no retry loop
+    EXPECT_EQ(book.files.files.count(config::kDecksPath), 0u);
+    EXPECT_EQ(d.s.c.state().level, Level::Learning);  // the save stands
+  }
+}
+
+TEST(LiveDeck, NoDeckWorkWithoutASaveThatCarriedTheBookTag) {
+  DeckBook book;
+  DeckSaving failed(book);  // the save failed: no deck
+  failed.s.rig.api.writeReplies = {apiFailure(ApiError::Network)};
+  failed.save();
+  EXPECT_EQ(failed.idle(), 0);
+
+  DeckSaving untagged(book);  // Tag with book title off: the saves don't carry the tag the deck is filled by
+  untagged.s.source.setBookDeck({"other", "Lexipoint: Other"}, book.decks);
+  untagged.save();
+  EXPECT_EQ(untagged.idle(), 0);
+}
+
+TEST(LiveDeck, ClosingSendsOnlyTheWritesAndALaterCardMakesTheDeck) {
+  DeckBook book;
+  {
+    DeckSaving quick(book);  // saved, closed at once
+    quick.s.level(1);
+    while (quick.s.session.hasPendingWrites()) {
+      quick.s.session.applyClosing(quick.s.session.fetch(quick.s.now, /*closing=*/true), quick.s.now);
+    }
+    EXPECT_TRUE(quick.s.rig.api.decked.empty());
+  }
+  {
+    DeckSaving another(book);  // another quick card: still nothing sent for the deck
+    another.s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":902}})")};
+    another.s.level(1);
+    while (another.s.session.hasPendingWrites()) {
+      another.s.session.applyClosing(another.s.session.fetch(another.s.now, /*closing=*/true), another.s.now);
+    }
+    EXPECT_TRUE(another.s.rig.api.decked.empty());
+  }
+  DeckSaving later(book);  // a card left open in the book, no save of its own: the deck is still wanted
+  later.s.rig.api.deckReplies = {apiOk(R"({"decks":[]})"), apiOk(kCreated)};
+  EXPECT_EQ(later.idle(), 2);
+  EXPECT_EQ(book.files.files[config::kDecksPath], "ja:kokoro=12\n");
+}
+
+TEST(LiveDeck, AWriteQueuedWhileDeckWorkWaitsGoesFirst) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.s.rig.api.deckReplies = {apiOk(kNoBookDeck), apiOk(kCreated)};
+  d.save();
+  d.s.now += config::kDeckIdleMs;
+  ASSERT_TRUE(deckStepDue(d.s, d.s.now, false, false));
+  d.s.rig.api.writeReplies = {apiOk("{}")};
+  d.s.level(3);  // a level change: input, then a PATCH in its Undo window
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));  // the write is queued
+  d.s.drain();
+  EXPECT_EQ(d.s.rig.api.written.size(), 2u);
+  EXPECT_TRUE(d.s.rig.api.decked.empty());
+  EXPECT_EQ(d.idle(), 2);
+}
+
+TEST(LiveDeck, AStepWaitsWhileARedrawOrInputIsWaiting) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.save();
+  d.s.now += config::kDeckIdleMs;
+  ASSERT_TRUE(deckStepDue(d.s, d.s.now, false, false));
+  d.s.session.redrawAsked();
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));
+  d.s.session.frameShown();
+  d.s.input.tap(1, 1, d.s.now);  // queued, not yet handled
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));
+}
+
+TEST(LiveDeck, TheIdleTimeStartsWhenTheCardOpens) {
+  DeckBook book;
+  book.decks.want("ja:kokoro");  // wanted by an earlier card in the book
+  DeckSaving d(book);
+  d.s.now += 10 * config::kDeckIdleMs;  // the device has been up a while: the card isn't idle just by opening
+  d.s.session.opened(d.s.now);
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now, false, false));
+  EXPECT_TRUE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));
+}
+
+TEST(LiveDeck, AStepWaitsForAnIdleCard) {
+  DeckBook book;
+  DeckSaving d(book);
+  d.save();
+  d.s.now += config::kDeckIdleMs;
+  EXPECT_TRUE(deckStepDue(d.s, d.s.now, false, false));
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now, /*rendering=*/true, false));
+  d.s.session.redrawAsked();
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now, false, false));  // a frame on its way
+  d.s.session.frameShown();
+  d.s.step(1);  // input: the idle time starts again
+  EXPECT_FALSE(deckStepDue(d.s, d.s.now, false, false));
+  EXPECT_TRUE(deckStepDue(d.s, d.s.now + config::kDeckIdleMs, false, false));
 }
 
 TEST(LiveSave, ASaveBeforePhaseBWaitsForTheTranslation) {

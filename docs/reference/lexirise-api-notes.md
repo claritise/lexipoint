@@ -21,7 +21,7 @@ number. Filters take either the number or the label.
 | `GET /v1/vocabulary` | C7 | Returns `{ items, totalCount, languageCount, nextOffset, availableTags }`. Filters: `language` (required), `mode` = **`words`/`sentences`** (plural, unlike POST), `proficiency`, `proficiencyLabel`, `userTags`, … `limit` ≤ 200 |
 | `PATCH /v1/vocabulary/{id}` | C9 (set the level from the card) | `proficiency` 0–4, `notes`, `customTranslation`, `tags`, `suspended`, … The `{id}` is the `saved_expression_id` from `stateByEntryId` |
 | `PUT /v1/vocabulary/{id}/tags` | C2 re-tagging only | **Replaces every tag.** Appending needs a read-modify-write |
-| `POST /v1/decks` | C4 | `deck_type` `snapshot` or **`dynamic`**. A dynamic deck with `rule_type: "user_tag_filter"` + `user_tags` fills itself from tagged vocabulary. Also `unit_type`, `parent_deck_id` (subdecks) |
+| `POST /v1/decks` | C4 | `deck_type` `snapshot` or **`dynamic`**. A dynamic deck with `rule_type: "user_tag_filter"` + `user_tags` fills itself from tagged vocabulary. Also `unit_type`, `parent_deck_id` (subdecks) . Used by V3, with `GET /v1/decks` and `GET /v1/decks/{id}` ("Decks" below) |
 | `POST /v1/analyze/context` | C10 (live 2026-09-25) | Sentence + the word's `charStart` / `charEnd` → `meaning`, `conciseMeaning`, `reading` (when the offsets match one token). See "Reported to Lexirise" |
 | `GET /v1/study/summary`, `POST /v1/study/sessions`, `GET /v1/study/sessions/{id}`, `POST /v1/study/sessions/{id}/reviews` | C11 (live 2026-09-25) | Due counts; sessions with card content; batched, deduped reviews with `reviewedAt`. See "Study API" |
 | `POST /v1/uploads/chapters` | C8 | Multipart. `content_type: document` accepts **EPUB/TXT**. `external_id` / `Idempotency-Key` for idempotency. Processing is async (`/status`) |
@@ -300,3 +300,45 @@ may show a rough split. v0.2 C19 has the plan. How long "later" is isn't documen
   `reviewedAt` after all); "not idempotent: never resend" (reviews are deduped by `id`).
 - **Nothing gets better on the device by itself** except fixed server data. Grammar, contextual
   meaning and reviews each need firmware work (v0.2 C10, C11, C19).
+
+## Decks (v0.2 V3, read and measured 2026-09-26)
+
+**From the reference** (`/api-reference`, 2026-09-26):
+- `POST /v1/decks`: required `title`, `language`, `unit_type` (`word` or `sentence`); optional `description`,
+  `parent_deck_id`, `position`, `deck_type` (`snapshot`, the default, or `dynamic`), `rule_type`
+  (`saved_vocab_query` or `user_tag_filter`), the dynamic filters `proficiency`, `part_of_speech`, `system_tags`,
+  `user_tags`, and for snapshots `saved_expression_selection` / `import_items`. Returns `{ success, deck }`.
+- `GET /v1/decks?language=`: `{ decks }`, the decks the user owns **or has starred**. No paging documented.
+- `GET /v1/decks/{id}` (`limit`, `offset`, `maxRank`): `{ success, deck, items, totalCount, hasMore }`, **404 for an
+  unknown id**. Deck fields named: `id`, `title`, `deck_type`, `unit_type`, `rule_type`, `user_tags`.
+- **A deck is words or sentences**, one `unit_type`; no mixed mode is documented. So C3's sentence saves would need
+  a second deck per book (`unit_type: "sentence"` on the same tag).
+- No limits on a title's or a tag's length, or on the number of tags, are documented.
+
+**Measured live (read-only, the dev key; no deck was created):** `GET /v1/decks`, with `?language=ja`, `=zh` and
+none, answered 200 with a 12-byte body, the size of `{"decks":[]}`: the account has no decks, so a listed deck's
+real shape is still unseen. `GET /v1/decks/999999999` answered **404** `{"success":false,"error":"Deck not found"}`.
+Responses kept in `research/decks/` (gitignored).
+
+**Open (check on the device, V3's gate, with claritise's OK):**
+- The field names of a listed deck (the reference's snake_case; `GET /v1/study/summary` lists decks in camelCase,
+  `deckId`, `unitType`), and whether `user_tags` comes back on a dynamic deck. V3 finds the book's deck by its tag,
+  else by its title, so a list without `user_tags` still finds it by title.
+- Whether a dynamic `user_tag_filter` deck fills with words saved **before** it was made (it should: it's a rule).
+- Whether `GET /v1/decks` honours `?language=`, and whether a listed deck says its language (read as `language`,
+  `lang`, `source_lang`/`sourceLang`, `source_language`/`sourceLanguage`): a deck that says another language is
+  never taken, since a book's ja and zh decks share title and tag.
+- Whether a listed deck says whose it is (read as `owned`, `isOwner`/`is_owner`, `isOwned`/`is_owned`) and whether
+  it's starred (`starred`, `isStarred`/`is_starred`): ownership decides when said, else a starred deck counts as
+  someone else's (the list holds starred decks too).
+- Whether `GET /v1/decks` pages (`hasMore` / `nextOffset`, as `GET /v1/vocabulary` does): a list that says so
+  never counts as "the book has no deck", and neither does a `totalCount` / `total_count` above the entries
+  that came. Only top-level fields are read: paging in a nested object (a
+  `pagination: {…}`) would go unseen, so the device check must look at a real list's top level.
+- Whether a deck's title has a length limit, and whether a starred deck of someone else's can carry our title.
+- **The request's names are the reference's snake_case** (`unit_type`, `deck_type`, `rule_type`, `user_tags`). If
+  the server wants other names it may make a plain snapshot deck instead; the device logs a warning when the
+  creation's answer says a type or rule other than `dynamic` / `user_tag_filter`. The parsers read snake_case and
+  camelCase, and log an unreadable answer's first bytes (`LXDECK`).
+- Deleting decks: `DELETE /v1/decks/{id}` isn't used; a deck the user deletes is found missing (404) and made again
+  on the book's next save. A user who doesn't want it turns **Deck per book** off.

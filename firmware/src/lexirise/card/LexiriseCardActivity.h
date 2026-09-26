@@ -8,6 +8,8 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "activities/Activity.h"
 #include "lexirise/card/BenchFixtures.h"
@@ -16,6 +18,7 @@
 #include "lexirise/card/CardSession.h"
 #include "lexirise/card/LiveSource.h"
 #include "lexirise/card/ShownTargets.h"
+#include "lexirise/settings/SettingsStore.h"
 
 namespace lexipoint::card {
 
@@ -57,7 +60,12 @@ class LexiriseCardActivity final : public Activity {
   void apply(const Outcome& outcome);
   void end(LiveOutcome ending);
   void logAnswer(const CardSession::Answer& answer) const;
-  void redraw();  // requestUpdate(), telling the session a frame is on its way
+  void redraw();       // requestUpdate(), telling the session a frame is on its way
+  bool deckStepDue();  // CardSession::shouldFetchDeck, with the settings and the finger read now
+#if LEXIPOINT_DEV_HARNESS
+  void logLevelButtons(const std::vector<Hit>& hits);  // render task: lxctl deck-smoke's tap targets
+  std::string loggedLevels_;
+#endif
 
   std::unique_ptr<CardSource> source_;  // the bench's, or the lookup's
   LiveSource* live_ = nullptr;          // source_ when live: loop() fetches, apply() under RenderLock
@@ -69,12 +77,13 @@ class LexiriseCardActivity final : public Activity {
   CardSession session_;                     // the three above and the live source, glued (pure)
   std::optional<unsigned long> nextDueMs_;  // loop()'s own copy of controller_.nextDueMs()
   bool persistReading_ = true;
-  bool smoke_ = false;         // Options::smoke: logs the word after each input (lxctl card-smoke)
-  int loggedWord_ = -1;        // smoke: the word last logged
-  int orientation_ = 0;        // the reader's, restored on exit
-  bool pageUnderCard_ = true;  // false when the page was laid out for another orientation (landscape)
-  bool finishing_ = false;     // end() ran: no more lookups or input
-  static int cardsShown_;      // for the periodic half refresh (config::kCardHalfRefreshEvery)
+  bool smoke_ = false;          // Options::smoke: logs the word after each input (lxctl card-smoke)
+  int loggedWord_ = -1;         // smoke: the word last logged
+  int orientation_ = 0;         // the reader's, restored on exit
+  bool pageUnderCard_ = true;   // false when the page was laid out for another orientation (landscape)
+  bool finishing_ = false;      // end() ran: no more lookups or input
+  SettingsWatch deckSettings_;  // CardSession::setDeckAllowed, read again when the settings change
+  static int cardsShown_;       // for the periodic half refresh (config::kCardHalfRefreshEvery)
 };
 
 }  // namespace lexipoint::card

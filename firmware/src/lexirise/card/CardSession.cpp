@@ -2,9 +2,12 @@
 
 #include "CardSession.h"
 
+#include "lexirise/util/Timing.h"
+
 namespace lexipoint::card {
 
 Outcome CardSession::handleInput(const unsigned long nowMs) {
+  if (!input_.empty()) lastActivityMs_ = nowMs;
   Outcome outcome = card::handleInput(controller_, targets_, input_, nowMs);
   input_.clear();
   if (live_) {
@@ -16,6 +19,7 @@ Outcome CardSession::handleInput(const unsigned long nowMs) {
 CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsigned long nowMs) {
   Answer answer;
   if (!live_) return answer;
+  lastActivityMs_ = nowMs;
   answer.clearFailed = fetched.clearFailed;
   answer.unreadable = fetched.unreadable;
   // A lookup for the word on screen changes what it shows (a save's retry fills the meaning in, or gives
@@ -41,6 +45,19 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
     answer.redraw = true;
   }
   return answer;
+}
+
+bool CardSession::shouldFetchDeck(const unsigned long nowMs, const bool rendering, const bool touching,
+                                  const std::optional<unsigned long> cardDueMs) const {
+  return live_ && deckAllowed_ && !rendering && !touching && !cardDueMs && !drawPending_ && input_.empty() &&
+         !hasWork(nowMs) && !live_->hasPendingWrites() &&
+         timing::reached(nowMs, lastActivityMs_ + config::kDeckIdleMs) && live_->hasDeckWork();
+}
+
+void CardSession::applyDeck(const deck::DeckCall& call, const unsigned long nowMs) {
+  if (!live_) return;
+  live_->applyDeck(call);
+  lastActivityMs_ = nowMs;  // the next step waits its own idle time too
 }
 
 CardSession::Answer CardSession::applyClosing(LiveSource::Fetched fetched, const unsigned long nowMs) {

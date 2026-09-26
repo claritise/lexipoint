@@ -197,3 +197,20 @@ TEST(SettingsStore, UnusableBackupIsMovedAsideToo) {
   });
   EXPECT_EQ(fs.files.at(config::kSettingsBadPath), fileWithKey(kKey));
 }
+
+TEST(SettingsWatch, SaysWhenTheSettingsChanged) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::SettingsStore store(files);
+  store.load();
+  lexipoint::SettingsWatch watch;
+  EXPECT_TRUE(watch.changed(store));  // the first look
+  EXPECT_FALSE(watch.changed(store));
+  store.update([](lexipoint::Settings& s) {
+    s.deckPerBook = false;
+    return true;
+  });
+  EXPECT_TRUE(watch.changed(store));
+  EXPECT_FALSE(watch.changed(store));
+  lexipoint::SettingsWatch other;  // one per reader
+  EXPECT_TRUE(other.changed(store));
+}

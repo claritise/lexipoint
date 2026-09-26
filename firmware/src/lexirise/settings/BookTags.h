@@ -59,6 +59,10 @@ class BookTagStore {
 // The device-wide store over the SD card (SettingsFilesHal.cpp; not linked into host tests).
 BookTagStore& bookTagStore();
 
+// The title recorded for a book: its own on one line, cut to config::kBookTagTitleMaxBytes, or for an untitled
+// one (text::isUntitled) its file name without the extension.
+std::string bookRecordTitle(std::string_view title, std::string_view path);
+
 // saveTags for a card in the open book: its tag is config::kBookTagPrefix + text::bookSlug (an untitled book's from its
 // path), and while settings.tagBook its title is recorded in `store` first (the file name for an untitled book).
 // A failed record doesn't stop the save.

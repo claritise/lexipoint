@@ -20,6 +20,8 @@ class LexiriseApi {
   virtual ApiResponse lookup(Language language, std::string_view lemma) = 0;
   // A /v1/vocabulary write (saveRequest, setProficiencyRequest, removeRequest, clearRequest).
   virtual ApiResponse write(const net::Request& request) = 0;
+  // A /v1/decks call for the book's deck (deckListRequest, deckRequest, createDeckRequest).
+  virtual ApiResponse deck(const net::Request& request) = 0;
 };
 
 }  // namespace lexipoint::api

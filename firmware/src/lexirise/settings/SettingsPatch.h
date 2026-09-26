@@ -24,6 +24,7 @@ struct SettingsPatch {
   std::optional<Language> defaultLanguage;
   std::optional<std::string> tags;
   std::optional<bool> tagBook;
+  std::optional<bool> deckPerBook;
   std::optional<int> wifiIdleMin;
   std::optional<std::string> baseUrl;
 };

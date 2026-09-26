@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/api/Requests.h"
 
@@ -121,4 +123,29 @@ TEST(Requests, LoggedPathsLeaveOutTheSavedExpressionId) {
   EXPECT_EQ(lexipoint::api::loggablePath("/v1/vocabulary/901"), "/v1/vocabulary/{id}");
   EXPECT_EQ(lexipoint::api::loggablePath("/v1/vocabulary"), "/v1/vocabulary");
   EXPECT_EQ(lexipoint::api::loggablePath("/v1/dictionary/lookup"), "/v1/dictionary/lookup");
+}
+
+TEST(Requests, DeckRequestsForABooksDeck) {
+  const auto list = lexipoint::api::deckListRequest(Language::Chinese);
+  EXPECT_EQ(list.method, Method::Get);
+  EXPECT_EQ(list.path, "/v1/decks?language=zh");
+  EXPECT_TRUE(list.retryable());
+
+  const auto one = lexipoint::api::deckRequest("42");
+  ASSERT_TRUE(one);
+  EXPECT_EQ(one->method, Method::Get);
+  EXPECT_EQ(one->path, "/v1/decks/42?limit=1");  // one item: only whether it's there matters
+  for (const char* bad : {"", "4/2", "42?x", "４２"}) EXPECT_FALSE(lexipoint::api::deckRequest(bad)) << bad;
+  EXPECT_FALSE(lexipoint::api::deckRequest(std::string(lexipoint::config::kMaxDeckIdBytes + 1, '9')));
+
+  const auto create =
+      lexipoint::api::createDeckRequest({Language::Japanese, "Lexipoint: 活着 \"2\"", "book:h98593b64"});
+  EXPECT_EQ(create.method, Method::Post);
+  EXPECT_EQ(create.path, "/v1/decks");
+  EXPECT_EQ(create.body, R"({"title":"Lexipoint: 活着 \"2\"","language":"ja","unit_type":"word",)"
+                         R"("deck_type":"dynamic","rule_type":"user_tag_filter","user_tags":["book:h98593b64"]})");
+  EXPECT_FALSE(create.retryable());  // a repeat would make a second deck
+
+  EXPECT_EQ(lexipoint::api::loggablePath("/v1/decks/42?limit=1"), "/v1/decks/{id}");
+  EXPECT_EQ(lexipoint::api::loggablePath("/v1/decks?language=ja"), "/v1/decks?language=ja");
 }

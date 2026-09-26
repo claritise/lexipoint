@@ -24,6 +24,7 @@ Group groupOf(const Row row) {
     case Row::DefaultLanguage:
     case Row::Tags:
     case Row::TagBook:
+    case Row::DeckPerBook:
     case Row::WifiIdle:
       break;
   }
@@ -47,6 +48,7 @@ Edit editFor(const Row row) {
     case Row::ZhDictionary:
     case Row::DefaultLanguage:
     case Row::TagBook:
+    case Row::DeckPerBook:
     case Row::WifiIdle:
       break;
   }
@@ -74,6 +76,7 @@ Rows visibleRows(const Settings& settings) {
   if (lexirise) {
     add(Row::Tags);
     add(Row::TagBook);
+    if (settings.tagBook) add(Row::DeckPerBook);
     add(Row::WifiIdle);
   }
   return out;
@@ -175,6 +178,9 @@ std::optional<SettingsPatch> tapPatch(const Row row, const Settings& settings,
       break;
     case Row::TagBook:
       patch.tagBook = !settings.tagBook;
+      break;
+    case Row::DeckPerBook:
+      patch.deckPerBook = !settings.deckPerBook;
       break;
     case Row::WifiIdle:
       patch.wifiIdleMin = nextWifiIdle(settings.wifiIdleMin);

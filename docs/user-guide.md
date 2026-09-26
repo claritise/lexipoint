@@ -111,14 +111,17 @@ language** to that book's language; it's remembered for that book (Auto goes bac
 | | API key, Account, Test connection | §3 |
 | Japanese | Lookups · Readings (kana / romaji) · Offline dictionary | |
 | Chinese (Simplified) | Lookups · Offline dictionary | |
-| General | Language when a book doesn't say (unless Lexirise is on with just one language on) · Tags · Tag with book title · Keep WiFi on after a lookup | |
+| General | Language when a book doesn't say (unless Lexirise is on with just one language on) · Tags · Tag with book title · Deck per book · Keep WiFi on after a lookup | |
 
 A language's rows hide while its Lookups are off (its Offline dictionary stays: it answers that language's
 taps then), and come back with their values. With Lexirise lookups off, the screen keeps the Account group,
 both Offline dictionaries and Language when a book doesn't say. **Tags** are added to
 every word you save (default `xteink`); Lexirise can't delete tags, so choose them with care. **Tag with book
 title** (on by default) also tags each word with its book, `book:` and the title in plain letters (a Japanese or
-Chinese title becomes a short code, like `book:h98593b64`), so you can find a book's words in Lexirise. The server
+Chinese title becomes a short code, like `book:h98593b64`), so you can find a book's words in Lexirise. **Deck per book** (on by default, shown while Tag with book title
+is on) also makes a Lexirise deck for each book, "Lexipoint: " and its title, after the first word you save
+from it (a few seconds later, while a card in that book stays open); it fills itself from the book's tag. If you delete the deck in Lexirise, the next word you save from
+the book makes it again: turn Deck per book off to stop that. The server
 address is on the web page only (under Advanced), for a local proxy; changing it asks for the key again.
 
 ## 7. Privacy and safety

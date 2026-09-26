@@ -2,6 +2,9 @@
 
 #include "Responses.h"
 
+#include <algorithm>
+
+#include "Requests.h"
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/net/JsonReader.h"
 #include "lexirise/text/Utf8Prefix.h"
@@ -270,6 +273,128 @@ class SaveVisitor final : public json::Visitor {
   SaveResult& out_;
 };
 
+constexpr size_t kDecksExpected = 16;  // a list's first reservation: a reader's handful of decks
+
+// A deck id: a number or a string, not empty and not too long.
+bool takeId(const Type type, const std::string_view text, std::string& out) {
+  if (type != Type::Number && type != Type::String) return false;
+  if (!isPlainId(text, config::kMaxDeckIdBytes)) return false;  // it goes into a request path
+  out.assign(text);
+  return true;
+}
+
+bool isIdKey(const std::string_view key) { return key == "id" || key == "deckId" || key == "deck_id"; }
+
+// One deck's scalar field, by the reference's name or its camelCase form.
+void takeDeckField(const std::string_view key, const Type type, const std::string_view text, DeckSummary& deck) {
+  const auto take = [&](std::string& field) {
+    if (type == Type::String && text.size() <= config::kMaxTokenBytes) field.assign(text);
+  };
+  if (isIdKey(key)) {
+    takeId(type, text, deck.id);
+  } else if (key == "title") {
+    take(deck.title);
+  } else if (key == "deck_type" || key == "deckType") {
+    take(deck.deckType);
+  } else if (key == "unit_type" || key == "unitType") {
+    take(deck.unitType);
+  } else if (key == "rule_type" || key == "ruleType") {
+    take(deck.ruleType);
+  } else if (key == "language" || key == "lang" || key == "source_lang" || key == "sourceLang" ||
+             key == "source_language" || key == "sourceLanguage") {
+    take(deck.language);
+  } else if (key == "starred" || key == "isStarred" || key == "is_starred") {
+    if (type == Type::Bool) deck.starred = text == "true";
+  } else if (key == "owned" || key == "isOwner" || key == "is_owner" || key == "isOwned" || key == "is_owned") {
+    if (type == Type::Bool) deck.owned = text == "true";
+  }
+}
+
+class DeckListVisitor final : public json::Visitor {
+ public:
+  explicit DeckListVisitor(std::vector<DeckSummary>& out) : out_(out) {}
+  bool sawList_ = false;
+  size_t entries_ = 0;             // every entry seen, read or not
+  bool morePages_ = false;         // the answer says there's another page
+  std::optional<uint32_t> total_;  // a count of every deck, when the answer gives one
+
+  void onBegin(const Path& path, const bool isArray) override {
+    if (isArray && !sawList_ &&
+        (path.depth() == 0 || (path.depth() == 1 && (path.keyIs(0, "decks") || path.keyIs(0, "data"))))) {
+      sawList_ = true;
+      base_ = path.depth();
+      if (base_ == 1) listKey_ = path.at(0).key;
+      return;
+    }
+    if (isArray && inList(path) && path.depth() == base_ + 1) {
+      entries_++;  // an array where a deck should be: an entry this can't read
+      current_ = -1;
+    } else if (!isArray && inList(path) && path.depth() == base_ + 1) {
+      entries_++;
+      if (out_.size() < config::kMaxDecksListed) {
+        out_.emplace_back();
+        current_ = path.index(base_);
+      } else {
+        current_ = -1;
+      }
+    }
+  }
+  void onValue(const Path& path, const Type type, const std::string_view text) override {
+    if (inList(path) && path.depth() == base_ + 1) {
+      entries_++;  // a scalar where a deck should be: an entry this can't read
+      return;
+    }
+    // Another page is only looked for at the top level, beside the list (as GET /v1/vocabulary says it).
+    if (path.depth() == 1 && !path.isIndex(0)) {
+      const std::string_view key = path.leaf();
+      if ((key == "hasMore" || key == "has_more") && type == Type::Bool && text == "true") morePages_ = true;
+      if ((key == "nextOffset" || key == "next_offset") && type != Type::Null) morePages_ = true;
+      if (key == "totalCount" || key == "total_count") {
+        uint32_t total = 0;
+        if (toUint32(type, text, total)) total_ = total;
+      }
+    }
+    if (!inList(path) || path.depth() < base_ + 2 || path.index(base_) != current_ || out_.empty()) return;
+    if (path.isIndex(base_ + 1)) return;
+    const std::string& key = path.at(base_ + 1).key;
+    DeckSummary& deck = out_.back();
+    if (path.depth() == base_ + 2) {
+      takeDeckField(key, type, text, deck);
+    } else if (path.depth() == base_ + 3 && (key == "user_tags" || key == "userTags") && path.isIndex(base_ + 2) &&
+               type == Type::String && !text.empty() && text.size() <= config::kMaxTokenBytes &&
+               deck.userTags.size() < config::kMaxDeckTagsRead) {
+      deck.userTags.emplace_back(text);
+    }
+  }
+
+ private:
+  // Inside the list: an entry, or one of its fields.
+  bool inList(const Path& path) const {
+    if (!sawList_ || path.depth() <= base_ || !path.isIndex(base_)) return false;
+    return base_ == 0 || path.keyIs(0, listKey_);
+  }
+
+  std::vector<DeckSummary>& out_;
+  size_t base_ = 0;  // the list's depth: 0 a bare array, 1 under `decks` / `data`
+  std::string listKey_;
+  int current_ = -1;  // the entry being read (past the cap: none)
+};
+
+class CreatedDeckVisitor final : public json::Visitor {
+ public:
+  // Where the deck's fields are, in the order they're trusted.
+  enum Slot : size_t { UnderDeck, UnderData, AtTop, kSlots };
+  DeckSummary found[kSlots];
+
+  void onValue(const Path& path, const Type type, const std::string_view text) override {
+    if (path.depth() == 2 && (path.keyIs(0, "deck") || path.keyIs(0, "data")) && !path.isIndex(1)) {
+      takeDeckField(path.at(1).key, type, text, found[path.keyIs(0, "deck") ? UnderDeck : UnderData]);
+    } else if (path.depth() == 1 && !path.isIndex(0)) {
+      takeDeckField(path.at(0).key, type, text, found[AtTop]);
+    }
+  }
+};
+
 }  // namespace
 
 const EntryMeta* AnalyzeResult::metaFor(const uint32_t entryId) const {
@@ -297,6 +422,37 @@ ParseStatus parseSave(const std::string_view body, SaveResult& out) {
   if (json::read(body, visitor) != json::Result::Ok || parsed.savedExpressionId.empty()) return ParseStatus::Malformed;
   out = std::move(parsed);
   return ParseStatus::Ok;
+}
+
+ParseStatus parseDeckList(const std::string_view body, std::vector<DeckSummary>& out, bool* complete) {
+  std::vector<DeckSummary> parsed;
+  parsed.reserve(kDecksExpected);
+  DeckListVisitor visitor(parsed);
+  if (json::read(body, visitor) != json::Result::Ok || !visitor.sawList_) return ParseStatus::Malformed;
+  parsed.erase(
+      std::remove_if(parsed.begin(), parsed.end(),
+                     [](const DeckSummary& d) { return d.id.empty() || (d.title.empty() && d.deckType.empty()); }),
+      parsed.end());
+  if (visitor.entries_ > 0 && parsed.empty()) return ParseStatus::Malformed;
+  // Whole: every entry read (none past the cap, none dropped for an id or fields it couldn't use: that one may be
+  // the book's deck), and no sign of another page.
+  if (complete) {
+    *complete = visitor.entries_ == parsed.size() && !visitor.morePages_ &&
+                (!visitor.total_ || *visitor.total_ <= visitor.entries_);  // a count past what came: a page cap
+  }
+  out = std::move(parsed);
+  return ParseStatus::Ok;
+}
+
+ParseStatus parseCreatedDeck(const std::string_view body, CreatedDeck& out) {
+  CreatedDeckVisitor visitor;
+  if (json::read(body, visitor) != json::Result::Ok) return ParseStatus::Malformed;
+  for (const DeckSummary& deck : visitor.found) {
+    if (deck.id.empty()) continue;
+    out = CreatedDeck{deck.id, deck.deckType, deck.ruleType};
+    return ParseStatus::Ok;
+  }
+  return ParseStatus::Malformed;
 }
 
 ParseStatus parseMe(const std::string_view body, MeInfo& out) {

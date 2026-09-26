@@ -29,6 +29,11 @@ Examples:
   lxctl.py reader-longpress [x y]     # a book open, upright portrait: a long-press looks up a word, and does
                                       # nothing off the text (P9, P10);
                                       # x y: a point on a word (default the page's middle)
+  lxctl.py --creates-a-deck deck-smoke [x1 y1 x2 y2]
+                                      # CREATES A REAL DECK and saves two words: only with claritise's OK.
+                                      # A dev build, a book open (upright portrait, Deck per book on), two
+                                      # unsaved words at x1 y1 and x2 y2; checks the book deck's calls from the
+                                      # log (V3; not sleep). Other commands ignore --creates-a-deck
 """
 
 from __future__ import annotations
@@ -556,10 +561,169 @@ def card_gestures(h: Harness, sleep=time.sleep) -> None:
     print("card-gestures OK")
 
 
+# deck-smoke (v0.2 V3, C4): the book deck's calls, from the service's "[LXS] <METHOD> <path> -> <status>" lines
+# (LexiriseService::send, ids masked, logged once answered), the deck steps' "[LXDECK] step <kind> <key>" (logged as
+# each starts, deck::sendDeckStep) and the store's "[LXDECK] Deck <lang>:<slug>: recorded". Each line starts
+# "[<millis>]" (lib/Logging). The card's level buttons come from its "[LXCARD] level <i> <x> <y> <w> <h> <saved>"
+# (LexiriseCardActivity, dev builds).
+DECK_CALL_LOG = re.compile(r"^\[(\d+)\] \[\w+\] \[LXS\] (GET|POST|PATCH|DELETE) (\S+) -> (-?\d+)")
+DECK_STEP_LOG = re.compile(r"^\[(\d+)\] \[\w+\] \[LXDECK\] step (check|list|create) (\S+)")
+DECK_RECORDED_LOG = re.compile(r"\[LXDECK\] Deck (\S+): recorded")
+CARD_LEVEL_LOG = re.compile(r"\[LXCARD\] level (\d) (-?\d+) (-?\d+) (\d+) (\d+) ([01])")
+DECK_IDLE_MS = 3000  # config::kDeckIdleMs (test_lxctl checks it)
+# A new book's deck: the save's Undo window (2 s), the save, then two idle windows (3 s each) and two calls.
+DECK_WATCH_S = 40.0
+DECK_SAVE_LEVEL = 1  # L: Level::Learning (CardModel.h; test_lxctl checks it)
+DECK_WORDS = ((240, 150), (240, 400))
+
+
+def deck_calls(log: list[str]) -> list[tuple[int, str, str, int]]:
+    """Every Lexirise call in `log`: (millis, method, masked path, status), logged as each was answered."""
+    return [(int(m.group(1)), m.group(2), m.group(3), int(m.group(4))) for line in log
+            if (m := DECK_CALL_LOG.search(line))]
+
+
+def deck_steps(log: list[str]) -> list[tuple[int, str]]:
+    """Every book deck step in `log`: (millis as it started, check | list | create)."""
+    return [(int(m.group(1)), m.group(2)) for line in log if (m := DECK_STEP_LOG.search(line))]
+
+
+def level_buttons(log: list[str]) -> dict[int, tuple[int, int, int, int, bool]]:
+    """The card's level buttons as last logged: index → (x, y, w, h, the word saved)."""
+    buttons: dict[int, tuple[int, int, int, int, bool]] = {}
+    for line in log:
+        if m := CARD_LEVEL_LOG.search(line):
+            i, x, y, w, h, saved = (int(v) for v in m.groups())
+            if i == 0:
+                buttons = {}  # a new set: the lines come in order, from T
+            buttons[i] = (x, y, w, h, saved == 1)
+    return buttons
+
+
+def check_deck_cards(cards: list[tuple[list[str], list[str]]], idle_ms: int = DECK_IDLE_MS,
+                     watch_s: float = DECK_WATCH_S) -> list[str]:
+    """V3's book deck on the device, from each card's log: (while open: the save and what followed, the close).
+    Every card saved a new word, and every deck step is for one book deck (one key: pick both words in the book's
+    language). Each deck step starts at least `idle_ms` after the save and after the deck call
+    before it (each step waits its own idle time); steps go check → list → create; a creation is followed by
+    "recorded". Nothing touches /v1/decks while a card closes. Over the run (one boot): at most one creation and
+    one check; once the deck was recorded or checked, no card calls /v1/decks again; the first card made one.
+    Returns what each card did ("created", "found", "checked", "none"); raises RuntimeError on the first broken
+    rule. Sleep isn't covered: a run is one boot, awake."""
+    posts = checks = 0
+    settled = False
+    done: list[str] = []
+    order = {"check": 0, "list": 1, "create": 2}
+    keys = {m.group(3) for opened, _ in cards for line in opened if (m := DECK_STEP_LOG.search(line))}
+    keys |= {m.group(1) for opened, _ in cards for line in opened if (m := DECK_RECORDED_LOG.search(line))}
+    if len(keys) > 1:  # one book, and both words in its language
+        raise RuntimeError(f"deck steps for more than one book deck: {sorted(keys)}")
+    for n, (opened, closing) in enumerate(cards, 1):
+        calls = deck_calls(opened)
+        saves = [c for c in calls if c[1] == "POST" and c[2] == "/v1/vocabulary" and 200 <= c[3] < 300]
+        if not saves:
+            raise RuntimeError(f"card {n} saved no new word (pick a word not saved yet)")
+        decks = [c for c in calls if c[2].startswith("/v1/decks")]
+        steps = deck_steps(opened)
+        if [c for c in deck_calls(closing) if c[2].startswith("/v1/decks")] or deck_steps(closing):
+            raise RuntimeError(f"card {n} called /v1/decks while closing")
+        if (decks or steps) and settled:
+            raise RuntimeError(f"card {n} called /v1/decks after the deck was settled this boot")
+        since = saves[-1][0]
+        last = -1
+        for ms, kind in steps:
+            # The idle time starts as a call's answer is applied, after its line is logged: never before the line.
+            if ms - since < idle_ms:
+                raise RuntimeError(f"card {n}: the {kind} step started {ms - since} ms after the save or the deck "
+                                   f"call before it, before {idle_ms} ms of idle")
+            if order[kind] < last:
+                raise RuntimeError(f"card {n}: {kind} after {[k for k, v in order.items() if v == last][0]}")
+            last = order[kind]
+            answered = [c for c in decks if c[0] >= ms]
+            since = answered[0][0] if answered else ms
+        kinds = [k for _, k in steps]
+        posts += kinds.count("create")
+        checks += kinds.count("check")
+        if posts > 1:
+            raise RuntimeError("a second deck creation this boot")
+        if checks > 1:
+            raise RuntimeError("the recorded deck was checked twice this boot")
+        recorded = any(DECK_RECORDED_LOG.search(line) for line in opened)
+        if "create" in kinds and not recorded:
+            raise RuntimeError(f"card {n} created a deck but recorded none (see the LXDECK lines)")
+        checked = any(c[1] == "GET" and c[2].startswith("/v1/decks/") and 200 <= c[3] < 300 for c in decks)
+        if n == 1 and not steps:
+            raise RuntimeError(f"card 1 made no deck call (is Deck per book on? waited {watch_s:.0f} s)")
+        did = ("created" if "create" in kinds else "found" if recorded else "checked" if checked
+               else "none" if not steps else "failed")
+        if did == "failed":
+            raise RuntimeError(f"card {n}'s deck calls settled nothing: {decks}")
+        settled = settled or did in ("created", "found", "checked")
+        done.append(did)
+    return done
+
+
+def read_for(h: Harness, seconds: float, stop=None) -> list[str]:
+    """Device log lines for up to `seconds`, or until `stop(line)`."""
+    deadline = time.time() + seconds
+    lines: list[str] = []
+    while True:
+        line = h.read_line(deadline)
+        if line is None:
+            return lines
+        lines.append(line)
+        if stop and stop(line):
+            return lines
+
+
+def deck_settled(line: str) -> bool:
+    """A line that ends a card's deck work: the deck recorded, or the recorded one found (a 2xx check)."""
+    m = DECK_CALL_LOG.search(line)
+    return bool(DECK_RECORDED_LOG.search(line) or (m and m.group(2) == "GET" and m.group(3).startswith("/v1/decks/")
+                                                    and 200 <= int(m.group(4)) < 300))
+
+
+def deck_card(h: Harness, at: tuple[int, int], watch_s: float = DECK_WATCH_S) -> tuple[list[str], list[str]]:
+    """One card in the open book: a long-press on the word at `at`, L (a new save) where the card logged it, then
+    the log while it stays open (until its deck is settled, or `watch_s`), then Home and the close's log."""
+    opened: list[str] = []
+    h.command(f"LONG {at[0]} {at[1]}", seen=opened)
+    opened += collect_until(h, (CARD_OPENED, DEFINITION_OPENED), LEXI_CALL_TIMEOUT_S)
+    if DEFINITION_OPENED in opened[-1]:
+        raise RuntimeError(f"StarDict answered the word at {at}, not Lexirise")
+    h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=opened)  # its lookup drawn: the level buttons logged
+    buttons = level_buttons(opened)
+    if DECK_SAVE_LEVEL not in buttons:
+        raise RuntimeError("the card logged no level buttons (a dev build, env:x4pro?)")
+    x, y, w, hh, saved = buttons[DECK_SAVE_LEVEL]
+    if saved:
+        raise RuntimeError(f"the word at {at} is saved already: pick one that isn't")
+    h.command(f"TAP {x + w // 2} {y + hh // 2}", seen=opened)
+    opened += read_for(h, watch_s, deck_settled)
+    closing: list[str] = []
+    h.command("HOME", seen=closing)
+    closing += collect_until(h, ("Exiting activity: LexiriseCard",), CARD_CLOSE_WAIT_S + LEXI_CALL_TIMEOUT_S)
+    closing += read_for(h, CARD_CLOSE_WAIT_S)  # back to the reader
+    return opened, closing
+
+
+def deck_smoke(h: Harness, words=DECK_WORDS, watch_s: float = DECK_WATCH_S) -> list[str]:
+    """V3's book deck on the device. CREATES A REAL DECK in the account (unless the book has one) and saves two
+    words: run it only with claritise's OK (lxctl.py --creates-a-deck deck-smoke). A dev build (env:x4pro: the
+    card logs its level buttons), a book open in the reader, upright portrait, Lexirise and Deck per book on, WiFi
+    saved; `words`: two words not saved yet. Card 1 saves one and waits for the deck (a new book: list, create; a
+    book recorded on an earlier boot: one check); card 2 saves the other and must make no deck call this boot.
+    Checked from the log by check_deck_cards. Sleep isn't covered."""
+    cards = [deck_card(h, at, watch_s) for at in words]
+    done = check_deck_cards(cards, watch_s=watch_s)
+    print(f"deck-smoke OK: {', '.join(done)}")
+    return done
+
+
 SETTINGS_ROWS_LOG = re.compile(r"\[LXSET\] rows (\d+)")  # LexiriseSettingsActivity, dev builds
 # settings_screen::visibleRows: Lexirise off (the Account group, the two offline dictionaries and the default
 # language) .. every row
-SETTINGS_ROWS_MIN, SETTINGS_ROWS_MAX = 7, 13
+SETTINGS_ROWS_MIN, SETTINGS_ROWS_MAX = 7, 14
 
 
 def settings_smoke(h: Harness, outdir: str, shot=None) -> int:
@@ -643,9 +807,15 @@ def lexi(h: Harness, args: list[str]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port")
+    ap.add_argument("--creates-a-deck", action="store_true",
+                    help="deck-smoke only (other commands ignore it): confirms claritise's OK to create a real "
+                         "deck and save two words")
     ap.add_argument("cmd")
     ap.add_argument("args", nargs="*")
     a = ap.parse_args()
+    if a.cmd.lower() == "deck-smoke" and not a.creates_a_deck:  # before the port: nothing touches the device
+        sys.exit("deck-smoke creates a real deck and saves two words: run it only with claritise's OK, "
+                 "as lxctl.py --creates-a-deck deck-smoke [x1 y1 x2 y2]")
     ser = open_serial(a.port)
     h = Harness(ser)
     try:
@@ -712,6 +882,15 @@ def main() -> None:
                 reader_longpress(h, tuple(map(int, a.args[:2])) if len(a.args) >= 2 else READER_ON_TEXT)
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"reader-longpress FAILED: {e}")
+        elif c == "deck-smoke":
+            words = DECK_WORDS
+            if len(a.args) >= 4:
+                v = list(map(int, a.args[:4]))
+                words = ((v[0], v[1]), (v[2], v[3]))
+            try:
+                deck_smoke(h, words)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"deck-smoke FAILED: {e}")
         elif c == "card-gestures":
             try:
                 card_gestures(h)
