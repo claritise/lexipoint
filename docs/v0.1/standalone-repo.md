@@ -256,7 +256,7 @@ blocks M.
 
 | # | Question | Default until answered |
 |---|---|---|
-| H11 | **License for Lexipoint's own code.** The repo root has no license today. | No root `LICENSE`. CrossPoint's MIT `LICENSE` stays in `firmware/` |
+| H11 | ~~**License for Lexipoint's own code.** The repo root has no license today.~~ **Answered 2026-09-27** (claritise: "ill keep lexipoint MIT"): MIT, the root `LICENSE`. | ~~No root `LICENSE`.~~ CrossPoint's MIT `LICENSE` stays in `firmware/` |
 | H12 | **Version scheme.** Keep `<upstream>-lexi.<n>` (e.g. `1.6.5-lexi.1`), or switch to Lexipoint's own (`0.1.0`, as `LEXIPOINT_VERSION` already says) before the first release? Switching changes `ota::isNewerRelease`, `release_tag.py` and their tests. | Keep `<upstream>-lexi.<n>` in M. If switching, do it as its own phase before the first release |
 | H13 | **Wording that replaces "Same as CrossPoint"** in settings. | "Same as reader" |
 

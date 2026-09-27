@@ -41,4 +41,4 @@ firmware is built on. The checks every change passes are in
 
 Lexipoint is built on [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader) (MIT,
 © 2025 Dave Allie) and the [FreeInk SDK](https://github.com/Free-Ink/freeink-sdk) (MIT, © 2026 FreeInk).
-See [`NOTICE`](NOTICE). CrossPoint's license is in [`firmware/LICENSE`](firmware/LICENSE).
+Lexipoint is MIT-licensed ([`LICENSE`](LICENSE)). See [`NOTICE`](NOTICE) for what it's built on; CrossPoint's license is in [`firmware/LICENSE`](firmware/LICENSE).
