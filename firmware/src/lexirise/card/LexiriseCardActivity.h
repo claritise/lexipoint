@@ -60,8 +60,10 @@ class LexiriseCardActivity final : public Activity {
   void apply(const Outcome& outcome);
   void end(LiveOutcome ending);
   void logAnswer(const CardSession::Answer& answer) const;
-  void redraw();       // requestUpdate(), telling the session a frame is on its way
-  bool deckStepDue();  // CardSession::shouldFetchDeck, with the settings and the finger read now
+  void redraw();  // requestUpdate(), telling the session a frame is on its way
+  // An idle card's one blocking step, if any, in CardSession::nextIdleStep's order: the book deck's, else the vocab
+  // mirror's file read or write (Flush), else a mirror page, with the settings and the finger read now.
+  void idleStep();
 #if LEXIPOINT_DEV_HARNESS
   void logTapTargets(const std::vector<Hit>& hits);  // render task: lxctl deck-smoke's and ignore-smoke's targets
   std::string loggedTargets_;

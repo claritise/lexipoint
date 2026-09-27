@@ -141,6 +141,8 @@ class FakeWifi : public net::WifiControl {
     return result;
   }
   void touch() override { touches++; }
+  bool isConnected = true;  // connected(): a vocabulary page may go without a join
+  bool connected() override { return isConnected; }
   bool tick(int) override {
     if (!expireOnNextTick || !owned) return false;
     expireOnNextTick = false;

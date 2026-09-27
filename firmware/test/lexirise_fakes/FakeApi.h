@@ -3,7 +3,9 @@
 // A scripted Lexirise (api::LexiriseApi) for the lookup and card suites: replies queued per call kind
 // (the last one repeats), and every call recorded.
 
+#include <algorithm>
 #include <deque>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,6 +42,14 @@ class FakeApi final : public api::LexiriseApi {
   std::vector<net::Request> written;
   std::vector<net::Request> decked;
   std::vector<net::Request> items;  // savedItem's requests
+  // vocabularyPage (V7a): `vocabServer` answers each request when set (a fake account paging its items), else the
+  // scripted replies; none = offline. A body is streamed into the sink `vocabChunkBytes` at a time, as the client
+  // would (and never kept: the response's body is empty); a sink that stops it makes the answer Malformed. A failure
+  // with a body is one cut after those bytes (a timeout mid-page).
+  std::deque<api::ApiResponse> vocabReplies;
+  std::function<api::ApiResponse(const net::Request&)> vocabServer;
+  size_t vocabChunkBytes = 7;
+  std::vector<net::Request> vocabRequests;
 
   api::ApiResponse analyze(Language, const std::string_view sentence) override {
     analyzed.emplace_back(sentence);
@@ -64,6 +74,20 @@ class FakeApi final : public api::LexiriseApi {
   api::ApiResponse savedItem(const net::Request& request) override {
     items.push_back(request);
     return next(itemReplies);
+  }
+  api::ApiResponse vocabularyPage(const net::Request& request, net::BodySink& sink) override {
+    vocabRequests.push_back(request);
+    api::ApiResponse r = vocabServer ? vocabServer(request) : next(vocabReplies);
+    if (!r.ok() && r.body.empty()) return r;
+    const std::string body = std::move(r.body);
+    r.body.clear();
+    for (size_t at = 0; at < body.size(); at += vocabChunkBytes) {
+      if (!sink.onBody(body.data() + at, std::min(vocabChunkBytes, body.size() - at))) {
+        r.error = api::ApiError::Malformed;
+        break;
+      }
+    }
+    return r;
   }
 
  private:

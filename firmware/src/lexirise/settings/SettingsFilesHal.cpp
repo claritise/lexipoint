@@ -10,6 +10,7 @@
 #include "IgnoredWords.h"
 #include "SettingsStore.h"
 #include "lexirise/deck/BookDeck.h"
+#include "lexirise/vocab/VocabMirror.h"
 
 namespace lexipoint {
 namespace {
@@ -80,6 +81,11 @@ IgnoredWordStore& ignoredWordStore() {
 
 deck::DeckStore& deck::deckStore() {
   static DeckStore store(halFiles());
+  return store;
+}
+
+vocab::VocabStore& vocab::vocabStore() {
+  static VocabStore store(halFiles());
   return store;
 }
 

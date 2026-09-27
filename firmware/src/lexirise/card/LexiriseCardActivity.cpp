@@ -5,9 +5,12 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
+#include <HalGPIO.h>
+#include <HalMemory.h>
 #include <Logging.h>
 
 #include <cstdio>
+#include <ctime>
 #include <string>
 
 #include "lexirise/LexiriseConfig.h"
@@ -25,6 +28,13 @@ namespace lexipoint::card {
 int LexiriseCardActivity::cardsShown_ = 0;
 
 namespace {
+
+// The wall clock (seconds since the epoch; before the first NTP sync it reads 1970, which the mirror's schedule
+// takes as not set).
+uint32_t epochNow() {
+  const time_t now = time(nullptr);
+  return now > 0 ? static_cast<uint32_t>(now) : 0;
+}
 
 ReadingMode savedReading() {
   return settingsStore().snapshot().japaneseReading == Reading::Romaji ? ReadingMode::Romaji : ReadingMode::Kana;
@@ -87,7 +97,7 @@ void LexiriseCardActivity::loop() {
   readGestures(now);
   // A step keeps when its press was first seen: one held through a blocking call (the next sentence's
   // analysis) is first seen just after it, and mustn't count after the jump (CardController::step). A press
-  // made and released entirely during a call (that analysis, a write, or a book deck step on an idle card) is
+  // made and released entirely during a call (that analysis, a write, or an idle card's deck step or vocab page) is
   // never seen at all: the side buttons are only read between loop passes.
   if (mappedInput.wasReleased(MappedInputManager::Button::PageForward)) {
     input_.step(+1, now, now - mappedInput.getHeldTime());
@@ -103,18 +113,50 @@ void LexiriseCardActivity::loop() {
   // The network call waits until what was asked for is on screen (CardSession::shouldFetch).
   if (live_ && !finishing_ && session_.shouldFetch(millis(), RenderLock::peek())) {
     fetchAnswer();
-  } else if (live_ && !finishing_ && deckStepDue()) {
-    session_.applyDeck(session_.fetchDeck(), millis());  // blocking, like a write; no redraw: nothing shown changes
+  } else if (live_ && !finishing_) {
+    idleStep();
   }
 }
 
-bool LexiriseCardActivity::deckStepDue() {
+void LexiriseCardActivity::idleStep() {
   if (deckSettings_.changed(settingsStore())) session_.setDeckAllowed(deck::deckAllowed(settingsStore().snapshot()));
   int x = 0;
   int y = 0;
   const bool touching = mappedInput.isScreenTouchHeld(x, y);
   if (touching) session_.touched(millis());
-  return session_.shouldFetchDeck(millis(), RenderLock::peek(), touching, nextDueMs_);
+  const uint32_t epochS = epochNow();
+  const CardSession::IdleStep next = session_.nextIdleStep(millis(), RenderLock::peek(), touching, nextDueMs_, epochS);
+  if (next == CardSession::IdleStep::Deck) {
+    session_.applyDeck(session_.fetchDeck(), millis());  // blocking, like a write; no redraw: nothing shown changes
+    return;
+  }
+  if (next == CardSession::IdleStep::Flush) {
+    // The vocab mirror's file (V7a): read once per boot (up to kVocabMaxBytes, its CRC checked), written when the
+    // card's answers changed it. Logged for the device check (the first card's load on a large mirror).
+    const unsigned long start = millis();
+    session_.flushMirror(/*load=*/true, millis());
+    LOG_INF(vocab::kLogTag, "mirror file read or written in %lu ms", millis() - start);
+    return;
+  }
+  if (next != CardSession::IdleStep::Vocab) return;
+  // Blocking too (a page streams in a few seconds); nothing shown changes. Logged for the device check (V7a): the
+  // page's time and the heap during it (the lowest free and largest block since boot, internal RAM).
+  const unsigned long start = millis();
+  // A side button pressed while it streams gives the page up (read straight from the hardware: the debounced state
+  // isn't updated during the call), so the press is handled, not lost.
+  const std::optional<vocab::PageCall> page = session_.fetchVocab(start, epochS, [] { return gpio.rawInputActive(); });
+  const unsigned long took = millis() - start;
+  const unsigned long applyStart = millis();
+  session_.applyVocab(page, applyStart, epochS);  // the mirror's file rewritten whole (SD I/O)
+  const unsigned long applied = millis() - applyStart;
+  if (page) {
+    const HalMemory::HeapStats heap = HalMemory::getInternalHeap();
+    LOG_INF(vocab::kLogTag,
+            "page %u items in %lu ms (%s%s), applied and written in %lu ms; heap %u free, %u min, %u largest",
+            static_cast<unsigned>(page->page.items.size()), took, api::apiErrorName(page->error),
+            page->cancelled ? ", given up for input" : "", applied, static_cast<unsigned>(heap.freeBytes),
+            static_cast<unsigned>(heap.minFreeBytes), static_cast<unsigned>(heap.largestBlockBytes));
+  }
 }
 
 void LexiriseCardActivity::readGestures(const unsigned long now) {
@@ -175,6 +217,7 @@ void LexiriseCardActivity::fetchAnswer() {
   }
   logAnswer(answer);
   logWord(shown, false);
+  session_.recordMirror();  // what the answer taught the vocab mirror (V7a), in memory: its file waits for idle
   if (answer.ended) return end(*answer.ended);
   if (answer.redraw) redraw();
 }
@@ -199,6 +242,7 @@ void LexiriseCardActivity::flushWrites(const bool lockHeld) {
       answer = session_.applyClosing(std::move(fetched), millis());
     }
     logAnswer(answer);
+    session_.recordMirror();  // into the vocab mirror's memory (its file: end(), else the next card)
   }
 }
 
@@ -241,6 +285,7 @@ void LexiriseCardActivity::end(const LiveOutcome ending) {
   if (finishing_) return;
   finishing_ = true;
   flushWrites(/*lockHeld=*/false);
+  session_.flushMirror(/*load=*/false, millis());  // what the card taught the mirror, to its file (only if it's loaded)
   if (outcome_) {
     *outcome_ = ending;
     outcome_->unsentSaves = session_.unsentSaves();

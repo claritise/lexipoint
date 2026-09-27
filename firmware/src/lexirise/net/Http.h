@@ -45,15 +45,31 @@ struct Request {
 std::string buildRequest(const Endpoint& endpoint, const Request& request, std::string_view apiKey,
                          std::string_view userAgent);
 
+// Where a streamed body goes (a response too large to hold: V7a's vocabulary pages), piece by piece as it's
+// decoded. False: stop (the body is unreadable); the response fails as Rejected.
+class BodySink {
+ public:
+  virtual ~BodySink() = default;
+  virtual bool onBody(const char* data, size_t len) = 0;
+  virtual size_t maxBytes() const = 0;  // the whole body's cap: past it the response is malformed
+};
+
 // Incremental response parser. Feed it bytes as they arrive; it stops at the end of one response.
 // noBody: the request was a HEAD, so the response has no body whatever its headers say.
 class ResponseParser {
  public:
   enum class State { Headers, Body, Done, Error };
-  enum class Failure { None, Malformed, HeadersTooLarge, BodyTooLarge, Truncated };
+  enum class Failure { None, Malformed, HeadersTooLarge, BodyTooLarge, Truncated, Rejected };
 
   explicit ResponseParser(size_t maxBody = config::kHttpMaxBodyBytes, bool noBody = false)
       : maxBody_(maxBody), noBody_(noBody) {}
+
+  // A 2xx body goes to `sink` as it comes, up to `maxBytes` in all, and is never held (body() stays empty); any
+  // other status's body is kept as usual (maxBody), for the error it carries. Set before the first feed().
+  void streamTo(BodySink* sink, size_t maxBytes) {
+    sink_ = sink;
+    streamMax_ = maxBytes;
+  }
 
   // Consumes up to len bytes and returns how many it used (fewer only once Done or Error).
   size_t feed(const char* data, size_t len);
@@ -84,6 +100,7 @@ class ResponseParser {
   bool onHeadersEnd();
   size_t feedBody(const char* data, size_t len);
   bool appendBody(const char* data, size_t len);
+  size_t bodyRoom() const;  // bytes the body may still take
 
   size_t maxBody_;
   bool noBody_ = false;
@@ -102,6 +119,10 @@ class ResponseParser {
   bool sawLength_ = false;
   ChunkState chunkState_ = ChunkState::Size;
   std::string body_;
+  BodySink* sink_ = nullptr;
+  size_t streamMax_ = 0;
+  bool streaming_ = false;  // this response's body goes to sink_ (a 2xx)
+  size_t streamed_ = 0;
 };
 
 }  // namespace lexipoint::net

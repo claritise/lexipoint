@@ -24,6 +24,7 @@
 #include "lexirise/lookup/StarDictChoice.h"      // LEXIPOINT
 #include "lexirise/settings/BookTags.h"          // LEXIPOINT
 #include "lexirise/settings/IgnoredWords.h"      // LEXIPOINT
+#include "lexirise/vocab/VocabMirror.h"          // LEXIPOINT
 #endif
 
 namespace {
@@ -544,6 +545,7 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
                                                               std::move(tags), std::move(next));
   source->setBookTitles(lexipoint::bookTagStore());        // "Met before"'s book titles (C14)
   source->setIgnoredWords(lexipoint::ignoredWordStore());  // the reader's ignored words (C17), read before it opens
+  source->setVocabMirror(lexipoint::vocab::vocabStore());  // the vocab mirror (C13, V7a), loaded on the first idle card
   // The book's deck, filled by its tag (C4): the card makes sure it exists once a save went through.
   if (auto deck = lexipoint::deck::bookDeckFor(settings, bookTitle, bookPath, lexipoint::bookTagStore())) {
     source->setBookDeck(std::move(*deck), lexipoint::deck::deckStore());

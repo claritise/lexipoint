@@ -199,7 +199,10 @@ size_t ResponseParser::feed(const char* data, const size_t len) {
           fail(Failure::Malformed);
           return static_cast<size_t>(p - data);
         }
+        BodySink* const sink = sink_;
+        const size_t streamMax = streamMax_;
         *this = ResponseParser(maxBody_, noBody_);
+        streamTo(sink, streamMax);
         interimResponses_ = interim;
       } else {
         ok = onHeadersEnd();
@@ -256,6 +259,7 @@ bool ResponseParser::onHeaderLine(const std::string_view line) {
 }
 
 bool ResponseParser::onHeadersEnd() {
+  streaming_ = sink_ != nullptr && status_ >= 200 && status_ < 300;
   if (framing_ == Framing::Chunked) {
     if (sawLength_) return false;  // both framings: refuse rather than guess
     remaining_ = 0;
@@ -264,11 +268,11 @@ bool ResponseParser::onHeadersEnd() {
     framing_ = Framing::None;
   } else if (sawLength_) {
     framing_ = Framing::Length;
-    if (remaining_ > maxBody_) {
+    if (remaining_ > bodyRoom()) {
       fail(Failure::BodyTooLarge);
       return false;
     }
-    body_.reserve(remaining_);
+    if (!streaming_) body_.reserve(remaining_);
   } else {
     framing_ = Framing::UntilClose;
   }
@@ -280,10 +284,20 @@ bool ResponseParser::onHeadersEnd() {
   return true;
 }
 
+size_t ResponseParser::bodyRoom() const { return streaming_ ? streamMax_ - streamed_ : maxBody_ - body_.size(); }
+
 bool ResponseParser::appendBody(const char* data, const size_t len) {
-  if (body_.size() + len > maxBody_) {
+  if (len > bodyRoom()) {
     fail(Failure::BodyTooLarge);
     return false;
+  }
+  if (streaming_) {
+    streamed_ += len;
+    if (len > 0 && !sink_->onBody(data, len)) {
+      fail(Failure::Rejected);
+      return false;
+    }
+    return true;
   }
   body_.append(data, len);
   return true;
@@ -318,7 +332,7 @@ size_t ResponseParser::feedBody(const char* data, const size_t len) {
           fail(Failure::Malformed);
           break;
         }
-        if (size > maxBody_ - body_.size()) {
+        if (size > bodyRoom()) {
           fail(Failure::BodyTooLarge);
           break;
         }

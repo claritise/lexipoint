@@ -272,3 +272,74 @@ TEST(Service, AKeyRejectedDuringALookupShowsOnTheWebPage) {
   rig.service.analyze(lexipoint::Language::Japanese, "x");  // revoked in the app since
   EXPECT_EQ(rig.service.keyStatus().state, KeyState::Rejected);
 }
+
+namespace {
+
+struct Collect : lexipoint::net::BodySink {
+  std::string got;
+  bool onBody(const char* data, size_t len) override {
+    got.append(data, len);
+    return true;
+  }
+  size_t maxBytes() const override { return 1000000; }
+};
+
+}  // namespace
+
+TEST(Service, AVocabularyPageNeverBringsWifiUp) {
+  Rig rig;
+  rig.wifi.isConnected = false;  // the radio's off (or someone else's): the mirror waits for a lookup's WiFi
+  Collect sink;
+  const auto r =
+      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0), sink);
+  EXPECT_EQ(r.error, ApiError::NoWifi);
+  EXPECT_EQ(rig.wifi.ensures, 0);
+  EXPECT_EQ(rig.conn.opens, 0);
+
+  rig.wifi.isConnected = true;
+  rig.conn.reads = {httpOk(R"({"items":[]})")};
+  const auto page =
+      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 48), sink);
+  EXPECT_TRUE(page.ok());
+  EXPECT_EQ(sink.got, R"({"items":[]})");
+  EXPECT_EQ(rig.wifi.touches, 0);  // the radio's idle teardown isn't put off by the mirror's sync
+  EXPECT_EQ(rig.wifi.ensures, 0);
+  ASSERT_EQ(rig.conn.written.size(), 1u);
+  EXPECT_NE(
+      rig.conn.written[0].find("GET /v1/vocabulary?language=ja&limit=50&offset=48&sortId=updated_at&sortDesc=true"),
+      std::string::npos);
+}
+
+TEST(Service, AVocabularyPageGivenUpClosesItsSessionAndTheNextCallOpensAnother) {
+  struct Stops : lexipoint::net::BodySink {
+    bool onBody(const char*, size_t) override { return false; }  // input came: the page is given up
+    size_t maxBytes() const override { return 1000000; }
+  } stops;
+  Rig rig;
+  rig.conn.reads = {httpOk(R"({"items":[]})"), httpOk(R"({"user":{},"apiKey":{"rateLimitMax":1200}})")};
+  const auto given =
+      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0), stops);
+  EXPECT_EQ(given.error, ApiError::Malformed);
+  EXPECT_FALSE(rig.conn.isOpen());  // the rest of that body is never read into the next answer
+  const int opens = rig.conn.opens;
+  rig.service.checkKey();
+  EXPECT_EQ(rig.conn.opens, opens + 1);
+}
+
+TEST(Service, AVocabularyPageDoesntPushOutTheTlsIdleClose) {
+  Rig rig;
+  FakeClock::nowMs = 1000;
+  rig.conn.reads = {httpOk(kMe), httpOk(R"({"occurrences":[]})"), httpOk(R"({"items":[]})")};
+  ASSERT_EQ(rig.service.checkKey().state, KeyState::Connected);  // no key check queued to muddle the close
+  rig.service.analyze(lexipoint::Language::Japanese, "t");       // the reader's own call, at t0
+  ASSERT_TRUE(rig.conn.isOpen());
+  FakeClock::nowMs = 1000 + config::kTlsIdleCloseMs / 2;
+  Collect sink;
+  ASSERT_TRUE(
+      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0), sink).ok());
+  rig.service.tick();
+  ASSERT_TRUE(rig.conn.isOpen());
+  FakeClock::nowMs = 1000 + config::kTlsIdleCloseMs;  // the idle close, counted from the lookup, not the page
+  rig.service.tick();
+  EXPECT_FALSE(rig.conn.isOpen());
+}

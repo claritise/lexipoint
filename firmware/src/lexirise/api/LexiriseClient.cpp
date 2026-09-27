@@ -84,7 +84,7 @@ bool LexiriseClient::configure(const std::string_view baseUrl, const std::string
   return true;
 }
 
-ApiResponse LexiriseClient::send(const net::Request& request) {
+ApiResponse LexiriseClient::send(const net::Request& request, net::BodySink* sink) {
   ApiResponse response;
   if (!configured_) {
     response.error = ApiError::NotConfigured;
@@ -92,11 +92,12 @@ ApiResponse LexiriseClient::send(const net::Request& request) {
   }
   deadlineSet_ = false;
   const bool reused = connection_.isOpen();
-  if (attempt(request, reused, response) == Attempt::StaleSession) {
+  // A stale session fails before any response byte, so a sink has had nothing yet when the request is resent.
+  if (attempt(request, reused, response, sink) == Attempt::StaleSession) {
     const bool sent = response.sent;
     response = ApiResponse();
     if (request.retryable()) {
-      attempt(request, false, response);
+      attempt(request, false, response, sink);
     } else {
       response.error = ApiError::Network;  // it may have reached the server: never sent twice
     }
@@ -113,7 +114,8 @@ uint32_t LexiriseClient::readTimeout() const {
                                                                    : config::kHttpTimeoutMs;
 }
 
-LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, const bool reused, ApiResponse& out) {
+LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, const bool reused, ApiResponse& out,
+                                                net::BodySink* sink) {
   if (!reused) {
     const net::OpenError openError = connection_.open(endpoint_);
     if (openError != net::OpenError::None) {
@@ -138,6 +140,7 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
   out.sent = true;
 
   net::ResponseParser parser;
+  if (sink) parser.streamTo(sink, sink->maxBytes());
   char buffer[config::kHttpReadChunkBytes];
   bool gotBytes = false;
   while (!parser.done() && parser.state() != net::ResponseParser::State::Error) {

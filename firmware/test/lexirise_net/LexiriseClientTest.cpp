@@ -262,3 +262,78 @@ TEST(LexiriseClient, SaysWhetherTheRequestLeft) {
   EXPECT_EQ(retried.error, ApiError::Network);
   EXPECT_TRUE(retried.sent);
 }
+
+namespace {
+
+// Collects a streamed body (V7a), and can stop it after `stopAfter` bytes.
+struct Collect : lexipoint::net::BodySink {
+  std::string got;
+  size_t pieces = 0;
+  size_t stopAfter = SIZE_MAX;
+  bool onBody(const char* data, size_t len) override {
+    got.append(data, len);
+    pieces++;
+    return got.size() <= stopAfter;
+  }
+  size_t maxBytes() const override { return lexipoint::config::kVocabPageMaxBytes; }
+};
+
+}  // namespace
+
+TEST(LexiriseClient, AStreamedBodyGoesToTheSinkAndIsNeverHeld) {
+  FakeConnection conn;
+  conn.maxBytesPerRead = 100;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  // Past the buffered limit (kHttpMaxBodyBytes), chunked, as a vocabulary page may come.
+  const std::string body(lexipoint::config::kHttpMaxBodyBytes * 3, 'x');
+  std::string chunked = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+  for (size_t at = 0; at < body.size(); at += 5000) {
+    const std::string piece = body.substr(at, 5000);
+    char size[16];
+    std::snprintf(size, sizeof(size), "%zx\r\n", piece.size());
+    chunked += size + piece + "\r\n";
+  }
+  chunked += "0\r\n\r\n";
+  conn.reads = {chunked, ok(std::string(10, 'y'))};
+  Collect sink;
+  const auto r = client.send(kMe, &sink);
+  ASSERT_TRUE(r.ok());
+  EXPECT_TRUE(r.body.empty());
+  EXPECT_EQ(sink.got, body);
+  EXPECT_GT(sink.pieces, 1u);
+  // The session is kept, and a call without a sink buffers as before.
+  const auto next = client.send(kMe);
+  EXPECT_EQ(next.body, std::string(10, 'y'));
+  EXPECT_EQ(conn.opens, 1);
+}
+
+TEST(LexiriseClient, AnErrorsBodyIsntStreamedAndASinkThatStopsMakesItMalformed) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  conn.reads = {"HTTP/1.1 429 Too Many\r\nRetry-After: 20\r\nContent-Length: 2\r\n\r\n{}"};
+  Collect refused;
+  const auto limited = client.send(kMe, &refused);
+  EXPECT_EQ(limited.error, ApiError::RateLimited);
+  EXPECT_EQ(limited.retryAfterS, 20u);
+  EXPECT_TRUE(refused.got.empty());
+
+  conn.reads = {ok(std::string(3000, 'z'))};
+  Collect stops;
+  stops.stopAfter = 1000;
+  conn.maxBytesPerRead = 500;
+  EXPECT_EQ(client.send(kMe, &stops).error, ApiError::Malformed);
+  EXPECT_FALSE(conn.isOpen());  // the rest of the body is never read: the session goes
+}
+
+TEST(LexiriseClient, AStreamedBodyOverItsCapIsMalformed) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  client.configure(kBase, kKey);
+  conn.reads = {"HTTP/1.1 200 OK\r\nContent-Length: " + std::to_string(lexipoint::config::kVocabPageMaxBytes + 1) +
+                "\r\n\r\n"};
+  Collect sink;
+  EXPECT_EQ(client.send(kMe, &sink).error, ApiError::Malformed);
+  EXPECT_TRUE(sink.got.empty());
+}

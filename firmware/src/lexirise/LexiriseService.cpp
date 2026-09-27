@@ -20,7 +20,7 @@ LexiriseService::LexiriseService(SettingsStore& store, net::WifiControl& wifi, n
                                  std::string userAgent, const Clock clock)
     : store_(store), wifi_(wifi), client_(connection, std::move(userAgent), clock), clock_(clock) {}
 
-api::ApiResponse LexiriseService::send(const net::Request& request) {
+api::ApiResponse LexiriseService::send(const net::Request& request, net::BodySink* sink, const bool mayJoin) {
   // A rejected key (401/403) or a rate limit (429) is honoured without the network (offline-and-errors.md
   // §1, §3); only the key check may probe a rejected key.
   const unsigned long now = clock_();  // one reading: the block and its refusal must agree
@@ -34,19 +34,28 @@ api::ApiResponse LexiriseService::send(const net::Request& request) {
     response.error = api::ApiError::NotConfigured;
     return response;
   }
-  if (const net::WifiResult wifi = wifi_.ensureUp(); wifi != net::WifiResult::Up) {
+  if (!mayJoin) {
+    // Only over the station as it is: no join, and no touch() either (ensureUp's own, and after the call), so the
+    // radio's idle teardown isn't put off by it.
+    if (!wifi_.connected()) {
+      response.error = api::ApiError::NoWifi;
+      return response;
+    }
+  } else if (const net::WifiResult wifi = wifi_.ensureUp(); wifi != net::WifiResult::Up) {
     closeSession();
     response.error = wifi == net::WifiResult::NotConfigured ? api::ApiError::NoWifiSaved : api::ApiError::NoWifi;
     return response;
   }
   if (!checking_) recheckIfStale();  // online now: a key saved while offline gets checked next tick
-  response = client_.send(request);
+  response = client_.send(request, sink);
   access_.observe(response, clock_());
   // A lookup or save that finds the key rejected tells the web page too (it'd still say "Connected").
   if (!checking_ && response.error == api::ApiError::Unauthorized) status_ = api::keyStatusFrom(response);
-  wifi_.touch();
+  if (mayJoin) wifi_.touch();
   sessionActive_ = true;
-  lastCallMs_ = clock_();
+  // A vocabulary page doesn't push out the TLS idle close: it counts from the reader's own last call, so the sync
+  // never holds the session's internal RAM longer (a lookup after it may need a new handshake).
+  if (mayJoin) lastCallMs_ = clock_();
   // Never log the body or the key: the status and error name are enough to diagnose.
   LOG_INF(kLogTag, "%s %s -> %d (%s)", net::methodName(request.method), api::loggablePath(request.path).c_str(),
           response.status, api::apiErrorName(response.error));
@@ -92,6 +101,10 @@ api::ApiResponse LexiriseService::analyzeWords(const Language language, const st
 
 api::ApiResponse LexiriseService::lookup(const Language language, const std::string_view lemma) {
   return send(api::lookupRequest(language, lemma));
+}
+
+api::ApiResponse LexiriseService::vocabularyPage(const net::Request& request, net::BodySink& sink) {
+  return send(request, &sink, /*mayJoin=*/false);
 }
 
 api::ApiResponse LexiriseService::write(const net::Request& request) {

@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "lexirise/util/Timing.h"
+
 namespace lexipoint::config {
 
 // Settings file on the SD card (settings.md §3). Hidden dot folder: the web file manager refuses it.
@@ -48,6 +50,40 @@ constexpr size_t kIgnoredTextMaxBytes = 64;  // such a form, longer: not ignorab
 constexpr size_t kIgnoredMaxBytes = 20480;   // the file: both caps' longest lines (checked in IgnoredWords.cpp)
 constexpr size_t kDecksMax = 100;            // decks remembered; one more forgets the oldest (found again by the list)
 constexpr size_t kDecksMaxBytes = 16384;     // kDecksMax of the longest lines (checked below, with the slug's size)
+// The vocab mirror (C13, V7a): each language's saved words, read-only from the user's Lexirise account, one binary
+// file per language (vocab/VocabMirror.h; its format in docs/v0.1/settings.md §3).
+constexpr const char* kVocabPathJa = "/.lexirise/vocab-ja.bin";
+constexpr const char* kVocabTmpPathJa = "/.lexirise/vocab-ja.bin.tmp";
+constexpr const char* kVocabBackupPathJa = "/.lexirise/vocab-ja.bin.bak";
+constexpr const char* kVocabBadPathJa = "/.lexirise/vocab-ja.bin.bad";
+constexpr const char* kVocabPathZh = "/.lexirise/vocab-zh.bin";
+constexpr const char* kVocabTmpPathZh = "/.lexirise/vocab-zh.bin.tmp";
+constexpr const char* kVocabBackupPathZh = "/.lexirise/vocab-zh.bin.bak";
+constexpr const char* kVocabBadPathZh = "/.lexirise/vocab-zh.bin.bad";
+constexpr size_t kVocabMirrorMax = 20000;  // words kept per language (16 B each); past it, new ones aren't taken
+constexpr size_t kVocabHeaderBytes = 72;
+constexpr size_t kVocabRecordBytes = 16;
+constexpr size_t kVocabMaxBytes = kVocabHeaderBytes + kVocabMirrorMax * kVocabRecordBytes;
+// Syncing it (GET /v1/vocabulary, newest change first). Items are ~6.8 KB each (lexirise-api-notes.md "V7's
+// foundations"): a page of kVocabPageItems is ~340 KB, streamed and never held, so one page blocks the card's loop
+// for a few seconds, not the ~1.35 MB of a 200-item page.
+constexpr uint32_t kVocabPageItems = 50;
+constexpr uint32_t kVocabListLimitMax = 200;  // the reference's `limit` cap: a page with more items is malformed
+constexpr uint32_t kVocabPageOverlap = 2;     // the next page starts this many items back: an item deleted meanwhile
+                                              // moves the rest up, and the overlap keeps them from being skipped
+// An incremental pass's first page: a probe, since the usual answer is "nothing new" (a whole page of ~6.8 KB items
+// to learn that was the cost); pages after it are whole. limit=2 answered as asked (measured).
+constexpr uint32_t kVocabProbeItems = 5;
+static_assert(kVocabProbeItems > kVocabPageOverlap, "a probe leaves the whole overlap");
+constexpr size_t kVocabPageMaxBytes = 4UL * 1024UL * 1024UL;  // a streamed page larger than this is malformed
+constexpr size_t kJsonStreamMaxStringBytes = 256;  // a streamed string kept (the rest walked): kMaxTokenBytes
+constexpr unsigned kVocabPagesPerCard = 2;         // pages one card may fetch (each blocks the loop)
+constexpr size_t kVocabPendingMax = 256;           // card answers kept for a mirror not loaded yet (16 B each)
+constexpr unsigned kVocabPagesPerHour = 60;        // pages fetched per hour of uptime: 5% of the 1200 req/h limit
+constexpr unsigned long kVocabSyncIntervalMs = 15UL * timing::kMsPerMinute;  // an incremental sync at most this often
+constexpr unsigned long kVocabFailureWaitMs = 5UL * timing::kMsPerMinute;  // after a page failed (not a 429's own wait)
+constexpr uint32_t kVocabResyncS =
+    7U * static_cast<uint32_t>(timing::kSecondsPerDay);  // a full pass again after this (deletions: VocabMirror.h)
 // The longest FAT/exFAT long name in UTF-8: 255 UTF-16 units, up to 3 bytes each (web/HiddenPath.h).
 constexpr size_t kMaxFatNameBytes = 255 * 3;
 
@@ -114,7 +150,7 @@ constexpr uint32_t kWifiStopWaitMs = 300;  // for the station to report stopped 
 // kMaxCallMs, so a waiter (lxctl, the web page's key check) never gives up on a join that's still in time.
 constexpr uint32_t kWifiRadioSlackMs = 2000;
 constexpr uint32_t kWifiPollMs = 50;
-constexpr unsigned long kMsPerMinute = 60UL * 1000UL;
+constexpr unsigned long kMsPerMinute = timing::kMsPerMinute;
 
 // Sentence extraction (sentence-extraction.md §2).
 constexpr size_t kMaxSentenceUnits = 120;  // cap in UTF-16 units (Lexirise's), centred on the tap
@@ -216,6 +252,9 @@ static_assert(kDecksMax * (kLanguageCodeBytes + 1 + kBookSlugMaxBytes + 1 + kMax
 // A card starts its book's deck work only once it has been idle this long (no input, no answer, no write
 // waiting): a deck call blocks the loop, so it keeps clear of stepping and a save's Undo window.
 constexpr unsigned long kDeckIdleMs = 3000;
+// A vocab mirror page (V7a) the same way, after any deck step, but only after longer idle: a page blocks the loop for
+// seconds (a side-button press gives it up, VocabPageReader's cancel). Its file is read and written after kDeckIdleMs.
+constexpr unsigned long kVocabIdleMs = 8000;
 
 // The longest one Lexirise call can block (WiFi join, NTP, TCP + handshake, the request). The web page
 // polls a queued key check for this long, and lxctl's LEXI wait is checked against it (test_lxctl).

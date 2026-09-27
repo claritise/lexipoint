@@ -25,6 +25,33 @@ namespace lexipoint::card {
 
 namespace {
 
+constexpr size_t kMirrorReserved = 16;  // mirror updates or written entries a card first makes room for
+
+// What an analysis says of its words' entries, for the vocab mirror (V7a): each word's lemma entry (the save's target)
+// and its surface entry, saved or not. An entry the answer doesn't list isn't saved, unless the answer was cut at
+// config::kMaxEntries (then only the listed ones count).
+std::vector<vocab::LiveState> liveStatesOf(const lookup::AnalyzedSentence& analyzed) {
+  const api::AnalyzeResult& analysis = analyzed.analysis;
+  const bool whole = analysis.state.size() < config::kMaxEntries;
+  std::vector<vocab::LiveState> live;
+  live.reserve(2 * analyzed.words.size());
+  const auto add = [&](const uint32_t id) {
+    if (id == 0 || std::any_of(live.begin(), live.end(), [id](const vocab::LiveState& l) { return l.entryId == id; })) {
+      return;
+    }
+    const api::EntryState* state = analysis.stateFor(id);
+    if (!state && !whole) return;
+    const std::optional<api::EntryState> saved = state ? std::optional<api::EntryState>(*state) : std::nullopt;
+    if (const std::optional<vocab::LiveState> l = vocab::liveStateOf(analyzed.language, id, saved)) live.push_back(*l);
+  };
+  for (const size_t w : analyzed.words) {
+    const api::Occurrence& occ = analysis.occurrences[w];
+    add(lookup::entryKeyOf(occ));
+    add(occ.entryId);
+  }
+  return live;
+}
+
 // The tapped character: phase 0's text and highlight (popup-ui.md §2).
 const text::SentenceChar* tappedChar(const text::BuiltSentence& sentence) {
   for (const text::SentenceChar& c : sentence.chars) {
@@ -331,6 +358,68 @@ void LiveSource::applyDeck(const deck::DeckCall& call) {
   if (decks_ && call.step != deck::DeckStep::None) decks_->apply(call);
 }
 
+void LiveSource::setVocabMirror(vocab::VocabStore& store) {
+  vocab_ = &store;
+  vocabLanguage_ = sentences_.front().tap.language.language;  // loaded later, on an idle card (flushMirror)
+}
+
+void LiveSource::toMirror(const vocab::LiveState& state, const bool ownWrite) {
+  if (!vocab_) return;
+  const std::pair<Language, uint32_t> entry{state.language, state.entryId};
+  // A linear scan, bounded by the entries this card wrote (a handful: one per word the user saved or leveled).
+  const bool written = std::find(writtenEntries_.begin(), writtenEntries_.end(), entry) != writtenEntries_.end();
+  if (ownWrite && !written) {
+    if (writtenEntries_.empty()) writtenEntries_.reserve(kMirrorReserved);
+    writtenEntries_.push_back(entry);
+  }
+  if (!ownWrite && written) return;                                     // this card's write is newer than the analysis
+  if (mirrorUpdates_.empty()) mirrorUpdates_.reserve(kMirrorReserved);  // a sentence's words, lemma and surface
+  mirrorUpdates_.push_back(state);
+}
+
+void LiveSource::recordMirror() {
+  if (!vocab_ || mirrorUpdates_.empty()) return;
+  vocab_->record(mirrorUpdates_);
+  mirrorUpdates_.clear();
+}
+
+bool LiveSource::mirrorFlushDue() const {
+  // A write that failed isn't tried again on this card's idle windows (the close tries once more, then the next card).
+  return vocab_ && ((vocabLanguage_ && !vocab_->loaded(*vocabLanguage_)) || (vocab_->dirty() && !mirrorWriteFailed_));
+}
+
+void LiveSource::flushMirror(const bool load) {
+  if (!vocab_) return;
+  recordMirror();
+  if (load && vocabLanguage_) vocab_->load(*vocabLanguage_);
+  if (!vocab_->flush()) mirrorWriteFailed_ = true;
+}
+
+bool LiveSource::hasVocabWork(const unsigned long nowMs, const uint32_t epochS) const {
+  return vocab_ && vocabLanguage_ && writes_.empty() && wordCount() > 0 && error_ == api::ApiError::None &&
+         vocabPages_ < config::kVocabPagesPerCard && vocab_->next(*vocabLanguage_, nowMs, epochS).has_value();
+}
+
+std::optional<vocab::PageCall> LiveSource::fetchVocab(const unsigned long nowMs, const uint32_t epochS,
+                                                      const api::VocabPageReader::Cancel cancel) {
+  if (!hasVocabWork(nowMs, epochS)) return std::nullopt;
+  const std::optional<vocab::PagePlan> plan = vocab_->next(*vocabLanguage_, nowMs, epochS);
+  if (!plan) return std::nullopt;
+  if (cancel && cancel()) {  // a button already held: given up before the request, which then costs nothing
+    vocab::PageCall held;
+    held.plan = *plan;
+    held.cancelled = true;
+    return held;
+  }
+  return vocab::sendPage(api_, *plan, cancel);
+}
+
+void LiveSource::applyVocab(const vocab::PageCall& call, const unsigned long nowMs, const uint32_t epochS) {
+  if (!vocab_) return;
+  if (!call.cancelled) vocabPages_++;  // a page given up for input doesn't use the card's share
+  vocab_->apply(call, nowMs, epochS);
+}
+
 std::optional<LiveSource::FailedWrite> LiveSource::takeFailedWrite() {
   std::optional<FailedWrite> failed = std::move(failedWrite_);
   failedWrite_.reset();
@@ -417,6 +506,7 @@ LiveSource::Fetched LiveSource::analysis(const size_t sentence) const {
       f.cards.push_back(lookup::cardFor(analyzed, i));
       f.names.push_back(formNameOf(f.cards.back(), page));
     }
+    if (vocab_) f.live = liveStatesOf(analyzed);
 #if LEXIPOINT_DEV_HARNESS
     if (clock_) {
       // And the stack this task never used so far (bytes): the search's frames are its deepest here.
@@ -490,7 +580,11 @@ LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs
         return Advance::Idle;
       }
       std::optional<api::EntryState> saved = card.saved;
+      // The entry Lexirise keeps it under: the one whose state the card had (the surface's when only it was saved),
+      // or for a new save the lemma's (the save sends the lemma).
+      uint32_t savedEntry = card.saved && card.savedEntryId != 0 ? card.savedEntryId : card.lemmaEntryId;
       if (!fetched.savedExpressionId.empty()) {
+        savedEntry = card.lemmaEntryId;
         saved.emplace();
         saved->savedExpressionId = fetched.savedExpressionId;
         // What the save sent, as Lexirise now holds it: a later sentence's "Met before" (C14).
@@ -507,10 +601,19 @@ LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs
       } else if (saved) {
         saved->proficiency = proficiencyOf(change.to);
       }
+      const Language language = card.language;
+      // Lexirise keeps a removed dictionary word's item, at level 0 (measured), ours too though the card forgets it.
+      std::optional<api::EntryState> kept = saved;
+      if (change.to == Level::None && savedHere && card.saved) {
+        kept = card.saved;
+        kept->proficiency = 0;
+      }
       for (const int w : same) {  // one entry in Lexirise
         cards_[w].saved = saved;
+        cards_[w].savedEntryId = saved ? savedEntry : 0;
         rebuild(w);  // its "Met before" follows (a copy analysed before the save landed too)
       }
+      if (const auto state = vocab::liveStateOf(language, savedEntry, kept)) toMirror(*state, true);
       return Advance::Idle;  // the card already shows the level; a copy on screen that changed: takeShownChanged()
     }
   }
@@ -527,6 +630,7 @@ LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
   }
   sentences_[fetched.sentence].analyzed = true;
   resumeAfter_.reset();
+  for (const vocab::LiveState& state : fetched.live) toMirror(state, false);
   // An entry already on the card knows best whether it's saved (a save made here may be newer than this
   // analysis): its later occurrences share that, so the next write for any of them is the right one, and its "Met
   // before" (the sentence and tags a save made here sent, or its item once fetched).
@@ -534,6 +638,7 @@ LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
     for (const int e : sameWord(w)) {
       if (e < first) {
         cards_[w].saved = cards_[e].saved;
+        cards_[w].savedEntryId = cards_[e].savedEntryId;
         break;
       }
     }

@@ -137,6 +137,43 @@ class CardSession {
   // Outside RenderLock: the card's state doesn't change, only the deck store.
   void applyDeck(const deck::DeckCall& call, unsigned long nowMs);
 
+  // The vocab mirror's sync (C13, V7a; LiveSource::hasVocabWork): a page on an idle card by the deck's rule, only
+  // after the longer config::kVocabIdleMs and once no deck step or mirror file read or write is due (they go first:
+  // nextIdleStep), never as the card closes. It blocks the loop (a page is a few seconds: the device check times it),
+  // so a side-button press gives it up (`cancel`, polled as the page streams), at most config::kVocabPagesPerCard per
+  // card, and the idle time starts again after each. `epochS`: the wall clock (time()), for the full pass's schedule.
+  bool shouldFetchVocab(unsigned long nowMs, bool rendering, bool touching, std::optional<unsigned long> cardDueMs,
+                        uint32_t epochS) const;
+  std::optional<vocab::PageCall> fetchVocab(const unsigned long nowMs, const uint32_t epochS,
+                                            const api::VocabPageReader::Cancel cancel = nullptr) {
+    return live_ ? live_->fetchVocab(nowMs, epochS, cancel) : std::nullopt;
+  }
+  // Outside RenderLock (the mirror's file is written): the card's state doesn't change.
+  void applyVocab(const std::optional<vocab::PageCall>& call, unsigned long nowMs, uint32_t epochS);
+  // What the card's answers taught the mirror, into its memory (LiveSource::recordMirror: no SD I/O, so after every
+  // answer, before the redraw).
+  void recordMirror() {
+    if (live_) live_->recordMirror();
+  }
+  // The mirror's file read (once per boot per language) or written: SD I/O, so only on a card idle
+  // config::kDeckIdleMs by the deck's rule (after any deck step, before a page: nextIdleStep), or as the card closes
+  // (`load` false: only a write), outside RenderLock.
+  bool shouldFlushMirror(unsigned long nowMs, bool rendering, bool touching,
+                         std::optional<unsigned long> cardDueMs) const;
+
+  // An idle card's one blocking step now, in priority order: the book deck's (shouldFetchDeck), then the mirror's file
+  // (shouldFlushMirror), then a mirror page (shouldFetchVocab); None: nothing yet.
+  enum class IdleStep : uint8_t { None, Deck, Flush, Vocab };
+  IdleStep nextIdleStep(unsigned long nowMs, bool rendering, bool touching, std::optional<unsigned long> cardDueMs,
+                        uint32_t epochS) const;
+  // `nowMs`: the idle time starts again after it (a write that failed is tried in the next idle window, not every
+  // pass).
+  void flushMirror(const bool load, const unsigned long nowMs) {
+    if (!live_) return;
+    live_->flushMirror(load);
+    lastActivityMs_ = nowMs;
+  }
+
  private:
   CardController& controller_;
   ShownTargets& targets_;
@@ -150,6 +187,9 @@ class CardSession {
     std::vector<std::pair<int, IgnoredKey>> evicted;  // the word ignored, and the key it pushed out
   };
   Persisted persistIgnores(const Outcome& outcome) const;  // to the source's store
+  // The card has been idle `idleMs`: nothing to fetch, send, draw or handle, no finger down, nothing due.
+  bool idleFor(unsigned long nowMs, bool rendering, bool touching, std::optional<unsigned long> cardDueMs,
+               unsigned long idleMs) const;
 
   int unsentSaves_ = 0;
   api::ApiError unsentError_ = api::ApiError::None;

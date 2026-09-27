@@ -62,6 +62,9 @@ class LexiriseService final : public api::LexiriseApi {
   api::ApiResponse deck(const net::Request& request) override { return write(request); }
   // GET /v1/vocabulary/{id} (read-only: on the keep-alive session, resent once if it turned stale).
   api::ApiResponse savedItem(const net::Request& request) override { return send(request); }
+  // GET /v1/vocabulary, a page streamed into `sink` (V7a): only while WiFi is up already (never a join: the mirror's
+  // sync adds no radio time the reader didn't cause), else NoWifi without the network.
+  api::ApiResponse vocabularyPage(const net::Request& request, net::BodySink& sink) override;
 
   // Main-loop tick: a queued key check, the idle TLS close, and the WiFi idle teardown.
   void tick();
@@ -79,7 +82,8 @@ class LexiriseService final : public api::LexiriseApi {
   void releaseWifi();
 
  private:
-  api::ApiResponse send(const net::Request& request);
+  // `mayJoin` false: only over a station already connected (NoWifi otherwise, never a join).
+  api::ApiResponse send(const net::Request& request, net::BodySink* sink = nullptr, bool mayJoin = true);
   void closeSession();
 
   SettingsStore& store_;

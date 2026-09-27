@@ -89,11 +89,42 @@ CardSession::Persisted CardSession::persistIgnores(const Outcome& outcome) const
   return done;
 }
 
+bool CardSession::idleFor(const unsigned long nowMs, const bool rendering, const bool touching,
+                          const std::optional<unsigned long> cardDueMs, const unsigned long idleMs) const {
+  return live_ && !rendering && !touching && !cardDueMs && !drawPending_ && input_.empty() && !hasWork(nowMs) &&
+         !live_->hasPendingWrites() && timing::reached(nowMs, lastActivityMs_ + idleMs);
+}
+
 bool CardSession::shouldFetchDeck(const unsigned long nowMs, const bool rendering, const bool touching,
                                   const std::optional<unsigned long> cardDueMs) const {
-  return live_ && deckAllowed_ && !rendering && !touching && !cardDueMs && !drawPending_ && input_.empty() &&
-         !hasWork(nowMs) && !live_->hasPendingWrites() &&
-         timing::reached(nowMs, lastActivityMs_ + config::kDeckIdleMs) && live_->hasDeckWork();
+  return deckAllowed_ && idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) && live_->hasDeckWork();
+}
+
+bool CardSession::shouldFlushMirror(const unsigned long nowMs, const bool rendering, const bool touching,
+                                    const std::optional<unsigned long> cardDueMs) const {
+  return idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) && live_->mirrorFlushDue();
+}
+
+CardSession::IdleStep CardSession::nextIdleStep(const unsigned long nowMs, const bool rendering, const bool touching,
+                                                const std::optional<unsigned long> cardDueMs,
+                                                const uint32_t epochS) const {
+  if (shouldFetchDeck(nowMs, rendering, touching, cardDueMs)) return IdleStep::Deck;
+  if (shouldFlushMirror(nowMs, rendering, touching, cardDueMs)) return IdleStep::Flush;
+  if (shouldFetchVocab(nowMs, rendering, touching, cardDueMs, epochS)) return IdleStep::Vocab;
+  return IdleStep::None;
+}
+
+bool CardSession::shouldFetchVocab(const unsigned long nowMs, const bool rendering, const bool touching,
+                                   const std::optional<unsigned long> cardDueMs, const uint32_t epochS) const {
+  return idleFor(nowMs, rendering, touching, cardDueMs, config::kVocabIdleMs) &&
+         !(deckAllowed_ && live_->hasDeckWork()) && live_->hasVocabWork(nowMs, epochS);
+}
+
+void CardSession::applyVocab(const std::optional<vocab::PageCall>& call, const unsigned long nowMs,
+                             const uint32_t epochS) {
+  if (!live_ || !call) return;
+  live_->applyVocab(*call, nowMs, epochS);
+  lastActivityMs_ = nowMs;  // the next page waits its own idle time too
 }
 
 void CardSession::applyDeck(const deck::DeckCall& call, const unsigned long nowMs) {

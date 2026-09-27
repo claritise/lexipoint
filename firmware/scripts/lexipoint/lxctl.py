@@ -38,6 +38,14 @@ Examples:
                                       # not ignored yet), ⋯ → Ignore this word, then the toast's Undo; checks
                                       # from the log it was written to ignored.ini and taken off again, with no
                                       # write to Lexirise (V5). Writes only the reader's SD card
+  lxctl.py vocab-smoke [x y] [press]  # a dev build, a book open (upright portrait), WiFi saved: long-press the word
+                                      # at x y and leave its card idle; checks from the log that the vocab mirror
+                                      # synced a page (V7a): its time and heap, and only GET /v1/vocabulary? went
+                                      # out meanwhile. press: you press a side button (the real one) while a
+                                      # whole page streams, and it must be given up: it needs a page that takes
+                                      # a while (a fresh mirror: move /.lexirise/vocab-<lang>.bin aside so a full
+                                      # pass runs; a synced one's first page is a quick probe). Read-only; one
+                                      # held session
 """
 
 from __future__ import annotations
@@ -858,6 +866,103 @@ def ignore_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT, watch_s: floa
     return key
 
 
+# vocab-smoke (v0.2 V7a, C13): the vocab mirror's sync on an idle card, from the log. Each page logs
+# "[LXVOCAB] <full|incremental> <lang> offset <n>: <items> items, mirror <words> words" (vocab::applyPage) and then
+# "[LXVOCAB] page <items> items in <ms> ms (<error>[, given up for input]), applied and written in <ms> ms; heap
+# <free> free, <min> min, <largest> largest" (LexiriseCardActivity::idleStep, every build); a page given up for a
+# button logs "[LXVOCAB] <pass> <lang> offset <n> given up: input came" (VocabStore::apply); the mirror's file read or
+# write, "[LXVOCAB] mirror file read or written in <ms> ms". Lexirise calls: the service's "[LXS] ..." lines
+# (DECK_CALL_LOG).
+VOCAB_LOG = re.compile(r"^\[(\d+)\] \[\w+\] \[LXVOCAB\] ")
+VOCAB_PAGE_LOG = re.compile(r"\[LXVOCAB\] page (\d+) items in (\d+) ms \(([^)]*)\), applied and written in (\d+) ms; "
+                            r"heap (\d+) free, (\d+) min, (\d+) largest")
+VOCAB_GIVEN_UP = "given up: input came"
+VOCAB_IDLE_MS = 8000  # config::kVocabIdleMs (test_lxctl checks it)
+# The card's first idle window reads the mirror's file (DECK_IDLE_MS), a page follows VOCAB_IDLE_MS later, and a page
+# may take a whole request (config::kRequestDeadlineMs, 15 s) and its write: plenty past that.
+VOCAB_WATCH_S = 60.0
+
+
+def vocab_pages(log: list[str]) -> list[dict[str, int | str]]:
+    """Every mirror page in `log`: its items, time, error (with ", given up for input"), apply-and-write time, heap."""
+    keys = ("items", "ms", "error", "written_ms", "free", "min", "largest")
+    return [{k: (v if k == "error" else int(v)) for k, v in zip(keys, m.groups())} for line in log
+            if (m := VOCAB_PAGE_LOG.search(line))]
+
+
+def check_vocab_log(log: list[str], pressed: bool = False) -> list[dict[str, int | str]]:
+    """V7a's sync on the device, from the card's log: at least one page logged with its time and heap; from the first
+    [LXVOCAB] line to the last page, the only Lexirise calls are GET /v1/vocabulary? (the list: no write, nothing else);
+    `pressed`: a page was given up for the button, else one came whole ("ok"). Returns the pages; raises RuntimeError
+    on the first broken rule."""
+    pages = vocab_pages(log)
+    if not pages:
+        raise RuntimeError("no mirror page logged (a dev build? Lexirise on, WiFi up, the card left idle "
+                           f"{VOCAB_IDLE_MS / 1000:.0f} s? a page due: see the [LXVOCAB] lines)")
+    first = next(i for i, line in enumerate(log) if VOCAB_LOG.search(line))
+    last = max(i for i, line in enumerate(log) if VOCAB_PAGE_LOG.search(line))
+    others = [c for c in deck_calls(log[first:last + 1]) if not (c[1] == "GET" and c[2].startswith("/v1/vocabulary?"))]
+    if others:
+        raise RuntimeError(f"a call other than the vocabulary list during the sync: {others}")
+    if pressed:
+        if not any(VOCAB_GIVEN_UP in line for line in log):
+            raise RuntimeError("no page was given up for the button (pressed while a page streamed?)")
+        # Mid-stream: its request went out (an [LXS] GET line after the page before it). A page given up before its
+        # request (the button already held as it was due) logs none, and isn't the cancel this checks.
+        page_lines = [i for i, line in enumerate(log) if VOCAB_PAGE_LOG.search(line)]
+        mid_stream = False
+        for n, i in enumerate(page_lines):
+            if "given up for input" not in VOCAB_PAGE_LOG.search(log[i]).group(3):
+                continue
+            since = page_lines[n - 1] + 1 if n > 0 else first
+            if any(c[1] == "GET" and c[2].startswith("/v1/vocabulary?") for c in deck_calls(log[since:i])):
+                mid_stream = True
+        if not mid_stream:
+            raise RuntimeError("the page was given up before its request, not while it streamed (let go, then press "
+                               "once the page has started)")
+    elif not any(p["error"] == "ok" for p in pages):
+        raise RuntimeError(f"no page came whole: {[p['error'] for p in pages]}")
+    return pages
+
+
+def vocab_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT, press: bool = False,
+                watch_s: float = VOCAB_WATCH_S) -> list[dict[str, int | str]]:
+    """V7a's vocab mirror on the device, read-only. A dev build, one held serial session (opening the port resets the
+    reader: dev-harness.md §3), a book open in the reader, upright portrait, Lexirise on, WiFi saved; `at`: a word
+    Lexirise answers. Keeps the reader awake, opens the word's card and leaves it idle until a page is logged (or
+    `watch_s`), then closes it. `press`: a person presses and releases a real side button while a page streams (an
+    injected press isn't seen: the cancel reads the hardware), and the log is read until a page is given up (or
+    `watch_s`), past pages that came whole first. On a synced mirror a card's first page is a quick probe (a few
+    items), too short to press into: press needs a whole page, from a fresh mirror (/.lexirise/vocab-<lang>.bin moved
+    aside, so a full pass runs) or an incremental pass with more changes than the probe holds. Checked by
+    check_vocab_log."""
+    h.command("AWAKE 1")  # first: the whole run is one session, and the reader mustn't sleep during the idle wait
+    log: list[str] = []
+    h.command(f"LONG {at[0]} {at[1]}", seen=log)
+    log += collect_until(h, (CARD_OPENED, DEFINITION_OPENED), LEXI_CALL_TIMEOUT_S)
+    if DEFINITION_OPENED in log[-1]:
+        raise RuntimeError(f"StarDict answered the word at {at}, not Lexirise")
+    h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+    if press:
+        print(f"leave the card; about {VOCAB_IDLE_MS / 1000:.0f} s after it settles a page starts: press and release "
+              "a side button then (a whole page: a fresh mirror, or more changes than the probe holds)")
+
+        def done(line: str) -> bool:
+            m = VOCAB_PAGE_LOG.search(line)
+            return bool(m) and "given up for input" in m.group(3)
+    else:
+        def done(line: str) -> bool:
+            return bool(VOCAB_PAGE_LOG.search(line))
+    log += read_for(h, watch_s, done)
+    h.command("HOME", seen=log)
+    log += collect_until(h, ("Exiting activity: LexiriseCard",), CARD_CLOSE_WAIT_S + LEXI_CALL_TIMEOUT_S)
+    pages = check_vocab_log(log, press)
+    p = pages[-1]
+    print(f"vocab-smoke OK: {p['items']} items in {p['ms']} ms ({p['error']}), written in {p['written_ms']} ms; "
+          f"heap {p['free']} free, {p['min']} min, {p['largest']} largest")
+    return pages
+
+
 SETTINGS_ROWS_LOG = re.compile(r"\[LXSET\] rows (\d+)")  # LexiriseSettingsActivity, dev builds
 # settings_screen::visibleRows: Lexirise off (the Account group, the two offline dictionaries and the default
 # language) .. every row
@@ -1034,6 +1139,13 @@ def main() -> None:
                 ignore_smoke(h, tuple(map(int, a.args[:2])) if len(a.args) >= 2 else READER_ON_TEXT)
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"ignore-smoke FAILED: {e}")
+        elif c == "vocab-smoke":
+            nums = [x for x in a.args if x.lstrip("-").isdigit()]
+            try:
+                vocab_smoke(h, tuple(map(int, nums[:2])) if len(nums) >= 2 else READER_ON_TEXT,
+                            press="press" in a.args)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"vocab-smoke FAILED: {e}")
         elif c == "card-gestures":
             try:
                 card_gestures(h)

@@ -97,6 +97,16 @@ std::optional<net::Request> clearRequest(const std::string_view id) {
       net::JsonObject().addNull("notes").addNull("customTranslation").add("tags", std::vector<std::string>{}).str());
 }
 
+net::Request vocabularyPageRequest(const Language language, const uint32_t offset, const uint32_t limit) {
+  std::string path = kVocabularyPath;
+  path += "?language=";
+  path += languageCode(language);
+  path += "&limit=" + std::to_string(limit);
+  path += "&offset=" + std::to_string(offset);
+  path += "&sortId=updated_at&sortDesc=true";
+  return {net::Method::Get, std::move(path), ""};
+}
+
 net::Request deckListRequest(const Language language) {
   return {net::Method::Get, std::string(kDecksPath) + "?language=" + languageCode(language), ""};
 }

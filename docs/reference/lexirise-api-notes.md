@@ -431,6 +431,35 @@ were sent once, by hand; they're the tool's last five sentences now, so a rerun 
 - **Still for the device:** these are the server's answers; whether the card's offsets and next character line
   up with them on a real page is V4's device check (`../v0.1/device-checks.md`).
 
+## V7's foundations, measured (2026-09-28, read-only)
+
+`tools/lexirise/probe_v7.py` (dev key, from the Mac; raw in `research/v7/`, gitignored), for
+`../v0.2/page-annotations.md` §1:
+
+- **`GET /v1/vocabulary` items are large:** each embeds its `dictionary_entry` (with morphology, rank, system tags)
+  beside the SRS fields, `notes`, `user_tags`, `sentence_text`, media URLs: **~6.8 KB per item** (the dev account's
+  Chinese list, 102 items, 690 KB in 2.7 s; the Japanese items were ~1.8 KB). A 1000-word vocabulary is ~7 MB for
+  the first full sync, ~1.35 MB per 200-item page. So the vocab mirror must stream-parse and keep only its few
+  fields (entry id, proficiency, saved id, suspended, next review, ~~seen~~), never hold a page in memory. (`seen`
+  struck 2026-09-28: V7a keeps no seen count, nothing reads it: `../v0.2/page-annotations.md` §1.2.)
+- **Sorting for the incremental sync works:** `sortId=updated_at&sortDesc=true` returns newest first. **Paging:**
+  `offset`/`limit` with `nextOffset` (null on the last page).
+- **Which ids (read from the same answers, 2026-09-28, for V7a):** an item's `id` is the number `stateByEntryId` calls
+  `saved_expression_id`, and its `dictionary_id` is the entry `stateByEntryId` is keyed by (`entry_id`; equal to the
+  embedded `dictionary_entry.id`), both JSON numbers; `context_lemma_entry_id` was null on most items, so it isn't
+  used. Every item has `unit_type` (`word` on all of the dev account's), `updated_at` and `next_review_at` as ISO 8601
+  UTC with milliseconds (`2026-09-24T06:11:34.058Z`) or null. Items at level 0 are listed (the V5 probe's removed
+  words: a dictionary word's `DELETE` keeps the item, "Suspended (Ignore)" below). ~~**Open:** how items sharing an
+  `updated_at` are ordered across `offset` pages (`probe_v7.py --ties`, read-only, not yet run).~~ **Measured
+  2026-09-28** (`probe_v7.py --ties`, read-only): the dev account's Chinese list has 99 adjacent `updated_at` ties in
+  102 items, and paging it gives the same order as one page, so ties are ordered stably across `offset` pages. Not
+  measured: whether `updated_at` follows commit order (V7a's cursor assumes it; a change stamped earlier than one
+  already read is caught only by the weekly full pass).
+- **Page-sized `analyze/text`:** ~160–260 bytes of answer per character (128 chars: 26 KB in 1.4 s; 256: 44 KB in
+  2.0 s; 512: 81 KB in 2.7 s; 186 Chinese chars: 48 KB in 3.0 s), all first-pass (`morphoPending: true`) for new
+  text. A ~300-character page is ~50 KB and 2–3 s, which a prefetch during reading covers. (The 2026-09-24 figure of
+  ~70 B/char was the 20,000-character test, where the per-answer overhead is spread thin.)
+
 ## Readings and counts for V6's card additions (measured 2026-09-28, read-only)
 
 Dev key, from the Mac; raw in `research/v6/` (gitignored).

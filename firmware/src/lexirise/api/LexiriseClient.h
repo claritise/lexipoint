@@ -63,13 +63,15 @@ class LexiriseClient {
   // Sends one request. A reused keep-alive session that turns out to be stale (it fails before any
   // response byte) is reopened and a retryable() request sent once more; nothing else is retried. Once a
   // connection is open the whole request, retry included, gets config::kRequestDeadlineMs.
-  ApiResponse send(const net::Request& request);
+  // `sink`: a 2xx body is streamed to it (up to its maxBytes()) and never held; the response's body
+  // stays empty. A sink that stops the body makes the response Malformed.
+  ApiResponse send(const net::Request& request, net::BodySink* sink = nullptr);
 
   void close() { connection_.close(); }
 
  private:
   enum class Attempt { Done, StaleSession };
-  Attempt attempt(const net::Request& request, bool reused, ApiResponse& out);
+  Attempt attempt(const net::Request& request, bool reused, ApiResponse& out, net::BodySink* sink);
   uint32_t readTimeout() const;
 
   net::Connection& connection_;

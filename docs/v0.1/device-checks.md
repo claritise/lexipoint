@@ -151,6 +151,89 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## v0.2 V7a: still owed on the device
+
+V7a (the vocab mirror: `../v0.2/page-annotations.md` §1.2 "As built (V7a)") is on `lexi/V7`, not yet run on the
+device. Read-only from Lexirise: the log must show only `GET /v1/vocabulary?…` for the sync (and a card's usual calls).
+A dev build logs each page: `[LXVOCAB] <full|incremental> <ja|zh> offset <n>: <items> items, mirror <words> words`,
+then `[LXVOCAB] page <items> items in <ms> ms (<error>[, given up for input]), applied and written in <ms> ms; heap
+<free> free, <min> min, <largest> largest` (internal RAM; `min` is the lowest since boot); the file's read or write,
+`[LXVOCAB] mirror file read or written in <ms> ms`. **`lxctl.py vocab-smoke [x y] [press]`** (a dev build, one held
+session: opening the port resets the reader, `../v0.1/dev-harness.md` §3, which lists it with the other one-session smokes; it sends `AWAKE 1` first) opens the card on
+the word at x y, leaves it idle until a page is logged and checks from the log: a page with its time and heap, and
+only `GET /v1/vocabulary?` during the sync; `press`: you press and release a real side button while a page
+streams (an injected press isn't seen), and it must be given up; the log is read past pages that came whole until one
+is. It needs a whole page to press into: a synced mirror's first page is a quick probe, so move
+`/.lexirise/vocab-<lang>.bin` aside first (a full pass runs), or change more words in the app than the probe holds. It
+records the numbers the checks below ask for.
+
+- **A full sync of claritise's real vocabulary** (a fresh card: no `/.lexirise/vocab-<lang>.bin`): open cards in a
+  book of that language and leave each idle; record how many pages and cards it takes, each page's time, the heap
+  (free, the lowest, the largest block) during it, and the file's size once `synced`. Whether `kVocabPageItems` pages
+  fit the request deadline on the real network; whether a page's few seconds are acceptable on an idle card.
+- **An incremental sync after a save in the Lexirise app:** change a word's level (or save one) in the app, then on
+  the reader (more than `config::kVocabSyncIntervalMs` after the last sync, or after a reboot) open a card and leave
+  it idle: one incremental page, and the mirror has the change (copy the file to the Mac and read it, or look the
+  word up offline once V9 shows marks).
+- **Offline saved state from the mirror:** after a sync, a word's saved state is in the file for that entry (the
+  card itself still shows `analyze/text`'s; V9's marks are the first to show the mirror).
+- **A save on the card** is in the file right after the save's POST (same check); a card closed by sleep writes it at
+  the next card.
+- **A side button mid-page** (`vocab-smoke … press`): press and release a side button while a whole page streams (a
+  synced mirror's first page is a quick probe, too short: move `/.lexirise/vocab-<lang>.bin` aside so a full pass
+  runs, or change more words in the app than the probe holds): the card steps at once, the log says `given up: input
+  came` (no `failed`), and the next page comes after another idle window. Time the next word's phase B too: the cancel
+  closed the TLS connection, so it pays a new handshake.
+- **The first idle card on a large mirror:** with a `kVocabMirrorMax`-word (20,000) `vocab-<lang>.bin` on the card
+  (a synthetic one: records written by a host tool, or a real sync of a large account), open a card: it opens as fast
+  as without one (nothing read then), and the first idle step logs `mirror file read or written in <ms> ms`; record
+  it, and the heap after.
+- **A slow page against the request deadline:** a 50-item Chinese page (~340 KB) on a weak signal: does it finish
+  within `config::kRequestDeadlineMs`, or fail and wait `kVocabFailureWaitMs` each time?
+- **The internal heap during a page that opens a fresh TLS session** (the card's session closed, `kTlsIdleCloseMs`):
+  the page line's `min` and `largest` against a page on a warm session.
+- **A side button held as a page starts:** the page is given up before its request (`given up: input came`, no
+  `[LXS] GET /v1/vocabulary?` line), the press is handled, and no page follows until the card has been idle
+  `kVocabIdleMs` again.
+- **Deep sleep right after a save:** save a word, let the reader sleep before the card goes idle; after waking, the
+  word's state comes back with the next incremental pass (it wasn't in the file).
+- **Each page's write on a large mirror:** each page that changes the mirror or leaves a pass under way rewrites the
+  whole file; with the 20,000-word file, note the `applied and written in <ms> ms` of a few pages (a first full sync
+  of 20,000 words writes it once per page, about 64 MB in all, and fills the mirror by sorted inserts, `Mirror::put`
+  moving the entries after each new one: that's part of the apply time to watch). If it's too slow, the fallback is to
+  write the file every N pages during a full pass (its progress is resumable either way: a lost page is read again).
+- **The close write on a large mirror:** with the 20,000-word file, save a word and close the card at once: time
+  from the close to word select's page (`[LXVOCAB] mirror file read or written` isn't logged at close; time it by
+  eye or from the next log line).
+- **A tied bulk import:** after importing many words at once in the Lexirise app (one `updated_at`), an idle card's
+  incremental pass after the first takes one page, not the whole group (the log's page lines).
+- **A full sync while the account changes:** during a first full sync (several cards), add, delete and change words
+  in the Lexirise app between pages; once `synced` and the incremental pass after it has run, every word in the
+  account is in the file.
+- **A save is in the file before any page:** save a word on the card and leave it idle: the file has it after
+  `config::kDeckIdleMs` (`mirror file read or written`), before any page.
+- **A card whose words the mirror already has closes without a write:** on a large mirror, open a card on a word the
+  mirror has as it is and close it: no `mirror file read or written` at idle, and the close returns to the page as
+  fast as without a mirror (time it).
+- **A quick tap or Home press during a page: seen or lost?** Tap the card (or press Home) and let go while a page
+  streams: is it handled after the page, or lost? Likely lost (the touch controller is read only by the loop's input
+  update, which the page blocks); if so, try the candidate fix in `../v0.2/page-annotations.md` §1.2 Known limits
+  (the touch interrupt line OR'd into the cancel). One still held when the page ends should be seen after it.
+- **An incremental pass longer than one wake:** change more words in the Lexirise app than two pages hold (e.g.
+  150 level changes), then let the reader sleep after each card: each wake's pages carry on at the next offset
+  (the log's `incremental <lang> offset <n>` lines go on from where the last wake stopped, never back to 0 until the
+  pass ends), and the cursor moves once it does.
+- **A quiet incremental pass on a wake, against a large file:** with the 20,000-word file and nothing changed in the
+  app, the first idle card after a wake runs one page: its line says `applied and written in <ms> ms` near 0 (no
+  file write), not the whole file's write time.
+- **The wake's probe page:** the first idle card after a wake, nothing changed in the app: the page line says
+  `5 items` (`config::kVocabProbeItems`); note its time against a whole page's.
+- **A card's close during a weekly resync on a large mirror:** with the 20,000-word file and a full pass under way,
+  open a card on words the mirror has as they are and close it: no `mirror file read or written` for them, and the
+  close as fast as without a mirror.
+- **No radio time added:** with "Keep WiFi on after a lookup" off, no page goes after the card closes, and none on a
+  card whose lookup failed offline.
+
 ## v0.2 V5: still owed on the device
 
 V5 (Ignore a word, the reader's own list: `../v0.2/00-overview.md` C17 "As built (V5, local)") is on `lexi/V5`, not

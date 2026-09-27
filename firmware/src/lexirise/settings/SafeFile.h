@@ -1,11 +1,12 @@
 #pragma once
 
-// A small text file on the SD card replaced crash-safely (settings.md §3): write .tmp, move the old file
+// A small file on the SD card replaced crash-safely (settings.md §3): write .tmp, move the old file
 // to .bak, move .tmp into place, drop .bak. At every point either the file or its .bak is complete, and
 // readSafely() finishes or undoes each step. Used by config.ini (SettingsStore), books.ini
-// (BookLanguages), book-tags.ini (BookTags), decks.ini (deck/BookDeck) and ignored.ini (IgnoredWords). Tests:
+// (BookLanguages), book-tags.ini (BookTags), decks.ini (deck/BookDeck), ignored.ini (IgnoredWords) and the vocab
+// mirror's binary vocab-<lang>.bin (vocab/VocabMirror). Tests:
 // test/lexirise_settings/SettingsStoreTest.cpp, BookLanguagesTest.cpp, BookTagsTest.cpp, IgnoredWordsTest.cpp;
-// test/lexirise_deck.
+// test/lexirise_deck, test/lexirise_vocab.
 
 #include <cstddef>
 #include <string>
@@ -55,6 +56,10 @@ SafeRead readSafely(SettingsFiles& files, const SafeFilePaths& paths, std::strin
 // Replaces the file with `content`; false leaves the old one in place.
 bool replaceSafely(SettingsFiles& files, const SafeFilePaths& paths, std::string_view content);
 
+// A file that read whole but whose content isn't usable (a binary store's check failed): moved to `bad`, as an
+// unreadable one is, so the next save starts afresh without overwriting it.
+void setAside(SettingsFiles& files, const SafeFilePaths& paths);
+
 namespace config {
 inline constexpr SafeFilePaths kSettingsFile{kSettingsDir,        kSettingsPath,    kSettingsTmpPath,
                                              kSettingsBackupPath, kSettingsBadPath, kSettingsMaxBytes};
@@ -65,6 +70,10 @@ inline constexpr SafeFilePaths kDecksFile{kSettingsDir,     kDecksPath,    kDeck
                                           kDecksBackupPath, kDecksBadPath, kDecksMaxBytes};
 inline constexpr SafeFilePaths kBookTagsFile{kSettingsDir,        kBookTagsPath,    kBookTagsTmpPath,
                                              kBookTagsBackupPath, kBookTagsBadPath, kBookTagsMaxBytes};
+inline constexpr SafeFilePaths kVocabFileJa{kSettingsDir,       kVocabPathJa,    kVocabTmpPathJa,
+                                            kVocabBackupPathJa, kVocabBadPathJa, kVocabMaxBytes};
+inline constexpr SafeFilePaths kVocabFileZh{kSettingsDir,       kVocabPathZh,    kVocabTmpPathZh,
+                                            kVocabBackupPathZh, kVocabBadPathZh, kVocabMaxBytes};
 inline constexpr SafeFilePaths kIgnoredFile{kSettingsDir,       kIgnoredPath,    kIgnoredTmpPath,
                                             kIgnoredBackupPath, kIgnoredBadPath, kIgnoredMaxBytes};
 }  // namespace config

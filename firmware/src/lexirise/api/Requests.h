@@ -2,11 +2,13 @@
 
 // Lexirise request builders (lexirise-client.md §2). Pure. Tests: test/lexirise_net/RequestsTest.cpp.
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "lexirise/LexiriseConfig.h"
 #include "lexirise/net/Http.h"
 #include "lexirise/settings/Settings.h"
 
@@ -45,6 +47,11 @@ std::optional<net::Request> setProficiencyRequest(std::string_view id, int profi
 // GET /v1/vocabulary/{id}: a saved word's item, read-only (its notes, tags and sentence: "Met before", C14).
 // nullopt when `id` isn't a plain id.
 std::optional<net::Request> savedItemRequest(std::string_view id);
+
+// GET /v1/vocabulary: one page of the user's saved items in `language`, newest change first
+// (sortId=updated_at&sortDesc=true, measured: lexirise-api-notes.md "V7's foundations"), from
+// `offset`, `limit` items (V7a's vocab mirror: a whole page, or an incremental pass's probe). Read-only.
+net::Request vocabularyPageRequest(Language language, uint32_t offset, uint32_t limit = config::kVocabPageItems);
 
 // Undoing a new save (popup-ui.md §3.2): DELETE only resets a dictionary word to unknown and keeps its
 // notes, translation and tags, so they're cleared with a PATCH after it.

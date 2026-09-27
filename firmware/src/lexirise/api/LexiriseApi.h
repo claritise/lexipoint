@@ -24,6 +24,9 @@ class LexiriseApi {
   virtual ApiResponse savedItem(const net::Request& request) = 0;
   // A /v1/decks call for the book's deck (deckListRequest, deckRequest, createDeckRequest).
   virtual ApiResponse deck(const net::Request& request) = 0;
+  // A page of the user's vocabulary (vocabularyPageRequest, V7a's mirror), its body streamed into `sink` (never
+  // held: up to ~1.35 MB for 200 items). Only over WiFi that is already up: it never brings WiFi up (NoWifi).
+  virtual ApiResponse vocabularyPage(const net::Request& request, net::BodySink& sink) = 0;
 };
 
 }  // namespace lexipoint::api

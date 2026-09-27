@@ -343,6 +343,10 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
   analyzed page, so the card opens at phase A straight away.
 - **C13:** your vocabulary (proficiency, saved ID, FSRS fields) cached on SD and synced incrementally.
   Saved state works offline, and it's the base for C11 and the annotations.
+  - **As built (V7a, 2026-09-28, in progress):** the vocab mirror, `vocab/VocabMirror`: per language, each saved
+    word's entry, saved id, level, `suspended` and next review (no other FSRS fields), synced a page at a time on an
+    idle card over WiFi already up, corrected by every analysis the card makes and by its own writes. What, how and
+    the limits: `page-annotations.md` §1.2 "As built (V7a)"; the file: `../v0.1/settings.md` §3.
 
 ## C14–C17. Maxing out the card
 

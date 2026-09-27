@@ -1196,5 +1196,119 @@ class IgnoreSmokeDriver(unittest.TestCase):
             self.assertRegex(cmd, usages[cmd.split()[0]])
 
 
+VOCAB_FLUSH = "[4000] [INF] [LXVOCAB] mirror file read or written in 35 ms"
+VOCAB_GET = ("[13000] [INF] [LXS] GET /v1/vocabulary?language=ja&limit=50&offset=0&sortId=updated_at&sortDesc=true "
+             "-> 200 (ok)")
+VOCAB_PASS = "[13010] [INF] [LXVOCAB] full ja offset 0: 50 items, mirror 48 words"
+VOCAB_PAGE = ("[13020] [INF] [LXVOCAB] page 50 items in 2410 ms (ok), applied and written in 40 ms; heap 91000 free, "
+              "62000 min, 38000 largest")
+VOCAB_GIVEN = "[13005] [INF] [LXVOCAB] full ja offset 0 given up: input came"
+VOCAB_PAGE_GIVEN = ("[13006] [INF] [LXVOCAB] page 0 items in 700 ms (malformed, given up for input), applied and "
+                    "written in 0 ms; heap 90000 free, 62000 min, 38000 largest")
+
+
+class VocabSmokeRules(unittest.TestCase):
+    def test_a_page_with_its_time_and_heap_passes(self):
+        pages = lxctl.check_vocab_log([MET_BEFORE_GET, VOCAB_FLUSH, VOCAB_GET, VOCAB_PASS, VOCAB_PAGE])
+        self.assertEqual(pages, [{"items": 50, "ms": 2410, "error": "ok", "written_ms": 40, "free": 91000,
+                                  "min": 62000, "largest": 38000}])
+
+    def test_no_page_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "no mirror page logged"):
+            lxctl.check_vocab_log([MET_BEFORE_GET, VOCAB_FLUSH])
+
+    def test_another_call_during_the_sync_fails(self):
+        for call in ("POST /v1/vocabulary", "PATCH /v1/vocabulary/{id}", "GET /v1/vocabulary/{id}", "GET /v1/decks"):
+            with self.assertRaisesRegex(RuntimeError, "other than the vocabulary list"):
+                lxctl.check_vocab_log([VOCAB_FLUSH, f"[6000] [INF] [LXS] {call} -> 200 (ok)", VOCAB_GET, VOCAB_PAGE])
+        # Before the sync (the card's own lookup and Met before) is fine.
+        lxctl.check_vocab_log(["[1000] [INF] [LXS] POST /v1/analyze/text -> 200 (ok)", VOCAB_FLUSH, VOCAB_GET,
+                               VOCAB_PAGE])
+
+    def test_a_page_that_never_came_whole_fails(self):
+        failed = VOCAB_PAGE.replace("(ok)", "(timeout)")
+        with self.assertRaisesRegex(RuntimeError, "no page came whole"):
+            lxctl.check_vocab_log([VOCAB_FLUSH, failed])
+
+    def test_pressed_needs_a_page_given_up(self):
+        mid_stream = [VOCAB_FLUSH, VOCAB_GET.replace("(ok)", "(malformed)"), VOCAB_GIVEN, VOCAB_PAGE_GIVEN]
+        self.assertEqual(len(lxctl.check_vocab_log(mid_stream, pressed=True)), 1)
+        # Given up before its request (the button already held): no GET line, so not a cancel mid-stream.
+        with self.assertRaisesRegex(RuntimeError, "before its request"):
+            lxctl.check_vocab_log([VOCAB_FLUSH, VOCAB_GIVEN, VOCAB_PAGE_GIVEN], pressed=True)
+        # The GET before an earlier page doesn't count for a later one given up before its request.
+        with self.assertRaisesRegex(RuntimeError, "before its request"):
+            lxctl.check_vocab_log([VOCAB_FLUSH, VOCAB_GET, VOCAB_PAGE, VOCAB_GIVEN, VOCAB_PAGE_GIVEN], pressed=True)
+        with self.assertRaisesRegex(RuntimeError, "no page was given up"):
+            lxctl.check_vocab_log([VOCAB_FLUSH, VOCAB_GET, VOCAB_PAGE], pressed=True)
+
+    def test_the_constants_and_log_lines_match_the_firmware(self):
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        self.assertEqual(lxctl.VOCAB_IDLE_MS, c["kVocabIdleMs"])
+        card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
+        self.assertIn('"page %u items in %lu ms (%s%s), applied and written in %lu ms; heap %u free, %u min, '
+                      '%u largest"', card)
+        self.assertIn('"mirror file read or written in %lu ms"', card)
+        mirror = open(os.path.join(REPO, "src/lexirise/vocab/VocabMirror.cpp"), encoding="utf-8").read()
+        self.assertIn('given up: input came"', mirror)
+        self.assertIn('kLogTag = "LXVOCAB"', open(os.path.join(REPO, "src/lexirise/vocab/VocabMirror.h"),
+                                                   encoding="utf-8").read())
+
+
+class FakeVocabHarness:
+    """The device's side of vocab-smoke: a LONG opens a card; the idle card then logs the mirror's file and a page
+    (`probe_first`: a quick probe page, then a whole one given up for a button)."""
+
+    def __init__(self, stardict=False, page=True, probe_first=False):
+        self.stardict, self.page, self.probe_first = stardict, page, probe_first
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LONG "):
+            self.stream.append("[1] [DBG] [ACT] Entering activity: "
+                               + ("DictionaryDefinition" if self.stardict else "LexiriseCard"))
+        elif cmd == "SYNC" and self.probe_first:
+            probe = VOCAB_PAGE.replace("page 50 items in 2410 ms", "page 5 items in 310 ms")
+            self.stream += [VOCAB_FLUSH, VOCAB_GET, VOCAB_PASS, probe,
+                            VOCAB_GET.replace("(ok)", "(malformed)"), VOCAB_GIVEN, VOCAB_PAGE_GIVEN]
+        elif cmd == "SYNC":
+            self.stream += [VOCAB_FLUSH] + ([VOCAB_GET, VOCAB_PASS, VOCAB_PAGE] if self.page else [])
+        elif cmd == "HOME":  # the card closes: what it would have logged after is never logged
+            self.stream = ["[20000] [DBG] [ACT] Exiting activity: LexiriseCard"]
+        return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class VocabSmokeDriver(unittest.TestCase):
+    def test_it_keeps_the_reader_awake_first_then_opens_and_leaves_a_card(self):
+        h = FakeVocabHarness()
+        pages = lxctl.vocab_smoke(h, (240, 400), watch_s=0.01)
+        self.assertEqual(pages[0]["items"], 50)
+        self.assertEqual(h.sent, ["AWAKE 1", "LONG 240 400", "SYNC", "HOME"])
+
+    def test_press_reads_past_a_probe_to_the_page_given_up(self):
+        h = FakeVocabHarness(probe_first=True)
+        pages = lxctl.vocab_smoke(h, (240, 400), press=True, watch_s=0.01)
+        self.assertEqual([p["items"] for p in pages], [5, 0])  # the probe came whole, then the page given up
+        self.assertIn("given up for input", pages[-1]["error"])
+
+    def test_stardict_or_no_page_raise(self):
+        for harness, message in ((FakeVocabHarness(stardict=True), "StarDict"),
+                                 (FakeVocabHarness(page=False), "no mirror page logged")):
+            with self.assertRaisesRegex(RuntimeError, message):
+                lxctl.vocab_smoke(harness, (240, 400), watch_s=0.01)
+
+    def test_its_commands_are_the_devices(self):
+        usages = device_usages()
+        for cmd in ("LONG 240 400", "SYNC", "HOME"):
+            self.assertRegex(cmd, usages[cmd.split()[0]])
+        protocol = open(os.path.join(REPO, "src/lexirise/dev/DevProtocol.cpp"), encoding="utf-8").read()
+        self.assertIn("AWAKE", protocol)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -82,7 +82,10 @@ built (2026-09-26):
 | V4b | Met before from the saved item (V4's device fix) | C14 | — |
 | V5 | Ignore a word | C17 (Ignore) | — |
 | V6 | Card additions: design, then build | C1, C7, C15 / C10 option 1, C3, C17 (Save sentence) | claritise's sign-off |
-| V7 | Page analysis, the vocab mirror, caches | C12, C13, C21 | — |
+| ~~V7~~ | ~~Page analysis, the vocab mirror, caches~~ (Superseded 2026-09-28: split in three, below) | C12, C13, C21 | — |
+| V7a | The vocab mirror | C13 | — |
+| V7b | Page analysis, the next page prefetched, its cache | C12 | V7a |
+| V7c | Caches, where measured to pay | C21 | V7b |
 | V8 | Slimming | C23, C22 | S1 for its font step only |
 | V9 | Page annotations | C6 (`page-annotations.md`) | V7 |
 | V10 | The sense and reading from the sentence | C10 (`analyze/context`) | V1; placement sign-off |
@@ -182,9 +185,20 @@ C3 is `mode: "sentence"` with an explicit `proficiency`.
 
 **Goal:** the foundations `page-annotations.md` needs, which also make lookups faster.
 **Read:** C12, C13, C21; `page-annotations.md` §1.
-**Ask first:** C13's order entry says "if Q2 comes back yes"; Q2 is answered, so confirm C13 goes ahead.
-**Build:** as `page-annotations.md` §1.1 (one analyze per page, the next page prefetched, refined results only:
-V1) and §1.2 (the vocabulary on SD, synced incrementally); C21's lemma cache and warm TLS where measured to pay.
+~~**Ask first:** C13's order entry says "if Q2 comes back yes"; Q2 is answered, so confirm C13 goes ahead.~~
+(Answered 2026-09-28: claritise approved V7, "yes keep going", told the reader keeps a copy of their vocabulary on the
+SD card, read-only from their account.)
+~~**Build:** as `page-annotations.md` §1.1 (one analyze per page, the next page prefetched, refined results only:
+V1) and §1.2 (the vocabulary on SD, synced incrementally); C21's lemma cache and warm TLS where measured to pay.~~
+**Build (superseded 2026-09-28: three parts, built in order on the one branch `lexi/V7`, each with its own gate,
+review loop and ledger row; each lands into `main` once its loop is clean, the next part going on from there):**
+
+- **V7a, the vocab mirror** (C13): `page-annotations.md` §1.2, the vocabulary on SD, synced incrementally, the card's
+  saves and the live answers kept in it. As built: `page-annotations.md` §1.2.
+- **V7b, page analysis** (C12): §1.1, one analyze per page, the next page prefetched, its cache (refined results
+  only: V1).
+- **V7c, caches** (C21): the lemma cache and warm TLS, where measured to pay.
+
 **Gate:** as `page-annotations.md` §5 for these steps.
 
 ## V8: Slimming
@@ -221,7 +235,10 @@ C5, on V7's page analysis and mirror.
 | V4b | **done; device-checked 2026-09-27** (Met before shown on the device, `../v0.1/device-checks.md`; offline case still owed) (2026-09-27: Met before reads the saved item, `GET /v1/vocabulary/{id}`; landed after 3 review rounds, the last two clean; device check owed: `../v0.1/device-checks.md`, "v0.2 V4: still owed on the device") | merged into `main` (wip on `lexi/V4b-wip-archive`, local) | 1059 host (+21: `LiveItem` ×17, `ResponsesSavedItem` ×6; `ResponsesAnalyze`'s notes and tags tests, three, now one; the item's request in `Requests`), 137 Python; goldens unchanged | What and how: `00-overview.md` C14 "As built (V4b)". **R1** (no must, 2 should): a step past the end waited on the left word's item → a loading sentence goes first; V4's Build line struck. Nits: a refusal (429, rejected key) is asked again after its retry time, not kept; the brief points to the answer; a stack reading owed; tests for a queued PATCH and a large item. **R2 clean** (nits taken: one retry-time helper, `api::retryAtMs`, for the policy and the item; a passed retry time is forgotten, as `AccessPolicy` does; tests: a refusal across the millis wrap, an item landing after the card stepped off, the user's own item removed). |
 | V5 | **done (host); device check owed** (landed 2026-09-27 after 11 review rounds, the last two clean; first built on Lexirise's `suspended`, then reworked the same day to a local list, claritise: "lets make ignore a local ux thing"; device check owed: `../v0.1/device-checks.md`, "v0.2 V5: still owed on the device") | merged into `main` (wip on `lexi/V5-wip-archive`, local) | 1105 host (`ctest --test-dir build/test`), 146 Python; goldens unchanged | What and how: `00-overview.md` C17 "As built (V5, local)"; the Ignore toast lasts 5 s (`kIgnoreToastMs`). Also carried: C14's item retry time counts from when the answer came (C14 "As built (V4b)"). Review rounds: the landing commit's message. |
 | V6 | **design awaiting claritise's sign-off** (2026-09-28: mockups, `00-overview.md` "V6 design") | `lexi/V6` (wip) | docs only | — |
-| V7 | not started | — | — | — |
+| V7 | split into V7a, V7b, V7c (2026-09-28); measured read-only first (`../reference/lexirise-api-notes.md`, "V7's foundations"); V7a landed, V7b next | `lexi/V7` | — | — |
+| V7a | **done (host); device check owed** (landed 2026-09-28 after 13 review rounds, the last two clean; the device check owed: `../v0.1/device-checks.md`, "v0.2 V7a") | merged into `main` (wip on `lexi/V7a-wip-archive`, local) | 1209 host (`ctest --test-dir build/test`), 156 Python; goldens unchanged (25 match) | What and how: `page-annotations.md` §1.2 "As built (V7a)". Review rounds: the landing commit's message. |
+| V7b | not started | — | — | — |
+| V7c | not started | — | — | — |
 | V8 | not started | — | — | — |
 | V9 | not started | — | — | — |
 | V10 | not started | — | — | — |

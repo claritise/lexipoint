@@ -87,8 +87,10 @@ LookupCard cardFor(const AnalyzedSentence& sentence, const size_t word) {
   // Saved: the lemma's entry first (saved 食べる shows on 食べた), then the surface's.
   if (const api::EntryState* state = analysis.stateFor(out.lemmaEntryId)) {
     out.saved = *state;
+    out.savedEntryId = out.lemmaEntryId;
   } else if (const api::EntryState* surfaceState = analysis.stateFor(occ.entryId)) {
     out.saved = *surfaceState;
+    out.savedEntryId = occ.entryId;
   }
   return out;
 }

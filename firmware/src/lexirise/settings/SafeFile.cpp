@@ -42,6 +42,8 @@ SafeRead readSafely(SettingsFiles& files, const SafeFilePaths& paths, std::strin
   }
 }
 
+void setAside(SettingsFiles& files, const SafeFilePaths& paths) { quarantine(files, paths, paths.path); }
+
 bool replaceSafely(SettingsFiles& files, const SafeFilePaths& paths, const std::string_view content) {
   if (!files.ensureDir(paths.dir)) return false;
   if (!files.write(paths.tmp, content)) {

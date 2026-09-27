@@ -29,6 +29,7 @@ struct LookupCard {
   uint32_t entryId = 0;                  // the surface entry
   uint32_t lemmaEntryId = 0;             // the lemma's entry: Save targets it (lookup-flow.md §5)
   std::optional<api::EntryState> saved;  // the lemma's state if saved, else the surface's
+  uint32_t savedEntryId = 0;             // the entry `saved` is the state of (the lemma's or the surface's)
   bool translationPending = false;       // phase B: the server is still translating
   bool translationUnavailable = false;   // phase B failed (offline, or an error): the word without its meaning
   api::ApiError translationError = api::ApiError::None;  // why

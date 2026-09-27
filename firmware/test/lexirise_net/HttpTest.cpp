@@ -187,3 +187,21 @@ TEST(HttpResponse, EndlessInterimResponsesAreMalformed) {
   for (int i = 0; i < config::kHttpMaxInterimResponses; i++) allowed += "HTTP/1.1 100 Continue\r\n\r\n";
   EXPECT_TRUE(parse(allowed + "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").done());
 }
+
+TEST(ResponseParser, AStreamedBodySurvivesAnInterimResponse) {
+  struct Sink : lexipoint::net::BodySink {
+    std::string got;
+    bool onBody(const char* data, size_t len) override {
+      got.append(data, len);
+      return true;
+    }
+    size_t maxBytes() const override { return 1000; }
+  } sink;
+  lexipoint::net::ResponseParser parser;
+  parser.streamTo(&sink, 1000);
+  const std::string wire = "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello";
+  parser.feed(wire.data(), wire.size());
+  EXPECT_TRUE(parser.done());
+  EXPECT_EQ(sink.got, "hello");
+  EXPECT_TRUE(parser.body().empty());
+}

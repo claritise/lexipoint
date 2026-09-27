@@ -27,6 +27,8 @@ class WifiControl {
   virtual WifiResult ensureUp() = 0;
   // A Lexirise call just used WiFi: the idle clock restarts.
   virtual void touch() = 0;
+  // The station is connected now (by anyone): a call would use it without a join.
+  virtual bool connected() = 0;
   // Gives WiFi back if Lexipoint owns it and it has been idle `idleMin` minutes. True if it did.
   virtual bool tick(int idleMin) = 0;
   // Gives WiFi back now if Lexipoint owns it. True if it did.
@@ -37,6 +39,7 @@ class WifiSession final : public WifiControl {
  public:
   WifiResult ensureUp() override;
   void touch() override;
+  bool connected() override;
   bool tick(int idleMin) override;
   bool release() override;
 

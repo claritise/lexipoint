@@ -6,7 +6,9 @@
 // every word keeps its index. A saved word's "Met before" (C14) comes from its item (GET /v1/vocabulary/{id}), asked
 // once the card is on it and its phase B has run, once per item on the card (a refusal is asked again later). The
 // words the reader ignored (C17, V5: a list on the SD card, never Lexirise) come from the store, loaded as the card
-// opens, and this card's own ignores on top. The network is behind api::LexiriseApi. The activity runs one blocking
+// opens, and this card's own ignores on top. The vocab mirror (C13, V7a: vocab/VocabMirror.h) takes what the card
+// learns (each analysis's saved states, the live answer winning, and the card's own writes), and an idle card syncs
+// it a page at a time. The network is behind api::LexiriseApi. The activity runs one blocking
 // call per loop pass (fetch(): outside RenderLock; it changes nothing render() reads, and of the source's own state
 // only itemRetryAtMs_, a refusal's passed retry time forgotten: mutable, on the loop task like every call), then
 // applies the answer under the lock (apply()), so each phase is drawn before the next call starts (phases A and B,
@@ -26,6 +28,7 @@
 #include "lexirise/deck/BookDeck.h"
 #include "lexirise/lookup/LexiriseLookup.h"
 #include "lexirise/settings/IgnoredWords.h"
+#include "lexirise/vocab/VocabMirror.h"
 
 namespace lexipoint::card {
 
@@ -70,6 +73,8 @@ class LiveSource final : public CardSource {
     uint32_t retryAfterS = 0;               // Write or Item refused with 429: seconds until Lexirise may be asked
     std::vector<lookup::LookupCard> cards;  // Analysis: each word's card ...
     std::vector<FormName> names;            // ... and its form's name, worked out here, not under RenderLock
+    // Analysis: what it says of each word's entries (saved or not), for the vocab mirror (V7a); empty without one.
+    std::vector<vocab::LiveState> live;
     // A cut continuing the one before it: that cut's last word, named again now its next character is known.
     int renamed = -1;
     FormName renamedName;
@@ -117,6 +122,30 @@ class LiveSource final : public CardSource {
   void setClock(const Clock clock) { clock_ = clock; }
 #endif
   bool hasDeckWork() const { return deckDue().has_value(); }
+
+  // The vocab mirror (C13, V7a). `store` outlives the card; nothing is read as the card opens. The card's saved state
+  // still comes from analyze/text; the mirror takes it: each analysis's states (for every word's lemma and surface
+  // entries; an entry the answer doesn't list isn't saved, unless the answer was cut at config::kMaxEntries), except an
+  // entry this card wrote (its write is newer), and each write that went through. Taken into the mirror's memory by
+  // recordMirror(); its file is read and written only on an idle card (flushMirror), never before a redraw.
+  void setVocabMirror(vocab::VocabStore& store);
+  // A page of the mirror's sync is due (CardSession::shouldFetchVocab says when the card is idle enough): the card
+  // reached Lexirise (its words came, and its last call didn't fail), no write is queued, it has fetched fewer than
+  // config::kVocabPagesPerCard, and the store has a page due within its budget. `epochS`: the wall clock (time()).
+  bool hasVocabWork(unsigned long nowMs, uint32_t epochS) const;
+  // Network I/O, outside RenderLock; `cancel` (optional) gives the page up when the reader has input (sendPage), and
+  // asked first, a button already held gives it up before any request is sent.
+  std::optional<vocab::PageCall> fetchVocab(unsigned long nowMs, uint32_t epochS,
+                                            api::VocabPageReader::Cancel cancel = nullptr);
+  void applyVocab(const vocab::PageCall& call, unsigned long nowMs, uint32_t epochS);  // SD I/O, outside RenderLock
+  // What apply() learned for the mirror since the last call, into the store's memory (no SD I/O: after every answer,
+  // under RenderLock or not; a language not loaded yet keeps it until it is).
+  void recordMirror();
+  // The mirror's file wants reading (this card's language isn't loaded yet) or writing (memory changed).
+  bool mirrorFlushDue() const;
+  // SD I/O, outside RenderLock, on an idle card (CardSession::shouldFlushMirror) or as the card closes: records, then
+  // `load`s this card's language (once per boot), then writes what changed.
+  void flushMirror(bool load);
   deck::DeckCall fetchDeck();  // one call (network I/O) for the book deck's next step; step None when there's none
   void applyDeck(const deck::DeckCall& call);
 
@@ -218,6 +247,15 @@ class LiveSource final : public CardSource {
   IgnoredWordStore* ignoredStore_ = nullptr;  // the reader's ignore list (none: nothing is ignored)
   // This card's ignores and their Undos, newest last (a handful): they win over the store.
   std::vector<std::pair<IgnoredKey, bool>> ignoredHere_;
+  vocab::VocabStore* vocab_ = nullptr;           // the vocab mirror (none: nothing kept or synced)
+  std::optional<Language> vocabLanguage_;        // the tapped sentence's: the mirror this card syncs
+  unsigned vocabPages_ = 0;                      // pages this card fetched
+  bool mirrorWriteFailed_ = false;               // the mirror's file couldn't be written on this card
+  std::vector<vocab::LiveState> mirrorUpdates_;  // apply()'s, until recordMirror()
+  // Entries this card wrote (a save, a level, a removal): a later analysis's state for them may predate the write.
+  std::vector<std::pair<Language, uint32_t>> writtenEntries_;
+  // Queues `state` for the mirror; `ownWrite`: from this card's write (later analyses don't override it).
+  void toMirror(const vocab::LiveState& state, bool ownWrite);
   // cardWord with its sentence and the book titles; the form's name kept from the word as built so far.
   // `named`: its form's name worked out already (else the one shown now is reused when it's for the same form).
   CardWord wordFor(int index, const FormName* named = nullptr) const;

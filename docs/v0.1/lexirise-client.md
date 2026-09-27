@@ -122,6 +122,31 @@ When the card asks for it: `../v0.2/00-overview.md` C14 "As built (V4b)".
 | `suspended` | ~~(v0.2 V5, C17) Whether the word is ignored: only a JSON `true` counts (null, a string, anything else: not ignored). `analyze/text` never shows it~~ (Superseded 2026-09-27: the card's Ignore is the reader's own list, `../v0.2/00-overview.md` C17 "As built (V5, local)".) Not read (suspended in the Lexirise app; `analyze/text` never shows it either): skipped like any other field |
 | everything else | Skip. Null or missing fields are empty; anything but a JSON object is malformed (`api::parseSavedItem`) |
 
+### `GET /v1/vocabulary` (the list)
+
+(v0.2 V7a, C13) A page of the user's saved items in one language, for the vocab mirror
+(`../v0.2/page-annotations.md` §1.2 "As built (V7a)"): `api::vocabularyPageRequest`,
+`?language=<ja|zh>&limit=<n>&offset=<n>&sortId=updated_at&sortDesc=true`, read-only; `limit` is
+`config::kVocabPageItems`, or `kVocabProbeItems` for an incremental pass's first page (`PagePlan::limit`). Its body
+(~6.8 KB an item, measured) is **streamed**, never held: `LexiriseApi::vocabularyPage` hands the decoded body to a
+`net::BodySink` (up to the sink's `maxBytes()`, `config::kVocabPageMaxBytes` for a page), `api::VocabPageReader` reads
+it with `net/JsonStream`, and gives the page up when its cancel says the reader has input. It goes only over WiFi
+already up (`LexiriseService::send`'s `mayJoin` false: NoWifi otherwise, never a join, no WiFi touch, and the TLS
+idle close still counts from the reader's own last call).
+
+| Path | Keep |
+|---|---|
+| `items[].id` | The saved expression's id (a number, or a string of digits; else the item isn't kept) |
+| `items[].dictionary_id` | The entry a save targets (`stateByEntryId`'s key) |
+| `items[].proficiency` | 0–4 (else not kept) |
+| `items[].suspended` | Only a JSON `true` |
+| `items[].next_review_at` | ISO 8601 → seconds; null or unreadable: none |
+| `items[].updated_at` | ISO 8601 → ms: the sync's order and cursor (unreadable: 0, never stops a pass) |
+| `items[].unit_type` | `word`, or any value that isn't a string (null: not said), is kept; any other string (`sentence`: a sentence card) isn't |
+| `nextOffset` | null or missing: the last page |
+| `languageCount` | The list's size (sentence cards too, as the list holds them): a drop between pages is deletions, and the mirror reads again from as far back. `totalCount` (words only) is read but not used for it |
+| everything else | Walked, not kept: the item's nested `dictionary_entry` (whose own `id` and look-alike fields are never taken), translations, notes, tags, media. Past `config::kVocabListLimitMax` items, or not an object with an `items` array: malformed |
+
 ### `PATCH /v1/vocabulary/{id}`
 
 A saved word's level, `{"proficiency": 0-4}` (`api::setProficiencyRequest`: a level change and its Undo) ~~and
@@ -136,11 +161,13 @@ A saved word's level, `{"proficiency": 0-4}` (`api::setProficiencyRequest`: a le
 - **Tokenization and lemmatization** of Japanese (D4). This is why no MeCab or deinflection runs
   on-device.
 - **Normalization** (full-width, kana variants). We send text as it appears on the page.
-- **Proficiency state** per entry. The device holds no vocabulary data.
+- **Proficiency state** per entry. ~~The device holds no vocabulary data.~~ (Superseded 2026-09-28, v0.2 V7a: it keeps
+  a read-only copy, the vocab mirror, `../v0.2/page-annotations.md` §1.2; Lexirise stays the source.)
 
 ## 4. Parsing
 
-**Revised in P1.** Bodies are buffered (the 64KB cap makes that safe, and the buffer lands in PSRAM),
+**Revised in P1.** Bodies are buffered (the 64KB cap makes that safe, and the buffer lands in PSRAM; the vocabulary
+list is the exception, streamed: `GET /v1/vocabulary` above),
 then read by **`net/JsonReader`**, a strict path-reporting reader: `occurrences[3].word` arrives as a path
 plus a value. `lib/JsonParser/StreamingJsonParser` wasn't a fit: it silently drops tokens over 512 bytes
 (a dropped key hands its value to the previous key), doesn't decode `\u` escapes, and accepts malformed or
@@ -208,6 +235,11 @@ enabled=1
   StarDict. The first lookup shows `STR_LEXI_NO_KEY` once per boot.
 
 ## 6. Tests (host)
+
+(v0.2 V7a) The streamed list: `test/lexirise_net/JsonStreamTest.cpp` (the push reader gives `JsonReader`'s events in
+any chunking and rejects what it rejects), `VocabPageTest.cpp` (a synthetic 200-item page in the measured shape, with
+an embedded `dictionary_entry` whose look-alike fields are never taken; malformed, cut and over-long bodies), the
+client's sink in `LexiriseClientTest.cpp` and `HttpTest.cpp`, the WiFi rule in `ServiceTest.cpp`.
 
 - `test/lexirise_json/`: recorded responses (the brief's examples plus captured real ones from P0)
   → structs. Cover truncated bodies, oversize arrays, unknown keys, a null `saved_expression_id`,

@@ -18,6 +18,8 @@ constexpr const char* kLogTag = "LXW";
 
 }  // namespace
 
+bool WifiSession::connected() { return WiFi.status() == WL_CONNECTED; }
+
 WifiResult WifiSession::ensureUp() {
   switch (decideEnsureUp(WiFi.status() == WL_CONNECTED, WiFi.getMode() == WIFI_MODE_NULL, lease_.owned())) {
     case WifiAction::UseExisting:  // (tick() has remembered where it is, whoever made it)

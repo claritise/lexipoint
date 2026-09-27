@@ -12,6 +12,10 @@ add_executable(LexiriseCardTest
   ReaderSceneTest.cpp
   LiveSourceTest.cpp
   ${REPO_ROOT}/src/lexirise/card/LiveSource.cpp
+  ${REPO_ROOT}/src/lexirise/vocab/VocabMirror.cpp
+  ${REPO_ROOT}/src/lexirise/api/VocabPage.cpp
+  ${REPO_ROOT}/src/lexirise/net/JsonStream.cpp
+  ${REPO_ROOT}/src/lexirise/api/LexiriseClient.cpp
   ${REPO_ROOT}/src/lexirise/deck/BookDeck.cpp
   ${REPO_ROOT}/src/lexirise/settings/BookTags.cpp
   ${REPO_ROOT}/src/lexirise/settings/IgnoredWords.cpp

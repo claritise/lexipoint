@@ -277,6 +277,41 @@ base_url=https://api.lexirise.app
   Written crash-safely like the others (`SafeFile`), once per change, outside the card's render lock; read once, as a
   card opens (`settings/IgnoredWords`). Why the key is the entry id: `../v0.2/00-overview.md` C17 "As built (V5,
   local)".
+- **The vocab mirror** (v0.2 V7a, C13; no setting): a read-only copy of the user's Lexirise vocabulary, one file per
+  language, `/.lexirise/vocab-ja.bin` and `/.lexirise/vocab-zh.bin` (what it's for, and when it syncs:
+  `../v0.2/page-annotations.md` §1.2 "As built (V7a)"). **Binary**, little-endian (`vocab/VocabMirror`): a
+  `config::kVocabHeaderBytes` header, then one `config::kVocabRecordBytes` record per saved word, sorted by entry id.
+
+  | Header offset | Bytes | Field |
+  |---|---|---|
+  | 0 | 4 | `LXVM` |
+  | 4 | 2 | version (2: the incremental pass's progress; a version 1 file is set aside and synced again) |
+  | 6 | 2 | the record's size |
+  | 8 | 2 | the language code (`ja` / `zh`) |
+  | 10 | 1 | flags: 1 synced (a full pass has ended), 2 a full pass under way, 4 its list count (offset 40) is set, 8 a page of it had no count (it sweeps nothing), bits 4–5 how far short of `kVocabPageOverlap` its next page's slack is (a re-read: all of it), 64 the next full pass was brought forward once (no count) |
+  | 11 | 1 | the full pass's generation (each record's mark) |
+  | 12 | 4 | records |
+  | 16 | 8 | the cursor: every change up to this `updated_at` (ms since the epoch) is in |
+  | 24 | 8 | the running full pass's newest `updated_at` (its cursor once it ends) |
+  | 32 | 4 | the running full pass's next offset |
+  | 36 | 4 | when the last full pass ended (seconds since the epoch; 0: unknown) |
+  | 40 | 4 | the running full pass's list count at its last page (deletions: `../v0.2/page-annotations.md` §1.2) |
+  | 44 | 4 | the incremental pass under way: its next offset |
+  | 48 | 8 | its newest `updated_at` (the cursor once it ends) |
+  | 56 | 4 | its list count at its last page |
+  | 60 | 1 | its flags: 1 under way, 2 its count set, 4 a page of it had no count, bits 4–5 how far short of the overlap its next page's slack is |
+  | 61 | 7 | spare (0) |
+  | 68 | 4 | CRC-32 (IEEE) of bytes 0–67 and every record |
+
+  A record: the entry id (`dictionary_id`), the saved expression's id, `next_review_at` (seconds; 0: none), each 4
+  bytes; the level (0–4), flags (1: suspended; 2: put by a card's live answer, not a page), the full pass that last
+  saw it, and a spare byte. At most `config::kVocabMirrorMax` records (`kVocabMaxBytes`). A file that doesn't check
+  out (magic, version, language, size, CRC, order, a slack past the overlap in either pass's bits 4–5) is set aside as
+  `.bad` (flag bits it doesn't know are ignored) and the mirror synced again from Lexirise; nothing in it is the
+  user's own (it's all in their account), so hand edits aren't kept. Written crash-safely like the others (`SafeFile`:
+  `.tmp`, `.bak`), outside the card's render lock: after a page that changes the mirror or the pass's progress (a
+  quiet incremental pass writes nothing), on an idle card after its answers changed it, and as the card closes; read
+  once per boot per language, on the first idle card in it.
 - **`reading` lives in `[ja]`** (it moved from `state.ini`, which is dropped).
 - Unknown keys are **kept** on rewrite, so a newer firmware's settings survive a downgrade.
 - A missing file means all defaults with no key, so Lexirise is effectively off until a key is set.
@@ -311,3 +346,6 @@ extra to keep pixel-perfect here beyond "uses the stock components".
   with Tag with book title on); `decks.ini` and the deck flow (`test/lexirise_deck`, `LiveDeck` in
   `test/lexirise_card/LiveSourceTest.cpp`). With Lexirise on, the screen has 14 rows (`lxctl settings-smoke`'s
   maximum).
+- v0.2 V7a: the vocab mirror's file, sync and store (`test/lexirise_vocab`), the card's side of it (`LiveMirror` in
+  `test/lexirise_card/LiveSourceTest.cpp`), the streamed page (`VocabPageTest`, `JsonStreamTest` in
+  `test/lexirise_net`).

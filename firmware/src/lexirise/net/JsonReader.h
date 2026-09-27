@@ -41,8 +41,9 @@ class Path {
   // any object key: path.matches({"occurrences", "[]", "word"}).
   bool matches(std::initializer_list<std::string_view> pattern) const;
 
-  // Internal (used by the reader).
+  // Internal (used by the readers).
   void pushKey(std::string&& key);
+  void pushKeyCopy(std::string_view key);  // into the slot's own buffer: no allocation once it has grown
   void pushIndex(int index);
   void pop() { depth_--; }
 

@@ -29,6 +29,13 @@ void Path::pushKey(std::string&& key) {
   depth_++;
 }
 
+void Path::pushKeyCopy(const std::string_view key) {
+  if (depth_ == segments_.size()) segments_.emplace_back();
+  segments_[depth_].key.assign(key.data(), key.size());
+  segments_[depth_].index = -1;
+  depth_++;
+}
+
 void Path::pushIndex(const int index) {
   if (depth_ == segments_.size()) segments_.emplace_back();
   segments_[depth_].key.clear();
