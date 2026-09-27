@@ -75,7 +75,11 @@ number. Filters take either the number or the label.
 
 - **A compound verb's lemma can be its first verb** (seen on the device 2026-09-27, V4): 見くらべた came back with
   lemma 見る, so the card looks up 見る ("see") instead of 見比べる ("compare"). The namer leaves the form unnamed
-  (it isn't a form of 見る), but the meaning shown is the wrong word's. Worth reporting to Lexirise (claritise's call).
+  (it isn't a form of 見る), but the meaning shown is the wrong word's. ~~Worth reporting to Lexirise (claritise's call).~~
+  **Measured 2026-09-27** (12 compounds, read-only; raw in `research/v4/`): wrong for 見くらべた‹見る›, 笑い出した‹笑う›,
+  走り続けた‹走る› (kana in the second half; the aspect compounds 〜出す and 〜続ける), right for 見比べた, 飛び出した,
+  書き込んだ, 取り出した, 見上げた, 振り返った, 読み終わった, 思い出した, 話し合った; `dictionary/lookup` has an entry for
+  every full compound. **Bug report drafted for claritise to send** (2026-09-27); not yet reported.
 - **Sense order can lead with a rare sense:** 行く's meanings came back as "die; go" (die first: 逝く's sense).
 
 - **A character's HSK level isn't always in `system_tags`.** 择 has `system_tags: ["char"]`, but
