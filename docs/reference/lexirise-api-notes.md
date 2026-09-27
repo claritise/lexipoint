@@ -76,10 +76,24 @@ number. Filters take either the number or the label.
 - **A compound verb's lemma can be its first verb** (seen on the device 2026-09-27, V4): 見くらべた came back with
   lemma 見る, so the card looks up 見る ("see") instead of 見比べる ("compare"). The namer leaves the form unnamed
   (it isn't a form of 見る), but the meaning shown is the wrong word's. ~~Worth reporting to Lexirise (claritise's call).~~
-  **Measured 2026-09-27** (12 compounds, read-only; raw in `research/v4/`): wrong for 見くらべた‹見る›, 笑い出した‹笑う›,
-  走り続けた‹走る› (kana in the second half; the aspect compounds 〜出す and 〜続ける), right for 見比べた, 飛び出した,
-  書き込んだ, 取り出した, 見上げた, 振り返った, 読み終わった, 思い出した, 話し合った; `dictionary/lookup` has an entry for
-  every full compound. **Bug report drafted for claritise to send** (2026-09-27); not yet reported.
+  ~~**Measured 2026-09-27** (12 compounds …)~~ **Superseded the same day by a wider measurement** (30 forms, read-only;
+  raw in `research/v4/compound-*.json`). The first verb comes back as the lemma in two cases:
+  - **Aspect compounds, any spelling:** 〜出す "start to", 〜続ける, 〜始める, 〜すぎる/〜過ぎる: 笑い出した‹笑う›,
+    泣き出した‹泣く›, 歩き出した‹歩く›, 走り続けた‹走る›, 読み続けた‹読む›, 降り始めた‹降る›, 食べすぎた and 食べ過ぎた
+    ‹食べる›, and the dictionary form 笑い出す‹笑う› too. `dictionary/lookup` has complete entries for every one of the
+    compounds (笑い出す 144406320, 泣き出す 106251878, 歩き出す 92564515, 走り続ける 145484911, 読み続ける 193666552,
+    降り始める 169236341, 食べすぎる 92114219, 食べ過ぎる 146636085).
+  - **A lexical compound in a mixed kanji/kana spelling:** 見くらべた and 見くらべる‹見る›, 書きこんだ‹書く›, とり出した
+    ‹とる›, while the standard spelling is right (見比べた‹見比べる›, 書き込んだ‹書き込む›, 取り出した‹取り出す›) and so
+    is all-kana みくらべた‹みくらべる›.
+  - **Right:** 飛び出した, 飛びだした, 思い出した, 読み終わった, 振り返った, 見上げた, 話し合った.
+  - The token is one occurrence each time: only `lemma`/`lemmaEntryId` is off. `breakdown` doesn't explain it: it
+    splits every word into kanji and kana runs for display (見比べた is 見 + 比 + べた), not into the analyzer's pieces.
+  **Bug report drafted for claritise to send** (2026-09-27); not yet reported.
+- **`dictionary/lookup` creates an entry for a word it doesn't have** (seen 2026-09-27): 書きこむ and とり出す (mixed
+  spellings) came back with new ids (1005679463, 1005679465) and `status: "pending"`, no translation yet; 見くらべる's
+  id 1005346382 is in the same range, so it was likely generated on demand too. So a lookup can add to Lexirise's shared
+  dictionary; a card should treat `pending` as "no meaning yet".
 - **Sense order can lead with a rare sense:** 行く's meanings came back as "die; go" (die first: 逝く's sense).
 
 - **A character's HSK level isn't always in `system_tags`.** 择 has `system_tags: ["char"]`, but
