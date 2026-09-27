@@ -410,6 +410,15 @@ The brief's example (`../v0.1/context-brief.md`) shows `stateByEntryId[id]` with
 account's one saved word, whose notes and tags had been cleared):** its state held only `saved_expression_id`,
 `entry_id`, `proficiency`, `seen_count`: no `notes` or `user_tags` keys at all, not even as null. So either they're
 left out when empty, or the analysis doesn't carry them any more. `dictionary/lookup` carries no saved state.
-Responses kept in `research/v4/` (gitignored). **Open (V4's device check):** save a word from a book, then look it
+Responses kept in `research/v4/` (gitignored). ~~**Open (V4's device check):** save a word from a book, then look it
 up in another sentence: does its state carry `notes` and `user_tags`, and in which shape? V4 reads the documented
 shape (and plain-string tags); without them the card says "First time you've met this word." as before.
+~~ **Answered 2026-09-27: `analyze/text` never carries them.**
+The dev account's throwaway word 蓋然性 was given a note (`PATCH /v1/vocabulary/{id}` `{"notes": …}` → 200, the
+item echoing the note), then `analyze/text` on a sentence holding it: its `stateByEntryId` state still had only
+`entry_id`, `proficiency`, `saved_expression_id`, `seen_count` (no `notes`, no `user_tags`); the note was cleared
+again after. On the device the same day, 和子 saved from one sentence (the note sent) and looked up in another showed
+"First time you've met this word." (`../v0.1/device-checks.md`). **Where they are:** `GET /v1/vocabulary/{id}`
+(read-only; the id is the state's `saved_expression_id`) returns the item with `notes`, `user_tags` and also
+`sentence_text`, beside the SRS fields. So Met before needs that one extra call for a saved word (v0.2 V4's fix,
+`../v0.2/00-overview.md` C14).

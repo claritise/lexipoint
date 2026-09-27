@@ -126,7 +126,7 @@ and calibre connect.
 ## 2026-09-27, `main` @ `42bce33c` (v0.2 V4), flashed by claritise (upload hash verified)
 
 Run by the harness (one held `lxctl` session after the incident below), claritise at the device. Book: a Japanese
-novel (EPUB), portrait. Page turns were fine (claritise). Nothing was saved: no Lexirise write this session.
+novel (EPUB), portrait. Page turns were fine (claritise). Writes, with claritise's OK ("its ok do it"): 和子 saved from the card (with this book's deck), and a note set then cleared on the dev account's throwaway word 蓋然性 from the Mac.
 
 | Check | Result |
 |---|---|
@@ -136,6 +136,9 @@ novel (EPUB), portrait. Page turns were fine (claritise). Nothing was saved: no 
 | A merged token the namer can't build: 捨ててくる‹捨てる› | **pass** (unnamed, as designed: "-te kuru" isn't generated; a missing name, not a wrong one) |
 | A compound Lexirise gives the first verb as lemma: 見くらべた‹見る› | **pass** (unnamed: 見くらべた isn't a form of 見る). Lexirise's lemma is wrong for looking the word up: the card shows 見る, "see", not 見比べる, "compare" (`../reference/lexirise-api-notes.md`, "Data quirks") |
 | `[LXCARD] names` timing and stack (C16) | **pass**: 10 words 75 ms, 8 words 10 ms; **5688 B** of the loop task's stack free both times (the host estimate of the search's deepest frames was ~2.3 KB) |
+| Save from the card, with Deck per book on (V2, V3) | **pass**: T on 和子 → "tracked"; after the Undo window `POST /v1/vocabulary` 200, then the book deck: `step list` → `GET /v1/decks?language=ja` 200 → `step create` → `POST /v1/decks` 200 → `Deck ja:hf7cd8e8a: recorded`. Left in claritise's account on purpose for the Met before retest: 和子 (tracked, this book's `book:` tag) and this book's deck |
+| **Met before (C14): fail** | 和子, saved from ふたりのうしろ姿を見くらべた和子は、…, looked up in 理科教室にもどった和子は、… (another sentence, same book): the card shows it **tracked**, and the Context tab says "First time you've met this word." **Cause:** `analyze/text` never carries a saved word's `notes` or `user_tags` (proved from the Mac the same day: `../reference/lexirise-api-notes.md`, "A saved word's notes and tags"); they're only in `GET /v1/vocabulary/{id}`. **Open:** V4's fix (fetch the item for a saved word), then retest here |
+| Conjugation on more forms | **pass**: 感じられる‹感じる› "passive or potential"; やさしくて‹やさしい› "te-form" (adjective), its highlight across a line break; names timing 19 words 49 ms, 29 words 20 ms, stack 5688 B free each time |
 | **Incident: USB link and a boot loop** | Every opening of the serial port reset the reader (`rst:0x15`, USB_UART_CHIP_RESET), though lxctl keeps DTR/RTS low; so each separate `lxctl` command rebooted it and multi-step checks lost their state. Two processes opening the port at once left the link silent until a replug. The harness's "wait until it answers" loops then opened the port every 1–2 s, and claritise saw the reader boot-loop whenever it was on the Mac's USB (never on battery or a wall charger). **Most likely cause: those loops** (each open is a reset). With them stopped and one process holding the port, it booted once and stayed up (70 s, then the rest of the session); with nothing holding it, it stayed up too. Not a firmware fault as far as seen: the boot log is normal to Home each time, no panic. Fix: how to connect is now in `dev-harness.md` §3 (one held session, `LX:AWAKE 1` first, never poll or double-open) |
 
 ## v0.2 V4: still owed on the device
