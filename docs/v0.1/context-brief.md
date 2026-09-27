@@ -77,6 +77,8 @@ Response includes:
 * `occurrences[]` — each token with `word`, `lemma`, `transliteration` (reading), `charStart`, `charEnd`
 * `entryMetaById` — per entry: `transliteration`, `partOfSpeech[]`, frequency data
 * `stateByEntryId` — per entry: `saved_expression_id` (null if not saved), `proficiency` (0-4), `seen_count`, `user_tags[]`
+  (Lexipoint's note, 2026-09-27: live, it never carries `notes` or `user_tags`; they're in `GET /v1/vocabulary/{id}`:
+  `../reference/lexirise-api-notes.md`, "A saved word's notes and tags in `analyze/text`".)
 * `grammar[]` and `grammarStates` — grammar pattern matches
 
 ```json

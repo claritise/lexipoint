@@ -13,6 +13,12 @@
 
 namespace lexipoint::api {
 
+// When a refused call (a 429, or a rejected key) may be asked again: its Retry-After (else the default), capped.
+inline unsigned long retryAtMs(const ApiResponse& response, const unsigned long nowMs) {
+  const uint32_t s = response.retryAfterS != 0 ? response.retryAfterS : config::kRetryAfterDefaultS;
+  return nowMs + (s < config::kRetryAfterMaxS ? s : config::kRetryAfterMaxS) * 1000UL;
+}
+
 class AccessPolicy {
  public:
   enum class Block : uint8_t { None, Rejected, RateLimited };
@@ -24,8 +30,7 @@ class AccessPolicy {
       rejected_ = true;                     // (a second 401 before anyone was told keeps it untold)
     } else if (response.error == ApiError::RateLimited) {
       unannounced_ = true;
-      const uint32_t s = response.retryAfterS != 0 ? response.retryAfterS : config::kRetryAfterDefaultS;
-      backoffUntilMs_ = nowMs + (s < config::kRetryAfterMaxS ? s : config::kRetryAfterMaxS) * 1000UL;
+      backoffUntilMs_ = retryAtMs(response, nowMs);
       backingOff_ = true;
     } else if (response.status >= 200 && response.status < 300) {
       rejected_ = false;  // answered with this key: it works

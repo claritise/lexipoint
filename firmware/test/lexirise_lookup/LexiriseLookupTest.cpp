@@ -47,6 +47,7 @@ class FakeApi final : public lexipoint::api::LexiriseApi {
   }
   ApiResponse write(const lexipoint::net::Request&) override { return {}; }
   ApiResponse deck(const lexipoint::net::Request&) override { return {}; }
+  ApiResponse savedItem(const lexipoint::net::Request&) override { return {}; }
 };
 
 ApiResponse body(std::string text) {

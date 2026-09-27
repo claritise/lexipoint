@@ -34,7 +34,7 @@
 | C9 | Set a saved word's level from the card | **Yes** | v0.1.x | Small | `saved_expression_id`, the card |
 | C12 | Page analysis + prefetch (one `analyze/text` per page) | **Yes** | v0.1.x | Medium | Client, SentenceBuilder |
 | C13 | Vocab mirror on SD (+ incremental sync) | **Yes** | v0.1.x | Medium | Client |
-| C14 | Card: "met before" (your notes + tags on saved words) | **Yes** | v0.1.x | Tiny | `stateByEntryId.notes` |
+| C14 | Card: "met before" (your notes + tags on saved words) | **Yes** | v0.1.x | Tiny | ~~`stateByEntryId.notes`~~ `GET /v1/vocabulary/{id}` (2026-09-27, below) |
 | C15 | Card: other readings (`also tsuitachi`) | **Yes** | v0.1.x | Tiny | `multipleReadings` |
 | C16 | Card: explain the conjugation (te-form, causative-passive…) | **Yes** | v0.1.x | Small | Surface + lemma, on-device rules |
 | C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, `PATCH suspended`, C3 |
@@ -343,12 +343,15 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
 
 ## C14–C17. Maxing out the card
 
-- **C14 "Met before":** for a saved word, `stateByEntryId` already carries your `notes` (the sentence it was saved
+- **C14 "Met before":** for a saved word, ~~`stateByEntryId` already carries~~ (Superseded 2026-09-27: it never
+  does; the saved item does, "As built (V4b)" below) your `notes` (the sentence it was saved
   with) and `user_tags` (so `book:<slug>` tells us which book). ~~The card shows it as "Met in *Norwegian Wood*:
   「…」".~~ (Superseded 2026-09-26: "Met before · <title>" over the sentence; As built below.) Meeting a word again in
   a new context is how it sticks.
-  - **As built (V4):** `stateByEntryId`'s `notes` and `user_tags` are parsed (`api::EntryState`; the note cut to
-    `kMaxSavedNoteBytes` at a character, the first `kMaxSavedTags` tags, an over-long tag skipped). The Context
+  - **As built (V4):** ~~`stateByEntryId`'s `notes` and `user_tags` are parsed (`api::EntryState`; the note cut to
+    `kMaxSavedNoteBytes` at a character, the first `kMaxSavedTags` tags, an over-long tag skipped).~~ (Superseded
+    2026-09-27: `analyze/text` never carries them, `../reference/lexirise-api-notes.md` "A saved word's notes and
+    tags in `analyze/text`"; they come from the saved item, "As built (V4b)" below.) The Context
     tab's "Met before" (and the Examples tab's own sentences) show the sentence the word was saved with, the word
     underlined (its dictionary form, its form here, a する verb's noun, or the dictionary form's stem when it's two
     characters or more: 煩わし- in 煩わしかった; unmarked when none is in it), under "Met before · <title>" when one of its
@@ -358,9 +361,28 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
     a cut of it: `card::sameSentence`) isn't shown: it's not a new context; another sentence of the same book is, so
     the current book counts. A save made on this card carries its sentence and tags into every copy of the word, so
     a later sentence's copy shows it (and loses it when the save is removed); a save or its removal landing while
-    such a copy is on screen redraws it (`LiveSource::takeShownChanged`, which `CardSession` draws on). The live
+    such a copy is on screen redraws it (`LiveSource::takeShownChanged`, which `CardSession` draws on). ~~The live
     answer's state hasn't been seen carrying notes or tags yet (the reference notes, "A saved word's notes and
-    tags"): without them the card stays "First time you've met this word."
+    tags"): without them the card stays "First time you've met this word."~~ (Superseded 2026-09-27: it never
+    carries them; "As built (V4b)".)
+  - **As built (V4b, 2026-09-27):** the sentence and tags come from the saved item, `GET /v1/vocabulary/{id}` (the
+    state's `saved_expression_id`; `api::savedItemRequest`, `api::parseSavedItem`: `../v0.1/lexirise-client.md` §2),
+    and `analyze/text`'s state no longer reads `notes` or `user_tags` (one source). **When:** only for the saved word
+    the card is on (tapped or stepped onto), once its phase B has run and been drawn: `LiveSource::fetch` asks for it
+    after the word's lookup and after a sentence loading (a step past the end never waits on it; a card that moved
+    on never asks for the word it left), before a write, outside RenderLock, so the first frame and the dictionary
+    never wait on it. Applied under the lock, every copy of the word on the card takes it, and the word on
+    screen is redrawn (`takeShownChanged`). **Once per item per card**, whatever came (`LiveSource`'s items): a
+    failure or an unreadable answer leaves "First time you've met this word." with no error and isn't asked again on
+    that card (an unreadable one's start is logged). A refusal (a 429's back-off or a rejected key, usually refused
+    by `AccessPolicy` without the network) isn't an answer: no item is asked until its retry time (the 429's wait,
+    else `kRetryAfterDefaultS`), then asked again. **Never** for an unsaved word, a word the card isn't on, an item
+    saved on this card (its sentence and tags are known: V4's copies above, no call), an id that isn't plain, after
+    phase B found Lexirise out of reach, or as the card closes. **The sentence:** the item's `notes` (what Lexipoint's
+    save writes); **decided:** when those are empty, its `sentence_text` (a word saved in the Lexirise app carries
+    its sentence there), shown like a note: the same-sentence rule and the underline, and a book title only from a
+    `book:<slug>` recorded here. C14 is the word met in another context, and nothing in `../v0.1/popup-ui.md` limits
+    it to Lexipoint's own saves.
 
     The rule, one principle a side: the page's cut flags (`truncatedLeft` / `truncatedRight`) are trusted and its
     text is never guessed at; whether the note was cut can't be known, so only a note near the cap

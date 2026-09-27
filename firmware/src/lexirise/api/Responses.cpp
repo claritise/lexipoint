@@ -144,8 +144,8 @@ class AnalyzeVisitor final : public json::Visitor {
 
  private:
   // entryMetaById.<id>.{transliteration, partOfSpeech[0], rank} and
-  // stateByEntryId.<id>.{saved_expression_id, proficiency, seen_count, notes, user_tags[].name}. Other fields
-  // are skipped.
+  // stateByEntryId.<id>.{saved_expression_id, proficiency, seen_count}. Other fields are skipped (a saved word's notes
+  // and tags come from its item: parseSavedItem).
   void entryValue(const Path& path, const Type type, const std::string_view text) {
     uint32_t id = 0;
     if (!toUint32(Type::Number, path.at(1).key, id)) return;  // the key is the id's digits
@@ -166,20 +166,9 @@ class AnalyzeVisitor final : public json::Visitor {
       }
       return;
     }
-    const bool tagName = path.keyIs(2, "user_tags") && path.isIndex(3) && type == Type::String &&
-                         (path.depth() == 4 || (path.depth() == 5 && path.keyIs(4, "name")));
-    if (!tagName && path.depth() != 3) return;  // a field not read (images, a tag's id)
+    if (path.depth() != 3) return;  // a field not read (images, tags)
     EntryState& state = out_.state[id];
-    if (tagName) {
-      // A tag's name, as an object's `name` or a plain string; one too long to be ours is skipped.
-      if (state.userTags.size() < config::kMaxSavedTags && !text.empty() && text.size() <= config::kMaxTokenBytes) {
-        state.userTags.emplace_back(text);
-      }
-      return;
-    }
-    if (path.keyIs(2, "notes")) {
-      if (type == Type::String) state.notes.assign(utf8Prefix(text, config::kMaxSavedNoteBytes));  // never fails
-    } else if (path.keyIs(2, "saved_expression_id")) {
+    if (path.keyIs(2, "saved_expression_id")) {
       if (type == Type::Number || type == Type::String) takeString(Type::String, text, state.savedExpressionId);
     } else if (path.keyIs(2, "proficiency")) {
       uint32_t value = 0;
@@ -283,6 +272,43 @@ class SaveVisitor final : public json::Visitor {
 
  private:
   SaveResult& out_;
+};
+
+class SavedItemVisitor final : public json::Visitor {
+ public:
+  // Where the item's fields are: under `item` (trusted when there is one), or at the top.
+  enum Slot : size_t { AtTop, UnderItem, kSlots };
+  SavedItem found[kSlots];
+  bool sawObject = false;  // the document is an object
+  bool sawItem = false;    // it has an `item` object
+
+  void onBegin(const Path& path, const bool isArray) override {
+    if (path.depth() == 0 && !isArray) sawObject = true;
+    if (path.depth() == 1 && path.keyIs(0, "item") && !isArray) sawItem = true;
+  }
+  void onValue(const Path& path, const Type type, const std::string_view text) override {
+    const bool item = path.depth() > 1 && path.keyIs(0, "item");
+    const size_t base = item ? 1 : 0;  // the item's own fields are at base + 1
+    if (path.depth() <= base || path.isIndex(base)) return;
+    SavedItem& out = found[item ? UnderItem : AtTop];
+    const std::string& key = path.at(base).key;
+    if (path.depth() == base + 1) {
+      if (type != Type::String) return;  // null or anything else: empty
+      if (key == "notes") {
+        out.notes.assign(utf8Prefix(text, config::kMaxSavedNoteBytes));  // never fails
+      } else if (key == "sentence_text" || key == "sentenceText") {
+        out.sentenceText.assign(utf8Prefix(text, config::kMaxSavedNoteBytes));
+      }
+      return;
+    }
+    // A tag's name, as an object's `name` or a plain string; one too long to be ours is skipped.
+    const bool tagName = (key == "user_tags" || key == "userTags") && path.isIndex(base + 1) && type == Type::String &&
+                         (path.depth() == base + 2 || (path.depth() == base + 3 && path.keyIs(base + 2, "name")));
+    if (tagName && out.userTags.size() < config::kMaxSavedTags && !text.empty() &&
+        text.size() <= config::kMaxTokenBytes) {
+      out.userTags.emplace_back(text);
+    }
+  }
 };
 
 constexpr size_t kDecksExpected = 16;  // a list's first reservation: a reader's handful of decks
@@ -433,6 +459,13 @@ ParseStatus parseSave(const std::string_view body, SaveResult& out) {
   SaveVisitor visitor(parsed);
   if (json::read(body, visitor) != json::Result::Ok || parsed.savedExpressionId.empty()) return ParseStatus::Malformed;
   out = std::move(parsed);
+  return ParseStatus::Ok;
+}
+
+ParseStatus parseSavedItem(const std::string_view body, SavedItem& out) {
+  SavedItemVisitor visitor;
+  if (json::read(body, visitor) != json::Result::Ok || !visitor.sawObject) return ParseStatus::Malformed;
+  out = std::move(visitor.found[visitor.sawItem ? SavedItemVisitor::UnderItem : SavedItemVisitor::AtTop]);
   return ParseStatus::Ok;
 }
 

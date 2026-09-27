@@ -108,11 +108,21 @@ TEST(Requests, VocabularyItemRequests) {
   ASSERT_TRUE(clear);
   EXPECT_EQ(clear->method, Method::Patch);
   EXPECT_EQ(clear->body, R"({"notes":null,"customTranslation":null,"tags":[]})");
+  const auto item = lexipoint::api::savedItemRequest("se_x-1");  // "Met before" (C14): read-only
+  ASSERT_TRUE(item);
+  EXPECT_EQ(item->method, Method::Get);
+  EXPECT_EQ(item->path, "/v1/vocabulary/se_x-1");
+  EXPECT_TRUE(item->body.empty());
+  EXPECT_TRUE(item->retryable());
+  EXPECT_EQ(lexipoint::api::loggablePath(item->path), "/v1/vocabulary/{id}");
   // The id goes into the path: anything but a plain id is refused.
   const std::string tooLong(lexipoint::config::kMaxSavedIdBytes + 1, '9');
   EXPECT_FALSE(lexipoint::api::removeRequest(tooLong));
+  EXPECT_FALSE(lexipoint::api::savedItemRequest(tooLong));
   EXPECT_TRUE(lexipoint::api::removeRequest(std::string(lexipoint::config::kMaxSavedIdBytes, '9')));
+  EXPECT_TRUE(lexipoint::api::savedItemRequest(std::string(lexipoint::config::kMaxSavedIdBytes, '9')));
   for (const char* bad : {"", "9/../me", "9?x=1", "9 1", "９"}) {
+    EXPECT_FALSE(lexipoint::api::savedItemRequest(bad)) << bad;
     EXPECT_FALSE(lexipoint::api::setProficiencyRequest(bad, 1)) << bad;
     EXPECT_FALSE(lexipoint::api::removeRequest(bad)) << bad;
     EXPECT_FALSE(lexipoint::api::clearRequest(bad)) << bad;

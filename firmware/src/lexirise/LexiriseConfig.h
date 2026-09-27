@@ -162,6 +162,9 @@ constexpr size_t kMaxDisplayFieldBytes = 64;  // /v1/me user.name and user.plan
 constexpr size_t kMaxUtf8BytesPerUtf16Unit = 3;
 constexpr size_t kMaxSavedNoteBytes = kMaxUtf8BytesPerUtf16Unit * kMaxSentenceUnits;
 constexpr size_t kMaxSavedTags = 16;  // a saved word's user_tags read (the book tag among them)
+// Saved items ("Met before": GET /v1/vocabulary/{id}) a card first makes room for; each is asked once per card, only
+// for a saved word the card is on, so a card holds a handful.
+constexpr size_t kSavedItemsReserved = 4;
 // "Met before" leaves out the sentence on the page itself: also a cut of the same long sentence (cut around another
 // tap), or a sentence inside the other, when the two share at least this share of the longer.
 constexpr size_t kSameSentenceOverlapPercent = 50;

@@ -49,8 +49,10 @@ struct EntryState {
   std::string savedExpressionId;  // as sent (a number or a string); empty: not saved
   int proficiency = 0;            // 0-4
   uint32_t seenCount = 0;
-  std::string notes;                  // the sentence it was saved with, cut to config::kMaxSavedNoteBytes (C14)
-  std::vector<std::string> userTags;  // user_tags' names (objects {id, name} or plain strings), the first kMaxSavedTags
+  // Not in analyze/text (it never carries them, lexirise-api-notes.md): filled from the saved item (parseSavedItem),
+  // or by a save made on the card.
+  std::string notes;                  // the sentence it was met in (C14), cut to config::kMaxSavedNoteBytes
+  std::vector<std::string> userTags;  // its tags' names, the first kMaxSavedTags
 };
 
 struct AnalyzeResult {
@@ -86,6 +88,17 @@ struct SaveResult {
   std::string savedExpressionId;
 };
 ParseStatus parseSave(std::string_view body, SaveResult& out);
+
+// GET /v1/vocabulary/{id}: a saved word's item, at the top or under `item`. Only these fields are read; notes and the
+// sentence are cut to config::kMaxSavedNoteBytes at a character, the first kMaxSavedTags tags kept (objects {id, name}
+// or plain strings; an empty one or one over kMaxTokenBytes skipped). Null or missing: empty. Malformed: not a JSON
+// object.
+struct SavedItem {
+  std::string notes;                  // what Lexipoint's save writes: the sentence the word was saved from
+  std::string sentenceText;           // `sentence_text`: the sentence a word saved in the Lexirise app came with
+  std::vector<std::string> userTags;  // `user_tags`' names
+};
+ParseStatus parseSavedItem(std::string_view body, SavedItem& out);
 
 // A book's deck (C4, V3). The live shapes are unseen (lexirise-api-notes.md, Decks), so the parsers take the
 // reference's snake_case names and their camelCase forms, and `id`, `deckId` or `deck_id`.

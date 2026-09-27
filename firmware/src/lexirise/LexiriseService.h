@@ -60,6 +60,8 @@ class LexiriseService final : public api::LexiriseApi {
   api::ApiResponse write(const net::Request& request) override;
   // A /v1/decks call: the creation (a POST) on a fresh session too, like a save.
   api::ApiResponse deck(const net::Request& request) override { return write(request); }
+  // GET /v1/vocabulary/{id} (read-only: on the keep-alive session, resent once if it turned stale).
+  api::ApiResponse savedItem(const net::Request& request) override { return send(request); }
 
   // Main-loop tick: a queued key check, the idle TLS close, and the WiFi idle teardown.
   void tick();

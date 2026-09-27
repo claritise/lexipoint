@@ -275,8 +275,10 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   sentence's first word; a back press from then steps back from the word the card waited on (as it would
   have before the jump), not from the new sentence's first. A real new press comes after the new frame's
   refresh.
-- The calls' order: the tapped sentence's analysis, then the word on screen's lookup (and a save's), then a
-  next sentence the card waits for, then ready writes.
+- ~~The calls' order: the tapped sentence's analysis, then the word on screen's lookup (and a save's), then a
+  next sentence the card waits for, then ready writes.~~ **Superseded 2026-09-27 (V4b):** the focused saved word's
+  item now comes after a loading sentence and before writes; the order's one home is `LiveSource::fetch()`'s comment
+  in `firmware/src/lexirise/card/LiveSource.h`.
 - The bench (`BenchSource`) goes on into one canned "next sentence" (its own again) after
   `config::kBenchNextSentenceMs`, and the smoke log reports each word change: `lxctl card-sentence` drives the wait and
   the jump on the device.
@@ -437,9 +439,11 @@ Device check owed, with a card open:
 
 ### 5i. As built (v0.2 V4): Met before, and the form's name
 
-A word's card (`card::cardWord`) also carries, from the analysis it came in, the sentence a saved word was saved
-with (`stateByEntryId`'s `notes`) and the book it was saved from (its `book:<slug>` tag, titled from V2's
-`book-tags.ini`): the Context tab's "Met before", unless it's this very sentence. A Japanese word in a conjugated
+A word's card (`card::cardWord`) also carries, ~~from the analysis it came in~~ (Superseded 2026-09-27, V4b: from
+the saved word's item, `GET /v1/vocabulary/{id}`, asked after its phase B), the sentence a saved word was saved
+with (~~`stateByEntryId`'s `notes`~~ the item's `notes`, else its `sentence_text`) and the book it was saved from (its
+`book:<slug>` tag, titled from V2's `book-tags.ini`): the Context tab's "Met before", unless it's this very
+sentence. A Japanese word in a conjugated
 form gets its form's name and the steps from its dictionary form (`text/Conjugation`), with no call: when and how,
 `../v0.2/00-overview.md` C16; "Met before", C14.
 

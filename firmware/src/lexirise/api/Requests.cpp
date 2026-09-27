@@ -53,7 +53,7 @@ namespace {
 std::optional<net::Request> vocabularyItem(const net::Method method, const std::string_view id, std::string body) {
   if (!isPlainId(id, config::kMaxSavedIdBytes)) return std::nullopt;
   net::Request request{method, std::string(kVocabularyPath) + "/" + std::string(id), std::move(body)};
-  request.idempotent = true;  // setting a value (or deleting) twice changes nothing more
+  request.idempotent = true;  // reading, setting a value or deleting twice changes nothing more
   return request;
 }
 
@@ -77,6 +77,10 @@ net::Request saveRequest(const SaveWord& word) {
   body.add("proficiency", word.proficiency).add("tags", word.tags);
   if (!word.notes.empty()) body.add("notes", utf8Prefix(word.notes, config::kMaxAnalyzeTextBytes));
   return {net::Method::Post, kVocabularyPath, body.str()};  // not idempotent: an upsert that replaces
+}
+
+std::optional<net::Request> savedItemRequest(const std::string_view id) {
+  return vocabularyItem(net::Method::Get, id, "");
 }
 
 std::optional<net::Request> setProficiencyRequest(const std::string_view id, const int proficiency) {

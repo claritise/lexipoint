@@ -3,10 +3,11 @@
 // The live card's source (P5): the tapped sentence analyzed once, then each word's dictionary entry as
 // the card lands on it (lookup-flow.md §5-6). Stepped past its last word, the card goes on into the page's
 // next sentence (P9): extend() adds it, it is analyzed like the first, and its words follow at the end, so
-// every word keeps its index. The network is behind api::LexiriseApi. The activity runs
-// one blocking call per loop pass (fetch(): outside RenderLock, it changes nothing render() reads), then
-// applies the answer under the lock (apply()), so each phase is drawn before the next call starts
-// (phases A and B, popup-ui.md §2). Pure; tests: test/lexirise_card.
+// every word keeps its index. A saved word's "Met before" (C14) comes from its item (GET /v1/vocabulary/{id}), asked
+// once the card is on it and its phase B has run, once per item on the card (a refusal is asked again later). The
+// network is behind api::LexiriseApi. The activity runs one blocking call per loop pass (fetch(): outside RenderLock,
+// it changes nothing render() reads), then applies the answer under the lock (apply()), so each phase is drawn before
+// the next call starts (phases A and B, popup-ui.md §2). Pure; tests: test/lexirise_card.
 
 #include <cstdint>
 #include <deque>
@@ -46,20 +47,23 @@ class LiveSource final : public CardSource {
   };
   // One answer from the network, not yet applied.
   struct Fetched {
-    enum class Kind : uint8_t { None, Analysis, Entry, Write } kind = Kind::None;
+    enum class Kind : uint8_t { None, Analysis, Entry, Write, Item } kind = Kind::None;
     lookup::LookupReport report;  // Analysis
     size_t tapped = 0;
     size_t sentence = 0;  // Analysis: which (0: the tapped one)
-    int index = 0;        // Entry: the word, and its card with phase B filled in
+    int index = 0;        // Entry: the word, and its card with phase B filled in; Item: the word
     lookup::LookupCard card;
     api::ApiError error = api::ApiError::None;
-    std::string savedExpressionId;          // Write: a new save's id (empty for a level change or a removal)
-    bool clearFailed = false;               // Write: removed (DELETE), but its notes and tags weren't cleared
-    bool saveRetry = false;                 // Entry: the lookup again, for a save, after it failed once
-    std::string unreadable;                 // a response we couldn't read: its start, for the log
-    uint32_t retryAfterS = 0;               // Write refused with 429: seconds until Lexirise may be asked
-    std::vector<lookup::LookupCard> cards;  // Analysis: each word's card ...
-    std::vector<FormName> names;            // ... and its form's name, worked out here, not under RenderLock
+    // Write: a new save's id (empty for a level change or a removal); Item: the item's.
+    std::string savedExpressionId;
+    api::SavedItem item;                     // Item: what came (empty when the call failed)
+    std::optional<unsigned long> retryAtMs;  // Item: refused (a 429 or a rejected key): not kept, asked from then
+    bool clearFailed = false;                // Write: removed (DELETE), but its notes and tags weren't cleared
+    bool saveRetry = false;                  // Entry: the lookup again, for a save, after it failed once
+    std::string unreadable;                  // a response we couldn't read: its start, for the log
+    uint32_t retryAfterS = 0;                // Write refused with 429: seconds until Lexirise may be asked
+    std::vector<lookup::LookupCard> cards;   // Analysis: each word's card ...
+    std::vector<FormName> names;             // ... and its form's name, worked out here, not under RenderLock
     // A cut continuing the one before it: that cut's last word, named again now its next character is known.
     int renamed = -1;
     FormName renamedName;
@@ -104,13 +108,15 @@ class LiveSource final : public CardSource {
 
   bool hasWork(unsigned long nowMs) const;  // fetch() would call the network
   // At most one call, in this order: the tapped sentence's analysis; the focused word's lookup (and a
-  // save's, when a save waits for its word's translation); a next sentence the card waits for; the next
-  // write that is ready. `closing`: only what the queued writes need, all of them now (no analysis).
+  // save's, when a save waits for its word's translation); a next sentence the card waits for; the focused saved
+  // word's item ("Met before", after its phase B, never while a sentence loads); the next write that is ready.
+  // `closing`: only what the queued writes need, all of them now (no analysis, no item).
   Fetched fetch(unsigned long nowMs, bool closing = false) const;
   // Under RenderLock on the device. Changed: the words or their phases changed (the controller syncs). Whatever
-  // it answers, a change to what the focused word shows (a copy's "Met before" after a write, an earlier cut's
-  // word once the next cut joins, a lookup that changed the word on screen) is told by takeShownChanged(); what's
-  // drawn is the CardWord and the controller's state, so a lookup that changes neither isn't drawn again.
+  // it answers, a change to what the focused word shows (its "Met before" once its item came, a copy's after a write,
+  // an earlier cut's word once the next cut joins, a lookup that changed the word on screen) is told by
+  // takeShownChanged(); what's drawn is the CardWord and the controller's state, so a lookup that changes neither
+  // isn't drawn again.
   Advance apply(Fetched fetched);
   // Whether the focused word was rebuilt showing something new since the last call (then cleared): draw it.
   bool takeShownChanged();
@@ -166,6 +172,23 @@ class LiveSource final : public CardSource {
   std::optional<FailedWrite> failedWrite_;
   std::vector<std::string> createdIds_;  // items this card saved (their removal clears them too)
   std::vector<bool> saveRetried_;        // per word: its lookup was retried for a save
+  // A saved word's item, asked once on this card whatever came: its sentence (the notes, else sentence_text) and tags;
+  // both empty when it had none or the call failed ("First time you've met this word.").
+  struct Item {
+    std::string id;
+    std::string sentence;
+    std::vector<std::string> tags;
+  };
+  std::vector<Item> items_;
+  const Item* itemFor(const std::string& id) const;
+  // The item fetched for word `index`'s saved state, copied into it (its notes and tags); false when there's none.
+  bool fillFromItem(int index);
+  // The word whose item fetch() asks for next; -1: none (only the focused saved word, after its phase B, once).
+  int itemDue(unsigned long nowMs, bool closing) const;
+  Fetched savedItem(int index, unsigned long nowMs) const;  // the call for a word's item
+  // After a refusal: no item asked before this; cleared by itemDue() once reached.
+  mutable std::optional<unsigned long> itemRetryAtMs_;
+  bool ours(const std::string& id) const;  // saved on this card (its sentence and tags known: never asked)
   struct DueDeck {
     size_t language;  // index in kLanguages (and deckKeys_)
     deck::DeckStep step;

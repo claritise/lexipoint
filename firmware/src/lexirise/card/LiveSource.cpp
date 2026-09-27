@@ -14,7 +14,9 @@
 #include <utility>
 
 #include "LiveWord.h"
+#include "lexirise/api/AccessPolicy.h"
 #include "lexirise/api/Requests.h"
+#include "lexirise/api/Responses.h"
 #include "lexirise/text/Utf8Prefix.h"
 #include "lexirise/text/Utf8Units.h"
 #include "lexirise/util/Timing.h"
@@ -122,7 +124,71 @@ bool LiveSource::writeReady(const unsigned long nowMs, const bool closing) const
 }
 
 bool LiveSource::hasWork(const unsigned long nowMs) const {
-  return loadingSentence().has_value() || lookupDue(nowMs, false) >= 0 || writeReady(nowMs, false);
+  return loadingSentence().has_value() || lookupDue(nowMs, false) >= 0 || itemDue(nowMs, false) >= 0 ||
+         writeReady(nowMs, false);
+}
+
+bool LiveSource::ours(const std::string& id) const {
+  return std::find(createdIds_.begin(), createdIds_.end(), id) != createdIds_.end();
+}
+
+const LiveSource::Item* LiveSource::itemFor(const std::string& id) const {
+  for (const Item& item : items_) {
+    if (item.id == id) return &item;
+  }
+  return nullptr;
+}
+
+bool LiveSource::fillFromItem(const int index) {
+  if (!cards_[index].saved) return false;
+  api::EntryState& saved = *cards_[index].saved;
+  const Item* item = itemFor(saved.savedExpressionId);
+  if (!item) return false;
+  saved.notes = item->sentence;
+  saved.userTags = item->tags;
+  return true;
+}
+
+int LiveSource::itemDue(const unsigned long nowMs, const bool closing) const {
+  // Only the word on screen, once its phase B has run (its frame first: the item never delays the lookup), and only
+  // an item nobody asked for yet on this card; one saved here already holds what it sent. A sentence loading goes
+  // first (a step past the end waits for nothing else; stepped back, the word's item comes after it), and after a
+  // refusal (a 429 or a rejected key) none is asked until its retry time.
+  if (itemRetryAtMs_) {
+    if (!timing::reached(nowMs, *itemRetryAtMs_)) return -1;
+    itemRetryAtMs_.reset();  // over: forget it, or 2^31 ms on (the signed compare) it'd read as not reached
+  }
+  if (closing || focused_ < 0 || focused_ >= wordCount() || loadingSentence()) return -1;
+  const lookup::LookupCard& card = cards_[focused_];
+  if (!card.complete || !card.saved || card.saved->savedExpressionId.empty()) return -1;
+  // Phase B found Lexirise out of reach: another call would only wait out the same failure (no "Met before").
+  if (card.translationUnavailable && noMeaningFor(card.translationError) == NoMeaning::Offline) return -1;
+  const std::string& id = card.saved->savedExpressionId;
+  return ours(id) || itemFor(id) ? -1 : focused_;
+}
+
+LiveSource::Fetched LiveSource::savedItem(const int index, const unsigned long nowMs) const {
+  Fetched f;
+  f.kind = Fetched::Kind::Item;
+  f.index = index;
+  f.savedExpressionId = cards_[index].saved->savedExpressionId;
+  const std::optional<net::Request> request = api::savedItemRequest(f.savedExpressionId);
+  if (!request) {
+    f.error = api::ApiError::Malformed;  // an id that can't go into a path: no item
+    return f;
+  }
+  const api::ApiResponse got = api_.savedItem(*request);
+  f.error = got.error;
+  if (got.error == api::ApiError::RateLimited || got.error == api::ApiError::Unauthorized) {
+    // Refused (AccessPolicy, often without the network): not the item's answer. Asked again once the block may be
+    // over: a 429's wait, else (a rejected key, lifted only by a key check or a new key) the default.
+    f.retryAtMs = api::retryAtMs(got, nowMs);
+  }
+  if (got.ok() && api::parseSavedItem(got.body, f.item) != api::ParseStatus::Ok) {
+    f.error = api::ApiError::Malformed;
+    f.unreadable = lookup::bodyHead(got.body);
+  }
+  return f;
 }
 
 void LiveSource::setBookDeck(deck::BookDeck bookDeck, deck::DeckStore& store) {
@@ -251,8 +317,7 @@ api::ApiResponse LiveSource::send(const LevelChange& change, const lookup::Looku
     if (id.empty()) return {};     // never saved: nothing to remove
     api::ApiResponse removed = sendItem(api::removeRequest(id));
     // What this card saved, it clears (its notes and tags would stay); the user's own item keeps them.
-    const bool ours = std::find(createdIds_.begin(), createdIds_.end(), id) != createdIds_.end();
-    if (removed.ok() && ours) clearFailed = !sendItem(api::clearRequest(id)).ok();  // removed either way
+    if (removed.ok() && ours(id)) clearFailed = !sendItem(api::clearRequest(id)).ok();  // removed either way
     return removed;
   }
   if (!id.empty()) return sendItem(api::setProficiencyRequest(id, proficiencyOf(change.to)));
@@ -273,9 +338,7 @@ api::ApiResponse LiveSource::send(const LevelChange& change, const lookup::Looku
 
 LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool closing) const {
   Fetched f;
-  // In order: the tapped sentence's analysis (nothing is shown before it); the word on screen's lookup (and a
-  // save's); a next sentence the card waits for (a step past the end); the next write that's ready. Closing:
-  // only what the queued writes need.
+  // In the order LiveSource.h's fetch() gives (nothing is shown before the tapped sentence's analysis).
   const std::optional<size_t> loading = loadingSentence();
   if (loading == 0u) {
     if (closing) return f;  // closing before the tapped sentence was analyzed: nothing shown, nothing queued
@@ -289,6 +352,8 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
     f.error = lookup::completeCard(api_, f.card, &f.unreadable);  // a failure still completes it
   } else if (loading && !closing) {  // cppcheck-suppress knownConditionTrueFalse ; nullopt when nothing loads
     return analysis(*loading);
+  } else if (const int item = itemDue(nowMs, closing); item >= 0) {
+    return savedItem(item, nowMs);
   } else if (writeReady(nowMs, closing)) {
     f.kind = Fetched::Kind::Write;
     f.index = writes_.front().word;
@@ -350,6 +415,27 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
       // RenderLock with this cut alone (which would lose a rename from the next cut).
       rebuild(fetched.index);
       return Advance::Changed;
+    case Fetched::Kind::Item: {
+      if (fetched.retryAtMs) {  // refused: not kept, asked again from then
+        itemRetryAtMs_ = fetched.retryAtMs;
+        return Advance::Idle;
+      }
+      itemRetryAtMs_.reset();
+      // Kept whatever came, so it's asked once: a failure leaves "First time you've met this word." (no error shown).
+      Item item{std::move(fetched.savedExpressionId), {}, {}};
+      if (fetched.error == api::ApiError::None) {
+        // Lexipoint's save writes the sentence as notes; a word saved in the Lexirise app carries it in sentence_text.
+        const bool noted = !text::trimmedSpaces(fetched.item.notes).empty();
+        item.sentence = std::move(noted ? fetched.item.notes : fetched.item.sentenceText);
+        item.tags = std::move(fetched.item.userTags);
+      }
+      if (items_.empty()) items_.reserve(config::kSavedItemsReserved);
+      items_.push_back(std::move(item));
+      for (int w = 0; w < wordCount(); w++) {  // every copy of the saved word on the card
+        if (fillFromItem(w)) rebuild(w);
+      }
+      return Advance::Idle;  // phase and level unchanged; the word on screen redrawn: takeShownChanged()
+    }
     case Fetched::Kind::Write: {
       error_ = fetched.error;
       const LevelChange change = writes_.front();
@@ -381,9 +467,8 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
         createdIds_.push_back(fetched.savedExpressionId);
         savedWithBookTag(card.language);  // a new save (POST) carries the tags
       }
-      const bool ours =
-          saved && std::find(createdIds_.begin(), createdIds_.end(), saved->savedExpressionId) != createdIds_.end();
-      if (change.to == Level::None && ours) {
+      const bool savedHere = saved && ours(saved->savedExpressionId);
+      if (change.to == Level::None && savedHere) {
         saved.reset();  // removed and cleared: saving it again is a new save (the full D9 POST)
       } else if (change.to == Level::None && saved) {
         saved->proficiency = 0;  // the user's own item stays, notes and all: a later level is a PATCH
@@ -411,20 +496,16 @@ LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
   sentences_[fetched.sentence].analyzed = true;
   resumeAfter_.reset();
   // An entry already on the card knows best whether it's saved (a save made here may be newer than this
-  // analysis): its later occurrences share that, so the next write for any of them is the right one.
+  // analysis): its later occurrences share that, so the next write for any of them is the right one, and its "Met
+  // before" (the sentence and tags a save made here sent, or its item once fetched).
   for (int w = first; w < wordCount(); w++) {
     for (const int e : sameWord(w)) {
       if (e < first) {
-        std::optional<api::EntryState> known = cards_[e].saved;
-        // A save made here holds the sentence and tags it sent; one this card only saw keeps the analysis's.
-        if (known && cards_[w].saved && known->notes.empty()) {
-          known->notes = cards_[w].saved->notes;
-          known->userTags = cards_[w].saved->userTags;
-        }
-        cards_[w].saved = std::move(known);
+        cards_[w].saved = cards_[e].saved;
         break;
       }
     }
+    fillFromItem(w);  // a saved item already fetched on this card (a copy under another entry)
     const auto k = static_cast<size_t>(w - first);
     words_[w] = wordFor(w, k < fetched.names.size() ? &fetched.names[k] : nullptr);  // "Met before" as saved now
   }

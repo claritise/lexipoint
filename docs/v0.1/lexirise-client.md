@@ -79,7 +79,7 @@ Fields we keep (all others are skipped while streaming):
 | `occurrences[].{entryId, lemmaEntryId, word, lemma, transliteration, charStart, charEnd, isWordLike}` | All occurrences, compact (§4). **`lemma` is only present when it differs from `word`**, so fall back to `word` |
 | `entryMetaById[id].{transliteration, partOfSpeech[0..1], status, rank, frequencyScore}` | All IDs in `occurrences` (lookup-flow §6) |
 | `stateByEntryId[id].{saved_expression_id, proficiency, seen_count}` | Same |
-| `stateByEntryId[id].{notes, user_tags[].name}` | (v0.2 V4, C14) The sentence the word was saved with, cut to `config::kMaxSavedNoteBytes` at a character (a long note never fails the answer), and the tags' names (objects `{id, name}` or plain strings; the first `kMaxSavedTags`; one over `kMaxTokenBytes` is skipped, never failing the answer): "Met before" and its book |
+| ~~`stateByEntryId[id].{notes, user_tags[].name}`~~ | ~~(v0.2 V4, C14) The sentence the word was saved with, cut to `config::kMaxSavedNoteBytes` at a character (a long note never fails the answer), and the tags' names (objects `{id, name}` or plain strings; the first `kMaxSavedTags`; one over `kMaxTokenBytes` is skipped, never failing the answer): "Met before" and its book~~ (Superseded 2026-09-27, v0.2 V4b: `analyze/text` never carries them, `../reference/lexirise-api-notes.md` "A saved word's notes and tags in `analyze/text`"; skipped, and read from the saved item: `GET /v1/vocabulary/{id}` below) |
 | `morphoPending` | Flag. If true, the word boundary may be rough. Show it anyway. *(2026-09-25: the reference now says a `true` answer has "fast tokens only"; a later call gives grammar and refined segmentation. v0.1 keeps using the first answer; calling again is v0.2 C19.)* |
 | `grammar`, `grammarStates`, `images`, `updated_at` | Skip |
 
@@ -107,6 +107,19 @@ Request (D9):
 
 Keep only the HTTP status, plus the created ID if one is returned (so a v0.2 card can link to it).
 `notes` is a documented field (H6 resolved). The endpoint is an **upsert** that returns `{ result, item }`: keep `item`'s ID so the card can offer level changes later (v0.2 C9). **Never re-POST a word the card already shows as saved.** Tested 2026-09-24: a re-POST **replaces** `tags`, `notes`, the translation and `proficiency` (`result.status: "updated"`, `reason: "already_exists"`), so it would wipe tags and notes the user added in the app. Level changes go through `PATCH` only.
+
+### `GET /v1/vocabulary/{id}`
+
+(v0.2 V4b, C14) A saved word's item, read-only (`api::savedItemRequest`; the id is the state's `saved_expression_id`,
+refused unless `isPlainId`; logged as `/v1/vocabulary/{id}`). Resent once on a stale keep-alive session like any GET.
+When the card asks for it: `../v0.2/00-overview.md` C14 "As built (V4b)".
+
+| Path (at the top, or under `item` when there is one) | Keep |
+|---|---|
+| `notes` | The sentence Lexipoint's save wrote, cut to `config::kMaxSavedNoteBytes` at a character (never fails the answer) |
+| `sentence_text` (or `sentenceText`) | The sentence a word saved in the Lexirise app came with, cut the same way: "Met before" when `notes` is empty |
+| `user_tags[]` (or `userTags[]`) | The tags' names (objects `{id, name}` or plain strings; the first `kMaxSavedTags`; an empty one or one over `kMaxTokenBytes` skipped): the book's title from its `book:<slug>` |
+| everything else | Skip. Null or missing fields are empty; anything but a JSON object is malformed (`api::parseSavedItem`) |
 
 ## 3. What the server does for us
 

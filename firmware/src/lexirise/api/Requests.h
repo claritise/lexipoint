@@ -42,6 +42,10 @@ net::Request saveRequest(const SaveWord& word);
 // nullopt when `id` isn't a plain id (it goes into the path).
 std::optional<net::Request> setProficiencyRequest(std::string_view id, int proficiency);
 
+// GET /v1/vocabulary/{id}: a saved word's item, read-only (its notes, tags and sentence: "Met before", C14).
+// nullopt when `id` isn't a plain id.
+std::optional<net::Request> savedItemRequest(std::string_view id);
+
 // Undoing a new save (popup-ui.md §3.2): DELETE only resets a dictionary word to unknown and keeps its
 // notes, translation and tags, so they're cleared with a PATCH after it.
 std::optional<net::Request> removeRequest(std::string_view id);

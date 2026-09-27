@@ -146,8 +146,16 @@ novel (EPUB), portrait. Page turns were fine (claritise). Writes, with claritise
 V4 (Met before, and the conjugation) is on `main` (`42bce33c`); its ledger row in
 `../v0.2/01-build-order.md` links here. What's owed on the device:
 
-- **Met before:** a saved word met in another book (and whether the live state carries `notes` and `user_tags` at
-  all: not seen yet, `../reference/lexirise-api-notes.md`, "A saved word's notes and tags"; and that a note the user
+- **Met before, V4b's retest** (`lexi/V4b`: the saved item, `../v0.2/00-overview.md` C14 "As built (V4b)"): 和子
+  is saved in claritise's account for it (this book's `book:` tag, the 2026-09-27 section above): look it up in
+  理科教室にもどった和子は、… (another sentence): the Context tab shows "Met before · <title>" over the sentence it was
+  saved from, the card's first frame and meaning not held back (the item's `GET /v1/vocabulary/{id}` in the log after
+  the lookup, once per card); offline, "First time you've met this word." and no error; the loop task's free
+  stack after an item fetch (dev build: the `[LXCARD] names` line's figure on the next analysis; `Fetched` grew
+  ~60 B and is held about three times on that stack).
+- **Met before:** a saved word met in another book (~~and whether the live state carries `notes` and `user_tags` at
+  all: not seen yet, `../reference/lexirise-api-notes.md`, "A saved word's notes and tags";~~ (answered 2026-09-27:
+  it never does, the section above) and that a note the user
   wrote in the app, not a sentence, shows as "Met before": it would); a word saved on another device ("Met before"
   without a book title); a copy of a saved word in another sentence shows "Met before" after a save; a short line of
   dialogue as its own sentence whose saved copy is inside a longer sentence ("Met before" shown); changing the font

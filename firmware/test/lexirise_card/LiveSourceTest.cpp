@@ -593,20 +593,21 @@ TEST(LiveDeck, AStepWaitsForAnIdleCard) {
 }
 
 TEST(LiveSource, ASavedWordMetInAnotherBookShowsWhere) {
-  // 本 (entry 3) was saved from another book, recorded here (V2).
+  // 本 (entry 3, item 77) was saved from another book, recorded here (V2); its item holds the sentence and tags.
   Rig rig;
-  std::string analyze = kAnalyze;
-  const std::string saved = R"("3":{"saved_expression_id":77,"proficiency":3})";
-  analyze.replace(analyze.find(saved), saved.size(),
-                  R"("3":{"saved_expression_id":77,"proficiency":3,"notes":"古い本を読む。",)"
-                  R"("user_tags":[{"id":1,"name":"xteink"},{"id":2,"name":"book:kokoro"}]})");
-  rig.api.analyzeReplies = {apiOk(analyze)};
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  rig.api.lookupReplies = {apiOk(R"({"word":"本"})")};
+  rig.api.itemReplies = {apiOk(R"({"id":77,"notes":"古い本を読む。","sentence_text":null,)"
+                               R"("user_tags":[{"id":1,"name":"xteink"},{"id":2,"name":"book:kokoro"}]})")};
   lexipoint::fakes::FakeFiles files;
   lexipoint::BookTagStore titles(files);
   titles.remember("kokoro", "Kokoro");
   LiveSource source(rig.api, rig.tap(0, 2), rig.page);  // tapped 本
   source.setBookTitles(titles);
-  source.advance();
+  while (source.hasWork(0)) source.advance();  // A, B, the item
+  ASSERT_EQ(rig.api.items.size(), 1u);
+  EXPECT_EQ(rig.api.items[0].method, lexipoint::net::Method::Get);
+  EXPECT_EQ(rig.api.items[0].path, "/v1/vocabulary/77");
   const CardWord& hon = source.word(source.startWord());
   ASSERT_TRUE(hon.metBefore);
   EXPECT_EQ(hon.metBefore->text, "古い本を読む。");
@@ -1460,6 +1461,10 @@ TEST(LiveSteps, AWordSavedHereIsMetBeforeInTheNextSentence) {
   const CardWord& again = source.word(6);
   ASSERT_TRUE(again.metBefore);  // the sentence the save sent, though the answer didn't carry it
   EXPECT_EQ(again.metBefore->text, "彼は本を読んだ。");
+  ASSERT_TRUE(c.step(+1, 7000));  // onto the copy, looked up: its item is never asked for (the save sent it)
+  while (source.hasWork(8000)) source.advance(8000);
+  EXPECT_TRUE(rig.api.items.empty());
+  EXPECT_TRUE(source.word(6).metBefore);
 }
 
 TEST(LiveSteps, ASaveLandingAfterTheNextSentenceUpdatesItsCopy) {
@@ -2162,8 +2167,8 @@ struct LongSentence {
     secondCut = second->text;
     const size_t hon = secondCut.find("本");
     const uint32_t at = lexipoint::text::utf16Length(std::string_view(secondCut).substr(0, hon));
-    const std::string saved = R"("stateByEntryId":{"3":{"saved_expression_id":77,"proficiency":2,"notes":")" +
-                              (savedFrom == 1 ? firstCut : secondCut) + R"("}})";
+    const std::string saved = R"("stateByEntryId":{"3":{"saved_expression_id":77,"proficiency":2}})";
+    api.itemReplies = {apiOk(R"({"item":{"notes":")" + (savedFrom == 1 ? firstCut : secondCut) + R"("}})")};
     api.analyzeReplies = {
         apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":0,"charEnd":1,"entryId":3,)"
               R"("lemmaEntryId":3}],)" +
@@ -2189,8 +2194,9 @@ TEST(LiveSteps, ASavedWordsCopyInTheNextCutOfTheSameLongSentenceIsntMetBefore) {
   LiveSource source(rig.api, rig.tap, rig.page, {}, rig.next());
   CardController c(source, ReadingMode::Kana);
   c.open(0);
-  source.advance();
+  while (source.hasWork(0)) source.advance();  // A, B, the item
   c.sourceChanged(0);
+  ASSERT_EQ(rig.api.items.size(), 1u);
   EXPECT_FALSE(source.word(0).metBefore);  // saved from this very cut
   c.step(+1, 1000);                        // on into the second cut
   while (source.hasWork(1100)) {
@@ -2200,6 +2206,7 @@ TEST(LiveSteps, ASavedWordsCopyInTheNextCutOfTheSameLongSentenceIsntMetBefore) {
   ASSERT_EQ(source.wordCount(), 2);
   EXPECT_EQ(rig.api.analyzed[1], rig.secondCut);
   EXPECT_FALSE(source.word(1).metBefore);  // the same long sentence, cut: not "Met before"
+  EXPECT_EQ(rig.api.items.size(), 1u);     // the copy has the item already
 }
 
 TEST(LiveSteps, AWordSavedFromTheNextCutLosesItsMetBeforeOnceThatCutComes) {
@@ -2207,7 +2214,7 @@ TEST(LiveSteps, AWordSavedFromTheNextCutLosesItsMetBeforeOnceThatCutComes) {
   LiveSource source(rig.api, rig.tap, rig.page, {}, rig.next());
   CardController c(source, ReadingMode::Kana);
   c.open(0);
-  source.advance();
+  while (source.hasWork(0)) source.advance();  // A, B, the item
   c.sourceChanged(0);
   EXPECT_TRUE(source.word(0).metBefore);  // the second cut isn't on the card yet: it reads as another sentence
   c.step(+1, 1000);
@@ -2344,4 +2351,327 @@ TEST(LiveSteps, AVerbEndingACutStaysUnnamedWhenThePieceAfterItHasNoWord) {
   EXPECT_EQ(api.analyzed[1], "……");
   ASSERT_EQ(source.wordCount(), 4);
   EXPECT_TRUE(source.word(1).conjugation.empty());  // not named from と, the next paragraph's first word
+}
+
+namespace {
+
+// The card on a word of 彼は本を読んだ。 (本 is saved: item 77), with its item scripted.
+struct ItemCard {
+  Rig rig;
+  LiveSource source;
+  CardController c;
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session;
+  // Tapped at `line`, `token`.
+  ItemCard(const size_t line, const size_t token, std::vector<lexipoint::api::ApiResponse> items,
+           const char* analyze = kAnalyze)
+      : source(rig.api, rig.tap(line, token), rig.page),
+        c(source, ReadingMode::Kana),
+        session(c, targets, input, &source) {
+    rig.api.analyzeReplies = {apiOk(analyze)};
+    rig.api.lookupReplies = {apiOk(R"({"word":"本"})")};
+    rig.api.itemReplies = {items.begin(), items.end()};
+    c.open(0);
+  }
+  // Every call the card has now; whether any answer asked for a redraw.
+  bool drain(const unsigned long t) {
+    bool redraw = false;
+    while (session.hasWork(t)) redraw = session.apply(session.fetch(t), t).redraw || redraw;
+    return redraw;
+  }
+};
+
+constexpr int kHon = 2;  // 本's word on the card
+
+}  // namespace
+
+TEST(LiveItem, AskedOnceTheWordsPhaseBHasRunAndOnlyOnce) {
+  ItemCard card(0, 2, {apiOk(R"({"notes":"古い本を読む。"})")});
+  card.source.advance();  // A: the card's first frame
+  EXPECT_TRUE(card.rig.api.looked.empty());
+  EXPECT_TRUE(card.rig.api.items.empty());
+  card.source.advance();  // B: the dictionary first
+  EXPECT_EQ(card.rig.api.looked.size(), 1u);
+  EXPECT_TRUE(card.rig.api.items.empty());
+  card.source.takeShownChanged();
+  ASSERT_TRUE(card.source.hasWork(0));
+  EXPECT_EQ(card.source.advance(), LiveSource::Advance::Idle);  // the item: nothing but "Met before" changes
+  ASSERT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_EQ(card.rig.api.items[0].method, lexipoint::net::Method::Get);
+  EXPECT_EQ(card.rig.api.items[0].path, "/v1/vocabulary/77");
+  EXPECT_TRUE(card.source.takeShownChanged());  // the word on screen shows it now
+  ASSERT_TRUE(card.source.word(kHon).metBefore);
+  EXPECT_EQ(card.source.word(kHon).metBefore->text, "古い本を読む。");
+  EXPECT_FALSE(card.source.hasWork(0));
+  card.c.sourceChanged(0);
+  ASSERT_TRUE(card.c.step(-1, 10));  // は, then back to 本: asked once per card
+  card.drain(20);
+  ASSERT_TRUE(card.c.step(+1, 30));
+  card.drain(40);
+  EXPECT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_TRUE(card.source.word(kHon).metBefore);
+}
+
+TEST(LiveItem, OnlyForASavedWordTheCardIsOn) {
+  ItemCard card(1, 0, {apiOk(R"({"notes":"古い本を読む。"})")});  // tapped 読んだ: not saved
+  card.drain(0);
+  EXPECT_TRUE(card.rig.api.items.empty());  // 本 is saved, but the card isn't on it
+  EXPECT_FALSE(card.source.word(kHon).metBefore);
+  ASSERT_TRUE(card.c.step(-1, 10));  // を
+  card.drain(20);
+  EXPECT_TRUE(card.rig.api.items.empty());
+  ASSERT_TRUE(card.c.step(-1, 30));  // stepped onto 本: its lookup, then its item, and the card redrawn with it
+  EXPECT_EQ(card.c.word(), kHon);
+  card.session.apply(card.session.fetch(40), 40);  // B
+  EXPECT_TRUE(card.rig.api.items.empty());
+  EXPECT_TRUE(card.session.apply(card.session.fetch(50), 50).redraw);  // the item
+  ASSERT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_TRUE(card.source.word(kHon).metBefore);
+  EXPECT_FALSE(card.session.hasWork(60));
+}
+
+TEST(LiveItem, AFailureIsQuietAndNotAskedAgain) {
+  ItemCard card(0, 2, {apiFailure(ApiError::Timeout)});
+  card.drain(0);
+  ASSERT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_FALSE(card.source.word(kHon).metBefore);  // "First time you've met this word."
+  EXPECT_EQ(card.source.error(), ApiError::None);  // no error on the card
+  EXPECT_EQ(card.c.state().toast, "");
+  ASSERT_TRUE(card.c.step(-1, 10));
+  card.drain(20);
+  ASSERT_TRUE(card.c.step(+1, 30));
+  card.drain(40);
+  EXPECT_EQ(card.rig.api.items.size(), 1u);
+}
+
+TEST(LiveItem, AnUnreadableItemIsLoggedByItsStartAndNotAskedAgain) {
+  ItemCard card(0, 2, {apiOk(R"(["not an item"])")});
+  card.session.apply(card.session.fetch(0), 0);                                     // A
+  card.session.apply(card.session.fetch(1), 1);                                     // B
+  const CardSession::Answer answer = card.session.apply(card.session.fetch(2), 2);  // the item
+  EXPECT_EQ(answer.unreadable, R"(["not an item"])");
+  EXPECT_FALSE(answer.redraw);
+  EXPECT_FALSE(card.source.word(kHon).metBefore);
+  EXPECT_FALSE(card.session.hasWork(3));
+}
+
+TEST(LiveItem, AnItemWithNothingInItChangesNothingOnScreen) {
+  ItemCard card(0, 2, {apiOk(R"({"item":{"notes":null,"user_tags":[]}})")});
+  card.session.apply(card.session.fetch(0), 0);
+  card.session.apply(card.session.fetch(1), 1);
+  EXPECT_FALSE(card.session.apply(card.session.fetch(2), 2).redraw);
+  EXPECT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_FALSE(card.source.word(kHon).metBefore);
+}
+
+TEST(LiveItem, NeverAskedAsTheCardCloses) {
+  ItemCard card(0, 2, {apiOk(R"({"notes":"古い本を読む。"})")});
+  card.source.advance();  // A
+  card.source.advance();  // B: the item is due now
+  ASSERT_TRUE(card.source.hasWork(0));
+  EXPECT_EQ(card.source.fetch(0, /*closing=*/true).kind, LiveSource::Fetched::Kind::None);
+  // With a level change queued, closing sends the change and still asks for no item.
+  card.source.queue({kHon, Level::Fresh, Level::Known, 0});
+  const LiveSource::Fetched sent = card.source.fetch(0, /*closing=*/true);
+  EXPECT_EQ(sent.kind, LiveSource::Fetched::Kind::Write);
+  card.source.apply(sent);
+  EXPECT_TRUE(card.rig.api.items.empty());
+}
+
+TEST(LiveItem, TheSentenceTextWhenThereAreNoNotes) {
+  // A word saved in the Lexirise app: no notes, its sentence in sentence_text; a plain-string tag.
+  ItemCard card(0, 2,
+                {apiOk(R"({"item":{"notes":"  ","sentence_text":"古い本を読む。","user_tags":["book:kokoro"]}})")});
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::BookTagStore titles(files);
+  titles.remember("kokoro", "Kokoro");
+  card.source.setBookTitles(titles);
+  card.drain(0);
+  ASSERT_TRUE(card.source.word(kHon).metBefore);
+  EXPECT_EQ(card.source.word(kHon).metBefore->text, "古い本を読む。");
+  EXPECT_EQ(card.source.word(kHon).metBeforeBook, "Kokoro");
+}
+
+TEST(LiveItem, NotAskedWhenPhaseBFoundLexiriseOutOfReach) {
+  ItemCard card(0, 2, {apiOk(R"({"notes":"古い本を読む。"})")});
+  card.rig.api.lookupReplies = {apiFailure(ApiError::NoWifi)};
+  card.drain(0);
+  EXPECT_EQ(card.c.state().phase, Phase::Unanswered);
+  EXPECT_TRUE(card.rig.api.items.empty());
+}
+
+TEST(LiveItem, AnIdThatCantGoInAPathIsntAsked) {
+  std::string analyze = kAnalyze;
+  const std::string id = R"("saved_expression_id":77)";
+  analyze.replace(analyze.find(id), id.size(), R"("saved_expression_id":"7/../me")");
+  ItemCard card(0, 2, {apiOk(R"({"notes":"古い本を読む。"})")}, analyze.c_str());
+  card.drain(0);
+  EXPECT_TRUE(card.rig.api.items.empty());
+  EXPECT_FALSE(card.source.word(kHon).metBefore);
+  EXPECT_FALSE(card.source.hasWork(0));  // and not asked again
+}
+
+TEST(LiveItem, ItsCopiesInLaterSentencesShowItWithoutAnotherCall) {
+  // 読む is saved (item 901, from the app); the next sentence has it again, once under another entry id.
+  TwoSentences rig;
+  std::string first = kAnalyze;
+  first.replace(first.find(R"("stateByEntryId":{)"), std::string(R"("stateByEntryId":{)").size(),
+                R"("stateByEntryId":{"6":{"saved_expression_id":901,"proficiency":2},)");
+  constexpr const char* kAgain =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":1,"charEnd":4,"entryId":50,)"
+      R"("lemmaEntryId":60}],"stateByEntryId":{"60":{"saved_expression_id":901,"proficiency":2}}})";
+  rig.model.lines[1].tokens = {"雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(first), apiOk(kAgain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.itemReplies = {apiOk(R"({"notes":"昨日読んだ本。"})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  while (source.hasWork(0)) source.advance(0);  // A, B, the item
+  c.sourceChanged(0);
+  ASSERT_EQ(rig.api.items.size(), 1u);
+  ASSERT_TRUE(source.word(4).metBefore);
+  c.step(+1, 1000);  // into the next sentence
+  while (source.extending()) source.advance(1100);
+  c.sourceChanged(1100);
+  ASSERT_EQ(source.wordCount(), 7);
+  ASSERT_TRUE(c.step(+1, 1200));  // onto the copy
+  while (source.hasWork(1300)) source.advance(1300);
+  EXPECT_EQ(rig.api.items.size(), 1u);
+  ASSERT_TRUE(source.word(6).metBefore);
+  EXPECT_EQ(source.word(6).metBefore->text, "昨日読んだ本。");
+}
+
+TEST(LiveItem, AStepPastTheEndLoadsTheNextSentenceBeforeTheItem) {
+  // On 読んだ (saved: item 901, the sentence's last word) after its phase B, before its item: a step past the end
+  // loads the next sentence first, and the card moves on without the item; stepped back, it's asked then.
+  TwoSentences rig;
+  std::string first = kAnalyze;
+  first.replace(first.find(R"("stateByEntryId":{)"), std::string(R"("stateByEntryId":{)").size(),
+                R"("stateByEntryId":{"6":{"saved_expression_id":901,"proficiency":2},)");
+  rig.api.analyzeReplies = {apiOk(first), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.itemReplies = {apiOk(R"({"notes":"昨日読んだ本。"})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);  // A, B: the item is due now
+  ASSERT_TRUE(source.hasWork(0));
+  c.step(+1, 1000);  // past the end
+  EXPECT_TRUE(source.extending());
+  source.advance(1100);
+  EXPECT_EQ(rig.api.analyzed.size(), 2u);  // the next sentence, not the item
+  EXPECT_TRUE(rig.api.items.empty());
+  c.sourceChanged(1100);
+  EXPECT_EQ(c.word(), 5);  // 雨
+  while (source.hasWork(1200)) source.advance(1200);
+  EXPECT_TRUE(rig.api.items.empty());  // the card left 読んだ before its item was asked
+  ASSERT_TRUE(c.step(-1, 1300));       // back onto 読んだ
+  while (source.hasWork(1400)) source.advance(1400);
+  EXPECT_EQ(rig.api.items.size(), 1u);
+  EXPECT_TRUE(source.word(4).metBefore);
+}
+
+TEST(LiveItem, ARefusalIsAskedAgainOnceTheBlockCanBeOver) {
+  // A 429's back-off (or a rejected key) refuses the call without the network: not kept as "no item".
+  lexipoint::api::ApiResponse limited = apiFailure(ApiError::RateLimited);
+  limited.retryAfterS = 30;
+  ItemCard card(0, 2, {limited, apiFailure(ApiError::Unauthorized), apiOk(R"({"notes":"古い本を読む。"})")});
+  card.drain(0);
+  ASSERT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_FALSE(card.source.word(kHon).metBefore);
+  EXPECT_FALSE(card.session.hasWork(29999));  // no call while blocked
+  card.drain(30000);                          // asked again: a rejected key now (lifted only by a key check)
+  ASSERT_EQ(card.rig.api.items.size(), 2u);
+  const unsigned long later = 30000 + config::kRetryAfterDefaultS * 1000UL;
+  EXPECT_FALSE(card.session.hasWork(later - 1));
+  card.drain(later);
+  EXPECT_EQ(card.rig.api.items.size(), 3u);
+  EXPECT_TRUE(card.source.word(kHon).metBefore);
+  EXPECT_FALSE(card.session.hasWork(later + 1));
+}
+
+TEST(LiveItem, ALevelChangeOnTheWordWaitsForItsItemAndKeepsMetBefore) {
+  ItemCard card(0, 2, {apiOk(R"({"notes":"古い本を読む。"})")});
+  card.rig.api.writeReplies = {apiOk("{}")};
+  card.session.apply(card.session.fetch(0), 0);  // A
+  card.session.apply(card.session.fetch(1), 1);  // B
+  card.source.queue({kHon, Level::Fresh, Level::Known, 0});
+  EXPECT_EQ(card.source.fetch(2).kind, LiveSource::Fetched::Kind::Item);  // the item, then the PATCH
+  card.rig.api.items.clear();
+  card.drain(3);
+  ASSERT_EQ(card.rig.api.written.size(), 1u);
+  EXPECT_EQ(card.rig.api.written[0].method, lexipoint::net::Method::Patch);
+  EXPECT_EQ(card.rig.api.items.size(), 1u);  // the fetch above was only looked at, not applied: asked in the drain
+  ASSERT_TRUE(card.source.word(kHon).metBefore);
+  EXPECT_EQ(card.source.word(kHon).metBefore->text, "古い本を読む。");
+  EXPECT_EQ(card.source.savedLevel(kHon), Level::Known);
+}
+
+TEST(LiveItem, ARefusalJustBeforeTheMillisWrapWaitsItOut) {
+  // millis() is 32-bit on the device: a 429 (Retry-After 30 s) 5 s before it wraps is still blocked past the wrap.
+  constexpr unsigned long kRefused = 0xFFFFFFFFUL - 5000;
+  const auto wrapped = [](const unsigned long t) { return static_cast<unsigned long>(static_cast<uint32_t>(t)); };
+  lexipoint::api::ApiResponse limited = apiFailure(ApiError::RateLimited);
+  limited.retryAfterS = 30;
+  ItemCard card(0, 2, {limited, apiOk(R"({"notes":"古い本を読む。"})")});
+  card.session.apply(card.session.fetch(kRefused), kRefused);  // A
+  card.session.apply(card.session.fetch(kRefused), kRefused);  // B
+  card.session.apply(card.session.fetch(kRefused), kRefused);  // the item: refused
+  ASSERT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_FALSE(card.session.hasWork(wrapped(kRefused + 10000)));  // past the wrap, still in the back-off
+  EXPECT_FALSE(card.session.hasWork(wrapped(kRefused + 29999)));
+  card.drain(wrapped(kRefused + 30000));
+  EXPECT_EQ(card.rig.api.items.size(), 2u);
+  EXPECT_TRUE(card.source.word(kHon).metBefore);
+}
+
+TEST(LiveItem, APassedRetryTimeIsForgottenNotMisreadLater) {
+  // Refused on 本, the card steps to は and stays there well past the retry time; long after (over 2^31 ms, when the
+  // signed compare would read an old deadline as still ahead), back on 本 the item is asked at once.
+  ItemCard card(0, 2, {apiFailure(ApiError::RateLimited), apiOk(R"({"notes":"古い本を読む。"})")});
+  card.drain(0);
+  ASSERT_EQ(card.rig.api.items.size(), 1u);
+  ASSERT_TRUE(card.c.step(-1, 10));
+  card.drain(20);
+  const unsigned long passed = config::kRetryAfterDefaultS * 1000UL;
+  EXPECT_FALSE(card.session.hasWork(passed));  // on は: nothing to ask, the retry time forgotten
+  const unsigned long muchLater = passed + 0x80000000UL + 1000;
+  ASSERT_TRUE(card.c.step(+1, muchLater));
+  card.drain(muchLater);
+  EXPECT_EQ(card.rig.api.items.size(), 2u);
+  EXPECT_TRUE(card.source.word(kHon).metBefore);
+}
+
+TEST(LiveItem, AnItemLandingAfterTheCardSteppedOffFillsTheWordQuietly) {
+  ItemCard card(0, 2, {apiOk(R"({"notes":"古い本を読む。"})")});
+  card.session.apply(card.session.fetch(0), 0);  // A
+  card.session.apply(card.session.fetch(1), 1);  // B
+  LiveSource::Fetched item = card.session.fetch(2);
+  ASSERT_EQ(item.kind, LiveSource::Fetched::Kind::Item);
+  ASSERT_TRUE(card.c.step(-1, 3));                              // off 本 while the call ran
+  EXPECT_FALSE(card.session.apply(std::move(item), 4).redraw);  // は on screen didn't change
+  EXPECT_TRUE(card.source.word(kHon).metBefore);                // 本 has it
+  card.drain(5);                                                // は's lookup
+  ASSERT_TRUE(card.c.step(+1, 6));
+  EXPECT_FALSE(card.session.hasWork(7));  // back on 本: nothing to ask
+  EXPECT_EQ(card.rig.api.items.size(), 1u);
+}
+
+TEST(LiveItem, RemovingTheUsersOwnItemKeepsItsMetBefore) {
+  // 本 was saved outside this card: its removal is a DELETE only (its notes stay in Lexirise), and so does its
+  // "Met before"; its item isn't asked again.
+  ItemCard card(0, 2, {apiOk(R"({"notes":"古い本を読む。"})")});
+  card.rig.api.writeReplies = {apiOk("{}")};
+  card.drain(0);
+  ASSERT_TRUE(card.source.word(kHon).metBefore);
+  card.source.queue({kHon, Level::Fresh, Level::None, 0});
+  card.drain(1);
+  ASSERT_EQ(card.rig.api.written.size(), 1u);
+  EXPECT_EQ(card.rig.api.written[0].method, lexipoint::net::Method::Delete);
+  EXPECT_EQ(card.source.savedLevel(kHon), Level::None);
+  EXPECT_TRUE(card.source.word(kHon).metBefore);
+  EXPECT_EQ(card.rig.api.items.size(), 1u);
 }

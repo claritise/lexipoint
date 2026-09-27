@@ -13,7 +13,9 @@ using lexipoint::api::AnalyzeResult;
 using lexipoint::api::MeInfo;
 using lexipoint::api::parseAnalyze;
 using lexipoint::api::parseMe;
+using lexipoint::api::parseSavedItem;
 using lexipoint::api::ParseStatus;
+using lexipoint::api::SavedItem;
 
 namespace {
 
@@ -273,61 +275,108 @@ TEST(ResponsesDecks, AListOfSomethingElseIsntAnEmptyList) {
   }
 }
 
-TEST(ResponsesAnalyze, ASavedWordsNotesAndTags) {
-  // The documented shape (context-brief.md): user_tags as {id, name}; plain strings are read too.
-  const std::string longNote(lexipoint::config::kMaxSavedNoteBytes + 30, 'a');
+TEST(ResponsesAnalyze, ASavedWordsNotesAndTagsArentReadFromTheAnalysis) {
+  // analyze/text never carries them live (lexirise-api-notes.md): they come from the saved item. The documented shape
+  // is still read without failing, and the state beside it kept.
   const std::string body =
       std::string(R"({"occurrences":[{"word":"猫","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)") +
       R"("stateByEntryId":{"5":{"saved_expression_id":987,"entry_id":5,"proficiency":2,"seen_count":8,)"
-      R"("notes":"猫が好き。","user_tags":[{"id":12,"name":"xteink"},{"id":13,"name":"book:kokoro"}],"images":null},)"
-      R"("6":{"saved_expression_id":1,"proficiency":1,"notes":null,"user_tags":["book:x",""]},)"
-      R"("7":{"saved_expression_id":2,"notes":")" +
-      longNote + R"("}}})";
-  AnalyzeResult r;
-  ASSERT_EQ(parseAnalyze(body, r), ParseStatus::Ok);  // a long note never fails the analysis
-  const auto* cat = r.stateFor(5);
-  ASSERT_NE(cat, nullptr);
-  EXPECT_EQ(cat->notes, "猫が好き。");
-  EXPECT_EQ(cat->userTags, (std::vector<std::string>{"xteink", "book:kokoro"}));
-  EXPECT_EQ(r.stateFor(6)->notes, "");  // null
-  EXPECT_EQ(r.stateFor(6)->userTags, std::vector<std::string>{"book:x"});
-  EXPECT_EQ(r.stateFor(7)->notes.size(), lexipoint::config::kMaxSavedNoteBytes);  // cut
-  // As seen live (2026-09-26): no notes or user_tags at all.
-  AnalyzeResult bare;
-  ASSERT_EQ(
-      parseAnalyze(R"({"occurrences":[{"word":"猫","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)"
-                   R"("stateByEntryId":{"5":{"saved_expression_id":1,"entry_id":5,"proficiency":0,"seen_count":1}}})",
-                   bare),
-      ParseStatus::Ok);
-  EXPECT_TRUE(bare.stateFor(5)->notes.empty());
-  EXPECT_TRUE(bare.stateFor(5)->userTags.empty());
-}
-
-TEST(ResponsesAnalyze, ANoteIsCutAtACharacter) {
-  std::string note;
-  while (note.size() + 3 <= lexipoint::config::kMaxSavedNoteBytes + 1) note += "字";  // 3 bytes each, past the cap
-  const std::string body =
-      std::string(R"({"occurrences":[{"word":"字","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)") +
-      R"("stateByEntryId":{"5":{"saved_expression_id":1,"notes":")" + note + R"("}}})";
+      R"("notes":"猫が好き。","user_tags":[{"id":12,"name":"xteink"},{"id":13,"name":"book:kokoro"}],"images":null}}})";
   AnalyzeResult r;
   ASSERT_EQ(parseAnalyze(body, r), ParseStatus::Ok);
-  const std::string& kept = r.stateFor(5)->notes;
-  EXPECT_LE(kept.size(), lexipoint::config::kMaxSavedNoteBytes);
-  EXPECT_EQ(kept.size() % 3, 0u);  // whole characters
+  const auto* cat = r.stateFor(5);
+  ASSERT_NE(cat, nullptr);
+  EXPECT_EQ(cat->savedExpressionId, "987");
+  EXPECT_EQ(cat->proficiency, 2);
+  EXPECT_EQ(cat->seenCount, 8u);
+  EXPECT_TRUE(cat->notes.empty());
+  EXPECT_TRUE(cat->userTags.empty());
 }
 
-TEST(ResponsesAnalyze, ASavedWordsTagsAreCappedAndAnOverLongOneSkipped) {
+TEST(ResponsesSavedItem, AtTheTopOrUnderItem) {
+  // GET /v1/vocabulary/{id}: synthetic, with the fields lexirise-api-notes.md names and others beside them.
+  const char* top =
+      R"({"id":987,"text":"猫","notes":"猫が好き。","sentence_text":"猫がいる。","proficiency":2,"due":null,)"
+      R"("user_tags":[{"id":12,"name":"xteink"},{"id":13,"name":"book:kokoro"}],"entry":{"notes":"not this"}})";
+  SavedItem item;
+  ASSERT_EQ(parseSavedItem(top, item), ParseStatus::Ok);
+  EXPECT_EQ(item.notes, "猫が好き。");
+  EXPECT_EQ(item.sentenceText, "猫がいる。");
+  EXPECT_EQ(item.userTags, (std::vector<std::string>{"xteink", "book:kokoro"}));
+  // Under `item` (trusted over the top), camelCase too, plain-string tags.
+  SavedItem under;
+  ASSERT_EQ(parseSavedItem(R"({"ok":true,"notes":"top","item":{"notes":"猫が好き。","sentenceText":"猫がいる。",)"
+                           R"("userTags":["xteink","book:kokoro"]}})",
+                           under),
+            ParseStatus::Ok);
+  EXPECT_EQ(under.notes, "猫が好き。");
+  EXPECT_EQ(under.sentenceText, "猫がいる。");
+  EXPECT_EQ(under.userTags, (std::vector<std::string>{"xteink", "book:kokoro"}));
+}
+
+TEST(ResponsesSavedItem, NullsAndMissingFieldsAreEmpty) {
+  SavedItem item;
+  ASSERT_EQ(parseSavedItem(R"({"notes":null,"sentence_text":null,"user_tags":null})", item), ParseStatus::Ok);
+  EXPECT_TRUE(item.notes.empty());
+  EXPECT_TRUE(item.sentenceText.empty());
+  EXPECT_TRUE(item.userTags.empty());
+  SavedItem bare;
+  ASSERT_EQ(parseSavedItem(R"({"item":null})", bare), ParseStatus::Ok);
+  EXPECT_TRUE(bare.notes.empty());
+  SavedItem odd;
+  ASSERT_EQ(parseSavedItem(R"({"notes":5,"user_tags":[7,"",{"id":1},{"name":null},"book:x"]})", odd), ParseStatus::Ok);
+  EXPECT_TRUE(odd.notes.empty());
+  EXPECT_EQ(odd.userTags, std::vector<std::string>{"book:x"});
+}
+
+TEST(ResponsesSavedItem, ALongNoteOrSentenceIsCutAtACharacter) {
+  std::string note;
+  while (note.size() + 3 <= lexipoint::config::kMaxSavedNoteBytes + 1) note += "字";  // 3 bytes each, past the cap
+  SavedItem item;
+  ASSERT_EQ(parseSavedItem(R"({"notes":")" + note + R"(","sentence_text":")" + note + R"("})", item),
+            ParseStatus::Ok);  // never fails the item
+  for (const std::string* kept : {&item.notes, &item.sentenceText}) {
+    EXPECT_LE(kept->size(), lexipoint::config::kMaxSavedNoteBytes);
+    EXPECT_GT(kept->size(), lexipoint::config::kMaxSavedNoteBytes - 3);
+    EXPECT_EQ(kept->size() % 3, 0u);  // whole characters
+  }
+}
+
+TEST(ResponsesSavedItem, TagsAreCappedAndAnOverLongOneSkipped) {
   std::string tags;
   for (size_t i = 0; i < lexipoint::config::kMaxSavedTags + 4; i++) {
     tags += (i ? "," : "") + std::string(R"({"name":"t)") + std::to_string(i) + R"("})";
   }
   const std::string longTag(lexipoint::config::kMaxTokenBytes + 1, 'x');
+  SavedItem item;
+  ASSERT_EQ(parseSavedItem(R"({"user_tags":[{"name":")" + longTag + R"("},)" + tags + "]}", item), ParseStatus::Ok);
+  ASSERT_EQ(item.userTags.size(), lexipoint::config::kMaxSavedTags);
+  EXPECT_EQ(item.userTags.front(), "t0");  // the long one skipped
+}
+
+TEST(ResponsesSavedItem, AnythingButAnObjectIsMalformed) {
+  for (const char* bad : {"", "[]", R"(["notes"])", "null", R"("notes")", R"({"notes":"a")", R"({"notes":"a"} x)"}) {
+    SavedItem item;
+    item.notes = "kept";
+    EXPECT_EQ(parseSavedItem(bad, item), ParseStatus::Malformed) << bad;
+    EXPECT_EQ(item.notes, "kept");  // left alone
+  }
+}
+
+TEST(ResponsesSavedItem, ARealisticItemReadsOnlyItsOwnFields) {
+  // An item as large as the live one (~50 fields, synthetic): its dictionary entry nests its own notes and tags,
+  // which aren't the saved word's.
+  std::string fields;
+  for (int i = 0; i < 40; i++) fields += R"("field_)" + std::to_string(i) + R"(":)" + std::to_string(i) + ",";
   const std::string body =
-      std::string(R"({"occurrences":[{"word":"猫","isWordLike":true,"charStart":0,"charEnd":1,"entryId":5}],)") +
-      R"("stateByEntryId":{"5":{"saved_expression_id":1,"user_tags":[{"name":")" + longTag + R"("},)" + tags + "]}}}";
-  AnalyzeResult r;
-  ASSERT_EQ(parseAnalyze(body, r), ParseStatus::Ok);  // an over-long tag never fails the answer
-  const auto& kept = r.stateFor(5)->userTags;
-  ASSERT_EQ(kept.size(), lexipoint::config::kMaxSavedTags);
-  EXPECT_EQ(kept.front(), "t0");  // the long one skipped
+      R"({"item":{"id":987,"text":"猫","mode":"word","language":"ja","proficiency":2,"stability":3.5,)" + fields +
+      R"("dictionary_entry":{"id":5,"notes":"not this","user_tags":[{"name":"not this"}],)"
+      R"("translations":[{"translation":"cat","notes":"no"}]},"images":[{"url":"x","notes":"no"}],)"
+      R"("notes":"猫が好き。","sentence_text":null,"user_tags":[{"id":13,"name":"book:kokoro"}],)"
+      R"("custom_translation":null,"due_at":"2026-10-01T00:00:00Z"}})";
+  SavedItem item;
+  ASSERT_EQ(parseSavedItem(body, item), ParseStatus::Ok);
+  EXPECT_EQ(item.notes, "猫が好き。");
+  EXPECT_TRUE(item.sentenceText.empty());
+  EXPECT_EQ(item.userTags, std::vector<std::string>{"book:kokoro"});
 }

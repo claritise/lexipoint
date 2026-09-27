@@ -33,11 +33,13 @@ class FakeApi final : public api::LexiriseApi {
   std::deque<api::ApiResponse> lookupReplies;
   std::deque<api::ApiResponse> writeReplies;
   std::deque<api::ApiResponse> deckReplies;  // none scripted: offline
+  std::deque<api::ApiResponse> itemReplies;  // savedItem: none scripted = offline
   std::vector<std::string> analyzed;         // the sentences
   std::vector<std::string> analyzedWords;
   std::vector<std::string> looked;  // the headwords
   std::vector<net::Request> written;
   std::vector<net::Request> decked;
+  std::vector<net::Request> items;  // savedItem's requests
 
   api::ApiResponse analyze(Language, const std::string_view sentence) override {
     analyzed.emplace_back(sentence);
@@ -58,6 +60,10 @@ class FakeApi final : public api::LexiriseApi {
   api::ApiResponse deck(const net::Request& request) override {
     decked.push_back(request);
     return next(deckReplies);
+  }
+  api::ApiResponse savedItem(const net::Request& request) override {
+    items.push_back(request);
+    return next(itemReplies);
   }
 
  private:
