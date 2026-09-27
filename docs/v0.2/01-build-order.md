@@ -11,7 +11,10 @@
 Exactly as v0.1's "How to run this document", "Global rules" and "The uniform gate"
 (`../v0.1/01-build-order.md`): one phase = one branch `lexi/<phase-id>` from `main` = one gate = one ledger
 row below; the review loop until two clean rounds; squash, merge into `main`, ledger row in the same history;
-pushing needs claritise's OK; document as you go. Phase IDs here are `V<n>`.
+~~pushing needs claritise's OK~~ **push `main` after each landing** (superseded 2026-09-27, claritise: "just do it
+automatically"); document as you go. Phase IDs here are `V<n>`. v0.1's "hook edits in their own commits" is
+superseded too: a phase lands as one squashed commit, so hooks are tracked by their `// LEXIPOINT` markers and
+`../v0.1/firmware-base.md` §3.
 
 **Also for v0.2:**
 
@@ -27,6 +30,31 @@ pushing needs claritise's OK; document as you go. Phase IDs here are `V<n>`.
   only with their OK, and undone afterwards.
 - **One phase branch at a time** in this repo; other sessions' docs-only commits to `main` are fine, but rebase
   nothing: merge `main` into the phase branch if it moved.
+
+**Process rules adopted 2026-09-27** (claritise: "take all fascia reccs"; each has one home, here):
+
+- **One home per fact.** Everything else links to it. A spec says what; the ledger says when; As built says how.
+- **Supersede in place, never delete:** strike the old text (`~~…~~`), add **Superseded <date>** and a link to
+  what replaces it.
+- **No counts in prose.** Name the command that gives the number (`ctest --test-dir build/test`), or put the
+  number in a dated ledger row or a dated measurement only.
+- **Ledger rows: one line per event** (status, where it landed, the gate, a pointer). Detail goes in the spec's
+  As built; round-by-round review history goes in the landing commit's message.
+- **Device-check records** (`../v0.1/device-checks.md`) say who ran the check (the harness or claritise), which
+  firmware commit, the date and the result. A check goes back to owed when the code under it changes.
+- **Never rewrite pushed history.** Squashing a phase branch before its first push is the landing, not a rewrite.
+- **No transcripts, logs or raw API responses in the public repo:** they stay in gitignored `research/`; the repo
+  gets findings in our own words.
+- **Sealed, evidence-fed reviewers:** a fresh reviewer each round, given the diff range, the builder's gate claims
+  and the touched docs (not the build brief); it reruns the gate itself.
+- **Docs in the same commit as the code** they describe.
+- **A drift audit per version:** v0.2 ends with a read-only pass comparing every doc against the code.
+- **Measure before guarding** (learned in V4): when a design depends on how Lexirise behaves, probe it read-only
+  from the Mac first (`../../tools/lexirise/`), write the finding in `../reference/lexirise-api-notes.md` and pin
+  it in tests, instead of defending against behaviour nobody has seen. Reviewers rank namer/API findings against
+  the measured behaviour.
+- **Device sessions hold one serial connection** (`../v0.1/dev-harness.md` §3): opening the port resets the reader,
+  so connect once, send `LX:AWAKE 1` first, never poll or open it from two processes.
 
 ## Order, and why it differs from the suggestion
 

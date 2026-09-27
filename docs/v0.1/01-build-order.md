@@ -20,9 +20,11 @@ For each phase, in order:
    attempts, mark the phase `blocked` in the ledger with a precise diagnosis, commit that, and
    **stop**.
 5. **Land it:** squash `lexi/<phase-id>` and merge it **directly** into `main` (**no pull requests**,
-   claritise 2026-09-24), with the ledger row in the same history. Pushing needs claritise's OK. Keep hook
+   claritise 2026-09-24), with the ledger row in the same history. ~~Pushing needs claritise's OK.~~ ~~Keep hook
    edits to base files in **their own commits**, separate from new files (kept for now, see the global
-   rules). Report the result to claritise. Sign-offs they give in chat (e.g. the design conformance
+   rules).~~ **Superseded 2026-09-27** (`../v0.2/01-build-order.md`, "How to run this document"): `main` is pushed after each landing (claritise: "just do it
+   automatically"); a phase lands as one squashed commit, so base-file hooks are tracked by their `// LEXIPOINT`
+   markers and `firmware-base.md` §3, not by separate commits. Report the result to claritise. Sign-offs they give in chat (e.g. the design conformance
    screenshots) are quoted with their date in the ledger note.
 
 One phase = one branch = one gate = one ledger row.
@@ -46,7 +48,8 @@ One phase = one branch = one gate = one ledger row.
   > everything implemented in the cleanest, least spaghetti code possible, clean and robust and extensible for
   > future? if you need to ask about whether to make a refactor for testing purposes, the answer is yes, you
   > dont even need to ask
-- Then merge, finish the ledger row, and start the next phase without asking. Pushing waits for claritise's OK.
+- Then merge, finish the ledger row, and start the next phase without asking. ~~Pushing waits for claritise's OK.~~
+  **Superseded 2026-09-27:** push `main` after the landing (`../v0.2/01-build-order.md`, "How to run this document").
 
 ## Global rules
 
@@ -70,8 +73,8 @@ Some of these rules were made to keep rebases onto CrossPoint cheap: the `LEXIRI
 - **The dev key** lives in `~/.lexirise_key` on the build Mac: fine for API calls from there, never
   printed, never committed. Nobody types keys or passwords into the device or any form on claritise's
   behalf: claritise pastes the key into the `/lexirise` page and joins WiFi.
-- **Pushing:** this repo is committed locally and pushed only with claritise's OK. No releases or tags
-  without it either.
+- **Pushing:** ~~this repo is committed locally and pushed only with claritise's OK.~~ **Superseded 2026-09-27:** `main`
+  is pushed after each landing and docs commit (`../v0.2/01-build-order.md`, "How to run this document"). No releases or tags without claritise's OK.
 - **The device** (on USB at the build Mac): every new serial connection reboots it, so run a whole check in
   one `lxctl` session (`lxctl.Harness`), and never connect while claritise is reading on it.
 - **Needs-human items (H1–H13 in `00-overview.md`) are never guessed.** If a phase depends on one
