@@ -141,18 +141,28 @@ novel (EPUB), portrait. Page turns were fine (claritise). Writes, with claritise
 | Conjugation on more forms | **pass**: 感じられる‹感じる› "passive or potential"; やさしくて‹やさしい› "te-form" (adjective), its highlight across a line break; names timing 19 words 49 ms, 29 words 20 ms, stack 5688 B free each time |
 | **Incident: USB link and a boot loop** | Every opening of the serial port reset the reader (`rst:0x15`, USB_UART_CHIP_RESET), though lxctl keeps DTR/RTS low; so each separate `lxctl` command rebooted it and multi-step checks lost their state. Two processes opening the port at once left the link silent until a replug. The harness's "wait until it answers" loops then opened the port every 1–2 s, and claritise saw the reader boot-loop whenever it was on the Mac's USB (never on battery or a wall charger). **Most likely cause: those loops** (each open is a reset). With them stopped and one process holding the port, it booted once and stayed up (70 s, then the rest of the session); with nothing holding it, it stayed up too. Not a firmware fault as far as seen: the boot log is normal to Home each time, no panic. Fix: how to connect is now in `dev-harness.md` §3 (one held session, `LX:AWAKE 1` first, never poll or double-open) |
 
+## 2026-09-27 (later), `main` @ `b60ef05e` (v0.2 V4b), flashed by claritise (upload hash verified)
+
+Run by the harness (one held `lxctl` session), claritise at the device. Same book; 和子 still saved from the first
+session.
+
+| Check | Result |
+|---|---|
+| **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
+| Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
+
 ## v0.2 V4: still owed on the device
 
 V4 (Met before, and the conjugation) is on `main` (`42bce33c`); its ledger row in
 `../v0.2/01-build-order.md` links here. What's owed on the device:
 
-- **Met before, V4b's retest** (`lexi/V4b`: the saved item, `../v0.2/00-overview.md` C14 "As built (V4b)"): 和子
+- ~~**Met before, V4b's retest** (`lexi/V4b`: the saved item, `../v0.2/00-overview.md` C14 "As built (V4b)"): 和子
   is saved in claritise's account for it (this book's `book:` tag, the 2026-09-27 section above): look it up in
   理科教室にもどった和子は、… (another sentence): the Context tab shows "Met before · <title>" over the sentence it was
   saved from, the card's first frame and meaning not held back (the item's `GET /v1/vocabulary/{id}` in the log after
   the lookup, once per card); offline, "First time you've met this word." and no error; the loop task's free
   stack after an item fetch (dev build: the `[LXCARD] names` line's figure on the next analysis; `Fetched` grew
-  ~60 B and is held about three times on that stack).
+  ~60 B and is held about three times on that stack).~~ **Done 2026-09-27** (the "(later)" section above: Met before shown, one item call after the lookup, stack unchanged); **still owed:** the offline case ("First time you've met this word.", no error).
 - **Met before:** a saved word met in another book (~~and whether the live state carries `notes` and `user_tags` at
   all: not seen yet, `../reference/lexirise-api-notes.md`, "A saved word's notes and tags";~~ (answered 2026-09-27:
   it never does, the section above) and that a note the user
