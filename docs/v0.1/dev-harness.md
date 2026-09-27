@@ -73,8 +73,19 @@ One command per line on the USB serial port (115200), prefixed `LX:`. Replies ar
 
 Needs `pyserial`. Examples: `lxctl.py ping`, `lxctl.py tap 240 400`, `lxctl.py swipe 240 600 240 200`,
 `lxctl.py btn next`, `lxctl.py home`, `lxctl.py shot out.png`, `lxctl.py log 10`,
-`lxctl.py wait "Entering activity: Home" 15`. Opening the port leaves DTR/RTS low, since toggling them
-resets the ESP32-S3.
+`lxctl.py wait "Entering activity: Home" 15`. ~~Opening the port leaves DTR/RTS low, since toggling them
+resets the ESP32-S3.~~ **Superseded 2026-09-27** (`device-checks.md`, "2026-09-27, `main` @ `42bce33c`"): lxctl
+still sets DTR/RTS low before opening, but on claritise's Mac **opening the port resets the reader anyway** (the ROM
+prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
+
+- **Every `lxctl.py` command is a fresh boot:** its state doesn't carry to the next command (a `tap` then a `shot`
+  shows the screen after a reboot, not after the tap). Multi-step checks need **one held session**: open the port
+  once, send `LX:AWAKE 1` first, then drive everything through that connection (the built-in multi-step commands,
+  `smoke`, `card-smoke` and the rest, already do).
+- **Never open the port in a loop** (a "wait until it answers" poll): each open resets the reader, and a poll that
+  opened it every second or two kept it restarting until the poll was stopped (2026-09-27).
+- **Never open it from two processes at once:** the second read fails ("device reports readiness to read but
+  returned no data") and the link went silent until the cable was replugged (2026-09-27).
 
 ## 4. Tests
 
@@ -98,6 +109,9 @@ resets the ESP32-S3.
 - **A sleeping device can't be woken over USB.** Deep sleep drops the USB port. The harness's
   keep-awake prevents this, but only once a harness build is running. The first flash after a stock
   firmware needs one Power press.
+- **Waking by hand didn't always bring the port back** (2026-09-27): after the reader slept with the cable in, a
+  Power press woke it but the Mac saw no port (charging, no data) until the cable was replugged. Send `LX:AWAKE 1`
+  at the start of every session so it doesn't sleep.
 - Injected touches don't pass through the SDK's gesture classifier. The harness rejects the one easy-to-get-wrong
   case (swipes under the SDK's 60 px minimum, as `LX:ERR swipe too short`), and gesture timings are
   compile-time checked against the reader's long-press threshold. Beyond that, tests must use realistic

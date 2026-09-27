@@ -123,9 +123,24 @@ and calibre connect.
 | Stepping (right side button) | **pass**: 深深 → 地 in one step (not 深 → 深) |
 | Left over | 深深 shows **tracked** (tag `xteink`): the save/Undo test's leftover (below, 2026-09-25) is still in claritise's account, and V1 makes it reachable from the card again |
 
+## 2026-09-27, `main` @ `42bce33c` (v0.2 V4), flashed by claritise (upload hash verified)
+
+Run by the harness (one held `lxctl` session after the incident below), claritise at the device. Book: a Japanese
+novel (EPUB), portrait. Page turns were fine (claritise). Nothing was saved: no Lexirise write this session.
+
+| Check | Result |
+|---|---|
+| Lookup on a Japanese page, then the side buttons along the sentence | **pass**: long-press → card (ふたり); right button steps word by word (の, うしろ, 姿, を, 見くらべた, 和子), left steps back |
+| Conjugation name (C16): 並んで | **pass**: headword 並ぶ, "並んで te-form" |
+| Conjugation name (C16): 行った | **pass**: headword 行く, "行った past"; the **Form** tab lists 行く dictionary form → 行った past |
+| A merged token the namer can't build: 捨ててくる‹捨てる› | **pass** (unnamed, as designed: "-te kuru" isn't generated; a missing name, not a wrong one) |
+| A compound Lexirise gives the first verb as lemma: 見くらべた‹見る› | **pass** (unnamed: 見くらべた isn't a form of 見る). Lexirise's lemma is wrong for looking the word up: the card shows 見る, "see", not 見比べる, "compare" (`../reference/lexirise-api-notes.md`, "Data quirks") |
+| `[LXCARD] names` timing and stack (C16) | **pass**: 10 words 75 ms, 8 words 10 ms; **5688 B** of the loop task's stack free both times (the host estimate of the search's deepest frames was ~2.3 KB) |
+| **Incident: USB link and a boot loop** | Every opening of the serial port reset the reader (`rst:0x15`, USB_UART_CHIP_RESET), though lxctl keeps DTR/RTS low; so each separate `lxctl` command rebooted it and multi-step checks lost their state. Two processes opening the port at once left the link silent until a replug. The harness's "wait until it answers" loops then opened the port every 1–2 s, and claritise saw the reader boot-loop whenever it was on the Mac's USB (never on battery or a wall charger). **Most likely cause: those loops** (each open is a reset). With them stopped and one process holding the port, it booted once and stayed up (70 s, then the rest of the session); with nothing holding it, it stayed up too. Not a firmware fault as far as seen: the boot log is normal to Home each time, no panic. Fix: how to connect is now in `dev-harness.md` §3 (one held session, `LX:AWAKE 1` first, never poll or double-open) |
+
 ## v0.2 V4: still owed on the device
 
-V4 (Met before, and the conjugation) is built and host-tested on `lexi/V4`; its ledger row in
+V4 (Met before, and the conjugation) is on `main` (`42bce33c`); its ledger row in
 `../v0.2/01-build-order.md` links here. What's owed on the device:
 
 - **Met before:** a saved word met in another book (and whether the live state carries `notes` and `user_tags` at
@@ -139,12 +154,13 @@ V4 (Met before, and the conjugation) is built and host-tested on `lexi/V4`; its 
   cut loads); step on, then back before the next cut arrives (the word's "Met before" updates on screen); a verb
   ending the first cut, stepped past (named once the next cut loads); a verb split across a page turn (書け | ない),
   stepped onto with the side buttons (unnamed).
-- **The conjugation:** a conjugated verb (食べさせられた, 行って), an i-adjective's te-form, a five-step form
+- **The conjugation:** ~~a conjugated verb~~ (done 2026-09-27: 並んで, 行った, the Form tab; above) (食べさせられた, 行って still worth a look), an i-adjective's te-form, a five-step form
   (食べさせられていません named, unnamed when でした follows), and a する verb (勉強した named "past", its Form tab
   from 勉強する); a page with 話しは or 見出し (a noun with okurigana し: unnamed); しようがない (unnamed: "no way to", not
   a volitional). How `analyze/text` splits conjugated verbs is measured from the Mac
   (`../reference/lexirise-api-notes.md`, "How analyze/text splits conjugated verbs"); on the device, only that the
   card's offsets and next character line up with those tokens on a real page.
-- **Timing and stack:** `[LXCARD] names <n> words <ms> ms, stack <bytes> B free` (dev build) on a long Japanese
+- ~~**Timing and stack:** `[LXCARD] names <n> words <ms> ms, stack <bytes> B free` (dev build) on a long Japanese
   sentence: how long the names hold phase A back, and how much of the loop task's stack is left (host estimate of the
-  search's frames: about 2.3 KB at its deepest).
+  search's frames: about 2.3 KB at its deepest).~~ **Done 2026-09-27** (the section above: 75 ms for 10 words,
+  5688 B free); a longer sentence is still worth a look.

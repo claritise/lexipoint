@@ -72,6 +72,11 @@ number. Filters take either the number or the label.
 
 ## Data quirks seen while building the card mock (2026-09-24)
 
+- **A compound verb's lemma can be its first verb** (seen on the device 2026-09-27, V4): 見くらべた came back with
+  lemma 見る, so the card looks up 見る ("see") instead of 見比べる ("compare"). The namer leaves the form unnamed
+  (it isn't a form of 見る), but the meaning shown is the wrong word's. Worth reporting to Lexirise (claritise's call).
+- **Sense order can lead with a rare sense:** 行く's meanings came back as "die; go" (die first: 逝く's sense).
+
 - **A character's HSK level isn't always in `system_tags`.** 择 has `system_tags: ["char"]`, but
   `characterInfo.statistics.hskLevel: 4`. For characters, read `characterInfo` first, then
   `system_tags`. (选 has both: `HSK-2`.)
