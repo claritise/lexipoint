@@ -431,6 +431,26 @@ were sent once, by hand; they're the tool's last five sentences now, so a rerun 
 - **Still for the device:** these are the server's answers; whether the card's offsets and next character line
   up with them on a real page is V4's device check (`../v0.1/device-checks.md`).
 
+## Readings and counts for V6's card additions (measured 2026-09-28, read-only)
+
+Dev key, from the Mac; raw in `research/v6/` (gitignored).
+
+- **`multipleReadings` on `dictionary/lookup`** is `{primary, alternatives[], hasMultiple}`, plus for Chinese
+  `frequencies[]` (one per alternative) and `primaryFrequency`. **Chinese polyphones have it, in pinyin with tone
+  marks:** 长 cháng, alternatives zhǎng; 行 xíng, háng; 得 dé, de and děi. **Japanese alternatives are romaji only**
+  (一日: primary tsuitachi; alternatives ichinichi, ichijitsu, tsukitachi, hitohi, ippi), so a card showing kana has
+  to convert them (V6's "also" reading).
+- **`GET /v1/vocabulary?language=…&limit=1`** answers `languageCount`, `totalCount`, `nextOffset`, `availableTags`
+  (and the items). A `unit_type` query parameter is ignored (the same counts, the same item). ~~Whether
+  `languageCount` counts sentence cards is still open: the dev account has none to compare (V6's C7 check).~~
+  **Answered 2026-09-28 (a write on the dev account, claritise's OK: "yes keep going"; undone):** saving one sentence
+  card took `languageCount` 2 → 3 while `totalCount` stayed 2, so **`languageCount` counts sentence cards and
+  `totalCount` doesn't** (C7's "words in Japanese" is `totalCount`, or says "cards").
+- **The same sentence saved twice** (`POST /v1/vocabulary`, `mode: "sentence"`): the second answers `result.status:
+  "updated"`, `reason: "already_exists"`, with the **same item**, and replaces it like a word's re-save (tags, notes,
+  proficiency overwritten). So a sentence save must check first, as a word's does. **A sentence card's `DELETE`**
+  answers `deleted: true` and the item is gone (404), unlike a dictionary word's.
+
 ## Suspended (Ignore), measured 2026-09-27 (v0.2 V5)
 
 `tools/lexirise/probe_suspend.py` (writes to the dev key's account, with claritise's OK: "ok"; raw in `research/v5/`,

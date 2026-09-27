@@ -578,7 +578,7 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
     `LiveIgnore.TheKeyIsPerPassAKnownLimit`); an ignore handled in the same batch as the card's close whose write fails
     is only logged (the card is gone); in a batch ignoring two words where one write fails, "Save failed" replaces the
     other word's Undo toast; and **once the toast is gone there's no way to un-ignore a word** except editing
-    `ignored.ini`. **Open for claritise (V6's design batch):** how to un-ignore from the card (e.g. the ⋯ row reading
+    `ignored.ini`. **Open for claritise (V6's design batch, proposed in "V6 design" below):** how to un-ignore from the card (e.g. the ⋯ row reading
     "Undo ignore" for an ignored word), a change to the approved card; and whether "Save failed", reused for an ignore
     the SD card didn't take and for a word with no key, should get words of its own.
 
@@ -893,6 +893,27 @@ gives the due count for the menu, so the vocab mirror isn't needed for it.
 
 **Scope note:** CrossPoint's `SCOPE.md` rules out "interactive apps". That never bound Lexipoint, and since
 phase M Lexipoint doesn't follow CrossPoint (D21), so it costs nothing.
+
+## V6 design (awaiting claritise's sign-off)
+
+**Proposed 2026-09-28** (`01-build-order.md` V6): mockups of each addition next to the approved state it changes, at
+the panel's 480×800 in the reference's style, with the options and a recommendation for each:
+[`reference/v6-card-additions.html`](reference/v6-card-additions.html). Not binding until signed off; the sign-off
+is quoted in V6's ledger row, and the build then updates `../v0.1/reference/card-reference.html` and
+`../v0.1/popup-ui.md` §1.1 in the same commit. The questions, with the recommended answers:
+
+1. **C1 / C7, where the counts show:** the card footer, a book-close summary, or both. Recommended: the summary only
+   (`3 saved · 11 looked up` / `1,204 words in Japanese`, two lines in the toast's frame on the home screen after
+   the book closes); the card is unchanged.
+2. **C15 / C10 option 1, the "also" reading:** on the reading line (`いちにち · also ついたち…`, `cháng · also zhǎng`),
+   or after the part of speech. Recommended: the reading line, whole readings as fit in its 226 px, then `…`.
+3. **C3 / C17, Save sentence:** one tap saves the sentence as built, or the ⋯ row opens a preview with `Shorter` |
+   `Longer` (a clause at a time) and the same row saves. Recommended: the preview (the one new shape: two half-width
+   action rows).
+4. **C17, un-ignore from the card:** the ⋯ row reading `Undo ignore` for an ignored word, and/or an `ignored` state
+   word under T L F K. Recommended: the row only (toast `No longer ignored · Undo`).
+5. **C17, Ignore's failure wording:** keep `Save failed`, one string, or two. Recommended: two,
+   `Couldn't save to the SD card` (the write failed, or no list) and `Can't ignore this word` (no key).
 
 ## Open, to confirm
 

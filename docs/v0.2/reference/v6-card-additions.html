@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V6 card additions</title>
+<!--
+  PROPOSAL for claritise's sign-off (v0.2 phase V6, 2026-09-28). NOT binding until signed off.
+  The binding card is ../../v0.1/reference/card-reference.html with ../../v0.1/popup-ui.md §1.1. Every screen here
+  is drawn at the X4 Pro's native 480×800 in device pixels, with §1.1's measurements (the reference's CSS × 1.412),
+  then scaled to fit the page. Inside a screen everything is pure black on white, as on the e-ink panel; the red
+  dashed outlines are annotations marking what a proposal adds or changes, and are never drawn on the device.
+  Self-contained: no external requests (the reference's own system font stacks).
+-->
+<style>
+:root{color-scheme:light;--ink:#000;--paper:#fff;--frame:#e9e7e1;--frame-line:#c9c6bd;--note:#555;--bg:#faf9f6;--text:#1f1f1f;
+ --surface:#fff;--code:#efede7;--rule:#e3e0d8;--on:#1f1f1f;--on-text:#fff;--ann:#c8102e;--ann-text:#c8102e;--rec:#1d6b3a;
+ --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+/* Dark host theme: only the page around the screens changes. A screen is e-ink paper: black on white in both themes. */
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;--frame:#3a3936;--frame-line:#5a5852;--note:#a9a69e;--bg:#171716;--text:#e8e6e1;
+ --surface:#222120;--code:#2c2b29;--rule:#34332f;--on:#e8e6e1;--on-text:#171716;--ann-text:#ff6b7f;--rec:#5cc07e}}
+:root[data-theme="dark"]{color-scheme:dark;--frame:#3a3936;--frame-line:#5a5852;--note:#a9a69e;--bg:#171716;--text:#e8e6e1;
+ --surface:#222120;--code:#2c2b29;--rule:#34332f;--on:#e8e6e1;--on-text:#171716;--ann-text:#ff6b7f;--rec:#5cc07e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:15px;line-height:1.55}
+main{max-width:1200px;margin:0 auto;padding:24px 16px 72px}
+h1{font-size:23px;line-height:1.25;margin:0 0 6px}
+h2{font-size:19px;line-height:1.3;margin:44px 0 6px;padding-top:18px;border-top:1px solid var(--frame-line)}
+h3{font-size:15px;margin:18px 0 4px}
+p{margin:6px 0;max-width:800px}
+ul{margin:6px 0;padding-left:20px;max-width:800px}
+li{margin:3px 0}
+code{font-size:13px;background:var(--code);padding:0 3px;border-radius:3px}
+.lead{color:var(--note);max-width:800px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin:14px 0 4px;font-size:13px;color:var(--note)}
+.seg{display:inline-flex;border:1px solid var(--frame-line);border-radius:8px;overflow:hidden;vertical-align:middle}
+.seg button{border:0;padding:5px 11px;font-size:12px;background:transparent;cursor:pointer;font-family:inherit;color:var(--text)}
+.seg button.on{background:var(--on);color:var(--on-text)}
+nav.toc{display:flex;flex-wrap:wrap;gap:6px 8px;margin:12px 0 0}
+nav.toc a{font-size:13px;color:var(--text);text-decoration:none;border:1px solid var(--frame-line);border-radius:14px;padding:3px 10px;background:var(--surface)}
+.frames{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:26px 22px;margin:16px 0 8px}
+figure{margin:0;min-width:0;display:flex;flex-direction:column}
+figcaption{font-size:13px;line-height:1.45;margin:0 0 8px;flex:1}
+figcaption b{font-size:14px}
+.tag{display:inline-block;font-size:11px;line-height:16px;padding:0 6px;border-radius:4px;border:1px solid var(--frame-line);margin-left:4px;vertical-align:1px;background:var(--surface);color:var(--note)}
+.tag.rec{border-color:var(--rec);color:var(--rec);font-weight:600}
+.tag.ok{border-color:var(--text);color:var(--text)}
+.fit{position:relative;width:100%;overflow:hidden}
+.dev{position:absolute;left:0;top:0;transform-origin:0 0;width:546px;background:var(--frame);border:1px solid var(--frame-line);border-radius:34px;padding:28px 31px 20px}
+.home{margin:15px auto 0;width:65px;height:14px;border-radius:7px;border:1px solid var(--frame-line)}
+.box{border:1px solid var(--frame-line);background:var(--surface);border-radius:8px;padding:10px 14px;margin:12px 0;max-width:860px}
+.box.rec{border-color:var(--rec)}
+.box h3{margin-top:2px}
+table{border-collapse:collapse;font-size:13px;margin:8px 0;width:100%;max-width:860px}
+th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--rule);padding:5px 8px 5px 0}
+th{font-weight:600;color:var(--note)}
+td.s{font-family:var(--font-sans);white-space:nowrap}
+.tw{overflow-x:auto;max-width:100%}
+.new{color:var(--ann-text);font-weight:600}
+.ex{color:var(--note)}
+ol.q>li{margin:10px 0}
+.legend{display:inline-block;width:22px;height:12px;border:2px dashed var(--ann-text);vertical-align:-2px;margin-right:4px}
+
+/* ---- The e-ink screen: device pixels, popup-ui.md §1.1. Only black and white inside. ---- */
+.scr,.scr *{box-sizing:content-box}
+.scr{width:480px;height:800px;background:var(--paper);border:1px solid var(--frame-line);position:relative;color:var(--ink);overflow:hidden;font-family:var(--font-sans);user-select:none;box-sizing:content-box}
+.jp{font-family:"Hiragino Mincho ProN","Songti SC","Noto Serif CJK JP","Noto Serif CJK SC",serif}
+.pg{padding:31px 28px;font-size:27px;line-height:52px;white-space:nowrap}
+.strip{position:absolute;left:0;right:0;top:0;height:80px;display:flex;align-items:center;padding:0 28px;font-size:27px;white-space:nowrap;overflow:hidden}
+.strip .ct{flex:1;min-width:0;overflow:hidden;white-space:nowrap;margin-right:56px}
+.ln{position:absolute;right:11px;top:6px;font-size:14px;font-family:var(--font-sans)}
+.hl{background:var(--ink);color:var(--paper);padding:0 1px}
+.card{position:absolute;left:14px;right:14px;bottom:14px;background:var(--paper);border:3px solid var(--ink);display:flex;flex-direction:column}
+.row{padding:11px 17px}.sep{border-top:1px solid var(--ink)}
+.hd{display:flex;justify-content:space-between;align-items:flex-start}
+.lc{min-width:0;max-width:226px;overflow:hidden}
+.rd{font-size:17px;margin:-8px -11px 0;padding:8px 11px 0;white-space:nowrap}
+.rd .fitw,.sf .fitw{display:inline-block;white-space:nowrap}
+.wd{font-size:42px;line-height:51px}
+.badge{display:inline-block;border:3px solid var(--ink);font-size:17px;font-weight:500;padding:0 7px;line-height:19px;vertical-align:middle;margin-left:11px;font-family:var(--font-sans)}
+.lv{display:inline-flex;border:2px solid var(--ink)}
+.lv span{width:42px;text-align:center;font-size:18px;padding:7px 0;border-left:1px solid var(--ink)}
+.lv span:first-child{border-left:0}
+.lv span.cur{background:var(--ink);color:var(--paper)}
+.st{font-size:16px;margin-top:6px;text-align:right;white-space:nowrap}
+.sf{font-size:17px;margin-top:3px;white-space:nowrap;overflow:hidden}
+.pill{border:1px solid var(--ink);border-radius:4px;font-size:16px;padding:0 7px}
+.mn{font-size:20px}
+.bars span{display:inline-block;width:4px;margin-right:3px;border:1px solid var(--ink);vertical-align:bottom}
+.bars span.f{background:var(--ink)}
+.last{display:flex;border-top:1px solid var(--ink);font-size:17px}
+.last .m{flex:1;display:flex;justify-content:space-between;align-items:center;padding:14px 17px;white-space:nowrap;gap:12px}
+.last .x{width:62px;border-left:1px solid var(--ink);display:flex;align-items:center;justify-content:center;font-size:21px}
+.tabs{display:flex;border-top:1px solid var(--ink);font-size:16px}
+.tabs span{flex:1 1 auto;text-align:center;padding:11px 0}
+.tabs span.more{flex:0 0 42px;border-left:1px solid var(--ink);font-size:20px;padding:7px 0}
+.tabs span.on{background:var(--ink);color:var(--paper)}
+.body{flex:1;overflow:hidden;padding-top:17px}
+.act{display:flex;justify-content:space-between;align-items:center;border:2px solid var(--ink);padding:11px 14px;margin-bottom:10px;font-size:18px}
+.pair{display:flex;gap:10px}
+.pair .act{flex:1;justify-content:center}
+.sen{font-size:21px;line-height:1.8;margin-bottom:14px}
+.lab{font-size:16px;margin-bottom:6px}
+.toast{position:absolute;left:50%;transform:translateX(-50%);top:85px;border:3px solid var(--ink);background:var(--paper);font-size:17px;padding:6px 14px;white-space:nowrap;z-index:2}
+.toast.two{white-space:nowrap;text-align:center;line-height:1.35}
+.scheme{position:absolute;left:28px;right:28px;top:200px;bottom:200px;border:2px dashed var(--ann);display:flex;align-items:center;justify-content:center;text-align:center;color:var(--ann);font-size:20px;padding:20px}
+/* Annotation (never drawn on the device): what a proposal adds or changes. */
+.ann .chg{outline:3px dashed var(--ann);outline-offset:3px}
+.ann span.chg{outline-offset:1px}
+</style>
+</head>
+<body>
+<main>
+<h1>V6 card additions: mockups for sign-off</h1>
+<p class="lead">Proposed 2026-09-28 for claritise. <b>Not binding until signed off.</b> Each addition is drawn next to the approved state it changes, as the X4 Pro would draw it: 480×800 device pixels with <code>popup-ui.md</code> §1.1's measurements, black and white only, scaled to fit this page. The binding card is <code>docs/v0.1/reference/card-reference.html</code>. The questions and recommended answers are listed together at the end.</p>
+<div class="ctl">
+  <span><span class="legend"></span>what a proposal adds or changes (never drawn on the device)
+    <span class="seg" id="annSeg"><button data-v="1" class="on">Show</button><button data-v="0">Hide</button></span></span>
+  <span>Screens <span class="seg" id="sizeSeg"><button data-v="fit" class="on">Fit</button><button data-v="1">1:1 device px</button></span></span>
+  <span>Japanese readings <span class="seg" id="rdSeg"><button data-v="kana" class="on">kana</button><button data-v="romaji">romaji</button></span></span>
+</div>
+<nav class="toc">
+  <a href="#q1">1 · Session and vocab counts</a><a href="#q2">2 · The “also” reading</a><a href="#q3">3 · Save the sentence</a><a href="#q4">4 · Un-ignore</a><a href="#q5">5 · Ignore's failure wording</a><a href="#draw">Drawable?</a><a href="#signoff">Sign-off list</a>
+</nav>
+
+<!-- ============================================================ 1 -->
+<h2 id="q1">1 · Session counter (C1) and vocab count (C7): where they show</h2>
+<p><b>What:</b> <code>3 saved · 11 looked up</code> for the session (since the book was opened; reset on close or sleep; RAM only) and <code>1,204 words in Japanese</code> (C7: <code>languageCount</code>, one <code>GET /v1/vocabulary?limit=1</code> per session, then counted up and down locally with each save and Undo). The question is where.</p>
+<div class="frames" id="f1"></div>
+<div class="box">
+<h3>Touch</h3>
+<p><b>A:</b> nothing new: the rank row stays one target (▼ opens the detail view). <b>B:</b> the summary box goes at the next tap anywhere, or with the home screen's next redraw; no timer (a timer on e-ink is an extra refresh just to erase it). It's shown only when the session looked something up. Sleep ends the session without a summary (the sleep screen is CrossPoint's, and nobody sees a box drawn as the reader sleeps); a chapter end gets none either (C1 suggested one there: it would be an extra refresh in the middle of reading).</p>
+<h3>Strings</h3>
+<div class="tw"><table>
+<tr><th>String</th><th></th><th>Where</th></tr>
+<tr><td class="s">3 saved · 11 looked up</td><td class="new">new</td><td>A: the rank row. B: the summary's first line</td></tr>
+<tr><td class="s">1,204 words in Japanese / in Chinese</td><td class="new">new</td><td>B: the summary's second line (left out when the count never came, e.g. offline all session)</td></tr>
+</table></div>
+<h3>Fit</h3>
+<p>A: the rank row has about 150 px left after <code>▮▮▮▯▯ #29,774 rare</code> and ▼. <code>3 saved · 11 looked up</code> just fits; <code>12 saved · 140 looked up</code> next to a five-digit rank doesn't, so it would be cut or dropped on exactly the busy sessions it's for. B: the box is the toast's frame and type (§1.1: 3 px frame, 17 px text), two lines instead of one.</p>
+</div>
+<div class="box rec">
+<h3>Recommendation: B, the book-close summary only</h3>
+<p>The card stays pixel-identical to the approved one (subtract, don't add): the counts are about the session, not the word, and the rank row is the word's. At the close they're a small reward, with both numbers together. Definitions: <b>saved</b> = saves that were kept (words and sentence cards; an Undo takes one back); <b>looked up</b> = cards opened by a tap on the page (a tap on another word counts; side-button steps don't, so skimming a sentence doesn't inflate it). The C7 count is fetched once, on an idle card (as V3's deck steps are), never at the close. <b>Build cost:</b> a hook in CrossPoint's home screen, which draws the box once as it opens. <b>To measure before building:</b> whether <code>languageCount</code> counts sentence cards too (C7's open check).</p>
+</div>
+
+<!-- ============================================================ 2 -->
+<h2 id="q2">2 · The “also” reading (C15, C10 option 1)</h2>
+<p><b>What:</b> <code>dictionary/lookup</code>'s <code>multipleReadings</code> lists other readings. <code>analyze/text</code> reads 一日 in 四月一日 as <i>ichinichi</i>; the lookup lists <i>tsuitachi</i> (the right one here), <i>ichijitsu</i>, <i>tsukitachi</i>, <i>hitohi</i>, <i>ippi</i> (measured, <code>lexirise-api-notes.md</code>). The card doesn't choose (V10 will, from the sentence); it shows the others so the right one isn't hidden. Chinese: 长 in 长得 is read <i>cháng</i>, but here it's <i>zhǎng</i>.</p>
+<div class="frames" id="f2"></div>
+<div class="box">
+<h3>Touch</h3>
+<p>None new. The Japanese reading line is already a target (kana ⇄ romaji), and <code>popup-ui.md</code> §1 already says the toggle switches "the ‘also’ readings" with the rest; the target grows with the line. Chinese: no toggle, as now.</p>
+<h3>Strings and rules</h3>
+<div class="tw"><table>
+<tr><th>String</th><th></th><th>Where</th></tr>
+<tr><td class="s"> · also </td><td class="new">new</td><td>between the card's reading and the other readings; <code>, </code> between those</td></tr>
+</table></div>
+<ul>
+<li><b>Order:</b> the lookup's own <code>transliteration</code> first when it isn't the card's reading (tsuitachi here), then <code>alternatives</code> in Lexirise's order, each once, never the card's own reading.</li>
+<li><b>Fit:</b> whole readings only, as many as fit before T L F K (226 px); when some don't, the line ends in <code>…</code>, the card's usual cut. In kana, one alternative fits (いちにち · also ついたち…); in romaji the same (ichinichi · also tsuitachi…).</li>
+<li><b>When:</b> phase B, with the badge (it comes from <code>dictionary/lookup</code>). A word with no other readings draws exactly the approved card.</li>
+</ul>
+<p class="ex"><b>To measure before building:</b> whether Chinese lookups return <code>multipleReadings</code> for polyphones like 长, and in which form (tone marks or numbers). The Chinese screens assume tone marks.</p>
+</div>
+<div class="box rec">
+<h3>Recommendation: A, on the reading line</h3>
+<p>It sits where the reading is read, in furigana order, and the approved spec already expects "also" readings on it (§1's kana ⇄ romaji toggle). B moves nothing but puts a reading on the grammar line, far from the reading it qualifies, and Chinese has no surface form to lean on. Neither adds height.</p>
+</div>
+
+<!-- ============================================================ 3 -->
+<h2 id="q3">3 · Save the sentence as a card (C3), and C17's “Save sentence” row</h2>
+<p><b>What:</b> the ⋯ tab's second row, <i>Save the sentence as a card</i>, is in the approved card already (today it answers "Not in this version yet"). Saving is <code>POST /v1/vocabulary</code> with <code>mode: "sentence"</code> and an explicit <code>proficiency</code>. The X4 Pro is touch-only (D15), so C3's ▲▼ grow/shrink becomes two touch targets.</p>
+<div class="frames" id="f3"></div>
+<div class="box">
+<h3>Touch (B)</h3>
+<ol>
+<li>Tap <i>Save the sentence as a card</i>: the ⋯ tab's body shows the sentence (the Examples tab's type: 21 px, 「」, the word underlined), then <i>Shorter</i> | <i>Longer</i>, then the same row again, which saves.</li>
+<li><b>Shorter</b> drops one clause (split after 、，；, and ， ； in Chinese): the first clause while there's one before the word's, then the last. The word's own clause always stays. <b>Longer</b> puts back the last clause dropped; with none dropped, it adds the next clause on the page (a sentence D5 cut inside a quote), never past the page (D5: a sentence doesn't cross one). A tap with nothing to do changes nothing (no grey on e-ink).</li>
+<li>Tapping the row saves: <code>Sentence saved as a card · Undo</code> (2 s, as a save's; Undo deletes it) and the body goes back to the rows. Tapping the ⋯ tab, another tab, or a side-button step leaves the preview unsaved.</li>
+</ol>
+<h3>Strings</h3>
+<div class="tw"><table>
+<tr><th>String</th><th></th><th>Where</th></tr>
+<tr><td class="s">Save the sentence as a card</td><td>existing</td><td>the row (both steps)</td></tr>
+<tr><td class="s">Shorter / Longer</td><td class="new">new</td><td>the two half-width cells (the action rows' frame and type)</td></tr>
+<tr><td class="s">Sentence saved as a card · Undo</td><td>existing + existing suffix</td><td>the toast (the reference's words; the save toast's Undo)</td></tr>
+</table></div>
+<p><b>Level:</b> the sentence is saved at <i>learning</i> (sentences default to 2 in Lexirise, so it's always sent). <b>Pixels:</b> the preview uses only the Examples tab's sentence style and the ⋯ rows' style; the half-width cells are the one new shape (two ⋯ rows side by side, 10 px apart).</p>
+</div>
+<div class="box rec">
+<h3>Recommendation: B, preview with Shorter / Longer</h3>
+<p>A (one tap saves the sentence as built, the reference's behaviour plus Undo) is the smallest change and needs no new string, but D5's sentence is often a clause too long or cut by the page, and a sentence card is reviewed for weeks; B lets it be fixed first, in the tab that already holds the action, with no new chrome outside the body. If claritise prefers A, B can follow later without changing A's row or toast. <b>To measure before building:</b> what Lexirise does with the same sentence saved twice (a second card, or the first one back).</p>
+</div>
+
+<!-- ============================================================ 4 -->
+<h2 id="q4">4 · Un-ignore from the card (C17, a V5 open question)</h2>
+<p><b>What:</b> V5's Ignore is a list on the reader (<code>/.lexirise/ignored.ini</code>), never a write to Lexirise. Once its 5 s Undo toast is gone, nothing on the card can take it back; tapping <i>Ignore this word</i> again only says <code>Ignored: won't be marked again</code>. An ignored word looks like any other.</p>
+<div class="frames" id="f4"></div>
+<div class="box">
+<h3>Touch</h3>
+<p><b>A:</b> for an ignored word, the row reads <i>Undo ignore</i>; a tap takes the word off the list, shows <code>No longer ignored · Undo</code> (5 s, as Ignore's), and the row reads <i>Ignore this word</i> again. <b>B:</b> the state line under T L F K says <code>ignored</code> after the level (<code>learning · ignored</code>, <code>not saved · ignored</code>); not a target.</p>
+<h3>Strings</h3>
+<div class="tw"><table>
+<tr><th>String</th><th></th><th>Where</th></tr>
+<tr><td class="s">Undo ignore</td><td class="new">new</td><td>A: the ⋯ row, for an ignored word (like <i>Undo save</i>)</td></tr>
+<tr><td class="s">No longer ignored · Undo</td><td class="new">new</td><td>A: the toast (Undo: existing suffix)</td></tr>
+<tr><td class="s">ignored</td><td class="new">new</td><td>B: the state line, after <code> · </code></td></tr>
+</table></div>
+</div>
+<div class="box rec">
+<h3>Recommendation: A only, the row reads “Undo ignore”</h3>
+<p>No new element: one row's words change, where the ignore was done, mirroring <i>Undo save</i>. B puts a word on every ignored word's card for a state that only matters to page marks (V9, not built yet), and crowds the state line; it can be revisited with V9. With A, the plain <code>Ignored: won't be marked again</code> toast for an already-ignored word goes away (the row can't be tapped to ignore twice).</p>
+</div>
+
+<!-- ============================================================ 5 -->
+<h2 id="q5">5 · “Save failed” for Ignore: its own words? (C17, a V5 open question)</h2>
+<p><b>What:</b> V5 reuses <code>Save failed</code> for an Ignore (or its Undo) the SD card didn't take (6 s), and for a word that can't be listed at all: no entry id and no one-line dictionary form (2 s). An Ignore never saves to Lexirise, so "Save failed" points at the wrong place, and for the key-less word, trying again never helps.</p>
+<div class="frames" id="f5"></div>
+<div class="box">
+<h3>Options</h3>
+<div class="tw"><table>
+<tr><th></th><th>SD write failed (or the card has no list)</th><th>The word has no key</th></tr>
+<tr><td>1 · as now</td><td class="s">Save failed</td><td class="s">Save failed</td></tr>
+<tr><td>2 · one string</td><td class="s">Couldn't ignore this word</td><td class="s">Couldn't ignore this word</td></tr>
+<tr><td><b>3 · two strings</b></td><td class="s">Couldn't save to the SD card</td><td class="s">Can't ignore this word</td></tr>
+</table></div>
+<p>Durations and touch unchanged (no Retry: the next tap on the row is the retry). With 4A, an <i>Undo ignore</i> the SD card didn't take gets the same SD string.</p>
+</div>
+<div class="box rec">
+<h3>Recommendation: 3, two new strings</h3>
+<p>Each says what happened and whether trying again can help: the SD card is a thing the reader can check (reinsert, free space), and "Can't" tells them this word never will. Both are toasts in the existing frame; nothing else changes.</p>
+</div>
+
+<!-- ============================================================ drawable -->
+<h2 id="draw">What the renderer needs, and what doesn't fit the approved card</h2>
+<p>Checked against <code>card/CardLayout.cpp</code>, <code>CardMetrics.h</code> and <code>CardModel.h</code>. Everything above uses the card's existing fonts (<code>UiSmall</code> 16.7 px, <code>Ui</code> 20.8 px, the reader family at 8 / 10 / 18 pt) and §1.1's frames; no new font or size.</p>
+<ul>
+<li><b>1B, the summary:</b> drawn on the home screen, not the card, in the toast's frame and type. The card's toast is one line (<code>CardState::toast</code>); the summary is the one two-line box, so the home-screen hook draws it with the toast's metrics (<code>kToastFrame</code>, <code>kToastText</code>, <code>kToastPadV/H</code>, <code>kToastTop</code>) and the same line height.</li>
+<li><b>2A, the “also” reading:</b> kana in <code>ReaderSmall</code> and <code>&nbsp;· also&nbsp;</code> in <code>UiSmall</code> on one line, as the surface line already mixes the two; pinyin with tone marks in <code>UiSmall</code>, as <i>cháng</i> is drawn today. The room is the header's left column: 412 − T L F K's 175 − the 11 px gap = <b>226 px</b>, the same limit <code>fitText</code> cuts the reading at now. The reading's tap area (§1.1) grows with the drawn text. A reading too long to leave room for even one alternative draws as today.</li>
+<li><b>3B, the preview:</b> the sentence is <code>ReaderMedium</code> with the word underlined, as the Context tab's “Met before” sentence; <b>Shorter | Longer are the one new shape</b>: two ⋯ action rows (§1.1's 2 px frame, 11 / 14 padding, 18 px text) side by side with the 10 px row gap between them, text centred and no ›. The body has room for about nine sentence lines at the default size; a longer sentence is cut with <code>…</code> by <code>wrapText</code>'s line limit (Longer stops adding when it would be cut).</li>
+<li><b>4A, 5:</b> strings only (a row's words, a toast's words), in frames the card already draws.</li>
+<li><b>Nothing asked for here breaks the binding card:</b> with the recommendations, the card view is unchanged (1B), the reading line gains text within its existing box (2A), and the only new element on any card is 3B's pair of half-width rows inside the ⋯ tab's body.</li>
+</ul>
+
+<!-- ============================================================ sign-off -->
+<h2 id="signoff">Sign-off: the questions, with the recommended answers</h2>
+<p>One reply can settle all five ("yes to the recommendations") or name the ones to change. Once signed off, the build updates <code>card-reference.html</code> and <code>popup-ui.md</code> §1.1 in the same commit, and the new states go through the design conformance gate.</p>
+<ol class="q">
+<li><b>Counts (C1, C7):</b> a two-line summary in the toast's frame on the home screen after the book closes (<code>3 saved · 11 looked up</code> / <code>1,204 words in Japanese</code>); nothing on the card. "Looked up" = cards opened by a tap; "saved" = saves kept.</li>
+<li><b>“Also” reading (C15):</b> on the reading line, <code>いちにち · also ついたち…</code>: the lookup's reading first, whole readings as fit, then <code>…</code>; phase B; the kana ⇄ romaji tap covers it.</li>
+<li><b>Save the sentence (C3, C17):</b> the ⋯ row opens a preview with <i>Shorter</i> | <i>Longer</i>, the same row saves (at <i>learning</i>) with <code>Sentence saved as a card · Undo</code>.</li>
+<li><b>Un-ignore:</b> the ⋯ row reads <i>Undo ignore</i> for an ignored word, toast <code>No longer ignored · Undo</code>; no state word.</li>
+<li><b>Ignore's failure wording:</b> <code>Couldn't save to the SD card</code> and <code>Can't ignore this word</code>.</li>
+</ol>
+</main>
+
+<script>
+/* ---- Data: short phrases written for these mockups (the Japanese one is the reference's own). ---- */
+const LV=["tracked","learning","fresh","known"];
+const BK={
+ ja:{lines:[[["　駅までの道はいつも混んでいた。"]],[["　毎朝の満員電車が"],["煩わしくて",0],["、"]],[["彼はとうとう会社を辞めることにし"]],[["た。春の風が、少しだけ優しく感じ"]],[["られた。"]]],
+  sent:"毎朝の満員電車が煩わしくて、彼はとうとう会社を辞めることにした。",lineNo:2,
+  W:[{k:"わずらわしい",rk:"wazurawashii",w:"煩わしい",b:"N1",s:"煩わしくて",f:"te-form",p:"adjective",m:["troublesome, annoying, bothersome, cumbersome","complicated, complex, involved"],r:29774,sc:.181}]},
+ ja3:{lines:[[["　駅までの道はいつも混んでいて、"]],[["毎朝の満員電車が"],["煩わしくて",0],["、彼"]],[["はとうとう会社を辞めることにし"]],[["た。春の風が、少しだけ優しく感じ"]],[["られた。"]]],
+  sent:"駅までの道はいつも混んでいて、毎朝の満員電車が煩わしくて、彼はとうとう会社を辞めることにした。",lineNo:2,
+  W:[{k:"わずらわしい",rk:"wazurawashii",w:"煩わしい",b:"N1",s:"煩わしくて",f:"te-form",p:"adjective",m:["troublesome, annoying, bothersome, cumbersome","complicated, complex, involved"],r:29774,sc:.181}]},
+ jaD:{lines:[[["　四月"],["一日",0],["、僕は新しい町に越して"]],[["きた。駅前の桜はもう散りかけて"]],[["いて、風が少し冷たかった。"]]],
+  sent:"四月一日、僕は新しい町に越してきた。",lineNo:1,
+  W:[{k:"いちにち",rk:"ichinichi",w:"一日",b:"N5",p:"noun · adverb",m:["one day, a day","all day, the whole day","the first day of the month"],r:412,sc:.55,
+      also:[["ついたち","tsuitachi"],["いちじつ","ichijitsu"],["つきたち","tsukitachi"],["ひとひ","hitohi"],["いっぴ","ippi"]]}]},
+ zhD:{lines:[[["　几年不见，他"],["长",0],["得很像他的父亲"]],[["了。院子里的树也长高了不少。"]]],
+  sent:"几年不见，他长得很像他的父亲了。",lineNo:1,
+  W:[{k:"cháng",w:"长",b:"HSK 1",p:"adjective · verb",m:["long","grow, grow up; chief, head"],r:164,sc:.61,also:[["zhǎng","zhǎng"]]}]}
+};
+let ANN=true, SIZE="fit", RD="kana";
+
+/* ---- Screen builder (device px). o: {bk, view:'c'|'d', tab, lv, toast, alsoAt:'rd'|'sf', rankExtra, stateExtra, rows, body, scheme} ---- */
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+function bars(sc){const n=Math.max(1,Math.ceil(sc*5));return '<span class="bars">'+[8,13,17,21,25].map((x,j)=>'<span class="'+(j<n?'f':'')+'" style="height:'+(x-2)+'px"></span>').join('')+'</span>';}
+const band=r=>r<1000?'very common':r<5000?'common':r<20000?'uncommon':'rare';
+function head(o,d,zh){
+ const kana=RD==='kana';
+ let rd=zh?d.k:(kana?d.k:d.rk);
+ let alsoData='';
+ if(d.also&&o.alsoAt){alsoData=' data-alts="'+esc(JSON.stringify(d.also.map(a=>zh?a[0]:(kana?a[0]:a[1]))))+'" data-jp="'+(!zh&&kana?1:0)+'"';}
+ const rdCls=(!zh&&kana)?'jp':'';
+ const rdInner=o.alsoAt==='rd'&&d.also?'<span class="fitw" data-limit="226"'+alsoData+'><span class="'+rdCls+'">'+rd+'</span></span>':'<span class="'+rdCls+'">'+rd+'</span>';
+ const lv=o.lv??-1;
+ const state=(lv<0?'not saved':LV[lv])+(o.stateExtra?'<span class="chg"> · '+o.stateExtra+'</span>':'');
+ const pill='<span class="pill">'+d.p+'</span>';
+ let sf=(d.s?'<span class="jp">'+d.s+'</span> '+d.f+' ':'')+pill;
+ if(o.alsoAt==='sf'&&d.also)sf='<span class="fitw" data-limit="412" data-after="1"'+alsoData+'>'+sf+'</span>';
+ return '<div class="row"><div class="hd"><div class="lc"><div class="rd">'+rdInner+'</div><div><span class="jp wd">'+d.w+'</span>'+(d.b?'<span class="badge">'+d.b+'</span>':'')+'</div></div>'
+  +'<div><span class="lv">'+["T","L","F","K"].map((x,j)=>'<span class="'+(j===lv?'cur':'')+'">'+x+'</span>').join('')+'</span><div class="st">'+state+'</div></div></div>'
+  +'<div class="sf">'+sf+'</div></div>';
+}
+function screen(o){
+ if(o.scheme)return '<div class="scheme">'+o.scheme+'</div>'+(o.toast?'<div class="toast two chg">'+o.toast+'</div>':'');
+ const bk=BK[o.bk],d=bk.W[0],zh=o.bk.startsWith('zh');
+ const lineHtml=l=>l.map(t=>t[1]===0?'<span class="hl">'+t[0]+'</span>':t[0]).join('');
+ const rank='<span>'+bars(d.sc)+'  #'+d.r.toLocaleString('en-US')+' '+band(d.r)+'</span>';
+ const last=det=>'<div class="last"><div class="m">'+rank+(o.rankExtra?'<span class="chg">'+o.rankExtra+'</span>':'')+'<span>'+(det?'▲':'▼')+'</span></div><div class="x">✕</div></div>';
+ let h='';
+ if(o.view!=='d'){
+  h='<div class="pg jp">'+bk.lines.map(lineHtml).join('<br>')+'</div>';
+  h+='<div class="card">'+head(o,d,zh)+'<div class="row sep mn">'+d.m.join('; ')+'</div>'+last(false)+'</div>';
+ } else {
+  const tabs=(zh?["Meaning","Examples","Context","Chars"]:["Meaning","Examples","Context","Kanji","Form"]).concat(['⋯']);
+  const ti=tabs.indexOf(o.tab||'Meaning');
+  let body=o.body||'';
+  if(!o.body&&tabs[ti]==='Meaning')body='<div style="font-size:20px;line-height:1.7">'+d.m.map((x,j)=>'<b style="font-weight:600">'+(j+1)+'.</b> '+x).join('<br>')+'</div>';
+  if(!o.body&&tabs[ti]==='⋯')body=rowsHtml(o.rows);
+  const i=bk.sent.indexOf(d.s||d.w);
+  const after=bk.sent.slice(i+(d.s||d.w).length);
+  h='<div class="strip jp"><span class="ct"><span class="hl">'+(d.s||d.w)+'</span>'+after+'</span><span class="ln">line '+bk.lineNo+'/'+bk.lines.length+'</span></div>'
+   +'<div class="card" style="top:80px">'+head(o,d,zh)+'<div class="row sep body">'+body+'</div><div class="tabs">'
+   +tabs.map((x,j)=>'<span class="'+(x==='⋯'?'more ':'')+(j===ti?'on':'')+'">'+x+'</span>').join('')+'</div>'+last(true)+'</div>';
+ }
+ if(o.toast)h+='<div class="toast'+(o.toast2?' two':'')+(o.toastChg?' chg':'')+'">'+o.toast+'</div>';
+ return h;
+}
+/* ⋯ rows: [label, changed?] */
+function rowsHtml(rows){return rows.map(r=>'<div class="act'+(r[1]?' chg':'')+'"><span>'+r[0]+'</span><span>›</span></div>').join('');}
+const ROWS_SAVED=[['Undo save'],['Save the sentence as a card'],['Ignore this word'],['Look up later']];
+const U='  ·  Undo';
+
+/* ---- Frames per section ---- */
+function fig(label,tag,note,o){return {label,tag,note,o};}
+function S1(){return [
+ fig('Approved','ok','The card as built; nothing about the session.',{bk:'ja',lv:1}),
+ fig('A · card footer','','The counter in the rank row, before ▼. Updates on every save and lookup.',{bk:'ja',lv:1,rankExtra:'3 saved · 11 looked up'}),
+ fig('B · book-close summary','rec','Once, as the home screen opens after the book closes; gone at the next tap. The card is untouched.',
+   {scheme:'CrossPoint’s home screen<br>(schematic: not part of this design)',toast:'3 saved · 11 looked up<br>1,204 words in Japanese',toast2:true,toastChg:true}),
+ fig('A + B · both','','The footer while reading and the summary at the close: both of the above.',{bk:'ja',lv:1,rankExtra:'3 saved · 11 looked up'})
+];}
+function S2(){return [
+ fig('Approved','ok','一日 in 四月一日: analyze/text reads it ichinichi, which is wrong here.',{bk:'jaD',lv:-1}),
+ fig('A · reading line, Japanese','rec','The other readings after the card’s own, as many whole ones as fit, then “…”.',{bk:'jaD',lv:-1,alsoAt:'rd'}),
+ fig('A · reading line, Chinese','rec','长 in 长得: cháng is the card’s reading, zhǎng the one here.',{bk:'zhD',lv:-1,alsoAt:'rd'}),
+ fig('A · expanded view','rec','The header is shared, so the detail view shows it too.',{bk:'jaD',lv:-1,alsoAt:'rd',view:'d',tab:'Meaning'}),
+ fig('B · surface line','','After the part of speech, where there’s more room.',{bk:'jaD',lv:-1,alsoAt:'sf'})
+];}
+function S3(){
+ const bk=BK.ja3,full=bk.sent,short=full.slice(full.indexOf('毎朝'));
+ const u=s=>s.replace('煩わしくて','<u>煩わしくて</u>');
+ const prev=(s)=>'<div class="jp sen">「'+u(s)+'」</div><div class="pair"><div class="act chg">Shorter</div><div class="act chg">Longer</div></div><div class="act"><span>Save the sentence as a card</span><span>›</span></div>';
+ return [
+ fig('Approved','ok','The ⋯ tab. Today the sentence row says “Not in this version yet”.',{bk:'ja3',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED}),
+ fig('A · one tap saves','','The sentence as built, at once, with Undo. No new string.',{bk:'ja3',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'Sentence saved as a card'+U,toastChg:true}),
+ fig('B1 · tap the row: preview','rec','The sentence, then Shorter | Longer, then the same row, which saves.',{bk:'ja3',lv:1,view:'d',tab:'⋯',body:'<div class="chg">'+prev(full)+'</div>'}),
+ fig('B2 · Shorter','rec','The first clause is dropped (the word’s clause always stays). Longer puts it back.',{bk:'ja3',lv:1,view:'d',tab:'⋯',body:'<div class="chg">'+prev(short)+'</div>'}),
+ fig('B3 · saved','rec','Back to the rows, with the save’s toast and Undo.',{bk:'ja3',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'Sentence saved as a card'+U,toastChg:true})
+];}
+function S4(){return [
+ fig('As built','built','An ignored word: the row still reads “Ignore this word”; a tap only says so.',{bk:'ja',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'Ignored: won’t be marked again'}),
+ fig('A · “Undo ignore”','rec','For an ignored word the row’s words change, like Undo save.',{bk:'ja',lv:1,view:'d',tab:'⋯',rows:[['Undo save'],['Save the sentence as a card'],['Undo ignore',1],['Look up later']]}),
+ fig('A · after the tap','rec','Off the list, with a 5 s Undo; the row reads “Ignore this word” again.',{bk:'ja',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'No longer ignored'+U,toastChg:true}),
+ fig('B · a state word','','“ignored” after the level, on the card and in the detail view.',{bk:'ja',lv:1,stateExtra:'ignored'})
+];}
+function S5(){return [
+ fig('As built','built','Both failures read “Save failed”.',{bk:'ja',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'Save failed'}),
+ fig('3 · the SD card didn’t take it','rec','An Ignore, an Undo, or (with 4A) an Undo ignore. 6 s.',{bk:'ja',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'Couldn’t save to the SD card',toastChg:true}),
+ fig('3 · the word has no key','rec','Nothing to list it by; trying again won’t help. 2 s.',{bk:'ja',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'Can’t ignore this word',toastChg:true}),
+ fig('2 · one string for both','','Says it was the ignore, not where or why.',{bk:'ja',lv:1,view:'d',tab:'⋯',rows:ROWS_SAVED,toast:'Couldn’t ignore this word',toastChg:true})
+];}
+const SECTIONS={f1:S1,f2:S2,f3:S3,f4:S4,f5:S5};
+
+/* ---- The "also" fitter: whole readings as fit in data-limit px, then "…" ---- */
+function fitAlso(el){
+ const alts=JSON.parse(el.dataset.alts),jp=el.dataset.jp==='1',limit=+el.dataset.limit;
+ const span=t=>{const s=document.createElement('span');if(jp&&t.cls)s.className='jp';s.textContent=t.text;return s;};
+ const wrap=document.createElement('span');wrap.className='chg';
+ const pre=document.createTextNode(el.dataset.after?' also ':' · also ');
+ wrap.appendChild(pre);el.appendChild(wrap);
+ let shown=0;
+ for(let i=0;i<alts.length;i++){
+  const sep=i?document.createTextNode(', '):null;const r=span({text:alts[i],cls:1});
+  if(sep)wrap.appendChild(sep);wrap.appendChild(r);
+  if(el.offsetWidth>limit){wrap.removeChild(r);if(sep)wrap.removeChild(sep);break;}
+  shown++;
+ }
+ if(shown===0){el.removeChild(wrap);return;}
+ if(shown<alts.length){
+  const e=document.createTextNode('…');wrap.appendChild(e);
+  while(el.offsetWidth>limit&&shown>1){wrap.removeChild(e);wrap.removeChild(wrap.lastChild);wrap.removeChild(wrap.lastChild);shown--;wrap.appendChild(e);}
+ }
+}
+
+/* ---- Render and scale ---- */
+function render(){
+ for(const id in SECTIONS){
+  const host=document.getElementById(id);
+  host.innerHTML=SECTIONS[id]().map(f=>'<figure><figcaption><b>'+f.label+'</b>'+(f.tag==='rec'?'<span class="tag rec">recommended</span>':f.tag==='ok'?'<span class="tag ok">approved</span>':f.tag==='built'?'<span class="tag ok">as built, V5</span>':'')+'<br>'+f.note+'</figcaption><div class="fit"><div class="dev"><div class="scr'+(ANN?' ann':'')+'">'+screen(f.o)+'</div><div class="home"></div></div></div></figure>').join('');
+ }
+ document.querySelectorAll('.fitw[data-alts]').forEach(fitAlso);
+ scale();
+}
+function scale(){
+ document.querySelectorAll('.fit').forEach(f=>{
+  const dev=f.firstElementChild,w=dev.offsetWidth,h=dev.offsetHeight;
+  const s=SIZE==='fit'?Math.min(1,f.clientWidth/w):1;
+  dev.style.transform='scale('+s+')';f.style.height=Math.ceil(h*s)+'px';
+  f.style.overflowX=SIZE==='fit'?'hidden':'auto';
+ });
+}
+function seg(id,f){document.querySelectorAll('#'+id+' button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#'+id+' button').forEach(x=>x.classList.toggle('on',x===b));f(b.dataset.v);});}
+seg('annSeg',v=>{ANN=v==='1';document.querySelectorAll('.scr').forEach(s=>s.classList.toggle('ann',ANN));});
+seg('sizeSeg',v=>{SIZE=v;scale();});
+seg('rdSeg',v=>{RD=v;render();});
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(scale,60);});
+render();
+</script>
+</body>
+</html>
