@@ -20,7 +20,7 @@ number. Filters take either the number or the label.
 | `POST /v1/vocabulary` | Save (v0.1). C3 | **"Creates or updates"** (an upsert: no 409 to handle). Body: `language`, `text`, `mode` (`word`/`sentence`), `translation` ("optional **custom** translation"), **`notes`** (optional private notes), `proficiency` (**1–4**), `tags`, `audioUrls`. Returns `{ result, item }` |
 | `GET /v1/vocabulary` | C7 | Returns `{ items, totalCount, languageCount, nextOffset, availableTags }`. Filters: `language` (required), `mode` = **`words`/`sentences`** (plural, unlike POST), `proficiency`, `proficiencyLabel`, `userTags`, … `limit` ≤ 200 |
 | `GET /v1/vocabulary/{id}` | C14 ("Met before", v0.2 V4b) | Read-only. The item with `notes`, `user_tags` and `sentence_text`, beside the SRS fields (measured 2026-09-27: "A saved word's notes and tags in `analyze/text`" below). The `{id}` is the `saved_expression_id` from `stateByEntryId` |
-| `PATCH /v1/vocabulary/{id}` | C9 (set the level from the card) | `proficiency` 0–4, `notes`, `customTranslation`, `tags`, `suspended`, … The `{id}` is the `saved_expression_id` from `stateByEntryId` |
+| `PATCH /v1/vocabulary/{id}` | C9 (set the level from the card); C17 Ignore (`suspended`, measured below) | `proficiency` 0–4, `notes`, `customTranslation`, `tags`, `suspended`, … The `{id}` is the `saved_expression_id` from `stateByEntryId` |
 | `PUT /v1/vocabulary/{id}/tags` | C2 re-tagging only | **Replaces every tag.** Appending needs a read-modify-write |
 | `POST /v1/decks` | C4 | `deck_type` `snapshot` or **`dynamic`**. A dynamic deck with `rule_type: "user_tag_filter"` + `user_tags` fills itself from tagged vocabulary. Also `unit_type`, `parent_deck_id` (subdecks) . Used by V3, with `GET /v1/decks` and `GET /v1/decks/{id}` ("Decks" below) |
 | `POST /v1/analyze/context` | C10 (live 2026-09-25) | Sentence + the word's `charStart` / `charEnd` → `meaning`, `conciseMeaning`, `reading` (when the offsets match one token). See "Reported to Lexirise" |
@@ -420,6 +420,25 @@ were sent once, by hand; they're the tool's last five sentences now, so a rerun 
   降るかもしれない, the する verbs (before R19).
 - **Still for the device:** these are the server's answers; whether the card's offsets and next character line
   up with them on a real page is V4's device check (`../v0.1/device-checks.md`).
+
+## Suspended (Ignore), measured 2026-09-27 (v0.2 V5)
+
+`tools/lexirise/probe_suspend.py` (writes to the dev key's account, with claritise's OK: "ok"; raw in `research/v5/`,
+gitignored), on the throwaway word 蓋然性 (saved) and 寸暇 (unsaved):
+
+- **A saved word:** `PATCH /v1/vocabulary/{id}` `{"suspended": true}` → 200, the item echoes `suspended: true`;
+  `{"suspended": false}` undoes it.
+- **`analyze/text` doesn't show it:** a suspended word's `stateByEntryId` state is the same four fields as any saved
+  word's (`entry_id`, `proficiency`, `saved_expression_id`, `seen_count`); `GET /v1/vocabulary/{id}` has
+  `suspended`. So the card learns a word is ignored only from the saved item (V4b's call).
+- **A save can't set it:** `POST /v1/vocabulary` drops an unknown `suspended` (`item.suspended: false`). A save needs
+  `proficiency` 1–4: `0` is a 422 (`{"type":"validation","on":"body",…}`).
+- **An unsaved word** (a name): save it (`proficiency: 1`, `result.status: "added"`), then `PATCH suspended: true`.
+  It then shows in `analyze/text` as saved at level 1, not as ignored.
+- **`DELETE` keeps `suspended`:** a dictionary word's `DELETE` answers `{success: true, deleted: false}`, resets it to
+  proficiency 0 and **leaves `suspended: true`**. Undoing an ignore is `PATCH suspended: false` first, then the
+  `DELETE` if the word was saved only to be ignored.
+- Left in the dev account: 寸暇 at proficiency 0, not suspended; 蓋然性 back as it was.
 
 ## A saved word's notes and tags in `analyze/text` (v0.2 V4, measured 2026-09-26)
 
