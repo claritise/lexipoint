@@ -89,7 +89,12 @@ number. Filters take either the number or the label.
   - **Right:** 飛び出した, 飛びだした, 思い出した, 読み終わった, 振り返った, 見上げた, 話し合った.
   - The token is one occurrence each time: only `lemma`/`lemmaEntryId` is off. `breakdown` doesn't explain it: it
     splits every word into kanji and kana runs for display (見比べた is 見 + 比 + べた), not into the analyzer's pieces.
-  **Bug report drafted for claritise to send** (2026-09-27); not yet reported.
+  ~~**Bug report drafted for claritise to send** (2026-09-27); not yet reported.~~ **Reported 2026-09-27** by claritise
+  on Lexirise's Discord (the short version: 見くらべた, 笑い出した, 走り続けた, and the ones that come back right).
+  **Reply the same day** (Lexirise's bot): logged with the earlier analysis reports, "見くらべた should resolve to
+  見くらべる, not 見る". The reply names only 見くらべた; the aspect compounds (〜出す, 〜続ける, 〜始める, 〜すぎる) aren't
+  confirmed as bugs yet. The post also said the dictionary has 見くらべる (1005346382); that entry was likely created
+  on demand by a lookup (above), so it isn't evidence the spelling was known.
 - **`dictionary/lookup` creates an entry for a word it doesn't have** (seen 2026-09-27): 書きこむ and とり出す (mixed
   spellings) came back with new ids (1005679463, 1005679465) and `status: "pending"`, no translation yet; 見くらべる's
   id 1005346382 is in the same range, so it was likely generated on demand too. So a lookup can add to Lexirise's shared
@@ -259,6 +264,11 @@ Chinese ranks run higher for words as common, so the thresholds are per language
 
 ## Still not in the reference (P0 checks with curl)
 - **`Retry-After`** on 429, and the error body format in general.
+
+## Reported to Lexirise (2026-09-27, by claritise)
+
+Compound verbs whose lemma is the first verb ("A compound verb's lemma can be its first verb", above). Logged by
+Lexirise the same day; confirmed for 見くらべた.
 
 ## Reported to Lexirise (2026-09-24, by claritise)
 
