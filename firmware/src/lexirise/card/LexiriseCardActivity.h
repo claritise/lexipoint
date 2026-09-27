@@ -63,8 +63,8 @@ class LexiriseCardActivity final : public Activity {
   void redraw();       // requestUpdate(), telling the session a frame is on its way
   bool deckStepDue();  // CardSession::shouldFetchDeck, with the settings and the finger read now
 #if LEXIPOINT_DEV_HARNESS
-  void logLevelButtons(const std::vector<Hit>& hits);  // render task: lxctl deck-smoke's tap targets
-  std::string loggedLevels_;
+  void logTapTargets(const std::vector<Hit>& hits);  // render task: lxctl deck-smoke's and ignore-smoke's targets
+  std::string loggedTargets_;
 #endif
 
   std::unique_ptr<CardSource> source_;  // the bench's, or the lookup's

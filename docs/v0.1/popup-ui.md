@@ -64,7 +64,8 @@ shows the page line as before. A small `line 2/5` marker sits at the strip's rig
 strip, shown when the card covers the word, is still the page line.)
 Same frame and header. Tab content in the middle. Then **the tab row**: Meaning · Examples · Context · Kanji/Chars · Form (Japanese only) · **`⋯`**, styled like T L F K
 (the active tab is filled black). `⋯` is an icon-width tab holding the **actions** (Undo save, once saved · Save the sentence as a card ·
-Ignore this word · Look up later: v0.2 C17), so the word tabs keep room for their labels. Examples fall back to your own sentences (this one, and
+Ignore this word · Look up later: v0.2 C17; what the Ignore row does: `../v0.2/00-overview.md` C17 "As built (V5,
+local)"), so the word tabs keep room for their labels. Examples fall back to your own sentences (this one, and
 "met before") when Lexirise has none, or only Traditional ones in a Simplified book, then the **same rank row,
 now pointing up, `▲`**, with ✕ at its end. Everything you tap stays in the bottom part of the screen.
 

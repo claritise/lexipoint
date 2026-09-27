@@ -187,6 +187,27 @@ TEST(Service, ADeckCreationStartsOnAFreshSessionAListReusesIt) {
   EXPECT_EQ(rig.conn.opens, 2);  // the POST would make a second deck if resent: a new session
 }
 
+TEST(Service, ASavedItemReusesTheSessionAndIsRefusedOfflineWhileRateLimited) {
+  // "Met before" (C14): GET /v1/vocabulary/{id}, read-only, so safe to resend.
+  Rig rig;
+  rig.conn.reads = {httpOk(R"({"notes":"x"})"), httpOk(R"({"suspended":true})"),
+                    "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 20\r\nContent-Length: 0\r\n\r\n",
+                    httpOk(R"({"notes":"y"})")};
+  const auto item = *lexipoint::api::savedItemRequest("77");
+  EXPECT_TRUE(rig.service.savedItem(item).ok());
+  EXPECT_EQ(rig.conn.opens, 1);
+  EXPECT_TRUE(rig.service.savedItem(item).ok());
+  EXPECT_EQ(rig.conn.opens, 1);  // a GET is safe to resend: the keep-alive session is reused
+  EXPECT_EQ(rig.service.savedItem(item).error, ApiError::RateLimited);
+  const size_t written = rig.conn.written.size();
+  const lexipoint::api::ApiResponse refused = rig.service.savedItem(item);
+  EXPECT_EQ(refused.error, ApiError::RateLimited);  // refused without the network while it backs off
+  EXPECT_EQ(refused.retryAfterS, 20u);
+  EXPECT_EQ(rig.conn.written.size(), written);
+  FakeClock::nowMs += 20'000;
+  EXPECT_TRUE(rig.service.savedItem(item).ok());
+}
+
 TEST(Service, AHeldWifiOutlastsTheIdleRuleUntilReleased) {
   Rig rig;
   rig.wifi.owned = true;

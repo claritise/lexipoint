@@ -82,6 +82,10 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
   shows the screen after a reboot, not after the tap). Multi-step checks need **one held session**: open the port
   once, send `LX:AWAKE 1` first, then drive everything through that connection (the built-in multi-step commands,
   `smoke`, `card-smoke` and the rest, already do).
+- **Multi-step smokes that hold one session:** `card-smoke`, `card-gestures`, `card-sentence`, `settings-smoke`,
+  `reader-longpress`, `deck-smoke` (creates a real deck: only with claritise's OK) and `ignore-smoke` (v0.2 V5: ⋯
+  Ignore then its Undo on a word at x y, checked from the card's `[LXCARD] target …` and `[LXCARD] ignore …` lines;
+  writes only the reader's `ignored.ini`). Each is host-tested on synthetic logs in `test_lxctl.py`.
 - **Never open the port in a loop** (a "wait until it answers" poll): each open resets the reader, and a poll that
   opened it every second or two kept it restarting until the poll was stopped (2026-09-27).
 - **Never open it from two processes at once:** the second read fails ("device reports readiness to read but

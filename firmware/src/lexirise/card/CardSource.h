@@ -45,9 +45,14 @@ class CardSource {
   virtual Phase phase(int index) const = 0;
   virtual std::string pendingText() const = 0;  // phase 0: the tapped character
   virtual int pageNumber() const = 0;           // "This book · p. 84"; 0: none
-  // The ⋯ tab's actions after Undo save (save the sentence, ignore, look up later) are v0.2 (C17): the
-  // bench plays the reference's toasts; a live card says they aren't there yet.
+  // The ⋯ tab's actions not built yet (save the sentence, look up later: C17, V6 and later), and Ignore where the
+  // source keeps no list (the bench): the bench plays the reference's toasts; a live card says they aren't there yet.
   virtual bool demoActions() const { return false; }
+  // Whether the reader ignored the word (C17, V5: "stop marking it on the page", V9's A1 marks; a list on the reader,
+  // never Lexirise), and setting it in the source's copy (memory only: the activity writes the list, outside
+  // RenderLock). setIgnored is false where the source keeps no list, or the word has no key (IgnoredWords.h).
+  virtual bool ignored(const int /*index*/) const { return false; }
+  virtual bool setIgnored(const int /*index*/, const bool /*ignored*/) { return false; }
   // The words that are one Lexirise entry with `index` (the same lemma twice in a sentence), itself
   // included: a level set on one is the level of all of them.
   virtual std::vector<int> sameWord(const int index) const { return {index}; }

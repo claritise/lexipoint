@@ -948,8 +948,11 @@ class DeckSmokeRules(unittest.TestCase):
             lxctl.check_deck_cards([(new_book(list_at=3999), CLOSED)])
 
     def test_level_buttons_are_the_last_set_logged(self):
-        log = ["[1] [INF] [LXCARD] level 0 273 570 42 37 0", "[1] [INF] [LXCARD] level 1 316 570 42 37 0",
-               "[2] [INF] [LXCARD] level 0 273 546 42 37 1", "[2] [INF] [LXCARD] level 1 316 546 42 37 1"]
+        log = ["[1] [INF] [LXCARD] targets 2", "[1] [INF] [LXCARD] level 0 273 570 42 37 0",
+               "[1] [INF] [LXCARD] level 1 316 570 42 37 0",
+               "[2] [INF] [LXCARD] targets 3", "[2] [INF] [LXCARD] level 0 273 546 42 37 1",
+               "[2] [INF] [LXCARD] level 1 316 546 42 37 1", "[2] [INF] [LXCARD] target rank 0 17 700 446 50",
+               "[3] [INF] [LXCARD] targets 2", "[3] [INF] [LXCARD] level 0 1 1 1 1 0"]  # cut short: not a set
         self.assertEqual(lxctl.level_buttons(log), {0: (273, 546, 42, 37, True), 1: (316, 546, 42, 37, True)})
         self.assertEqual(lxctl.level_buttons(["[1] [INF] [LXS] GET /v1/me -> 200 (ok)"]), {})
 
@@ -973,7 +976,7 @@ class DeckSmokeRules(unittest.TestCase):
             self.assertIn(f'return "{kind}";', deck)
         card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
         self.assertIn('"level %d %d %d %d %d %d"', card)
-        self.assertRegex(card, r"#if LEXIPOINT_DEV_HARNESS\s+logLevelButtons")  # dev builds only
+        self.assertRegex(card, r"#if LEXIPOINT_DEV_HARNESS\s+logTapTargets")  # dev builds only
 
     def test_it_refuses_to_run_without_the_flag(self):
         argv = sys.argv
@@ -1007,6 +1010,7 @@ class FakeDeckHarness:
             self.stream.append("[1] [DBG] [ACT] Entering activity: "
                                + ("DictionaryDefinition" if self.stardict else "LexiriseCard"))
         elif cmd == "SYNC" and seen is not None and self.levels:
+            seen += ["[2] [INF] [LXCARD] targets 4"]
             seen += [f"[2] [INF] [LXCARD] level {i} {273 + 43 * i} 546 42 37 {self.saved}" for i in range(4)]
         elif cmd.startswith("TAP "):
             self.stream += self.after_tap
@@ -1057,6 +1061,139 @@ class DeckSmokeDriver(unittest.TestCase):
         h = TwoCards()
         self.assertEqual(lxctl.deck_smoke(h, watch_s=0.01), ["created", "none"])
         self.assertEqual([c.split()[0] for c in h.sent].count("LONG"), 2)
+
+
+# ignore-smoke (v0.2 V5): synthetic logs in the firmware's formats.
+IGNORE_ON = "[5] [INF] [LXCARD] ignore ja:6 on written"
+IGNORE_OFF = "[6] [INF] [LXCARD] ignore ja:6 off written"
+MET_BEFORE_GET = "[4] [INF] [LXS] GET /v1/vocabulary/{id} -> 200 (ok)"
+
+
+class IgnoreSmokeRules(unittest.TestCase):
+    def test_an_ignore_and_its_undo_both_written_pass(self):
+        self.assertEqual(lxctl.check_ignore_log([MET_BEFORE_GET, IGNORE_ON, IGNORE_OFF]), "ja:6")
+
+    def test_a_write_to_lexirise_fails(self):
+        for call in ("POST /v1/vocabulary", "PATCH /v1/vocabulary/{id}", "DELETE /v1/vocabulary/{id}"):
+            with self.assertRaisesRegex(RuntimeError, "wrote to Lexirise"):
+                lxctl.check_ignore_log([IGNORE_ON, f"[5] [INF] [LXS] {call} -> 200 (ok)", IGNORE_OFF])
+
+    def test_missing_unwritten_or_extra_changes_fail(self):
+        cases = (([], "no ignore-list change"),
+                 (["[5] [INF] [LXCARD] ignore ja:6 on failed", IGNORE_OFF], "wasn't written"),
+                 (["[5] [INF] [LXCARD] ignore ja:6 on unchanged"], "wasn't written"),
+                 ([IGNORE_ON], "then its Undo"),
+                 ([IGNORE_ON, "[6] [INF] [LXCARD] ignore ja:7 off written"], "then its Undo"),
+                 ([IGNORE_ON, IGNORE_OFF, IGNORE_ON], "then its Undo"))
+        for log, message in cases:
+            with self.assertRaisesRegex(RuntimeError, message):
+                lxctl.check_ignore_log(log)
+
+    def test_targets_are_the_last_complete_set(self):
+        log = ["[1] [INF] [LXCARD] targets 2", "[1] [INF] [LXCARD] level 0 273 570 42 37 0",
+               "[1] [INF] [LXCARD] target undo 0 60 85 360 35",
+               "[2] [INF] [LXCARD] targets 2", "[2] [INF] [LXCARD] target rank 0 17 690 446 50",
+               "[2] [INF] [LXCARD] target tab 5 400 650 42 38"]
+        # The toast's Undo was in the first set only: gone once the next set is drawn.
+        self.assertEqual(lxctl.tap_targets(log), {("rank", 0): (17, 690, 446, 50), ("tab", 5): (400, 650, 42, 38)})
+        cut = log + ["[3] [INF] [LXCARD] targets 1"]  # a set whose lines haven't all come: not the current one
+        self.assertEqual(lxctl.tap_targets(cut), lxctl.tap_targets(log))
+        self.assertEqual(len(lxctl.target_sets(log)), 2)
+        self.assertEqual(lxctl.tap_targets(["[1] [INF] [LXCARD] target rank 0 1 2 3 4"]), {})  # no header: no set
+
+    def test_a_form_key_with_spaces_is_read_whole(self):
+        log = ["[5] [INF] [LXCARD] ignore ja:~a b on written", "[6] [INF] [LXCARD] ignore ja:~a b off written"]
+        self.assertEqual(lxctl.check_ignore_log(log), "ja:~a b")
+
+    def test_the_constants_and_log_lines_match_the_firmware(self):
+        model = open(os.path.join(REPO, "src/lexirise/card/CardModel.h"), encoding="utf-8").read()
+        ids = re.search(r"enum : int \{([^}]*)\}", model).group(1)
+        self.assertEqual([n.strip() for n in ids.split(",")].index(
+            [n.strip() for n in ids.split(",") if n.strip().startswith("Ignore")][0]), lxctl.IGNORE_ACTION)
+        card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
+        self.assertIn('"target %s %d %d %d %d %d"', card)
+        self.assertIn('"targets %d"', card)
+        # Logged once the frame is on screen (after ShownTargets::shown): a tap sent then lands on it.
+        self.assertRegex(card, r"targets_\.shown\(millis\(\)\);\s+#if LEXIPOINT_DEV_HARNESS\s+logTapTargets")
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        self.assertEqual(lxctl.IGNORE_TOAST_MS, c["kIgnoreToastMs"])
+        for kind in ("rank", "tab", "action", "undo"):
+            self.assertIn(f'"{kind}"', card)
+        session = open(os.path.join(REPO, "src/lexirise/card/CardSession.cpp"), encoding="utf-8").read()
+        self.assertIn('"ignore %s %s %s"', session)
+        for word in ("written", "unchanged", "failed"):
+            self.assertIn(f'"{word}"', session)
+
+
+class FakeIgnoreHarness:
+    """The device's side of ignore-smoke: a LONG opens a card, each SYNC logs the targets the card now shows, a TAP
+    on the Ignore row or the toast's Undo logs its write."""
+
+    def __init__(self, stardict=False, targets=True, undo=True, undo_lands=True):
+        self.stardict, self.targets, self.undo = stardict, targets, undo  # undo=False: the toast expired first
+        self.undo_lands = undo_lands  # False: the Undo tap is swallowed (it landed on the frame before the toast)
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+        self.shown = "card"
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LONG "):
+            self.stream.append("[1] [DBG] [ACT] Entering activity: "
+                               + ("DictionaryDefinition" if self.stardict else "LexiriseCard"))
+        elif cmd == "SYNC" and seen is not None and self.targets:
+            seen += self.frame()
+        elif cmd == "TAP 240 725":
+            self.shown = "expanded"
+        elif cmd == "TAP 441 709":
+            self.shown = "actions"
+        elif cmd == "TAP 240 370":  # the write, then the toast's frame (or, too late, the frame after it)
+            self.shown = "toast" if self.undo else "actions"
+            self.stream += [IGNORE_ON] + self.frame()
+        elif cmd == "TAP 240 102" and self.undo_lands:
+            self.shown = "actions"
+            self.stream += [IGNORE_OFF] + self.frame()
+        elif cmd == "HOME":
+            self.stream.append("[9] [DBG] [ACT] Exiting activity: LexiriseCard")
+        return "LX:OK"
+
+    def frame(self):
+        """The targets set the card logs for what it shows: a header, then every target, as the firmware does."""
+        actions = ["target rank 0 17 740 446 50", "target tab 5 420 690 42 38",
+                   "target action 1 17 300 446 40", "target action 2 17 350 446 40"]
+        lines = {"card": ["target rank 0 17 700 446 50"],
+                 "expanded": ["target rank 0 17 740 446 50", "target tab 0 17 690 80 38",
+                              "target tab 5 420 690 42 38"],
+                 "actions": actions,
+                 "toast": ["target undo 0 60 85 360 35"] + actions}[self.shown]
+        return [f"[2] [INF] [LXCARD] targets {len(lines)}"] + [f"[2] [INF] [LXCARD] {line}" for line in lines]
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class IgnoreSmokeDriver(unittest.TestCase):
+    def test_it_taps_each_target_where_the_card_drew_it(self):
+        h = FakeIgnoreHarness()
+        self.assertEqual(lxctl.ignore_smoke(h, (240, 400), watch_s=0.01), "ja:6")
+        taps = [c for c in h.sent if c.startswith("TAP")]
+        self.assertEqual(taps, ["TAP 240 725", "TAP 441 709", "TAP 240 370", "TAP 240 102"])  # rank, ⋯, Ignore, Undo
+        self.assertEqual(h.sent[0], "LONG 240 400")
+        self.assertEqual(h.sent[-1], "HOME")
+
+    def test_stardict_no_targets_or_no_undo_raise(self):
+        for harness, message in ((FakeIgnoreHarness(stardict=True), "StarDict"),
+                                 (FakeIgnoreHarness(targets=False), "no tap targets"),
+                                 (FakeIgnoreHarness(undo=False), r"toast expired before the Undo tap: remove ja:6 "),
+                                 (FakeIgnoreHarness(undo_lands=False),
+                                  r"the Undo tap took nothing off the list: remove ja:6 from /.lexirise/ignored.ini")):
+            with self.assertRaisesRegex(RuntimeError, message):
+                lxctl.ignore_smoke(harness, (240, 400), watch_s=0.01)
+
+    def test_its_commands_are_the_devices(self):
+        usages = device_usages()
+        for cmd in ("LONG 240 400", "TAP 240 725", "SYNC", "HOME"):
+            self.assertRegex(cmd, usages[cmd.split()[0]])
 
 
 if __name__ == "__main__":

@@ -26,8 +26,7 @@ std::string lineTitle(const std::string_view title) {
   out.reserve(std::min(title.size(), config::kBookTagTitleMaxBytes + 1));
   for (const char c : title) {
     if (out.size() > config::kBookTagTitleMaxBytes) break;
-    const bool control = static_cast<unsigned char>(c) < 0x20 || c == 0x7F;
-    if (control || c == ' ') {
+    if (isControlByte(c) || c == ' ') {
       if (!out.empty() && out.back() != ' ') out.push_back(' ');
     } else {
       out.push_back(c);

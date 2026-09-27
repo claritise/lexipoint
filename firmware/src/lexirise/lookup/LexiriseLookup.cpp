@@ -54,6 +54,8 @@ LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, Anal
   return report;
 }
 
+uint32_t entryKeyOf(const api::Occurrence& occ) { return occ.lemmaEntryId != 0 ? occ.lemmaEntryId : occ.entryId; }
+
 LookupCard cardFor(const AnalyzedSentence& sentence, const size_t word) {
   const api::AnalyzeResult& analysis = sentence.analysis;
   const api::Occurrence& occ = analysis.occurrences[sentence.words[word]];
@@ -68,7 +70,7 @@ LookupCard cardFor(const AnalyzedSentence& sentence, const size_t word) {
   // word (食べる must not show "tabesaserareta").
   if (out.headword() == occ.word) out.reading = occ.reading;
   out.entryId = occ.entryId;
-  out.lemmaEntryId = occ.lemmaEntryId != 0 ? occ.lemmaEntryId : occ.entryId;
+  out.lemmaEntryId = entryKeyOf(occ);
   if (const api::EntryMeta* meta = analysis.metaFor(occ.entryId)) {
     out.partOfSpeech = meta->partOfSpeech;
     out.rank = meta->rank;

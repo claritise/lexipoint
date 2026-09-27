@@ -5,9 +5,12 @@
 // next sentence (P9): extend() adds it, it is analyzed like the first, and its words follow at the end, so
 // every word keeps its index. A saved word's "Met before" (C14) comes from its item (GET /v1/vocabulary/{id}), asked
 // once the card is on it and its phase B has run, once per item on the card (a refusal is asked again later). The
-// network is behind api::LexiriseApi. The activity runs one blocking call per loop pass (fetch(): outside RenderLock,
-// it changes nothing render() reads), then applies the answer under the lock (apply()), so each phase is drawn before
-// the next call starts (phases A and B, popup-ui.md §2). Pure; tests: test/lexirise_card.
+// words the reader ignored (C17, V5: a list on the SD card, never Lexirise) come from the store, loaded as the card
+// opens, and this card's own ignores on top. The network is behind api::LexiriseApi. The activity runs one blocking
+// call per loop pass (fetch(): outside RenderLock; it changes nothing render() reads, and of the source's own state
+// only itemRetryAtMs_, a refusal's passed retry time forgotten: mutable, on the loop task like every call), then
+// applies the answer under the lock (apply()), so each phase is drawn before the next call starts (phases A and B,
+// popup-ui.md §2). Pure; tests: test/lexirise_card.
 
 #include <cstdint>
 #include <deque>
@@ -22,6 +25,7 @@
 #include "ReaderScene.h"
 #include "lexirise/deck/BookDeck.h"
 #include "lexirise/lookup/LexiriseLookup.h"
+#include "lexirise/settings/IgnoredWords.h"
 
 namespace lexipoint::card {
 
@@ -56,14 +60,16 @@ class LiveSource final : public CardSource {
     api::ApiError error = api::ApiError::None;
     // Write: a new save's id (empty for a level change or a removal); Item: the item's.
     std::string savedExpressionId;
-    api::SavedItem item;                     // Item: what came (empty when the call failed)
-    std::optional<unsigned long> retryAtMs;  // Item: refused (a 429 or a rejected key): not kept, asked from then
-    bool clearFailed = false;                // Write: removed (DELETE), but its notes and tags weren't cleared
-    bool saveRetry = false;                  // Entry: the lookup again, for a save, after it failed once
-    std::string unreadable;                  // a response we couldn't read: its start, for the log
-    uint32_t retryAfterS = 0;                // Write refused with 429: seconds until Lexirise may be asked
-    std::vector<lookup::LookupCard> cards;   // Analysis: each word's card ...
-    std::vector<FormName> names;             // ... and its form's name, worked out here, not under RenderLock
+    api::SavedItem item;  // Item: what came (empty when the call failed)
+    // Item: refused (a 429 or a rejected key, usually by AccessPolicy without the network): not kept, asked again
+    // retryAfterS (else the default) after apply()'s time, when the answer came.
+    bool refused = false;
+    bool clearFailed = false;               // Write: removed (DELETE), but its notes and tags weren't cleared
+    bool saveRetry = false;                 // Entry: the lookup again, for a save, after it failed once
+    std::string unreadable;                 // a response we couldn't read: its start, for the log
+    uint32_t retryAfterS = 0;               // Write or Item refused with 429: seconds until Lexirise may be asked
+    std::vector<lookup::LookupCard> cards;  // Analysis: each word's card ...
+    std::vector<FormName> names;            // ... and its form's name, worked out here, not under RenderLock
     // A cut continuing the one before it: that cut's last word, named again now its next character is known.
     int renamed = -1;
     FormName renamedName;
@@ -96,6 +102,14 @@ class LiveSource final : public CardSource {
   // V2's book-tag record, for "Met before"'s book titles (C14). Read here, as the card opens (not under RenderLock);
   // `titles` outlives the card.
   void setBookTitles(BookTagStore& titles);
+  // The words the reader ignored (C17, V5): `store` (outliving the card) is loaded here, as the card opens (not under
+  // RenderLock), and then only asked from memory; the card's own ignores (setIgnored) are kept here until the
+  // activity has written them to `store` outside the lock, and after (a failed write takes one back).
+  void setIgnoredWords(IgnoredWordStore& store);
+  IgnoredWordStore* ignoredStore() const { return ignoredStore_; }  // none: the card can't ignore (CardSession)
+  // Word `index`'s key in the ignore list (its language and entry key, lookup::entryKeyOf, else its dictionary form);
+  // none when it has neither usable.
+  std::optional<IgnoredKey> ignoreKey(int index) const;
 #if LEXIPOINT_DEV_HARNESS
   // Dev builds: a clock (millis) to log how long a sentence's forms take to name, and the stack left:
   // "[LXCARD] names <n> words <ms> ms, stack <bytes> B free".
@@ -117,16 +131,19 @@ class LiveSource final : public CardSource {
   // an earlier cut's word once the next cut joins, a lookup that changed the word on screen) is told by
   // takeShownChanged(); what's drawn is the CardWord and the controller's state, so a lookup that changes neither
   // isn't drawn again.
-  Advance apply(Fetched fetched);
+  // `nowMs`: when the answer came (after the call): a refusal's retry time starts then, as AccessPolicy's back-off.
+  Advance apply(Fetched fetched, unsigned long nowMs);
   // Whether the focused word was rebuilt showing something new since the last call (then cleared): draw it.
   bool takeShownChanged();
-  Advance advance(const unsigned long nowMs = 0) { return apply(fetch(nowMs)); }
+  Advance advance(const unsigned long nowMs = 0) { return apply(fetch(nowMs), nowMs); }
   api::ApiError error() const { return error_; }
 
   int wordCount() const override { return static_cast<int>(words_.size()); }
   int startWord() const override { return start_; }
   const CardWord& word(const int index) const override { return words_[index]; }
   Level savedLevel(int index) const override;
+  bool ignored(int index) const override;  // on the reader's ignore list (never Lexirise's `suspended`)
+  bool setIgnored(int index, bool ignored) override;
   Phase phase(int index) const override;
   std::string pendingText() const override;
   int pageNumber() const override { return page_.pageNumber; }
@@ -185,7 +202,7 @@ class LiveSource final : public CardSource {
   bool fillFromItem(int index);
   // The word whose item fetch() asks for next; -1: none (only the focused saved word, after its phase B, once).
   int itemDue(unsigned long nowMs, bool closing) const;
-  Fetched savedItem(int index, unsigned long nowMs) const;  // the call for a word's item
+  Fetched savedItem(int index) const;  // the call for a word's item
   // After a refusal: no item asked before this; cleared by itemDue() once reached.
   mutable std::optional<unsigned long> itemRetryAtMs_;
   bool ours(const std::string& id) const;  // saved on this card (its sentence and tags known: never asked)
@@ -196,8 +213,11 @@ class LiveSource final : public CardSource {
   std::optional<deck::BookDeck> bookDeck_;
   deck::DeckStore* decks_ = nullptr;
   bool savesCarryBookTag_ = false;
-  std::vector<std::string> deckKeys_;  // the book deck's store key per language, in kLanguages order
-  BookTagList titles_;                 // V2's record as the card opened (empty: none)
+  std::vector<std::string> deckKeys_;         // the book deck's store key per language, in kLanguages order
+  BookTagList titles_;                        // V2's record as the card opened (empty: none)
+  IgnoredWordStore* ignoredStore_ = nullptr;  // the reader's ignore list (none: nothing is ignored)
+  // This card's ignores and their Undos, newest last (a handful): they win over the store.
+  std::vector<std::pair<IgnoredKey, bool>> ignoredHere_;
   // cardWord with its sentence and the book titles; the form's name kept from the word as built so far.
   // `named`: its form's name worked out already (else the one shown now is reused when it's for the same form).
   CardWord wordFor(int index, const FormName* named = nullptr) const;

@@ -12,6 +12,7 @@
 #include "CardSource.h"
 #include "DisplayList.h"
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/settings/IgnoredWords.h"
 
 namespace lexipoint::card {
 
@@ -34,13 +35,22 @@ struct PagePoint {
   int y = 0;
 };
 
+// The reader ignored a word, or took it back (⋯ Ignore this word, its Undo: C17, V5): the source's copy already
+// says so; the activity writes it to the ignore list on the SD card (CardSession::saveIgnores).
+struct IgnoreChange {
+  int word = 0;
+  bool ignored = false;
+  std::optional<IgnoredKey> restore;  // an Undo: the oldest key its ignore pushed out of a full list, put back
+};
+
 struct Outcome {
   Outcome() = default;
   Outcome(const Effect e, const bool reading) : effect(e), readingChanged(reading) {}
 
   Effect effect = Effect::None;
-  bool readingChanged = false;       // persist the Japanese reading (settings.md: `reading`)
-  std::vector<LevelChange> changes;  // in the order they were made (a batch can hold T, then its Undo)
+  bool readingChanged = false;        // persist the Japanese reading (settings.md: `reading`)
+  std::vector<LevelChange> changes;   // in the order they were made (a batch can hold T, then its Undo)
+  std::vector<IgnoreChange> ignores;  // likewise
   // Close: a tap or a long-press on the page outside the card, where the word is to be looked up next
   // (popup-ui.md §3.2; the caller drops it where the page isn't word select's: pagePressLooksUp).
   std::optional<PagePoint> lookUpAt;
@@ -84,6 +94,10 @@ class CardController {
   // had set: the toast's Retry sets it again. `why`: Network "Save failed · Retry", KeyRejected "Lexirise key
   // rejected" (no retry), RateLimited "Rate limited: try in N s · Retry" (offline-and-errors.md §3).
   void levelFailed(int word, Level level, unsigned long nowMs, CallFailure why, Level wanted, uint32_t retryInS);
+  // The ignore list couldn't be written (the SD card): the word goes back to `!wanted`, with "Save failed".
+  void ignoreFailed(int word, bool wanted, unsigned long nowMs);
+  // The ignore of `word` pushed `evicted` out of a full list: its Undo (if still offered) puts that key back.
+  void ignoreEvicted(int word, IgnoredKey evicted);
 
   const CardSource& source() const { return source_; }
   int word() const { return word_; }
@@ -102,6 +116,9 @@ class CardController {
                  unsigned long durationMs = config::kToastMs);
   void clearToast();
   Outcome setLevel(Level level, const char* toastPrefix, bool undo, unsigned long nowMs);
+  // ⋯ Ignore this word: on the reader's list at once, "Ignored: won't be marked again · Undo"; a word already on it
+  // only says "Ignored: won't be marked again" (the approved card draws nothing else). Nothing goes to Lexirise.
+  Outcome ignore(unsigned long nowMs);
   Outcome retry(unsigned long nowMs);            // the failed change again (the toast's Retry)
   bool syncWord(unsigned long nowMs);            // true: something shown changed
   void moveTo(int index, unsigned long nowMs);   // a step: the word, its lookup, a new frame's targets
@@ -116,8 +133,13 @@ class CardController {
   CardState state_;
   unsigned long toastUntilMs_ = 0;
   // What the toast's Undo reverts: that word back to that level (None: the save is removed).
-  int undoWord_ = -1;
-  Level undoLevel_ = Level::None;
+  struct Undo {
+    enum class Kind : uint8_t { None, Level, Ignore } kind = Kind::None;
+    int word = -1;
+    Level level = Level::None;          // Level: the word goes back to it (None: the save is removed)
+    std::optional<IgnoredKey> evicted;  // Ignore: the key it pushed out of a full list, once written
+  };
+  Undo undo_;  // reset whenever the toast stops offering Undo
   // What the toast's Retry sets again: every level change that failed since the toast came up (a 429
   // fails the queued ones one after another), each word to the level the user had set.
   struct Failed {

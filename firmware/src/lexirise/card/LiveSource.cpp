@@ -167,7 +167,7 @@ int LiveSource::itemDue(const unsigned long nowMs, const bool closing) const {
   return ours(id) || itemFor(id) ? -1 : focused_;
 }
 
-LiveSource::Fetched LiveSource::savedItem(const int index, const unsigned long nowMs) const {
+LiveSource::Fetched LiveSource::savedItem(const int index) const {
   Fetched f;
   f.kind = Fetched::Kind::Item;
   f.index = index;
@@ -181,8 +181,10 @@ LiveSource::Fetched LiveSource::savedItem(const int index, const unsigned long n
   f.error = got.error;
   if (got.error == api::ApiError::RateLimited || got.error == api::ApiError::Unauthorized) {
     // Refused (AccessPolicy, often without the network): not the item's answer. Asked again once the block may be
-    // over: a 429's wait, else (a rejected key, lifted only by a key check or a new key) the default.
-    f.retryAtMs = api::retryAtMs(got, nowMs);
+    // over: a 429's wait, else (a rejected key, lifted only by a key check or a new key) the default, counted from
+    // when the answer came (apply()), as AccessPolicy counts its back-off.
+    f.refused = true;
+    f.retryAfterS = got.retryAfterS;
   }
   if (got.ok() && api::parseSavedItem(got.body, f.item) != api::ParseStatus::Ok) {
     f.error = api::ApiError::Malformed;
@@ -202,6 +204,36 @@ void LiveSource::setBookDeck(deck::BookDeck bookDeck, deck::DeckStore& store) {
 }
 
 void LiveSource::setBookTitles(BookTagStore& titles) { titles_ = titles.list(); }
+
+void LiveSource::setIgnoredWords(IgnoredWordStore& store) {
+  store.load();
+  ignoredStore_ = &store;
+}
+
+std::optional<IgnoredKey> LiveSource::ignoreKey(const int index) const {
+  if (index < 0 || index >= wordCount()) return std::nullopt;
+  const lookup::LookupCard& card = cards_[index];
+  return ignoredKeyFor(card.language, card.lemmaEntryId, card.headword());
+}
+
+bool LiveSource::ignored(const int index) const {
+  const std::optional<IgnoredKey> key = ignoreKey(index);
+  if (!key) return false;
+  for (auto it = ignoredHere_.rbegin(); it != ignoredHere_.rend(); ++it) {
+    if (it->first == *key) return it->second;
+  }
+  return ignoredStore_ && ignoredStore_->contains(*key);
+}
+
+bool LiveSource::setIgnored(const int index, const bool ignored) {
+  std::optional<IgnoredKey> key = ignoreKey(index);
+  if (!key || !ignoredStore_) return false;  // no list to keep it in, or no key
+  ignoredHere_.erase(
+      std::remove_if(ignoredHere_.begin(), ignoredHere_.end(), [&key](const auto& here) { return here.first == *key; }),
+      ignoredHere_.end());
+  ignoredHere_.emplace_back(std::move(*key), ignored);
+  return true;
+}
 
 void LiveSource::rebuild(const int index, const FormName* named) {
   CardWord rebuilt = wordFor(index, named);
@@ -353,7 +385,7 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
   } else if (loading && !closing) {  // cppcheck-suppress knownConditionTrueFalse ; nullopt when nothing loads
     return analysis(*loading);
   } else if (const int item = itemDue(nowMs, closing); item >= 0) {
-    return savedItem(item, nowMs);
+    return savedItem(item);
   } else if (writeReady(nowMs, closing)) {
     f.kind = Fetched::Kind::Write;
     f.index = writes_.front().word;
@@ -397,7 +429,7 @@ LiveSource::Fetched LiveSource::analysis(const size_t sentence) const {
   return f;
 }
 
-LiveSource::Advance LiveSource::apply(Fetched fetched) {
+LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs) {
   switch (fetched.kind) {
     case Fetched::Kind::None:
       return Advance::Idle;
@@ -416,8 +448,8 @@ LiveSource::Advance LiveSource::apply(Fetched fetched) {
       rebuild(fetched.index);
       return Advance::Changed;
     case Fetched::Kind::Item: {
-      if (fetched.retryAtMs) {  // refused: not kept, asked again from then
-        itemRetryAtMs_ = fetched.retryAtMs;
+      if (fetched.refused) {  // not kept, asked again once the block can be over (from now: the answer's time)
+        itemRetryAtMs_ = api::retryAtMs(fetched.retryAfterS, nowMs);
         return Advance::Idle;
       }
       itemRetryAtMs_.reset();

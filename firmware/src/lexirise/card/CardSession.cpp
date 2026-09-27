@@ -2,6 +2,12 @@
 
 #include "CardSession.h"
 
+#if LEXIPOINT_DEV_HARNESS
+#include <Logging.h>
+#endif
+
+#include <algorithm>
+
 #include "lexirise/util/Timing.h"
 
 namespace lexipoint::card {
@@ -22,7 +28,7 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
   lastActivityMs_ = nowMs;
   answer.clearFailed = fetched.clearFailed;
   answer.unreadable = fetched.unreadable;
-  switch (live_->apply(std::move(fetched))) {
+  switch (live_->apply(std::move(fetched), nowMs)) {
     case LiveSource::Advance::NotFound:
       answer.ended = LiveOutcome{LiveOutcome::Kind::NotFound, live_->error()};
       return answer;
@@ -45,6 +51,42 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
     answer.redraw = true;
   }
   return answer;
+}
+
+CardSession::Persisted CardSession::persistIgnores(const Outcome& outcome) const {
+  Persisted done;
+  IgnoredWordStore* store = live_ ? live_->ignoredStore() : nullptr;
+  if (!store) return done;  // the bench keeps no list (nor does a card given none: it can't ignore)
+  const size_t n = outcome.ignores.size();
+  std::vector<std::optional<IgnoredKey>> keys;
+  keys.reserve(n);
+  for (const IgnoreChange& change : outcome.ignores) keys.push_back(live_->ignoreKey(change.word));
+  done.failed.reserve(n);
+  done.evicted.reserve(n);
+  // In the order they were made (the file stays newest last); a change a later one for the same key overrides is
+  // skipped (an Ignore and its Undo together: nothing written), unless it carries back a pushed-out key (an Undo's
+  // restore): that key must return even when the word is ignored again after it (which then pushes out the oldest,
+  // that same key, again, for its own Undo).
+  for (size_t i = 0; i < n; i++) {
+    const IgnoreChange& change = outcome.ignores[i];
+    const std::optional<IgnoredKey>& key = keys[i];
+    if (key && !change.restore &&
+        std::find(keys.begin() + static_cast<std::ptrdiff_t>(i) + 1, keys.end(), key) != keys.end()) {
+      continue;
+    }
+    using Write = IgnoredWordStore::Write;
+    std::optional<IgnoredKey> evicted;
+    const Write wrote = key ? store->write(*key, change.ignored, &evicted, change.restore) : Write::Failed;
+    const bool ok = wrote != Write::Failed;
+#if LEXIPOINT_DEV_HARNESS
+    // For the device check (device-checks.md V5): the key (`ja:<id>`, or a dictionary form) and what the SD card got.
+    LOG_INF("LXCARD", "ignore %s %s %s", key ? ignoredKeyText(*key).c_str() : "-", change.ignored ? "on" : "off",
+            wrote == Write::Written ? "written" : (ok ? "unchanged" : "failed"));
+#endif
+    if (!ok) done.failed.push_back(change);
+    if (evicted) done.evicted.emplace_back(change.word, std::move(*evicted));
+  }
+  return done;
 }
 
 bool CardSession::shouldFetchDeck(const unsigned long nowMs, const bool rendering, const bool touching,

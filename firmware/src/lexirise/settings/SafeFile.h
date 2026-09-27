@@ -3,8 +3,9 @@
 // A small text file on the SD card replaced crash-safely (settings.md §3): write .tmp, move the old file
 // to .bak, move .tmp into place, drop .bak. At every point either the file or its .bak is complete, and
 // readSafely() finishes or undoes each step. Used by config.ini (SettingsStore), books.ini
-// (BookLanguages), book-tags.ini (BookTags) and decks.ini (deck/BookDeck). Tests:
-// test/lexirise_settings/SettingsStoreTest.cpp, BookLanguagesTest.cpp, BookTagsTest.cpp; test/lexirise_deck.
+// (BookLanguages), book-tags.ini (BookTags), decks.ini (deck/BookDeck) and ignored.ini (IgnoredWords). Tests:
+// test/lexirise_settings/SettingsStoreTest.cpp, BookLanguagesTest.cpp, BookTagsTest.cpp, IgnoredWordsTest.cpp;
+// test/lexirise_deck.
 
 #include <cstddef>
 #include <string>
@@ -13,6 +14,9 @@
 #include "lexirise/LexiriseConfig.h"
 
 namespace lexipoint {
+
+// A byte that can't stand in one of these files' lines: an ASCII control (a line break among them) or DEL.
+inline bool isControlByte(const char c) { return static_cast<unsigned char>(c) < 0x20 || c == 0x7F; }
 
 // The handful of file operations the stores need. Paths are absolute SD paths.
 class SettingsFiles {
@@ -61,6 +65,8 @@ inline constexpr SafeFilePaths kDecksFile{kSettingsDir,     kDecksPath,    kDeck
                                           kDecksBackupPath, kDecksBadPath, kDecksMaxBytes};
 inline constexpr SafeFilePaths kBookTagsFile{kSettingsDir,        kBookTagsPath,    kBookTagsTmpPath,
                                              kBookTagsBackupPath, kBookTagsBadPath, kBookTagsMaxBytes};
+inline constexpr SafeFilePaths kIgnoredFile{kSettingsDir,       kIgnoredPath,    kIgnoredTmpPath,
+                                            kIgnoredBackupPath, kIgnoredBadPath, kIgnoredMaxBytes};
 }  // namespace config
 
 }  // namespace lexipoint

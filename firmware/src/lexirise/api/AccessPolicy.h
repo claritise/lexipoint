@@ -14,9 +14,13 @@
 namespace lexipoint::api {
 
 // When a refused call (a 429, or a rejected key) may be asked again: its Retry-After (else the default), capped.
-inline unsigned long retryAtMs(const ApiResponse& response, const unsigned long nowMs) {
-  const uint32_t s = response.retryAfterS != 0 ? response.retryAfterS : config::kRetryAfterDefaultS;
+// `nowMs`: when the answer came (after the call, as observe() takes it).
+inline unsigned long retryAtMs(const uint32_t retryAfterS, const unsigned long nowMs) {
+  const uint32_t s = retryAfterS != 0 ? retryAfterS : config::kRetryAfterDefaultS;
   return nowMs + (s < config::kRetryAfterMaxS ? s : config::kRetryAfterMaxS) * 1000UL;
+}
+inline unsigned long retryAtMs(const ApiResponse& response, const unsigned long nowMs) {
+  return retryAtMs(response.retryAfterS, nowMs);
 }
 
 class AccessPolicy {

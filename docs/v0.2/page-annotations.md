@@ -41,8 +41,9 @@ your level rises. This is what `analyze/text` was built for (it powers Lexirise'
   `/.lexirise/vocab-<lang>.bin`: `entryId → {proficiency, savedId, seen, suspended, next_review_at}`.
 - **Incremental sync** on each WiFi-up: `sortId=updated_at&sortDesc=true`, stopping at the first item
   older than the last sync.
-- **Local writes** (save, level change, ignore) update the mirror straight away, so annotations
-  reflect a save on the same page.
+- **Local writes** (save, level change, ~~ignore~~) update the mirror straight away, so annotations
+  reflect a save on the same page. (Superseded 2026-09-27 for ignore: it isn't a Lexirise write and never touches
+  the mirror; it's the reader's own list, `/.lexirise/ignored.ini`, `00-overview.md` C17 "As built (V5, local)".)
 - Annotation state comes **from the mirror**, not from `stateByEntryId`. The page analysis only
   supplies the word → entry mapping, so marks still work offline for cached pages, and for uncached
   pages once the chapter is analyzed.
@@ -53,9 +54,9 @@ Each one is a separate on/off setting (`/.lexirise/config.ini`), set per book fr
 
 | # | Annotation | What it shows | Default |
 |---|---|---|---|
-| A1 | **Proficiency marks** | New (not saved or level 0): **solid underline**. Tracked or learning (1–2): **dotted underline**. Fresh or known (3–4): no mark. Suspended/ignored: no mark | On |
+| A1 | **Proficiency marks** | New (not saved or level 0): **solid underline**. Tracked or learning (1–2): **dotted underline**. Fresh or known (3–4): no mark. Suspended/ignored: no mark (ignored: the reader's own list, `/.lexirise/ignored.ini`, keyed by the entry key (`lookup::entryKeyOf`), or its form, `00-overview.md` C17 "As built (V5, local)"; suspended: in Lexirise, from the mirror) | On |
 | A2 | **Page stats** | Status bar: `6 new · 2 learning · 89% known` (running-token coverage, as in C5) | On |
-| A3 | **Skip to unknown** | With the card open, the side buttons step between A1-marked (unknown or learning) words only, instead of every word (D16). A setting switches back to every word | On |
+| A3 | **Skip to unknown** | With the card open, the side buttons step between A1-marked (unknown or learning) words only, instead of every word (D16); an ignored or suspended word has no mark, so it's skipped. A setting switches back to every word | On |
 | A4 | **Seen-again marker** | A small dot after a word you're *learning* when it reappears. Tells you "you saved this, here it is again" | On |
 | A5 | **Above-level only** | Restrict A1 to words above a target (`target_level=N2` / `HSK-4`), using `system_tags` from the mirror's embedded `dictionary_entry` | Off |
 | A6 | **Adaptive furigana / pinyin** | Readings as ruby **only above words that aren't known** (level < 3). As you learn, the furigana fades on its own | Off |

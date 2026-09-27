@@ -808,8 +808,8 @@ class Layout {
       out_.text(Font::UiSmall, r.x + m::kActionFrame + m::kActionPadH, ty, rows[i]);
       const int cw = pct(lh(Font::UiSmall), m::kChevronBoxPct);
       out_.shape(Shape::Chevron, {r.right() - m::kActionFrame - m::kActionPadH - cw, ty, cw, lh(Font::UiSmall)});
-      // Undo is action 0 only when there's a save to undo; the others keep their ids.
-      const int id = s_.level != Level::None ? static_cast<int>(i) : static_cast<int>(i) + 1;
+      // Undo save is shown only when there's a save to undo; the others keep their ids (ActionId).
+      const int id = s_.level != Level::None ? static_cast<int>(i) : static_cast<int>(i) + ActionId::SaveSentence;
       out_.hit(Target::Action, r, id);
       f.gap(h + m::kActionGap);
     }

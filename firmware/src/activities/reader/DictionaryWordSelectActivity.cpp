@@ -23,6 +23,7 @@
 #include "lexirise/lookup/StarDictCandidates.h"  // LEXIPOINT
 #include "lexirise/lookup/StarDictChoice.h"      // LEXIPOINT
 #include "lexirise/settings/BookTags.h"          // LEXIPOINT
+#include "lexirise/settings/IgnoredWords.h"      // LEXIPOINT
 #endif
 
 namespace {
@@ -541,7 +542,8 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
   auto tags = lexipoint::bookSaveTags(settings, bookTitle, bookPath, lexipoint::bookTagStore());
   auto source = std::make_unique<lexipoint::card::LiveSource>(lexipoint::service(), std::move(context), readerPage,
                                                               std::move(tags), std::move(next));
-  source->setBookTitles(lexipoint::bookTagStore());  // "Met before"'s book titles (C14)
+  source->setBookTitles(lexipoint::bookTagStore());        // "Met before"'s book titles (C14)
+  source->setIgnoredWords(lexipoint::ignoredWordStore());  // the reader's ignored words (C17), read before it opens
   // The book's deck, filled by its tag (C4): the card makes sure it exists once a save went through.
   if (auto deck = lexipoint::deck::bookDeckFor(settings, bookTitle, bookPath, lexipoint::bookTagStore())) {
     source->setBookDeck(std::move(*deck), lexipoint::deck::deckStore());

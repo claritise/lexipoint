@@ -119,7 +119,17 @@ When the card asks for it: `../v0.2/00-overview.md` C14 "As built (V4b)".
 | `notes` | The sentence Lexipoint's save wrote, cut to `config::kMaxSavedNoteBytes` at a character (never fails the answer) |
 | `sentence_text` (or `sentenceText`) | The sentence a word saved in the Lexirise app came with, cut the same way: "Met before" when `notes` is empty |
 | `user_tags[]` (or `userTags[]`) | The tags' names (objects `{id, name}` or plain strings; the first `kMaxSavedTags`; an empty one or one over `kMaxTokenBytes` skipped): the book's title from its `book:<slug>` |
+| `suspended` | ~~(v0.2 V5, C17) Whether the word is ignored: only a JSON `true` counts (null, a string, anything else: not ignored). `analyze/text` never shows it~~ (Superseded 2026-09-27: the card's Ignore is the reader's own list, `../v0.2/00-overview.md` C17 "As built (V5, local)".) Not read (suspended in the Lexirise app; `analyze/text` never shows it either): skipped like any other field |
 | everything else | Skip. Null or missing fields are empty; anything but a JSON object is malformed (`api::parseSavedItem`) |
+
+### `PATCH /v1/vocabulary/{id}`
+
+A saved word's level, `{"proficiency": 0-4}` (`api::setProficiencyRequest`: a level change and its Undo) ~~and
+(v0.2 V5, C17) whether it's ignored, `{"suspended": true}` or `false` (`api::setSuspendedRequest`; measured:
+`../reference/lexirise-api-notes.md`, "Suspended (Ignore)": a POST can't set it, `DELETE` keeps it)~~ (Superseded
+2026-09-27: Ignore never writes to Lexirise, `../v0.2/00-overview.md` C17 "As built (V5, local)"; the measured
+`suspended` facts stay in the reference notes). Idempotent, so resent once on a stale session. The removal's clear
+(`api::clearRequest`) is one too.
 
 ## 3. What the server does for us
 

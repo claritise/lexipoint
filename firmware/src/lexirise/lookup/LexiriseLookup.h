@@ -50,6 +50,12 @@ inline bool asksLexirise(const text::TapContext& tap, const bool usable) {
 // Needs a sentence and a language to send (TapContext): without them Lexirise isn't asked at all.
 LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, AnalyzedSentence& out, size_t& word);
 
+// A word's dictionary identity on a page: its lemma's entry id, else (analyze/text named no lemma entry) its own.
+// The card's one-word rule (sameWord), a save's target and the ignore list's key (C17, V5) use it, and so will V9's
+// marks, matching a page's occurrences. Known limit: the two analysis passes can give one word different lemmas
+// (なれない ‹なれる› in the fast pass, ‹なる› refined: lexirise-api-notes.md), so the key can differ between them.
+uint32_t entryKeyOf(const api::Occurrence& occ);
+
 // Phase A: the card for out.words[word] from the analysis alone: the word, reading, POS, saved state.
 LookupCard cardFor(const AnalyzedSentence& sentence, size_t word);
 

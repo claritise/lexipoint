@@ -502,6 +502,18 @@ TEST(CardLayout, Toast) {
   EXPECT_EQ(list.toast.x, (480 - list.toast.w) / 2);
 }
 
+TEST(CardLayout, TheIgnoreToastFitsWithItsUndo) {
+  // C17 (V5): the reference's words and the save toast's Undo, whole (not cut to an ellipsis), Undo a target.
+  CardState s;
+  const CardStrings str;
+  s.toast = std::string(str.actionDone[actionIndex(ActionId::Ignore)]) + str.undoSuffix;
+  s.toastUndo = true;
+  const auto list = layoutCard(benchJapanese().words[0], s, kMetrics);
+  EXPECT_NE(textCommand(list, s.toast), nullptr);
+  EXPECT_LE(list.toast.w, 480 - 2 * m::kCardInset);
+  EXPECT_EQ(list.hits[0].target, Target::ToastUndo);
+}
+
 TEST(CardLayout, HitsArePrioritisedOverTheCard) {
   const auto b = build(benchJapanese(), 2);
   const Rect close = hits(b.list, Target::Close)[0].rect;

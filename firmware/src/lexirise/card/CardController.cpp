@@ -152,7 +152,7 @@ void CardController::showToast(std::string text, const unsigned long nowMs, cons
   state_.toast = std::move(text);
   state_.toastUndo = tappable;
   toastUntilMs_ = nowMs + durationMs;
-  if (!tappable) undoWord_ = -1;
+  if (!tappable) undo_ = {};
   retries_.clear();  // a new toast replaces a Retry (levelFailed keeps the list it adds to)
   failureToast_ = false;
 }
@@ -160,7 +160,7 @@ void CardController::showToast(std::string text, const unsigned long nowMs, cons
 void CardController::clearToast() {
   state_.toast.clear();
   state_.toastUndo = false;
-  undoWord_ = -1;
+  undo_ = {};
   retries_.clear();
   failureToast_ = false;
 }
@@ -183,14 +183,20 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
       const Level before = levels_[word_];
       if (level == before) return {};  // already there: a double tap sends nothing twice
       Outcome o = setLevel(level, before == Level::None ? strings_.savedAs : strings_.now, true, nowMs);
-      undoWord_ = word_;
-      undoLevel_ = before;
+      undo_ = {Undo::Kind::Level, word_, before, std::nullopt};
       return o;
     }
     case Target::ToastUndo: {  // a new save is removed; a level change goes back (popup-ui.md §3.2)
       if (!retries_.empty()) return retry(nowMs);
-      if (undoWord_ != word_) return {};
-      const Level restored = undoLevel_;
+      if (undo_.kind == Undo::Kind::None || undo_.word != word_) return {};
+      if (undo_.kind == Undo::Kind::Ignore) {  // off the list again; the toast goes (the card showed nothing else)
+        source_.setIgnored(word_, false);
+        Outcome o{Effect::Redraw, false};
+        o.ignores.push_back({word_, false, undo_.evicted});
+        clearToast();
+        return o;
+      }
+      const Level restored = undo_.level;
       if (restored == Level::None) {
         Outcome o = setLevel(restored, "", false, nowMs);
         showToast(strings_.removed, nowMs);
@@ -215,14 +221,15 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
       return {Effect::Redraw, false};
     case Target::Action:
       if (!hasWord()) return {};
-      if (hit->index == 0) {  // Undo save
+      if (hit->index == ActionId::UndoSave) {
         if (levels_[word_] == Level::None) return {};
         Outcome o = setLevel(Level::None, "", false, nowMs);
         showToast(strings_.removed, nowMs);
         return o;
       }
-      if (hit->index >= 1 && hit->index <= static_cast<int>(std::size(strings_.actionDone))) {
-        showToast(source_.demoActions() ? strings_.actionDone[hit->index - 1] : strings_.notYet, nowMs);
+      if (hit->index == ActionId::Ignore && !source_.demoActions()) return ignore(nowMs);
+      if (hit->index >= ActionId::SaveSentence && hit->index <= ActionId::LookUpLater) {
+        showToast(source_.demoActions() ? strings_.actionDone[actionIndex(hit->index)] : strings_.notYet, nowMs);
       }
       return {Effect::Redraw, false};
     case Target::Card:
@@ -230,6 +237,36 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
       return {};
   }
   return {};
+}
+
+Outcome CardController::ignore(const unsigned long nowMs) {
+  const char* ignoredText = strings_.actionDone[actionIndex(ActionId::Ignore)];  // "Ignored: won't be marked again"
+  // A second tap while this ignore's Undo is up: nothing (as a level's double tap), so the Undo stays.
+  if (state_.toastUndo && undo_.kind == Undo::Kind::Ignore && undo_.word == word_) return {};
+  if (source_.ignored(word_)) {  // already: nothing to change or undo
+    showToast(ignoredText, nowMs);
+    return {Effect::Redraw, false};
+  }
+  if (!source_.setIgnored(word_, true)) {  // a word with no key (no entry id, no usable form): can't be listed
+    showToast(strings_.saveFailed, nowMs);
+    return {Effect::Redraw, false};
+  }
+  Outcome o{Effect::Redraw, false};
+  o.ignores.push_back({word_, true});
+  showToast(std::string(ignoredText) + strings_.undoSuffix, nowMs, true, config::kIgnoreToastMs);
+  undo_ = {Undo::Kind::Ignore, word_, Level::None, std::nullopt};
+  return o;
+}
+
+void CardController::ignoreEvicted(const int word, IgnoredKey evicted) {
+  if (undo_.kind == Undo::Kind::Ignore && undo_.word == word) undo_.evicted = std::move(evicted);
+}
+
+void CardController::ignoreFailed(const int word, const bool wanted, const unsigned long nowMs) {
+  if (word < 0 || word >= source_.wordCount()) return;
+  source_.setIgnored(word, !wanted);
+  showToast(strings_.saveFailed, nowMs, false, config::kFailureToastMs);
+  failureToast_ = true;  // it came after the input: a step in the same batch, or a sentence failing, keeps it
 }
 
 // The word at `level` now, with "<prefix><level name>[ · Undo]" (the caller replaces it for a removal).

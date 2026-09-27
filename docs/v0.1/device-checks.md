@@ -151,6 +151,36 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## v0.2 V5: still owed on the device
+
+V5 (Ignore a word, the reader's own list: `../v0.2/00-overview.md` C17 "As built (V5, local)") is on `lexi/V5`, not
+yet run on the device. **No writes to Lexirise:** the log must show no POST, PATCH or DELETE on `/v1/vocabulary` for
+any step below (a saved word's Met before `GET /v1/vocabulary/{id}` is expected).
+
+- **`lxctl.py ignore-smoke [x y]`** (a dev build, a book open upright, one held session: `../v0.1/dev-harness.md` §3):
+  long-presses the word at x y (one not ignored yet), taps ⋯ → Ignore this word, then the toast's Undo, where the card
+  logged them, and checks from the log `ignore <key> on written`, then `off written`, and no POST, PATCH or DELETE on
+  `/v1/vocabulary`. It covers "Ignore, then Undo" below except the file on the SD card. The toast's Undo lasts
+  `config::kIgnoreToastMs` (5 s), so it taps Undo on the first frame drawn after the Ignore (no SYNC between); the
+  card logs a frame's targets only once it's on screen, so that tap lands on the toast. **If it fails halfway** (it
+  says "… remove `ja:<id>` from /.lexirise/ignored.ini": the toast expired, or the Undo tap took nothing off; or it
+  stops after the Ignore), the word is left ignored: take the SD card to the Mac and delete that line from
+  `/.lexirise/ignored.ini` (the key is in the message or the log's `[LXCARD] ignore … on written` line), or pick
+  another word next time; the card itself has no un-ignore once the toast is gone.
+- **The log (dev build):** each change shows `[LXCARD] ignore ja:<id> on|off written|unchanged|failed` (unchanged:
+  already so, nothing written), and no POST, PATCH or DELETE on `/v1/vocabulary`.
+- **A double tap** on "Ignore this word" keeps "· Undo" on the toast, and the Undo still works.
+- **The Ignore's toast lasts about 5 s** (`config::kIgnoreToastMs`); a save's still about 2 s.
+- **Ignore, then Undo:** ⋯ "Ignore this word" on an unsaved word (a name): "Ignored: won't be marked again · Undo",
+  the card otherwise unchanged ("not saved"); Undo clears the toast. `/.lexirise/ignored.ini` holds the word's line
+  after the ignore (`ja:<id>`) and not after the Undo (read the SD card from the Mac, or `lxctl` if it lists files).
+- **It holds:** ignore a word, close the card, reboot; look the word up again: ⋯ Ignore says "Ignored: won't be
+  marked again" without Undo. A saved word ignored keeps its level on the card and in Lexirise.
+- **The SD card full or write-protected** (if it can be arranged): "Save failed", the word not ignored.
+- **Tap to toast:** how long from the tap on "Ignore this word" to the toast on screen (the SD write goes first).
+- **Heap on a full list:** put a 1000-id `ignored.ini` on the card (e.g. `ja:1` … `ja:1000`), then log free heap and
+  the largest free block (dev build) as a card opens and after an ignore and its Undo, WiFi and TLS up.
+
 ## v0.2 V4: still owed on the device
 
 V4 (Met before, and the conjugation) is on `main` (`42bce33c`); its ledger row in

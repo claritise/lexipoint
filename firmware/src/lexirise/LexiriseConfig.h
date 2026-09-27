@@ -37,8 +37,17 @@ constexpr const char* kDecksPath = "/.lexirise/decks.ini";
 constexpr const char* kDecksTmpPath = "/.lexirise/decks.ini.tmp";
 constexpr const char* kDecksBackupPath = "/.lexirise/decks.ini.bak";
 constexpr const char* kDecksBadPath = "/.lexirise/decks.ini.bad";
-constexpr size_t kDecksMax = 100;         // decks remembered; one more forgets the oldest (found again by the list)
-constexpr size_t kDecksMaxBytes = 16384;  // kDecksMax of the longest lines (checked below, with the slug's size)
+// The words the reader ignored (C17, V5): on the reader only, never sent to Lexirise (settings.md §3).
+constexpr const char* kIgnoredPath = "/.lexirise/ignored.ini";
+constexpr const char* kIgnoredTmpPath = "/.lexirise/ignored.ini.tmp";
+constexpr const char* kIgnoredBackupPath = "/.lexirise/ignored.ini.bak";
+constexpr const char* kIgnoredBadPath = "/.lexirise/ignored.ini.bad";
+constexpr size_t kIgnoredIdsMax = 1000;      // words kept by entry id (8 B each in RAM); one more forgets the oldest
+constexpr size_t kIgnoredTextsMax = 50;      // words without an entry id, kept by their dictionary form (rare)
+constexpr size_t kIgnoredTextMaxBytes = 64;  // such a form, longer: not ignorable (a key is never cut)
+constexpr size_t kIgnoredMaxBytes = 20480;   // the file: both caps' longest lines (checked in IgnoredWords.cpp)
+constexpr size_t kDecksMax = 100;            // decks remembered; one more forgets the oldest (found again by the list)
+constexpr size_t kDecksMaxBytes = 16384;     // kDecksMax of the longest lines (checked below, with the slug's size)
 // The longest FAT/exFAT long name in UTF-8: 255 UTF-16 units, up to 3 bytes each (web/HiddenPath.h).
 constexpr size_t kMaxFatNameBytes = 255 * 3;
 
@@ -128,7 +137,10 @@ static_assert(std::size(kRankBandLimitsJa) == std::size(kRankBandLimitsZh), "one
 constexpr size_t kRankBands = std::size(kRankBandLimitsJa) + 1;  // + "rare"
 
 // The card (popup-ui.md §2, §3.2).
-constexpr unsigned long kToastMs = 2000;         // "Saved as learning · Undo"
+constexpr unsigned long kToastMs = 2000;  // "Saved as learning · Undo"
+// "Ignored: won't be marked again · Undo" (C17, V5) stays longer: once it's gone an ignore can't be undone on the card
+// (until V6 adds an un-ignore); a save or a level keeps kToastMs (either can be changed again from the card).
+constexpr unsigned long kIgnoreToastMs = 5000;
 constexpr unsigned long kFailureToastMs = 6000;  // "Save failed · Retry": it comes late, the eyes are elsewhere
 constexpr unsigned long kPhaseMergeMs = 300;     // phase B this soon after A: one refresh for both
 constexpr int kCardHalfRefreshEvery = 5;         // the 5th card's dismiss: a half refresh (ghosts), as the reader's

@@ -447,7 +447,8 @@ gitignored), on the throwaway word 蓋然性 (saved) and 寸暇 (unsaved):
   It then shows in `analyze/text` as saved at level 1, not as ignored.
 - **`DELETE` keeps `suspended`:** a dictionary word's `DELETE` answers `{success: true, deleted: false}`, resets it to
   proficiency 0 and **leaves `suspended: true`**. Undoing an ignore is `PATCH suspended: false` first, then the
-  `DELETE` if the word was saved only to be ignored.
+  `DELETE` if the word was saved only to be ignored (if Ignore wrote to Lexirise; it doesn't: `../v0.2/00-overview.md`
+  C17 "As built (V5, local)").
 - Left in the dev account: 寸暇 at proficiency 0, not suspended; 蓋然性 back as it was.
 
 ## A saved word's notes and tags in `analyze/text` (v0.2 V4, measured 2026-09-26)

@@ -34,6 +34,7 @@ Outcome handleInput(CardController& controller, const ShownTargets& targets, con
       }
     }
     outcome.changes.insert(outcome.changes.end(), o.changes.begin(), o.changes.end());
+    outcome.ignores.insert(outcome.ignores.end(), o.ignores.begin(), o.ignores.end());
     if (o.effect == Effect::Close) {
       outcome.effect = Effect::Close;
       outcome.lookUpAt = o.lookUpAt;

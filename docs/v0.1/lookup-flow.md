@@ -236,14 +236,17 @@ The card replaced the P3 placeholder (code: `src/lexirise/card/`, `src/lexirise/
   stays in Lexirise at proficiency 0 with its notes, so a later level is a PATCH; a word that was already at
   proficiency 0 when the card opened (undone earlier) is changed with a PATCH, so notes and tags the user
   kept in the app aren't replaced. The same entry twice in a sentence is one word: its level and id are
-  shared. Writes still queued when the card closes (or the device sleeps with it open) are sent first,
+  shared. ⋯ Ignore (v0.2 V5) sends nothing: it's the reader's own list (`../v0.2/00-overview.md` C17 "As built (V5,
+  local)"). Writes still queued when the card closes (or the device sleeps with it open) are sent first,
   without looking up anything they don't need; a removal whose clear fails still counts (logged). The log
   never shows a saved-expression id. The glue between input, card and network is `card::CardSession`
   (pure, host-tested through laid-out frames and taps).
 - **Not yet:** the Kanji/Chars tab stays empty on a live card (Lexirise's `breakdown` would need a lookup per
   character: v0.2), ~~the Form tab lists only the book's form, "Met before" is never filled,~~ (Superseded
   2026-09-26: V4 names the form and fills "Met before", §5i) the Context tab
-  has no page number, the ⋯ tab's v0.2 actions say "Not in this version yet", and "Saving…" isn't shown
+  has no page number, ~~the ⋯ tab's v0.2 actions say "Not in this version yet",~~ (Superseded 2026-09-27: V5's
+  Ignore works, `../v0.2/00-overview.md` C17 "As built (V5, local)"; Save the sentence and Look up later still say
+  so) and "Saving…" isn't shown
   (the level shows at once instead). Errors beyond the save toast are P6 (`offline-and-errors.md`).
 
 ### 5d. As built (P9): stepping on into the next sentence

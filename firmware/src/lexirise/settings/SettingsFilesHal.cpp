@@ -7,6 +7,7 @@
 
 #include "BookLanguages.h"
 #include "BookTags.h"
+#include "IgnoredWords.h"
 #include "SettingsStore.h"
 #include "lexirise/deck/BookDeck.h"
 
@@ -69,6 +70,11 @@ BookLanguageStore& bookLanguageStore() {
 
 BookTagStore& bookTagStore() {
   static BookTagStore store(halFiles());
+  return store;
+}
+
+IgnoredWordStore& ignoredWordStore() {
+  static IgnoredWordStore store(halFiles());
   return store;
 }
 

@@ -534,3 +534,15 @@ TEST(Fallback, AnUnsentSaveSaysWhy) {
   EXPECT_EQ(noticeForUnsentSave(ApiError::Unauthorized), Notice::KeyRejected);
   EXPECT_EQ(noticeForUnsentSave(ApiError::NoWifi), Notice::SaveFailed);
 }
+
+TEST(EntryKey, TheLemmasEntryElseTheWordsOwn) {
+  // One word's identity on a page (the card's one-word rule, a save's target, the ignore list's key: C17, V5).
+  lexipoint::api::Occurrence occ;
+  occ.entryId = 5;
+  occ.lemmaEntryId = 6;
+  EXPECT_EQ(lexipoint::lookup::entryKeyOf(occ), 6u);
+  occ.lemmaEntryId = 0;  // no lemma entry named
+  EXPECT_EQ(lexipoint::lookup::entryKeyOf(occ), 5u);
+  occ.entryId = 0;
+  EXPECT_EQ(lexipoint::lookup::entryKeyOf(occ), 0u);  // none: the ignore list falls back to the form
+}

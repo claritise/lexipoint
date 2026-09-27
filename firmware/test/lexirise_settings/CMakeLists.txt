@@ -5,12 +5,14 @@ add_executable(LexiriseSettingsTest
   SettingsScreenTest.cpp
   BookLanguagesTest.cpp
   BookTagsTest.cpp
+  IgnoredWordsTest.cpp
   LongPressMenuTest.cpp
   ${REPO_ROOT}/src/lexirise/settings/Settings.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsStore.cpp
   ${REPO_ROOT}/src/lexirise/settings/SafeFile.cpp
   ${REPO_ROOT}/src/lexirise/settings/BookLanguages.cpp
   ${REPO_ROOT}/src/lexirise/settings/BookTags.cpp
+  ${REPO_ROOT}/src/lexirise/settings/IgnoredWords.cpp
   ${REPO_ROOT}/src/lexirise/text/BookSlug.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsPatch.cpp
   ${REPO_ROOT}/src/lexirise/settings/SettingsScreen.cpp

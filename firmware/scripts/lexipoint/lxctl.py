@@ -34,6 +34,10 @@ Examples:
                                       # A dev build, a book open (upright portrait, Deck per book on), two
                                       # unsaved words at x1 y1 and x2 y2; checks the book deck's calls from the
                                       # log (V3; not sleep). Other commands ignore --creates-a-deck
+  lxctl.py ignore-smoke [x y]         # a dev build, a book open (upright portrait): long-press the word at x y (one
+                                      # not ignored yet), ⋯ → Ignore this word, then the toast's Undo; checks
+                                      # from the log it was written to ignored.ini and taken off again, with no
+                                      # write to Lexirise (V5). Writes only the reader's SD card
 """
 
 from __future__ import annotations
@@ -565,7 +569,9 @@ def card_gestures(h: Harness, sleep=time.sleep) -> None:
 # (LexiriseService::send, ids masked, logged once answered), the deck steps' "[LXDECK] step <kind> <key>" (logged as
 # each starts, deck::sendDeckStep) and the store's "[LXDECK] Deck <lang>:<slug>: recorded". Each line starts
 # "[<millis>]" (lib/Logging). The card's level buttons come from its "[LXCARD] level <i> <x> <y> <w> <h> <saved>"
-# (LexiriseCardActivity, dev builds).
+# lines (LexiriseCardActivity, dev builds), part of the target sets ignore-smoke reads too: a "[LXCARD] targets <n>"
+# header, then n lines, "level …" and "target …", logged again as a whole once the frame is on screen whenever any
+# target changes (target_sets).
 DECK_CALL_LOG = re.compile(r"^\[(\d+)\] \[\w+\] \[LXS\] (GET|POST|PATCH|DELETE) (\S+) -> (-?\d+)")
 DECK_STEP_LOG = re.compile(r"^\[(\d+)\] \[\w+\] \[LXDECK\] step (check|list|create) (\S+)")
 DECK_RECORDED_LOG = re.compile(r"\[LXDECK\] Deck (\S+): recorded")
@@ -589,15 +595,10 @@ def deck_steps(log: list[str]) -> list[tuple[int, str]]:
 
 
 def level_buttons(log: list[str]) -> dict[int, tuple[int, int, int, int, bool]]:
-    """The card's level buttons as last logged: index → (x, y, w, h, the word saved)."""
-    buttons: dict[int, tuple[int, int, int, int, bool]] = {}
-    for line in log:
-        if m := CARD_LEVEL_LOG.search(line):
-            i, x, y, w, h, saved = (int(v) for v in m.groups())
-            if i == 0:
-                buttons = {}  # a new set: the lines come in order, from T
-            buttons[i] = (x, y, w, h, saved == 1)
-    return buttons
+    """The card's level buttons in the last complete target set logged: index → (x, y, w, h, the word saved)."""
+    sets = target_sets(log)
+    last = sets[-1] if sets else {}
+    return {i: (v[0], v[1], v[2], v[3], v[4] == 1) for (kind, i), v in last.items() if kind == "level"}
 
 
 def check_deck_cards(cards: list[tuple[list[str], list[str]]], idle_ms: int = DECK_IDLE_MS,
@@ -718,6 +719,143 @@ def deck_smoke(h: Harness, words=DECK_WORDS, watch_s: float = DECK_WATCH_S) -> l
     done = check_deck_cards(cards, watch_s=watch_s)
     print(f"deck-smoke OK: {', '.join(done)}")
     return done
+
+
+# ignore-smoke (v0.2 V5, C17): the reader's own ignore list. The card logs its tap targets as a whole set when they
+# change (dev builds, LexiriseCardActivity: "[LXCARD] targets <n>", then n lines: "level …" and "[LXCARD] target
+# <rank|tab|action|undo> <i> <x> <y> <w> <h>") and each change written to ignored.ini (CardSession::persistIgnores:
+# "[LXCARD] ignore <key> <on|off> <written|unchanged|failed>"; a form key can hold spaces).
+CARD_TARGETS_HEADER = re.compile(r"\[LXCARD\] targets (\d+)$")
+CARD_SET_LINE = re.compile(r"\[LXCARD\] (level|target) ")
+CARD_TARGET_LOG = re.compile(r"\[LXCARD\] target (rank|tab|action|undo) (\d+) (-?\d+) (-?\d+) (\d+) (\d+)")
+IGNORE_LOG = re.compile(r"\[LXCARD\] ignore (.+) (on|off) (written|unchanged|failed)$")
+IGNORE_ACTION = 2  # ActionId::Ignore (CardModel.h; test_lxctl checks it)
+IGNORE_WATCH_S = 10.0  # the SD write after a tap: well under a second
+IGNORE_TOAST_MS = 5000  # config::kIgnoreToastMs: how long the Ignore's Undo is offered (test_lxctl checks it)
+
+
+def target_sets(log: list[str]) -> list[dict[tuple[str, int], tuple[int, int, int, int]]]:
+    """Every complete set of tap targets in `log`, in order: (kind, index) → (x, y, w, h), and for a level button
+    ("level", i) → (x, y, w, h, saved). A set is a "targets <n>" header and the n lines after it; one cut short (the
+    log ended, or another set began) isn't complete."""
+    sets: list[dict[tuple[str, int], tuple[int, int, int, int]]] = []
+    expected = -1
+    current: dict[tuple[str, int], tuple[int, int, int, int]] = {}
+    seen = 0
+    for line in log:
+        if m := CARD_TARGETS_HEADER.search(line):
+            expected, current, seen = int(m.group(1)), {}, 0
+        elif expected >= 0 and CARD_SET_LINE.search(line):
+            seen += 1
+            if m := CARD_TARGET_LOG.search(line):
+                current[(m.group(1), int(m.group(2)))] = tuple(int(v) for v in m.groups()[2:])  # type: ignore
+            elif m := CARD_LEVEL_LOG.search(line):  # (x, y, w, h, saved)
+                current[("level", int(m.group(1)))] = tuple(int(v) for v in m.groups()[1:])  # type: ignore
+        else:
+            continue
+        if expected >= 0 and seen == expected:
+            sets.append(current)
+            expected = -1
+    return sets
+
+
+def tap_targets(log: list[str]) -> dict[tuple[str, int], tuple[int, int, int, int]]:
+    """The card's tap targets now: the last complete set logged (none: empty)."""
+    sets = target_sets(log)
+    return sets[-1] if sets else {}
+
+
+def ignore_events(log: list[str]) -> list[tuple[str, str, str]]:
+    """Every ignore-list change in `log`: (key, on | off, written | unchanged | failed)."""
+    return [(m.group(1), m.group(2), m.group(3)) for line in log if (m := IGNORE_LOG.search(line))]
+
+
+def check_ignore_log(log: list[str]) -> str:
+    """V5's Ignore on the device, from the card's log: one change "on written", then its Undo "off written" for the
+    same key, nothing else to the list; and no write to Lexirise (no POST, PATCH or DELETE on /v1/vocabulary; a
+    saved word's Met before GET is expected). Returns the key; raises RuntimeError on the first broken rule."""
+    writes = [c for c in deck_calls(log) if c[1] in ("POST", "PATCH", "DELETE") and c[2].startswith("/v1/vocabulary")]
+    if writes:
+        raise RuntimeError(f"Ignore wrote to Lexirise: {writes}")
+    events = ignore_events(log)
+    if not events:
+        raise RuntimeError("no ignore-list change logged (a dev build? was the word already ignored?)")
+    key, on, result = events[0]
+    if (on, result) != ("on", "written"):
+        raise RuntimeError(f"the Ignore wasn't written: {events[0]}")
+    if len(events) != 2 or events[1] != (key, "off", "written"):
+        raise RuntimeError(f"expected the Ignore then its Undo, both written, got {events}")
+    return key
+
+
+def next_target_set(h: Harness, log: list[str], since: int,
+                    watch_s: float) -> dict[tuple[str, int], tuple[int, int, int, int]] | None:
+    """The first complete set of targets logged from log[since] on, reading more lines (appended to `log`) until one
+    completes or `watch_s` passes; None if none does."""
+    deadline = time.time() + watch_s
+    while True:
+        sets = target_sets(log[since:])
+        if sets:
+            return sets[0]
+        line = h.read_line(deadline)
+        if line is None:
+            return None
+        log.append(line)
+
+
+def tap_centre(h: Harness, target: tuple[int, int, int, int], seen: list[str]) -> None:
+    x, y, w, hh = target
+    h.command(f"TAP {x + w // 2} {y + hh // 2}", seen=seen)
+
+
+def ignore_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT, watch_s: float = IGNORE_WATCH_S) -> str:
+    """V5's Ignore on the device. A dev build (env:x4pro: the card logs its tap targets and its ignore-list
+    changes), a book open in the reader, upright portrait, Lexirise on; `at`: a word not ignored yet. Opens its card,
+    the detail view, the ⋯ tab, taps "Ignore this word", then the toast's Undo, and closes the card. Checked from the
+    log by check_ignore_log. Writes only the reader's /.lexirise/ignored.ini (the word on, then off again)."""
+    log: list[str] = []
+    h.command(f"LONG {at[0]} {at[1]}", seen=log)
+    log += collect_until(h, (CARD_OPENED, DEFINITION_OPENED), LEXI_CALL_TIMEOUT_S)
+    if DEFINITION_OPENED in log[-1]:
+        raise RuntimeError(f"StarDict answered the word at {at}, not Lexirise")
+
+    def synced() -> dict[tuple[str, int], tuple[int, int, int, int]]:
+        h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+        return tap_targets(log)
+
+    targets = synced()
+    if ("rank", 0) not in targets:
+        raise RuntimeError("the card logged no tap targets (a dev build, env:x4pro?)")
+    tap_centre(h, targets[("rank", 0)], log)  # the detail view
+    targets = synced()
+    tabs = [i for kind, i in targets if kind == "tab"]
+    if not tabs:
+        raise RuntimeError("the detail view logged no tabs")
+    tap_centre(h, targets[("tab", max(tabs))], log)  # ⋯, the last tab
+    targets = synced()
+    if ("action", IGNORE_ACTION) not in targets:
+        raise RuntimeError("the ⋯ tab logged no Ignore row")
+    # The toast's Undo lasts IGNORE_TOAST_MS: no SYNC (it could outlast that); the first set of targets drawn after
+    # the tap is the toast's, waited for no longer than the toast lasts, and its Undo is tapped at once.
+    since = len(log)
+    tap_centre(h, targets[("action", IGNORE_ACTION)], log)
+    toast = next_target_set(h, log, since, min(watch_s, IGNORE_TOAST_MS / 1000))
+    events = ignore_events(log)
+    key = events[0][0] if events else "<the word's key>"
+    if toast is None:
+        raise RuntimeError(f"no frame drawn after the Ignore tap (check /.lexirise/ignored.ini for {key})")
+    if ("undo", 0) not in toast:
+        raise RuntimeError(f"toast expired before the Undo tap: remove {key} from /.lexirise/ignored.ini")
+    tap_centre(h, toast[("undo", 0)], log)
+    if not any(e[1] == "off" for e in ignore_events(log)):
+        log += read_for(h, watch_s, lambda line: bool(IGNORE_LOG.search(line)) and " off " in line)
+    if not any(e[1] == "off" for e in ignore_events(log)):  # the Undo tap didn't land (or wasn't written)
+        raise RuntimeError(f"the Undo tap took nothing off the list: remove {key} from /.lexirise/ignored.ini")
+    h.command("HOME", seen=log)
+    log += collect_until(h, ("Exiting activity: LexiriseCard",), CARD_CLOSE_WAIT_S + LEXI_CALL_TIMEOUT_S)
+    key = check_ignore_log(log)
+    print(f"ignore-smoke OK: {key} on, then off")
+    return key
 
 
 SETTINGS_ROWS_LOG = re.compile(r"\[LXSET\] rows (\d+)")  # LexiriseSettingsActivity, dev builds
@@ -891,6 +1029,11 @@ def main() -> None:
                 deck_smoke(h, words)
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"deck-smoke FAILED: {e}")
+        elif c == "ignore-smoke":
+            try:
+                ignore_smoke(h, tuple(map(int, a.args[:2])) if len(a.args) >= 2 else READER_ON_TEXT)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"ignore-smoke FAILED: {e}")
         elif c == "card-gestures":
             try:
                 card_gestures(h)

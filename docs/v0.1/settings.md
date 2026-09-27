@@ -266,6 +266,17 @@ base_url=https://api.lexirise.app
   the first time a card opens in a book while this is on (`settings/BookTags`).
 - **`deck_per_book`** (V3): `1` gives each tagged book a Lexirise deck. The decks' ids are kept apart, in
   `/.lexirise/decks.ini` (`<ja|zh>:<slug>=<deck id>` lines, newest last, 100 at most; `deck/BookDeck`).
+- **Ignored words** (v0.2 V5, C17; no setting): the words the reader ignored from the card's ⋯ tab ("stop marking this
+  word on the page"; never sent to Lexirise), in `/.lexirise/ignored.ini`, one key per line, the ids first and then the forms, each part newest last:
+  `<ja|zh>:<entry key>` (`lookup::entryKeyOf`: the lemma's entry id, else the word's own), or
+  `<ja|zh>:~<dictionary form>` for a word Lexirise gave no entry id (one line, at most
+  `config::kIgnoredTextMaxBytes`, never cut). At most
+  `config::kIgnoredIdsMax` ids and `kIgnoredTextsMax` forms, the oldest forgotten past them; the file is capped at
+  `kIgnoredMaxBytes` (a larger one is unreadable and set aside as `.bad`); a line that isn't a key (another language,
+  a hand-written note) is skipped, and **not kept**: the next write drops it (unlike `config.ini`'s unknown keys).
+  Written crash-safely like the others (`SafeFile`), once per change, outside the card's render lock; read once, as a
+  card opens (`settings/IgnoredWords`). Why the key is the entry id: `../v0.2/00-overview.md` C17 "As built (V5,
+  local)".
 - **`reading` lives in `[ja]`** (it moved from `state.ini`, which is dropped).
 - Unknown keys are **kept** on rewrite, so a newer firmware's settings survive a downgrade.
 - A missing file means all defaults with no key, so Lexirise is effectively off until a key is set.

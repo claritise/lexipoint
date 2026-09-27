@@ -162,6 +162,17 @@ struct CardStrings {
   const char* actionDone[3] = {"Sentence saved as a card", "Ignored: won't be marked again", "Flagged for later"};
 };
 
+// The ⋯ tab's rows as touch targets (Target::Action's index): Undo save (only while saved), then CardStrings::actions
+// in order, each keeping its id whether or not Undo save is shown. actions[] and actionDone[] are indexed by
+// id - SaveSentence (actionIndex).
+struct ActionId {
+  enum : int { UndoSave = 0, SaveSentence, Ignore, LookUpLater };
+};
+constexpr int actionIndex(const int id) { return id - ActionId::SaveSentence; }
+static_assert(actionIndex(ActionId::LookUpLater) + 1 == static_cast<int>(std::size(CardStrings{}.actions)) &&
+                  std::size(CardStrings{}.actions) == std::size(CardStrings{}.actionDone),
+              "an id per ⋯ row after Undo save");
+
 // The tabs for a language, ⋯ last.
 int tabCount(Language language);
 bool isActionsTab(Language language, int tab);

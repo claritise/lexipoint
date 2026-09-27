@@ -14,6 +14,7 @@ add_executable(LexiriseCardTest
   ${REPO_ROOT}/src/lexirise/card/LiveSource.cpp
   ${REPO_ROOT}/src/lexirise/deck/BookDeck.cpp
   ${REPO_ROOT}/src/lexirise/settings/BookTags.cpp
+  ${REPO_ROOT}/src/lexirise/settings/IgnoredWords.cpp
   ${REPO_ROOT}/src/lexirise/settings/SafeFile.cpp
   ${REPO_ROOT}/src/lexirise/text/BookSlug.cpp
   ${REPO_ROOT}/src/lexirise/card/CardSession.cpp

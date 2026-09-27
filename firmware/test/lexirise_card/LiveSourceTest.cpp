@@ -1654,7 +1654,7 @@ TEST(LiveSteps, ClosingWhileTheNextSentenceLoadsStillSendsTheSaves) {
   const Hit learning{Target::Level, 1, {}};
   for (const LevelChange& ch : c.tap(&learning, 2000).changes) source.queue(ch);
   c.step(+1, 2100);  // the next sentence starts loading
-  while (source.hasPendingWrites()) source.apply(source.fetch(2200, /*closing=*/true));
+  while (source.hasPendingWrites()) source.apply(source.fetch(2200, /*closing=*/true), 2200);
   EXPECT_EQ(rig.api.analyzed.size(), 1u);  // closing skips the next sentence's analysis
   EXPECT_EQ(rig.api.written.size(), 1u);
 }
@@ -2475,7 +2475,7 @@ TEST(LiveItem, NeverAskedAsTheCardCloses) {
   card.source.queue({kHon, Level::Fresh, Level::Known, 0});
   const LiveSource::Fetched sent = card.source.fetch(0, /*closing=*/true);
   EXPECT_EQ(sent.kind, LiveSource::Fetched::Kind::Write);
-  card.source.apply(sent);
+  card.source.apply(sent, 0);
   EXPECT_TRUE(card.rig.api.items.empty());
 }
 
@@ -2674,4 +2674,573 @@ TEST(LiveItem, RemovingTheUsersOwnItemKeepsItsMetBefore) {
   EXPECT_EQ(card.source.savedLevel(kHon), Level::None);
   EXPECT_TRUE(card.source.word(kHon).metBefore);
   EXPECT_EQ(card.rig.api.items.size(), 1u);
+}
+
+TEST(LiveItem, ARefusalsRetryTimeStartsWhenTheAnswerCame) {
+  // The call blocked 5 s (WiFi, TLS) before the 429: the retry time counts from its answer, as AccessPolicy's does.
+  lexipoint::api::ApiResponse limited = apiFailure(ApiError::RateLimited);
+  limited.retryAfterS = 30;
+  ItemCard card(0, 2, {limited, apiOk(R"({"notes":"古い本を読む。"})")});
+  card.session.apply(card.session.fetch(0), 0);  // A
+  card.session.apply(card.session.fetch(1), 1);  // B
+  LiveSource::Fetched refused = card.session.fetch(2);
+  ASSERT_EQ(refused.kind, LiveSource::Fetched::Kind::Item);
+  card.session.apply(std::move(refused), 5000);
+  EXPECT_FALSE(card.session.hasWork(34999));
+  EXPECT_TRUE(card.session.hasWork(35000));
+}
+
+// C17 Ignore (V5): the reader's own list ("stop marking this word on the page"), never Lexirise.
+
+namespace {
+
+constexpr int kIgnore = ActionId::Ignore;
+constexpr int kYomuWord = 4;  // 読む's word on the card (Saving's tapped word: not saved)
+constexpr const char* kIgnoredUndo = "Ignored: won't be marked again  \xC2\xB7  Undo";
+
+// The card's ⋯ tab, and a tap on its Ignore row.
+Outcome ignoreRow(Saving& s) {
+  if (s.c.state().view != View::Expanded) s.tap(Target::RankRow);
+  s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  return s.tap(Target::Action, kIgnore);
+}
+
+// The card on 本 (word 2: saved as 77, fresh), its phase B and item (offline: none) done.
+void onHon(Saving& s) {
+  s.step(-1);
+  s.step(-1);
+  s.drain();
+  ASSERT_EQ(s.c.currentWord().word, "本");
+}
+
+// The activity's write of the card's ignores (CardSession::saveIgnores), the lock a plain call here.
+CardSession::IgnoresSaved save(Saving& s, const Outcome& o, const lexipoint::IgnoredWordStore& store) {
+  EXPECT_EQ(s.source.ignoredStore(), &store);  // the store the card was given is the one written
+  bool locked = false;
+  const CardSession::IgnoresSaved saved = s.session.saveIgnores(o, s.now, [&locked](auto&& f) {
+    locked = true;
+    f();
+  });
+  if (saved.failed) EXPECT_TRUE(locked);  // taken back under the lock (an eviction handed over takes it too)
+  return saved;
+}
+
+// Every call the card made to Lexirise.
+size_t calls(const FakeApi& api) {
+  return api.analyzed.size() + api.analyzedWords.size() + api.looked.size() + api.written.size() + api.decked.size() +
+         api.items.size();
+}
+
+}  // namespace
+
+TEST(LiveIgnore, AnUnsavedWordGoesOnTheListAtOnceAndNothingIsSent) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  const size_t before = calls(s.rig.api);
+  const Outcome o = ignoreRow(s);
+  ASSERT_EQ(o.ignores.size(), 1u);
+  EXPECT_EQ(o.ignores[0].word, kYomuWord);
+  EXPECT_TRUE(o.ignores[0].ignored);
+  EXPECT_TRUE(o.changes.empty());
+  EXPECT_EQ(s.c.state().toast, kIgnoredUndo);
+  EXPECT_TRUE(s.c.state().toastUndo);
+  EXPECT_EQ(s.c.state().level, Level::None);  // still not saved: nothing in Lexirise changes
+  EXPECT_TRUE(s.source.ignored(kYomuWord));   // for V9's marks
+  EXPECT_FALSE(save(s, o, store).failed);
+  EXPECT_EQ(files.files[config::kIgnoredPath], "ja:6\n");  // 読む's lemma entry
+  s.drain();
+  s.now += config::kToastMs * 10;
+  s.drain();
+  EXPECT_EQ(calls(s.rig.api), before);  // no call to Lexirise, then or later
+}
+
+TEST(LiveIgnore, ASavedWordKeepsItsLevelAndLexiriseIsntTouched) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  onHon(s);
+  const size_t before = calls(s.rig.api);
+  save(s, ignoreRow(s), store);
+  EXPECT_EQ(s.c.state().level, Level::Fresh);
+  EXPECT_TRUE(s.source.ignored(kHon));
+  EXPECT_EQ(files.files[config::kIgnoredPath], "ja:3\n");
+  s.now += config::kToastMs * 10;
+  s.drain();
+  EXPECT_EQ(calls(s.rig.api), before);
+  EXPECT_TRUE(s.rig.api.written.empty());
+}
+
+TEST(LiveIgnore, UndoTakesItOffTheList) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  save(s, ignoreRow(s), store);
+  const Outcome o = s.tap(Target::ToastUndo);
+  ASSERT_EQ(o.ignores.size(), 1u);
+  EXPECT_FALSE(o.ignores[0].ignored);
+  EXPECT_TRUE(s.c.state().toast.empty());
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+  EXPECT_FALSE(save(s, o, store).failed);
+  EXPECT_EQ(files.files[config::kIgnoredPath], "");
+  EXPECT_TRUE(s.rig.api.written.empty());
+}
+
+TEST(LiveIgnore, AWordAlreadyIgnoredOnlySaysSo) {
+  // On the list from an earlier card: the approved card shows nothing else (no row, no state word).
+  lexipoint::fakes::FakeFiles files;
+  files.files[config::kIgnoredPath] = "ja:6\n";
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  EXPECT_TRUE(s.source.ignored(kYomuWord));
+  const Outcome o = ignoreRow(s);
+  EXPECT_TRUE(o.ignores.empty());
+  EXPECT_EQ(s.c.state().toast, "Ignored: won't be marked again");
+  EXPECT_FALSE(s.c.state().toastUndo);
+  EXPECT_FALSE(s.source.ignored(kHon));  // other words aren't
+}
+
+TEST(LiveIgnore, TheSameEntryElsewhereFollowsAndALevelChangeKeepsIt) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Rig rig;
+  TextLine line;
+  line.tokens = {"本", "と", "本", "。"};
+  line.startsParagraph = true;
+  rig.model.lines = {line};
+  rig.page.lines = {{100, {{"本", 20, 26}, {"と", 46, 26}, {"本", 72, 26}, {"。", 98, 26}}}};
+  rig.api.analyzeReplies = {
+      apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":0,"charEnd":1,"entryId":3,"lemmaEntryId":3},)"
+            R"({"word":"と","isWordLike":true,"charStart":1,"charEnd":2,"entryId":8},)"
+            R"({"word":"本","isWordLike":true,"charStart":2,"charEnd":3,"entryId":3,"lemmaEntryId":3}]})")};
+  rig.api.lookupReplies = {apiOk(R"({"word":"本","translations":[{"translation":"book"}]})")};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":5}})")};
+  LiveSource source(rig.api, rig.tap(0, 0), rig.page);
+  source.setIgnoredWords(store);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance(1);
+  source.advance(2);
+  c.sourceChanged(2);
+  const Hit ignore{Target::Action, kIgnore, {}};
+  EXPECT_EQ(c.tap(&ignore, 3).ignores.size(), 1u);
+  EXPECT_TRUE(source.ignored(0));
+  EXPECT_TRUE(source.ignored(2));  // one entry
+  EXPECT_FALSE(source.ignored(1));
+  const Hit tracked{Target::Level, 0, {}};  // a save: Lexirise as always, the ignore stays the reader's
+  for (const LevelChange& ch : c.tap(&tracked, 10).changes) source.queue(ch);
+  while (source.hasWork(10000)) source.advance(10000);
+  ASSERT_EQ(rig.api.written.size(), 1u);
+  EXPECT_EQ(rig.api.written[0].method, lexipoint::net::Method::Post);
+  EXPECT_EQ(rig.api.written[0].body.find("suspended"), std::string::npos);
+  EXPECT_TRUE(source.ignored(2));
+}
+
+TEST(LiveIgnore, AWordWithoutAnEntryIdIsKeptByItsForm) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Rig rig;
+  rig.api.analyzeReplies = {apiOk(R"({"occurrences":[{"word":"彼","isWordLike":true,"charStart":0,"charEnd":1},)"
+                                  R"({"word":"は","isWordLike":true,"charStart":1,"charEnd":2,"entryId":2}]})")};
+  LiveSource source(rig.api, rig.tap(0, 0), rig.page);
+  source.setIgnoredWords(store);
+  source.advance(0);
+  ASSERT_GE(source.wordCount(), 1);
+  const auto key = source.ignoreKey(0);
+  ASSERT_TRUE(key);
+  EXPECT_EQ(key->entryId, 0u);
+  EXPECT_EQ(key->text, "彼");
+  EXPECT_TRUE(source.setIgnored(0, true));
+  EXPECT_TRUE(source.ignored(0));
+}
+
+TEST(LiveIgnore, ACardSeesTheListAsItOpenedAndItsOwnChanges) {
+  // Ignored on one card, it's ignored on the next (the file, as after a reboot).
+  lexipoint::fakes::FakeFiles files;
+  {
+    lexipoint::IgnoredWordStore store(files);
+    Saving s;
+    s.source.setIgnoredWords(store);
+    EXPECT_FALSE(save(s, ignoreRow(s), store).failed);
+  }
+  lexipoint::IgnoredWordStore rebooted(files);
+  Saving next;
+  next.source.setIgnoredWords(rebooted);
+  EXPECT_TRUE(next.source.ignored(kYomuWord));
+}
+
+TEST(LiveIgnore, AListThatCantBeWrittenTakesTheIgnoreBack) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  files.failWriteOf = config::kIgnoredTmpPath;
+  const Outcome o = ignoreRow(s);
+  EXPECT_EQ(o.effect, Effect::Redraw);
+  const CardSession::IgnoresSaved saved = save(s, o, store);
+  EXPECT_TRUE(saved.failed);
+  EXPECT_TRUE(saved.redraw);
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_FALSE(s.c.state().toastUndo);
+  EXPECT_TRUE(s.rig.api.written.empty());
+}
+
+TEST(LiveIgnore, AnIgnoreThenCloseInOneBatchIsStillWritten) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  s.tap(Target::RankRow);
+  s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  for (const Hit& h : s.targets.at(s.now)->hits) {
+    if (h.target == Target::Action && h.index == kIgnore) s.input.tap(h.rect.x + 1, h.rect.y + 1, ++s.now);
+  }
+  s.input.home(++s.now);
+  s.input.home(++s.now);
+  const Outcome o = s.session.handleInput(s.now);
+  EXPECT_EQ(o.effect, Effect::Close);
+  EXPECT_FALSE(save(s, o, store).failed);
+  EXPECT_EQ(files.files[config::kIgnoredPath], "ja:6\n");
+  EXPECT_FALSE(s.session.hasPendingWrites());
+}
+
+TEST(LiveIgnore, LexiriseSuspendedIsntTheReadersIgnore) {
+  // A word suspended in the Lexirise app (its item says so; not read): the card's Ignore is the local list.
+  ItemCard card(0, 2, {apiOk(R"({"notes":null,"suspended":true})")});
+  card.drain(0);
+  EXPECT_EQ(card.rig.api.items.size(), 1u);
+  EXPECT_FALSE(card.source.ignored(kHon));
+}
+
+TEST(LiveIgnore, AnUndoWhoseWriteFailsLeavesItIgnored) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  save(s, ignoreRow(s), store);
+  files.failWriteOf = config::kIgnoredTmpPath;
+  const CardSession::IgnoresSaved saved = save(s, s.tap(Target::ToastUndo), store);
+  EXPECT_TRUE(saved.failed);
+  EXPECT_TRUE(s.source.ignored(kYomuWord));  // still on the list, as the file says
+  EXPECT_TRUE(store.contains({Language::Japanese, 6, {}}));
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_FALSE(s.c.state().toastUndo);
+}
+
+TEST(LiveIgnore, AFailureAsTheCardClosesNeedsNoRedraw) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  files.failWriteOf = config::kIgnoredTmpPath;
+  Outcome o = ignoreRow(s);
+  o.effect = Effect::Close;  // as when a close came in the same batch
+  const CardSession::IgnoresSaved saved = save(s, o, store);
+  EXPECT_TRUE(saved.failed);
+  EXPECT_FALSE(saved.redraw);
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+}
+
+TEST(LiveIgnore, AWordWithNoUsableKeyCantBeIgnored) {
+  // No entry id and a form over kIgnoredTextMaxBytes (never cut): "Save failed", nothing to write.
+  Rig rig;
+  const std::string longWord(config::kIgnoredTextMaxBytes + 1, 'x');
+  rig.api.analyzeReplies = {
+      apiOk(R"({"occurrences":[{"word":")" + longWord + R"(","isWordLike":true,"charStart":0,"charEnd":1}]})")};
+  LiveSource source(rig.api, rig.tap(0, 0), rig.page);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance(0);
+  c.sourceChanged(0);
+  ASSERT_EQ(source.wordCount(), 1);
+  EXPECT_FALSE(source.ignoreKey(0));
+  const Hit ignore{Target::Action, ActionId::Ignore, {}};
+  const Outcome o = c.tap(&ignore, 1);
+  EXPECT_TRUE(o.ignores.empty());
+  EXPECT_EQ(c.state().toast, "Save failed");
+  EXPECT_FALSE(source.ignored(0));
+}
+
+TEST(LiveIgnore, AnIgnoreReplacesASaveFailedRetry) {
+  // Decided: like any later toast (a level tap's too), the Ignore's replaces "Save failed · Retry": its Retry goes.
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  s.level(1);
+  s.drain();
+  ASSERT_EQ(s.c.state().toast, "Save failed  \xC2\xB7  Retry");
+  ignoreRow(s);
+  EXPECT_EQ(s.c.state().toast, kIgnoredUndo);
+  s.tap(Target::ToastUndo);  // the ignore's Undo, not the save's Retry
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+  s.drain();
+  EXPECT_EQ(s.rig.api.written.size(), 1u);  // the failed POST only: no retry sent
+}
+
+TEST(LiveIgnore, AnUndoAfterSteppingAwayDoesNothing) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  save(s, ignoreRow(s), store);
+  s.step(-1);  // the toast (and its Undo) belonged to 読む
+  EXPECT_TRUE(s.c.state().toast.empty());
+  const Hit undo{Target::ToastUndo, 0, {}};
+  EXPECT_TRUE(s.c.tap(&undo, ++s.now).ignores.empty());
+  EXPECT_TRUE(s.source.ignored(kYomuWord));
+}
+
+TEST(LiveIgnore, AnIgnoreAndItsUndoInOneBatchWriteNothing) {
+  // Decided: only each word's last change in a batch is written, so a first write that would have failed never
+  // runs, the end state matches the file, and no "Save failed" shows for a change the user took back. (On the
+  // device the Undo needs the toast's frame, so both rarely come in one batch; saveIgnores doesn't count on it.)
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  const Hit ignore{Target::Action, kIgnore, {}};
+  const Hit undo{Target::ToastUndo, 0, {}};
+  Outcome batch = s.c.tap(&ignore, ++s.now);
+  const Outcome undone = s.c.tap(&undo, ++s.now);
+  batch.ignores.insert(batch.ignores.end(), undone.ignores.begin(), undone.ignores.end());
+  ASSERT_EQ(batch.ignores.size(), 2u);
+  files.failWriteOf = config::kIgnoredTmpPath;  // the ignore's write would fail
+  EXPECT_FALSE(save(s, batch, store).failed);
+  EXPECT_EQ(files.writes, 0);
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+  EXPECT_TRUE(s.c.state().toast.empty());
+}
+
+TEST(LiveIgnore, TwoWordsInOneBatchWithOneWriteFailing) {
+  // Written in tap order; the fake fails one write, so 読む's (the first) fails and is taken back; 本's lands.
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  const Hit ignore{Target::Action, kIgnore, {}};
+  Outcome batch = s.c.tap(&ignore, ++s.now);  // 読む
+  s.c.step(-1, ++s.now);
+  s.c.step(-1, ++s.now);  // 本
+  ASSERT_EQ(s.c.word(), kHon);
+  const Outcome hon = s.c.tap(&ignore, ++s.now);
+  batch.ignores.insert(batch.ignores.end(), hon.ignores.begin(), hon.ignores.end());
+  ASSERT_EQ(batch.ignores.size(), 2u);
+  files.failWriteOf = config::kIgnoredTmpPath;
+  const int writesBefore = files.writes;
+  EXPECT_TRUE(save(s, batch, store).failed);
+  EXPECT_TRUE(s.source.ignored(kHon));
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+  EXPECT_EQ(files.files[config::kIgnoredPath], "ja:3\n");
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_EQ(files.writes - writesBefore, 2);
+}
+
+TEST(LiveIgnore, AFailedIgnoresToastSurvivesAStepInTheSameBatch) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  files.failWriteOf = config::kIgnoredTmpPath;
+  save(s, ignoreRow(s), store);
+  ASSERT_EQ(s.c.state().toast, "Save failed");
+  s.step(-1);  // like a failed save's toast, it stays for its time
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+}
+
+TEST(LiveIgnore, WithoutAListTheCardCantIgnore) {
+  Saving s;  // given no store
+  EXPECT_EQ(s.source.ignoredStore(), nullptr);
+  const Outcome o = ignoreRow(s);
+  EXPECT_TRUE(o.ignores.empty());
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+}
+
+TEST(LiveIgnore, ADoubleTapKeepsTheUndo) {
+  // A mis-tap mustn't turn the Undo into the plain toast (there's no un-ignore after it): in one batch and in two.
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  s.tap(Target::RankRow);
+  s.tap(Target::Tab, tabCount(Language::Japanese) - 1);  // the ⋯ tab on screen
+  const Hit ignore{Target::Action, kIgnore, {}};
+  Outcome batch = s.c.tap(&ignore, ++s.now);
+  const Outcome again = s.c.tap(&ignore, ++s.now);  // the same batch
+  EXPECT_EQ(again.effect, Effect::None);
+  EXPECT_TRUE(again.ignores.empty());
+  EXPECT_TRUE(s.c.state().toastUndo);
+  EXPECT_FALSE(save(s, batch, store).failed);
+  s.show();
+  const Outcome later = s.tap(Target::Action, kIgnore);  // the next batch, on the toast's frame
+  EXPECT_TRUE(later.ignores.empty());
+  EXPECT_TRUE(s.c.state().toastUndo);
+  EXPECT_EQ(s.c.state().toast, kIgnoredUndo);
+  EXPECT_EQ(s.tap(Target::ToastUndo).ignores.size(), 1u);  // and the Undo still works
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+}
+
+TEST(LiveIgnore, TheKeyIsPerPassAKnownLimit) {
+  // なれない: ‹なれる› in one pass, ‹なる› in the other (lexirise-api-notes.md): two entry keys, so an ignore under one
+  // doesn't cover the other (C17 As built's known limits).
+  lexipoint::api::Occurrence fast;
+  fast.entryId = 20;
+  fast.lemmaEntryId = 21;  // なれる
+  lexipoint::api::Occurrence refined = fast;
+  refined.lemmaEntryId = 22;  // なる
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  const auto key = [](const lexipoint::api::Occurrence& occ) {
+    return *lexipoint::ignoredKeyFor(Language::Japanese, lexipoint::lookup::entryKeyOf(occ), "なる");
+  };
+  EXPECT_EQ(store.write(key(fast), true), lexipoint::IgnoredWordStore::Write::Written);
+  EXPECT_TRUE(store.contains(key(fast)));
+  EXPECT_FALSE(store.contains(key(refined)));
+}
+
+TEST(LiveIgnore, TwoIgnoresInOneBatchAtTheCapThenUndo) {
+  // Written in tap order (the file stays newest last); the toast's Undo (本's, the newest) brings back exactly the
+  // key 本's ignore pushed out.
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWords full;
+  for (uint32_t id = 1000; id < 1000 + config::kIgnoredIdsMax; id++) full.add({Language::Japanese, id, {}});
+  files.files[config::kIgnoredPath] = lexipoint::serializeIgnored(full);
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  s.tap(Target::RankRow);
+  s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  const Hit ignore{Target::Action, kIgnore, {}};
+  Outcome batch = s.c.tap(&ignore, ++s.now);  // 読む
+  s.c.step(-1, ++s.now);
+  s.c.step(-1, ++s.now);  // 本
+  ASSERT_EQ(s.c.word(), kHon);
+  const Outcome hon = s.c.tap(&ignore, ++s.now);
+  batch.ignores.insert(batch.ignores.end(), hon.ignores.begin(), hon.ignores.end());
+  EXPECT_FALSE(save(s, batch, store).failed);
+  const std::string text = files.files[config::kIgnoredPath];
+  EXPECT_EQ(text.substr(text.size() - std::string("ja:6\nja:3\n").size()), "ja:6\nja:3\n");  // 読む, then 本
+  EXPECT_FALSE(store.contains({Language::Japanese, 1000, {}}));                              // 読む pushed out 1000
+  EXPECT_FALSE(store.contains({Language::Japanese, 1001, {}}));                              // 本 pushed out 1001
+  s.show();
+  const Outcome undo = s.tap(Target::ToastUndo);
+  ASSERT_EQ(undo.ignores.size(), 1u);
+  ASSERT_TRUE(undo.ignores[0].restore);
+  EXPECT_EQ(undo.ignores[0].restore->entryId, 1001u);
+  EXPECT_FALSE(save(s, undo, store).failed);
+  EXPECT_TRUE(store.contains({Language::Japanese, 1001, {}}));  // back, as oldest
+  EXPECT_FALSE(store.contains({Language::Japanese, 3, {}}));
+  EXPECT_TRUE(store.contains({Language::Japanese, 6, {}}));
+  EXPECT_EQ(files.files[config::kIgnoredPath].substr(0, 10), "ja:1001\nja");
+}
+
+namespace {
+
+// A full list (ids 1000…1999, 1000 the oldest), a card on 読む given it, the ⋯ tab on screen.
+struct FullList {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store{files};
+  Saving s;
+  FullList() {
+    lexipoint::IgnoredWords full;
+    for (uint32_t id = 1000; id < 1000 + config::kIgnoredIdsMax; id++) full.add({Language::Japanese, id, {}});
+    files.files[config::kIgnoredPath] = lexipoint::serializeIgnored(full);
+    s.source.setIgnoredWords(store);
+    s.tap(Target::RankRow);
+    s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  }
+  bool has(const uint32_t id) { return store.contains({Language::Japanese, id, {}}); }
+  size_t size() { return store.list().size(); }
+  // One batch of taps (I: Ignore this word, U: the toast's Undo), then its write.
+  void batch(const std::string& taps) {
+    const Hit ignore{Target::Action, kIgnore, {}};
+    const Hit undo{Target::ToastUndo, 0, {}};
+    Outcome all;
+    for (const char t : taps) {
+      const Outcome o = s.c.tap(t == 'I' ? &ignore : &undo, ++s.now);
+      all.ignores.insert(all.ignores.end(), o.ignores.begin(), o.ignores.end());
+    }
+    EXPECT_FALSE(save(s, all, store).failed) << taps;
+  }
+};
+
+}  // namespace
+
+TEST(LiveIgnore, AnUndoThenIgnoreAgainInOneBatchAtTheCapKeepsTheOldest) {
+  FullList f;
+  f.batch("I");  // 読む (6) in, 1000 out
+  ASSERT_FALSE(f.has(1000));
+  f.batch("UI");  // its Undo brings 1000 back, and the Ignore again pushes it out again, for its own Undo
+  EXPECT_TRUE(f.has(6));
+  EXPECT_FALSE(f.has(1000));
+  EXPECT_EQ(f.size(), config::kIgnoredIdsMax);
+  f.batch("U");
+  EXPECT_FALSE(f.has(6));
+  EXPECT_TRUE(f.has(1000));  // back, as oldest
+  EXPECT_EQ(f.size(), config::kIgnoredIdsMax);
+  EXPECT_EQ(f.files.files[config::kIgnoredPath].substr(0, 8), "ja:1000\n");
+}
+
+TEST(LiveIgnore, EveryShortBatchAtTheCapLosesNoWord) {
+  // Any sequence of Ignore / Undo taps, in one batch or two, on a full list: never a word lost or one too many; the
+  // word and the key it pushed out are never both on the list, and the card agrees with the file.
+  for (const std::string& first : {"", "I"}) {
+    for (int length = 1; length <= 4; length++) {
+      for (int bits = 0; bits < (1 << length); bits++) {
+        std::string taps;
+        for (int i = 0; i < length; i++) taps += (bits >> i) & 1 ? 'U' : 'I';
+        FullList f;
+        if (!first.empty()) f.batch(first);
+        f.batch(taps);
+        const std::string at = first + "|" + taps;
+        EXPECT_EQ(f.size(), config::kIgnoredIdsMax) << at;
+        EXPECT_NE(f.has(6), f.has(1000)) << at;
+        EXPECT_EQ(f.s.source.ignored(kYomuWord), f.has(6)) << at;
+        if (f.s.c.state().toastUndo) {  // its Undo, in a later batch, still brings everything back
+          f.batch("U");
+          EXPECT_FALSE(f.has(6)) << at;
+          EXPECT_TRUE(f.has(1000)) << at;
+          EXPECT_EQ(f.size(), config::kIgnoredIdsMax) << at;
+        }
+      }
+    }
+  }
+}
+
+TEST(LiveIgnore, TheIgnoresUndoLastsLongerThanASaves) {
+  // config::kIgnoreToastMs: an ignore can't be undone on the card once its toast is gone; a save keeps kToastMs.
+  static_assert(config::kIgnoreToastMs > config::kToastMs, "the Ignore's Undo is offered longer");
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  const Hit ignore{Target::Action, kIgnore, {}};
+  const unsigned long at = ++s.now;
+  s.c.tap(&ignore, at);
+  s.c.tick(at + config::kIgnoreToastMs - 100);  // 4.9 s: still there
+  EXPECT_TRUE(s.c.state().toastUndo);
+  EXPECT_EQ(s.c.state().toast, kIgnoredUndo);
+  s.c.tick(at + config::kIgnoreToastMs);  // 5 s: gone
+  EXPECT_TRUE(s.c.state().toast.empty());
+  EXPECT_FALSE(s.c.state().toastUndo);
+  // A save's toast keeps kToastMs.
+  const Hit learning{Target::Level, 1, {}};
+  const unsigned long saved = at + config::kIgnoreToastMs + 10;
+  s.c.tap(&learning, saved);
+  s.c.tick(saved + config::kToastMs - 1);
+  EXPECT_TRUE(s.c.state().toastUndo);
+  s.c.tick(saved + config::kToastMs);
+  EXPECT_TRUE(s.c.state().toast.empty());
+  // The plain already-ignored toast and "Save failed" aren't the Ignore's Undo: they keep their own times.
+  const unsigned long again = saved + config::kToastMs + 10;
+  s.c.tap(&ignore, again);
+  EXPECT_EQ(s.c.state().toast, "Ignored: won't be marked again");
+  s.c.tick(again + config::kToastMs);
+  EXPECT_TRUE(s.c.state().toast.empty());
 }

@@ -37,7 +37,7 @@
 | C14 | Card: "met before" (your notes + tags on saved words) | **Yes** | v0.1.x | Tiny | ~~`stateByEntryId.notes`~~ `GET /v1/vocabulary/{id}` (2026-09-27, below) |
 | C15 | Card: other readings (`also tsuitachi`) | **Yes** | v0.1.x | Tiny | `multipleReadings` |
 | C16 | Card: explain the conjugation (te-form, causative-passive…) | **Yes** | v0.1.x | Small | Surface + lemma, on-device rules |
-| C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, `PATCH suspended`, C3 |
+| C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, ~~`PATCH suspended`~~ (Superseded 2026-09-27: Ignore is a list on the reader, C17 "As built (V5, local)"), C3 |
 | C11 | SRS review app on the device | **Yes, with offline review** (claritise, 2026-09-25); the study-session API is live | v0.3 | Medium–large | Client, card UI |
 | C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/analyze/context`**, live 2026-09-25, returns a reading | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
@@ -190,7 +190,10 @@ need a second deck made and kept, for no gain yet.
 - **Measured:** the deck list's real entries are unseen (the account had none; read-only probes only), so the
   device check (V3's gate) confirms the shape; an unreadable deck answer's first bytes are logged (`LXDECK`) for
   it. Every build logs each deck step as it starts (`[LXDECK] step <kind> <key>`, one to three lines per book per
-  boot); only dev builds log the card's level buttons (`[LXCARD] level …`), for `lxctl deck-smoke`. See `../reference/lexirise-api-notes.md`, "Decks".
+  boot); only dev builds log the card's level buttons (`[LXCARD] level …`), for `lxctl deck-smoke`; since V5 they are part of
+  the card's target sets (`[LXCARD] targets <n>`, then n lines, `level …` and `target …`, the latter for
+  `lxctl ignore-smoke`), logged again as a whole, once the frame is on screen, whenever any target changes. See
+  `../reference/lexirise-api-notes.md`, "Decks".
 
 ## C5. Difficulty preview
 
@@ -376,12 +379,13 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
     failure or an unreadable answer leaves "First time you've met this word." with no error and isn't asked again on
     that card (an unreadable one's start is logged). A refusal (a 429's back-off or a rejected key, usually refused
     by `AccessPolicy` without the network) isn't an answer: no item is asked until its retry time (the 429's wait,
-    else `kRetryAfterDefaultS`), then asked again. **Never** for an unsaved word, a word the card isn't on, an item
-    saved on this card (its sentence and tags are known: V4's copies above, no call), an id that isn't plain, after
-    phase B found Lexirise out of reach, or as the card closes. **The sentence:** the item's `notes` (what Lexipoint's
-    save writes); **decided:** when those are empty, its `sentence_text` (a word saved in the Lexirise app carries
-    its sentence there), shown like a note: the same-sentence rule and the underline, and a book title only from a
-    `book:<slug>` recorded here. C14 is the word met in another context, and nothing in `../v0.1/popup-ui.md` limits
+    else `kRetryAfterDefaultS`, counted from when the answer came, `LiveSource::apply(fetched, nowMs)`, as
+    `AccessPolicy` counts its back-off: v0.2 V5), then asked again. **Never** for an unsaved word, a word the card isn't
+    on, an item saved on this card (its sentence and tags are known: V4's copies above, no call), an id that isn't
+    plain, after phase B found Lexirise out of reach, or as the card closes. **The sentence:** the item's `notes` (what
+    Lexipoint's save writes); **decided:** when those are empty, its `sentence_text` (a word saved in the Lexirise app
+    carries its sentence there), shown like a note: the same-sentence rule and the underline, and a book title only from
+    a `book:<slug>` recorded here. C14 is the word met in another context, and nothing in `../v0.1/popup-ui.md` limits
     it to Lexipoint's own saves.
 
     The rule, one principle a side: the page's cut flags (`truncatedLeft` / `truncatedRight`) are trusted and its
@@ -490,8 +494,93 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
     (いる), so 居ろ is "imperative", though for おる (the same kanji, godan) it's the casual volitional (the lemma's
     reading isn't used).
 - **C17 Actions** (the detail view's last tab; ▲▼ picks, ⏎ runs. Also on the card, "more" moves to **hold ⏎**, since ▲▼ now changes the level): **Undo save** (`DELETE /v1/vocabulary/{id}`, which
-  resets dictionary-backed items to unknown), **Ignore** (`PATCH suspended: true`, for names and noise,
-  and it removes A1 marks), and **Save sentence** (C3).
+  resets dictionary-backed items to unknown), **Ignore** (~~`PATCH suspended: true`,~~ (Superseded 2026-09-27: a list
+  on the reader, never Lexirise, "As built (V5, local)" below) for names and noise, and it removes A1 marks), and
+  **Save sentence** (C3).
+  - ~~**As built (V5, 2026-09-27: Ignore)**, on the measured behaviour (`../reference/lexirise-api-notes.md`,~~
+    ~~"Suspended (Ignore)"). The ⋯ tab's "Ignore this word" row (action 2) is a `LevelChange` like a save's, with~~
+    ~~ignored before and after (`CardController::ignore`, `LiveSource::send`): the toast "Ignored: won't be marked~~
+    ~~again · Undo" (the reference's words and the save toast's Undo, both existing strings), sent after the Undo~~
+    ~~window (`config::kToastMs`); an Undo inside it sends nothing (the queued change merges back to nothing).~~
+    ~~**A saved word:** `PATCH /v1/vocabulary/{id}` `{"suspended": true}`; its level stays. **An unsaved word** (a~~
+    ~~name): saved at T (`config::kIgnoreSaveProficiency`, the full D9 POST with the settings' and book tags, waiting~~
+    ~~for its translation like any save), then `PATCH suspended: true`, in one write; the card shows T at once, and~~
+    ~~every copy of the word on the card follows (one entry). **Undo after it was sent** (the controller and source~~
+    ~~allow it, though the activity never lets the toast outlive the window): `PATCH suspended: false`, then for a~~
+    ~~word saved only to be ignored `DELETE` and the clear, as a save's removal (DELETE keeps `suspended`). **⋯ Undo~~
+    ~~save on an ignored word** un-ignores it first (`suspended: false`, then `DELETE`): otherwise a later save of it~~
+    ~~would stay ignored. A level change (T L F K) keeps a word ignored. **Failures** go the save's way ("Save failed~~
+    ~~· Retry", the key and rate-limit toasts; closing sends it or counts it unsent): the word goes back to where~~
+    ~~Lexirise is, and when the POST went through but the PATCH didn't, that is saved at T, not ignored (Lexirise has~~
+    ~~it so); Retry then sends the PATCH alone. **Known already:** the saved item (V4b's `GET`, only for a saved word~~
+    ~~the card is on) has `suspended` (`api::parseSavedItem`; `true` only for JSON `true`); `analyze/text` never~~
+    ~~shows it, so until the item comes the card doesn't know. A word known to be ignored: "Ignore this word" shows~~
+    ~~the toast without Undo and sends nothing.~~
+
+    ~~**How it shows: nothing new on the card.** The approved reference (`../v0.1/reference/card-reference.html`)~~
+    ~~answers Ignore with its toast and changes nothing else, so an ignored word looks like any saved word at its~~
+    ~~level (a word saved to be ignored: T, "tracked", and ⋯ gains "Undo save"), and a lookup of an ignored word~~
+    ~~draws the same (its item changes nothing drawn, so no redraw). The state is kept (`CardController::ignored`,~~
+    ~~`CardSource::ignored`) for V9's page marks (A1). **Open for claritise:** whether an ignored word should look~~
+    ~~different on the card (a state word under T L F K, or the ⋯ row reading "Undo ignore"), and whether a name saved~~
+    ~~only to be ignored should show T; either is a change to the approved card (a mockup and a sign-off, V6's way).~~
+    ~~Known limits: no way to un-ignore from the card except the toast's Undo and ⋯ Undo save; an Ignore tapped~~
+    ~~before a saved word's item came (the ⋯ tab in phase A) takes it as not ignored: a repeat PATCH, and its Undo~~
+    ~~leaves the card taking it as not ignored though Lexirise still has it so.~~
+    (Superseded 2026-09-27, the same day, before it landed: claritise, "lets make ignore a local ux thing, cus maybe
+    the user already knows the word but they want to still review it on lexirise", and of an unsaved name, "cant u
+    just not add the word in the first place". It never writes to Lexirise: "As built (V5, local)" below.)
+  - **As built (V5, local, 2026-09-27: Ignore)**: Ignore means **"stop marking this word on the page"** (V9's A1 marks
+    and A3's skipping, `page-annotations.md` §2), on the reader only. Saved or not, nothing in the user's Lexirise
+    account changes and their reviews are untouched; no request is made. **The list:** `settings/IgnoredWords`,
+    `/.lexirise/ignored.ini` (the file's home: `../v0.1/settings.md` §3). **The key** is the language and the word's
+    **entry key**, `lookup::entryKeyOf`: the lemma's entry id, else (`analyze/text` named no lemma entry) the word's own
+    entry id. It's the entry the card already treats as one word, the one a save targets, and what `analyze/text` gives
+    every occurrence on a page, so A1 can match a page's words on it without a call (V9 uses the same helper). It is not
+    fully stable: the two analysis passes can name different lemmas for one word (なれない ‹なれる› in the word-level pass,
+    ‹なる› refined: `../reference/lexirise-api-notes.md`), so a word ignored under one pass's lemma can be missed under
+    the other's, and ignoring it again then adds a second key. Storing both passes' ids isn't done: a whole word the
+    card shows (V1) keeps no refined lemma to take a second id from. A word with no entry id at all is kept by its
+    dictionary form (the lemma, else the surface) instead, when that's one line of at most
+    `config::kIgnoredTextMaxBytes` (never cut: a cut form could be another word's); otherwise it can't be listed ("Save
+    failed"). **The ⋯ row** "Ignore this word" (`ActionId::Ignore`) marks the word ignored on the card at once (every
+    copy of the entry follows), with "Ignored: won't be marked again · Undo" (the reference's words and the save toast's
+    Undo, existing strings; the "· Undo" is the one textual addition to the reference's toast, planned by V5's Build
+    line); the Undo takes it back, and at a cap brings back the oldest key the ignore pushed out (the store reports it
+    after the write, and the toast's Undo carries it back: `IgnoredWordStore::write`'s `evicted` and `restore`). A
+    second tap on the row while that Undo is up does nothing (as a level's double tap), so a mis-tap keeps its Undo. No
+    Undo window: nothing waits to be sent. **The toast lasts longer than a save's:** `config::kIgnoreToastMs` (5 s;
+    recommended to claritise when they asked about the 2 s window, 2026-09-27; no new UI), since once it's gone the card
+    has no way to undo an ignore (until V6's un-ignore); a save's and a level's keep `kToastMs` (2 s: either can be
+    changed again from the card), and so does the plain already-ignored toast; "Save failed" lasts `kFailureToastMs` (6 s) when the SD write failed, `kToastMs` when the word has no key or the card no list. The
+    toast replaces any earlier one, a "Save failed · Retry" too (as a level tap's does), and belongs to its word (a step
+    ends it). **Writing:** the activity writes each change to the SD card as the input is handled, outside RenderLock
+    and before this outcome's redraw (the toast waits for the write; an earlier frame may still render: HalStorage
+    serialises the SD card): `CardSession::saveIgnores`, to the store the card was given (a card given none can't
+    ignore: "Save failed"). A write that fails takes the change back with "Save failed" (an Ignore's or an Undo's), kept
+    up through a step like a failed save's toast, and redrawn unless the card is closing. **Memory:** the store holds
+    the list once (at its caps, ~8 KB of ids plus the forms); it's loaded as the card opens
+    (`LiveSource::setIgnoredWords`), the card asks it from memory and keeps only its own changes on top; a change is
+    made in place and put back exactly (an evicted oldest key too) when the write fails; the file's text is built in one
+    buffer reserved at its exact size (a full list of ids, about 12 KB) for the write. An Ignore and its Undo handled in
+    one batch write nothing: a batch's changes are written in the order they were made, each skipped when a later one is
+    for the same word unless it carries back a pushed-out key (an Undo at the cap, then an Ignore again: the key comes
+    back, and the Ignore pushes it out again for its own Undo), so the file stays newest last. **A word already
+    ignored:** the row only says "Ignored: won't be marked again" (no Undo, nothing written): the approved card draws
+    nothing else, so an ignored word otherwise looks like any other (no new UI; nothing to sign off). The state is
+    queryable for V9: `CardSource::ignored`, `IgnoredWordStore::contains` (a linear scan; V9, asking for every word on a
+    page, may want a sorted index). The bench keeps no list and plays the reference's toast. **Lexirise's own
+    `suspended`** (a word suspended in the Lexirise app) isn't read on the card at all; **decided for V9:** a word
+    suspended in Lexirise gets no A1 mark either, as `page-annotations.md` A1 says (the V7 vocab mirror carries
+    `suspended`), while ⋯ Ignore only ever writes the local list. **Known limits:** the list keeps
+    `config::kIgnoredIdsMax` words by id and `config::kIgnoredTextsMax` by form, the oldest forgotten past them (then
+    marked again); it's per device (not synced); the key's per-pass difference above (pinned by
+    `LiveIgnore.TheKeyIsPerPassAKnownLimit`); an ignore handled in the same batch as the card's close whose write fails
+    is only logged (the card is gone); in a batch ignoring two words where one write fails, "Save failed" replaces the
+    other word's Undo toast; and **once the toast is gone there's no way to un-ignore a word** except editing
+    `ignored.ini`. **Open for claritise (V6's design batch):** how to un-ignore from the card (e.g. the ⋯ row reading
+    "Undo ignore" for an ignored word), a change to the approved card; and whether "Save failed", reused for an ignore
+    the SD card didn't take and for a word with no key, should get words of its own.
 
 ## C18. Manga
 

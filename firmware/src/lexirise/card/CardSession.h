@@ -7,6 +7,8 @@
 
 #include <atomic>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "CardController.h"
 #include "CardInput.h"
@@ -89,6 +91,31 @@ class CardSession {
 
   bool hasPendingWrites() const { return live_ && live_->hasPendingWrites(); }
 
+  // The ignores handleInput made (C17, V5), written to the reader's list: called outside RenderLock (SD I/O), before
+  // this outcome's redraw (an earlier frame may still be rendering: HalStorage serialises the SD card). The changes are
+  // written in the order they were made, each skipped when a later one in the batch is for the same word (an Ignore
+  // and its Undo together write nothing) unless it carries back a pushed-out key, so the file stays newest last; dev
+  // builds log each, `[LXCARD] ignore <key> on|off written|unchanged|failed`. One that can't be written is taken back
+  // ("Save failed"), under the lock: `withLock(f)` runs f holding it. `redraw`: that changed the card, so it must be
+  // drawn though the outcome didn't ask (a Close still closes: nothing to draw).
+  // An ignore that pushed the oldest key out of a full list hands that key to the controller (under the lock too),
+  // for its Undo to put back.
+  struct IgnoresSaved {
+    bool failed = false;
+    bool redraw = false;
+  };
+  template <typename WithLock>
+  IgnoresSaved saveIgnores(const Outcome& outcome, const unsigned long nowMs, WithLock&& withLock) {
+    const Persisted done = persistIgnores(outcome);
+    if (done.failed.empty() && done.evicted.empty()) return {};
+    withLock([&] {
+      for (const auto& [word, key] : done.evicted) controller_.ignoreEvicted(word, key);
+      for (const IgnoreChange& change : done.failed) controller_.ignoreFailed(change.word, change.ignored, nowMs);
+    });
+    if (done.failed.empty()) return {};
+    return {true, outcome.effect != Effect::Close};
+  }
+
   // The book's deck (LiveSource::setBookDeck): its next call runs only on an idle card, and never as the card
   // closes: nothing else to fetch or send (a write in its Undo window included), nothing to draw or handle, and no
   // input or answer for config::kDeckIdleMs. The call blocks the loop like any other: a tap made during it waits
@@ -118,6 +145,12 @@ class CardSession {
   std::atomic<bool> drawPending_{false};  // redrawAsked(), not yet frameShown()
   unsigned long lastActivityMs_ = 0;      // the card's opening, its last input, answer or deck call (loop task)
   bool deckAllowed_ = true;
+  struct Persisted {
+    std::vector<IgnoreChange> failed;
+    std::vector<std::pair<int, IgnoredKey>> evicted;  // the word ignored, and the key it pushed out
+  };
+  Persisted persistIgnores(const Outcome& outcome) const;  // to the source's store
+
   int unsentSaves_ = 0;
   api::ApiError unsentError_ = api::ApiError::None;
 };

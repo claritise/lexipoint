@@ -209,6 +209,15 @@ bool LexiriseCardActivity::handleHomeGesture() {
 }
 
 void LexiriseCardActivity::apply(const Outcome& outcome) {
+  // The reader's ignores (C17, V5) to the SD card, outside the lock and before this outcome's redraw (the toast
+  // waits for the write; an earlier frame may still render: HalStorage serialises the SD card); one that can't be
+  // written is taken back. A bench card (smoke included) has no live source: saveIgnores writes nothing for it.
+  const CardSession::IgnoresSaved ignores = session_.saveIgnores(outcome, millis(), [this](auto&& f) {
+    RenderLock lock;
+    f();
+    nextDueMs_ = controller_.nextDueMs();
+  });
+  if (ignores.failed) LOG_ERR("LXCARD", "ignore list not saved");
   if (outcome.readingChanged && persistReading_) {
     ReadingMode mode;
     {
@@ -225,7 +234,7 @@ void LexiriseCardActivity::apply(const Outcome& outcome) {
     closed.lookUpAt = lookUpOnClose(outcome.lookUpAt, live_ != nullptr, pageUnderCard_);  // a tap's too (P10)
     return end(closed);
   }
-  if (outcome.effect == Effect::Redraw) redraw();
+  if (outcome.effect == Effect::Redraw || ignores.redraw) redraw();
 }
 
 void LexiriseCardActivity::end(const LiveOutcome ending) {
@@ -258,20 +267,38 @@ void LexiriseCardActivity::redraw() {
 }
 
 #if LEXIPOINT_DEV_HARNESS
-void LexiriseCardActivity::logLevelButtons(const std::vector<Hit>& hits) {
-  // lxctl deck-smoke taps L where the card drew it: "level <i> <x> <y> <w> <h> <saved 0|1>", when they change.
+void LexiriseCardActivity::logTapTargets(const std::vector<Hit>& hits) {
+  // lxctl's smokes tap where the card drew its targets, logged as a whole set when they change, once the frame is on
+  // screen (after ShownTargets::shown: a tap stamped before it would land on the previous frame), after a "targets <n>"
+  // header (n: the lines that follow; the level lines are logged again whenever any target changes): deck-smoke L,
+  // "level <i> <x> <y> <w> <h> <saved 0|1>"; ignore-smoke the rank row, the tabs, the ⋯ rows and the toast's Undo,
+  // "target <rank|tab|action|undo> <i> <x> <y> <w> <h>".
   const int saved = controller_.state().level == Level::None ? 0 : 1;
   std::string lines;
+  int count = 0;
   for (const Hit& hit : hits) {
-    if (hit.target != Target::Level) continue;
     char line[64];
-    std::snprintf(line, sizeof(line), "level %d %d %d %d %d %d", hit.index, hit.rect.x, hit.rect.y, hit.rect.w,
-                  hit.rect.h, saved);
+    const char* kind = hit.target == Target::RankRow     ? "rank"
+                       : hit.target == Target::Tab       ? "tab"
+                       : hit.target == Target::Action    ? "action"
+                       : hit.target == Target::ToastUndo ? "undo"
+                                                         : nullptr;
+    if (hit.target == Target::Level) {
+      std::snprintf(line, sizeof(line), "level %d %d %d %d %d %d", hit.index, hit.rect.x, hit.rect.y, hit.rect.w,
+                    hit.rect.h, saved);
+    } else if (kind) {
+      std::snprintf(line, sizeof(line), "target %s %d %d %d %d %d", kind, hit.index, hit.rect.x, hit.rect.y, hit.rect.w,
+                    hit.rect.h);
+    } else {
+      continue;
+    }
     lines += line;
     lines += '\n';
+    count++;
   }
-  if (lines == loggedLevels_) return;
-  loggedLevels_ = lines;
+  if (lines == loggedTargets_) return;
+  loggedTargets_ = lines;
+  LOG_INF("LXCARD", "targets %d", count);
   size_t start = 0;
   while (start < lines.size()) {
     const size_t end = lines.find('\n', start);
@@ -286,9 +313,6 @@ void LexiriseCardActivity::render(RenderLock&&) {
   const RendererMetrics metrics(renderer, fonts);
   const Frame frame = composeFrame(controller_, metrics, pageUnderCard_);
   targets_.drawing(frame.card.hits, controller_.steps(), controller_.state().view);
-#if LEXIPOINT_DEV_HARNESS
-  logLevelButtons(frame.card.hits);
-#endif
 
   renderer.clearScreen();
   // Scan, prewarm the SD glyphs, then draw for real (the reader's pattern).
@@ -303,6 +327,9 @@ void LexiriseCardActivity::render(RenderLock&&) {
   draw();
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);  // every phase is a partial refresh (popup-ui.md §2)
   targets_.shown(millis());
+#if LEXIPOINT_DEV_HARNESS
+  logTapTargets(frame.card.hits);  // once on screen: a tap the smoke sends now lands on this frame (ShownTargets::at)
+#endif
   session_.frameShown();
 }
 
