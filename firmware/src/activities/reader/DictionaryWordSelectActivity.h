@@ -47,6 +47,8 @@ class DictionaryWordSelectActivity final : public Activity {
     bookTitle = std::move(title);
     bookPath = std::move(path);
   }
+  // LEXIPOINT: the section the page is in: the page's analysis is found by it and the page's start (C12, V7b).
+  void setSpine(const int spine) { spineIndex = spine; }
   // LEXIPOINT: opened by a long-press on the page: select the word there and look it up at once.
   void setInitialTouch(const int x, const int y) {
     initialTouchX = x;
@@ -98,6 +100,7 @@ class DictionaryWordSelectActivity final : public Activity {
   std::string bookPath;                               // LEXIPOINT
   lexipoint::text::PageModel pageModel;               // LEXIPOINT: built in extractWords()
   lexipoint::card::ReaderPage readerPage;             // LEXIPOINT: the same page, as drawn (the live card)
+  int spineIndex = -1;                                // LEXIPOINT: setSpine() (-1: not known, no page analysis)
   int initialTouchX = -1;                             // LEXIPOINT: setInitialTouch()
   int initialTouchY = -1;
   bool lookupPending = false;  // LEXIPOINT: the long-press lookup runs on the first loop()

@@ -137,6 +137,13 @@ class Builder {
     return join(start, hi, start, /*left=*/true, truncatedRight);
   }
 
+  std::optional<BuiltSentence> whole() const {
+    if (std::all_of(items_.begin(), items_.end(), [](const Item& item) { return item.cps.empty(); })) {
+      return std::nullopt;  // no piece with text
+    }
+    return join(0, items_.size(), items_.size(), /*left=*/false, /*right=*/false);
+  }
+
   std::optional<BuiltSentence> build(const size_t tap) const {
     if (isEmpty(tap)) return std::nullopt;
     const size_t n = items_.size();
@@ -466,6 +473,21 @@ uint32_t utf16Length(std::string_view utf8) {
     utf8.remove_prefix(character.size());
   }
   return total;
+}
+
+std::optional<BuiltSentence> buildPageText(const PageModel& page, const Script script) {
+  return Builder(page, script).whole();
+}
+
+std::optional<uint32_t> pageOffsetOf(const BuiltSentence& pageText, const BuiltSentence& sentence) {
+  if (sentence.chars.empty()) return std::nullopt;
+  const SentenceChar& first = sentence.chars.front();
+  for (const SentenceChar& c : pageText.chars) {
+    if (c.token.line == first.token.line && c.token.token == first.token.token && c.codepoint == first.codepoint) {
+      return c.start;
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<BuiltSentence> buildSentence(const PageModel& page, const TokenRef tap, const Script script) {

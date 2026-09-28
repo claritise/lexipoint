@@ -135,6 +135,15 @@ TEST(Requests, LoggedPathsLeaveOutTheSavedExpressionId) {
   EXPECT_EQ(lexipoint::api::loggablePath("/v1/dictionary/lookup"), "/v1/dictionary/lookup");
 }
 
+// The mirror's pages log as the list, query and all (it holds no id): lxctl's vocab-smoke matches
+// "GET /v1/vocabulary?" (carried from V7a's review).
+TEST(Requests, AVocabularyPageLogsAsTheListWithItsQuery) {
+  const auto page = lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 48, 5);
+  const std::string logged = lexipoint::api::loggablePath(page.path);
+  EXPECT_EQ(logged, page.path);
+  EXPECT_EQ(logged.rfind("/v1/vocabulary?", 0), 0u) << logged;
+}
+
 TEST(Requests, DeckRequestsForABooksDeck) {
   const auto list = lexipoint::api::deckListRequest(Language::Chinese);
   EXPECT_EQ(list.method, Method::Get);

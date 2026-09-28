@@ -332,7 +332,9 @@ is in your SRS. StarDict can't do that.
   - after a `morphoPending: true` answer, call again; if the tapped word's span or entry changed,
     replace the card's word (a refresh), then fetch the meaning and context for the new word;
   - how long "later" is must be measured (one retry after a delay, or a few with backoff);
-  - page analysis (C12) should cache only refined results, or mark fast ones to be redone.
+  - ~~page analysis (C12) should cache only refined results, or mark fast ones to be redone.~~ (Superseded
+    2026-09-28: it caches what ① gives the card, a first pass, or a refined answer after V1's merge,
+    `page-annotations.md` §1.1 "V7b design".)
   **Test:** call `analyze/text` twice on the とびら sentence (`../reference/lexirise-api-notes.md`,
   tokenizer notes) and compare. Not reported to Lexirise yet.
 

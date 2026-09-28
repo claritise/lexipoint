@@ -67,6 +67,13 @@ std::optional<BuiltSentence> buildSentenceAfter(const PageModel& page, const Bui
 // sentence again once its own language is known, from the same place on the page.
 std::optional<BuiltSentence> buildSentenceFrom(const PageModel& page, const SentenceChar& first, Script script);
 
+// The whole page's text as one piece (C12, V7b: what a page analysis sends), joined as every sentence is (the D5
+// rules: base text only, spaces only between Latin words), with no cap and no tap. Each sentence built from this page
+// is this text's slice from its first character's place (pageOffsetOf). nullopt: no text on the page.
+std::optional<BuiltSentence> buildPageText(const PageModel& page, Script script);
+// Where a sentence's first character sits in the page's text (UTF-16 units): nullopt when it isn't on this page.
+std::optional<uint32_t> pageOffsetOf(const BuiltSentence& pageText, const BuiltSentence& sentence);
+
 // UTF-16 code units in a UTF-8 string (a non-BMP character counts 2), the unit of Lexirise offsets.
 uint32_t utf16Length(std::string_view utf8);
 

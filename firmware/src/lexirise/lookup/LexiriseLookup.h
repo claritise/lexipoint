@@ -24,6 +24,7 @@ struct LookupReport {
   LookupOutcome outcome = LookupOutcome::Unavailable;
   api::ApiError error = api::ApiError::None;  // why it was Unavailable (for the log and the UI)
   std::string bodyHead;                       // Malformed: the body's first config::kLoggedBodyBytes, for the log
+  bool fromPage = false;  // V7b: the sentence came from the page's analysis (`known`), not request ①
 };
 
 // The start of a body we couldn't read, for the log (offline-and-errors.md §1: it holds no key).
@@ -48,7 +49,10 @@ inline bool asksLexirise(const text::TapContext& tap, const bool usable) {
 // and ② match the tap. On Card, `out` holds the sentence and `word` the tapped
 // word's index in out.words; NotFound: no word in it; Unavailable: no answer (report.error says why).
 // Needs a sentence and a language to send (TapContext): without them Lexirise isn't asked at all.
-LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, AnalyzedSentence& out, size_t& word);
+// `known` (v0.2 V7b): the sentence's analysis already, from the page's (page/PageSentences.h): ① isn't sent, unless
+// it has no word to match (NotFound): then ① is asked after all.
+LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, AnalyzedSentence& out, size_t& word,
+                        const api::AnalyzeResult* known = nullptr);
 
 // A word's dictionary identity on a page: its lemma's entry id, else (analyze/text named no lemma entry) its own.
 // The card's one-word rule (sameWord), a save's target and the ignore list's key (C17, V5) use it, and so will V9's

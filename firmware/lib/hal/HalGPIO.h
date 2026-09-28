@@ -90,6 +90,9 @@ class HalGPIO {
   // hardware (ADC ladder off its idle rail, or the power GPIO asserted), without
   // going through the debounced state. Cheap enough to call every few ms.
   bool rawInputActive();
+  // LEXIPOINT (v0.2 V7b): the touch controller's interrupt line's level right now (0 or 1), read straight from the
+  // pin; -1 without one. Which level means a finger isn't assumed: lexipoint::input::TouchLine learns the idle level.
+  int rawTouchLevel();
   bool hasTouch() const;
   // Capacitive Home key reported by the touch controller (X4 Pro). The tap
   // event fires on release and excludes a long hold.

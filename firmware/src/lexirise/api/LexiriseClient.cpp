@@ -19,6 +19,8 @@ ApiError fromOpenError(const net::OpenError error) {
       return ApiError::Tls;
     case net::OpenError::Timeout:
       return ApiError::Timeout;
+    case net::OpenError::Aborted:
+      return ApiError::Cancelled;
     case net::OpenError::ConnectFailed:
     default:
       return ApiError::Network;
@@ -55,6 +57,8 @@ const char* apiErrorName(const ApiError error) {
       return "server";
     case ApiError::Http:
       return "http";
+    case ApiError::Cancelled:
+      return "cancelled";
     case ApiError::Malformed:
     default:
       return "malformed";
@@ -84,16 +88,17 @@ bool LexiriseClient::configure(const std::string_view baseUrl, const std::string
   return true;
 }
 
-ApiResponse LexiriseClient::send(const net::Request& request, net::BodySink* sink) {
+ApiResponse LexiriseClient::send(const net::Request& request, net::BodySink* sink, const net::Abort abort) {
   ApiResponse response;
   if (!configured_) {
     response.error = ApiError::NotConfigured;
     return response;
   }
   deadlineSet_ = false;
+  connection_.setAbort(abort);
   const bool reused = connection_.isOpen();
   // A stale session fails before any response byte, so a sink has had nothing yet when the request is resent.
-  if (attempt(request, reused, response, sink) == Attempt::StaleSession) {
+  if (attempt(request, reused, response, sink) == Attempt::StaleSession && !connection_.aborted()) {
     const bool sent = response.sent;
     response = ApiResponse();
     if (request.retryable()) {
@@ -103,6 +108,12 @@ ApiResponse LexiriseClient::send(const net::Request& request, net::BodySink* sin
     }
     response.sent = response.sent || sent;
   }
+  if (connection_.aborted()) {
+    connection_.close();
+    response.error = ApiError::Cancelled;
+    response.body.clear();
+  }
+  connection_.setAbort(nullptr);
   return response;
 }
 
@@ -130,6 +141,10 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
     deadlineSet_ = true;
   }
 
+  if (connection_.checkAbort()) {  // input already came: nothing is sent
+    out.error = ApiError::Cancelled;
+    return Attempt::Done;
+  }
   const std::string wire = net::buildRequest(endpoint_, request, apiKey_, userAgent_);
   if (!connection_.writeAll(wire.data(), wire.size())) {
     connection_.close();
@@ -144,6 +159,11 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
   char buffer[config::kHttpReadChunkBytes];
   bool gotBytes = false;
   while (!parser.done() && parser.state() != net::ResponseParser::State::Error) {
+    if (connection_.checkAbort()) {
+      connection_.close();
+      out.error = ApiError::Cancelled;
+      return Attempt::Done;
+    }
     const uint32_t timeout = readTimeout();
     const int n = timeout == 0 ? 0 : connection_.read(buffer, sizeof(buffer), timeout);
     if (n == 0) {

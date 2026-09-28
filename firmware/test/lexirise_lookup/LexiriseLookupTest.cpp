@@ -9,9 +9,12 @@
 #include "lexirise/lookup/LexiriseLookup.h"
 
 using lexipoint::Language;
+using lexipoint::api::AnalyzeResult;
 using lexipoint::api::ApiError;
 using lexipoint::api::ApiResponse;
+using lexipoint::api::parseAnalyze;
 using lexipoint::lookup::AnalyzedSentence;
+using lexipoint::lookup::analyzeTap;
 using lexipoint::lookup::LookupCard;
 using lexipoint::lookup::LookupOutcome;
 using lexipoint::lookup::lookupWithLexirise;
@@ -48,7 +51,13 @@ class FakeApi final : public lexipoint::api::LexiriseApi {
   ApiResponse write(const lexipoint::net::Request&) override { return {}; }
   ApiResponse deck(const lexipoint::net::Request&) override { return {}; }
   ApiResponse savedItem(const lexipoint::net::Request&) override { return {}; }
-  ApiResponse vocabularyPage(const lexipoint::net::Request&, lexipoint::net::BodySink&) override { return {}; }
+  ApiResponse vocabularyPage(const lexipoint::net::Request&, lexipoint::net::BodySink&,
+                             lexipoint::net::Abort) override {
+    return {};
+  }
+  ApiResponse analyzePage(const lexipoint::net::Request&, lexipoint::net::BodySink&, lexipoint::net::Abort) override {
+    return {};
+  }
 };
 
 ApiResponse body(std::string text) {
@@ -546,4 +555,25 @@ TEST(EntryKey, TheLemmasEntryElseTheWordsOwn) {
   EXPECT_EQ(lexipoint::lookup::entryKeyOf(occ), 5u);
   occ.entryId = 0;
   EXPECT_EQ(lexipoint::lookup::entryKeyOf(occ), 0u);  // none: the ignore list falls back to the form
+}
+
+// --- v0.2 V7b: a sentence from the page's analysis ---
+
+TEST(LexiriseLookup, APagesSentenceSkipsRequestOneUnlessItHasNoWord) {
+  FakeApi api;
+  AnalyzeResult known;
+  ASSERT_EQ(parseAnalyze(kAnalyze, known), lexipoint::api::ParseStatus::Ok);
+  AnalyzedSentence out;
+  size_t word = 0;
+  const auto fromPage = analyzeTap(api, tap(), out, word, &known);
+  EXPECT_EQ(fromPage.outcome, LookupOutcome::Card);
+  EXPECT_TRUE(fromPage.fromPage);
+  EXPECT_TRUE(api.analyzed.empty());
+  // The slice lost the tapped word (it crossed the sentence's cut edge): ① after all.
+  AnalyzeResult empty;
+  api.analyzeReply = body(kAnalyze);
+  const auto asked = analyzeTap(api, tap(), out, word, &empty);
+  EXPECT_EQ(asked.outcome, LookupOutcome::Card);
+  EXPECT_FALSE(asked.fromPage);
+  EXPECT_EQ(api.analyzed, std::vector<std::string>{"食べさせられた。"});
 }

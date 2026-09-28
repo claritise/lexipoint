@@ -3277,7 +3277,7 @@ struct Mirrored {
   static constexpr uint32_t kEpochS = 1790300000;
   int level(const uint32_t entry) {
     const auto e = store.find(Language::Japanese, entry);
-    return e ? e->proficiency : -1;
+    return e && e->savedId != 0 ? e->proficiency : -1;  // a removal (V7b R1): not saved
   }
 };
 
@@ -3289,7 +3289,7 @@ bool vocabPageDue(Saving& s, const unsigned long nowMs, const bool touching = fa
 }
 
 // The idle card's step as LexiriseCardActivity::idleStep takes it (CardSession::nextIdleStep's order).
-enum class Idle { Nothing, Deck, Flushed, Page };
+enum class Idle { Nothing, Deck, Flushed, Probe, Page };
 Idle idleStep(Saving& s, const unsigned long nowMs) {
   s.c.tick(nowMs);
   switch (s.session.nextIdleStep(nowMs, false, false, s.c.nextDueMs(), Mirrored::kEpochS)) {
@@ -3299,9 +3299,18 @@ Idle idleStep(Saving& s, const unsigned long nowMs) {
     case CardSession::IdleStep::Flush:
       s.session.flushMirror(/*load=*/true, nowMs);
       return Idle::Flushed;
-    case CardSession::IdleStep::Vocab:
-      s.session.applyVocab(s.session.fetchVocab(nowMs, Mirrored::kEpochS), nowMs, Mirrored::kEpochS);
+    case CardSession::IdleStep::Vocab: {
+      const lexipoint::vocab::PageApplied applied =
+          s.session.applyVocab(s.session.fetchVocab(nowMs, Mirrored::kEpochS), nowMs, Mirrored::kEpochS);
+      s.session.mirrorChanged(applied.changedEntries);  // as the activity does
       return Idle::Page;
+    }
+    case CardSession::IdleStep::Probe: {
+      const lexipoint::vocab::PageApplied applied =
+          s.session.applyVocab(s.session.fetchProbe(nowMs), nowMs, Mirrored::kEpochS);
+      s.session.mirrorChanged(applied.changedEntries);
+      return Idle::Probe;
+    }
     case CardSession::IdleStep::None:
       break;
   }
@@ -3324,7 +3333,7 @@ TEST(LiveMirror, TheAnalysisCorrectsTheMirrorTheLiveAnswerWinning) {
   VocabStore again(m.files);
   again.load(Language::Japanese);
   EXPECT_EQ(again.find(Language::Japanese, 3)->proficiency, 3);
-  EXPECT_FALSE(again.find(Language::Japanese, 6));
+  EXPECT_EQ(again.find(Language::Japanese, 6)->savedId, 0u);  // kept as a removal (V7b R1)
 }
 
 TEST(LiveMirror, TheCardsSavesLevelsAndRemovalsUpdateItAtOnce) {
@@ -3516,7 +3525,7 @@ TEST(LiveMirror, TheMirrorIsReadOnTheFirstIdleStepNotAsTheCardOpens) {
   ASSERT_TRUE(later.loaded(Language::Japanese));
   // What the analysis said before it was read is applied: 本 at 3, 読む not saved.
   EXPECT_EQ(later.find(Language::Japanese, 3)->proficiency, 3);
-  EXPECT_FALSE(later.find(Language::Japanese, 6));
+  EXPECT_EQ(later.find(Language::Japanese, 6)->savedId, 0u);  // kept as a removal (V7b R1)
 }
 
 TEST(LiveMirror, AWriteIsKeptUnderTheEntryItsSavedStateCameFrom) {
@@ -3603,4 +3612,256 @@ TEST(LiveMirror, AButtonAlreadyHeldGivesThePageUpBeforeAnyRequest) {
   s.session.applyVocab(held, s.now, Mirrored::kEpochS);
   EXPECT_FALSE(vocabPageDue(s, s.now + 1));                    // the idle time starts again
   EXPECT_TRUE(vocabPageDue(s, s.now + config::kVocabIdleMs));  // and the card's share is untouched
+}
+
+// --- A page analyzed ahead (C12, V7b) ---
+
+namespace {
+
+// kAnalyze as the page's analysis (the page is the one sentence), kept on the fake card for the page's very text.
+struct AnalyzedPage {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::page::PageStore store{files};
+  lexipoint::page::PageKey key{7, 3, 120};
+  lexipoint::text::BuiltSentence text;
+  explicit AnalyzedPage(const PageModel& model, const uint64_t analyzedMs = 0) {
+    text = *lexipoint::text::buildPageText(model, Script::Japanese);
+    lexipoint::page::PageAnalysis page;
+    EXPECT_EQ(lexipoint::page::parsePage(kAnalyze, Language::Japanese, page), lexipoint::api::ParseStatus::Ok);
+    page.textUnits = lexipoint::text::utf16Length(text.text);
+    page.textHash = lexipoint::page::textHash(text.text);
+    page.analyzedMs = analyzedMs;
+    EXPECT_TRUE(store.write(key, page));
+  }
+  std::unique_ptr<lexipoint::page::PageSentences> sentences(lexipoint::vocab::VocabStore* mirror = nullptr) {
+    auto s = std::make_unique<lexipoint::page::PageSentences>(store, key, text, Language::Japanese);
+    s->setMirror(mirror);
+    return s;
+  }
+};
+
+}  // namespace
+
+TEST(LivePage, AnAnalyzedPagesSentenceSkipsRequestOne) {
+  Rig rig;
+  AnalyzedPage analyzed(rig.model);
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tap(1, 0), rig.page);  // tapped 読んだ
+  source.setSentenceSource(analyzed.sentences());
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);  // A, from the page
+  EXPECT_TRUE(rig.api.analyzed.empty());
+  c.sourceChanged(0);
+  EXPECT_EQ(c.state().phase, Phase::Analyzed);
+  EXPECT_EQ(c.currentWord().word, "読む");
+  EXPECT_EQ(source.advance(), LiveSource::Advance::Changed);  // B: dictionary/lookup only
+  EXPECT_EQ(rig.api.looked, std::vector<std::string>{"読む"});
+  c.sourceChanged(0);
+  ASSERT_TRUE(c.step(-1, 0));  // を
+  source.advance();
+  c.sourceChanged(0);
+  ASSERT_TRUE(c.step(-1, 0));  // 本: the page's snapshot says 3
+  EXPECT_EQ(c.state().level, Level::Fresh);
+  EXPECT_TRUE(rig.api.analyzed.empty());
+}
+
+TEST(LivePage, AnotherPagesTextOrLanguageAsksRequestOne) {
+  Rig rig;
+  AnalyzedPage analyzed(rig.model);
+  analyzed.text.text += "x";  // the page's text changed since (a layout change): the file isn't this page's
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  LiveSource source(rig.api, rig.tap(1, 0), rig.page);
+  source.setSentenceSource(analyzed.sentences());
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  EXPECT_EQ(rig.api.analyzed.size(), 1u);
+
+  Rig zh;
+  AnalyzedPage page(zh.model);
+  zh.api.analyzeReplies = {apiOk(kAnalyze)};
+  TapContext tap = zh.tap(1, 0);
+  tap.language.language = Language::Chinese;  // this sentence decided otherwise
+  LiveSource other(zh.api, tap, zh.page);
+  other.setSentenceSource(page.sentences());
+  CardController oc(other, ReadingMode::Kana);
+  oc.open(0);
+  other.advance();
+  EXPECT_EQ(zh.api.analyzed.size(), 1u);
+}
+
+TEST(LivePage, TheMirrorSpeaksForTheSavedStateWhereItCan) {
+  Mirrored m;  // 本 (3) at level 1 as the account has it now, 読む (6) saved as 55
+  Rig rig;
+  AnalyzedPage analyzed(rig.model, /*analyzedMs=*/lexipoint::fakes::kSept2026Ms - 1000);  // before the mirror's cursor
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tap(0, 2), rig.page);  // 本
+  source.setSentenceSource(analyzed.sentences(&m.store));
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  EXPECT_EQ(c.state().level, Level::Tracked);  // the mirror's 1, not the page's 3
+  EXPECT_TRUE(rig.api.analyzed.empty());
+}
+
+namespace {
+
+// The card's level for 本 (entry 3; kAnalyze's snapshot: saved at 3) on a page analyzed at `analyzedMs`.
+Level pageLevelOfHon(lexipoint::vocab::VocabStore& mirror, const uint64_t analyzedMs) {
+  Rig rig;
+  AnalyzedPage page(rig.model, analyzedMs);
+  LiveSource source(rig.api, rig.tap(0, 2), rig.page);
+  source.setSentenceSource(page.sentences(&mirror));
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  EXPECT_TRUE(rig.api.analyzed.empty());
+  return c.state().level;
+}
+
+}  // namespace
+
+TEST(LivePage, ARemovalTheReaderMadeBeatsAnyPagesSnapshot) {
+  Mirrored m;  // synced: its last pass ended at kEpochS
+  // The reader removed 本 on another card (their own write, known after the page: R5's rule): kept as a removal.
+  m.store.record({LiveState{Language::Japanese, 3, false, 0, 0, Mirrored::kEpochS + 120, true}});
+  const uint64_t syncMs = static_cast<uint64_t>(Mirrored::kEpochS) * 1000ULL;
+  EXPECT_EQ(pageLevelOfHon(m.store, syncMs - 60000), Level::None);  // a page analyzed before
+  EXPECT_EQ(pageLevelOfHon(m.store, syncMs + 60000), Level::None);  // and after the mirror's last pass
+  // Across a restart too (the removal is in the file).
+  m.store.flush();
+  VocabStore again(m.files);
+  again.load(Language::Japanese);
+  EXPECT_EQ(pageLevelOfHon(again, syncMs + 60000), Level::None);
+}
+
+TEST(LivePage, AnEntryTheMirrorLacksIsUnsavedOnlyWhenItsLastPassEndedAfterThePage) {
+  // An account without 本 (removed in the app, or never saved), synced: the mirror has no entry for it.
+  lexipoint::fakes::FakeFiles files;
+  VocabStore store(files);
+  store.load(Language::Japanese);
+  lexipoint::fakes::FakeVocabAccount lexirise;
+  lexirise.items = {{55, 6, 2, false, lexipoint::fakes::kSept2026Ms, "word", std::nullopt}};
+  FakeApi api;
+  lexirise.serve(api);
+  while (const auto plan = store.next(Language::Japanese, 0, Mirrored::kEpochS)) {
+    store.apply(lexipoint::vocab::sendPage(api, *plan), 0, Mirrored::kEpochS);
+  }
+  ASSERT_EQ(store.syncState(Language::Japanese).lastSyncS, Mirrored::kEpochS);
+  const uint64_t syncMs = static_cast<uint64_t>(Mirrored::kEpochS) * 1000ULL;
+  // The cursor (the account's newest change) is long before both pages: the pass's end decides, not the cursor.
+  ASSERT_LT(store.syncState(Language::Japanese).cursorMs, syncMs - 60000);
+  EXPECT_EQ(pageLevelOfHon(store, syncMs - 60000), Level::None);   // the pass ended after the page: not saved
+  EXPECT_EQ(pageLevelOfHon(store, syncMs + 60000), Level::Fresh);  // the page is newer: its snapshot stands
+  EXPECT_EQ(pageLevelOfHon(store, 0), Level::Fresh);               // no time: the snapshot stands
+}
+
+// --- The mirror's probe as a card settles (V7b, claritise 2026-09-28) ---
+
+namespace {
+
+bool probeDue(Saving& s, const unsigned long nowMs) {
+  s.c.tick(nowMs);
+  return s.session.shouldProbeVocab(nowMs, false, false, s.c.nextDueMs());
+}
+
+}  // namespace
+
+TEST(LiveProbe, OnceTheCardIsIdleASecondAProbeRunsAndNotAgainForFiveMinutes) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  m.lexirise.serve(s.rig.api);
+  EXPECT_FALSE(probeDue(s, s.now));  // phase B just drawn: not idle yet
+  EXPECT_TRUE(probeDue(s, s.now + config::kVocabCardProbeIdleMs));
+  EXPECT_EQ(idleStep(s, s.now + config::kVocabCardProbeIdleMs), Idle::Probe);
+  ASSERT_EQ(s.rig.api.vocabRequests.size(), 1u);
+  EXPECT_NE(s.rig.api.vocabRequests[0].path.find("limit=5&offset=0"), std::string::npos);
+  // Not again on this card, nor the next, until the interval has passed.
+  EXPECT_FALSE(probeDue(s, s.now + 10 * config::kVocabCardProbeIdleMs));
+  Saving next(/*complete=*/true, {"xteink"}, &m.store);
+  m.lexirise.serve(next.rig.api);
+  next.now = s.now + config::kVocabCardProbeIdleMs * 3;
+  EXPECT_FALSE(probeDue(next, next.now));
+  next.now = s.now + config::kVocabCardProbeIdleMs + config::kVocabCardProbeIntervalMs;
+  EXPECT_TRUE(probeDue(next, next.now));
+}
+
+TEST(LiveProbe, AChangeMadeInTheAppReachesTheWordOnTheCard) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  m.lexirise.serve(s.rig.api);
+  s.step(-1);
+  s.step(-1);  // 本: saved at 3 (the analysis)
+  s.drain();
+  ASSERT_EQ(s.c.state().level, Level::Fresh);
+  m.lexirise.items[0].proficiency = 4;  // set to Known in the Lexirise app, after the mirror's cursor
+  m.lexirise.items[0].updatedMs = lexipoint::fakes::kSept2026Ms + 60000;
+  s.now += 10;
+  ASSERT_EQ(idleStep(s, s.now + config::kVocabCardProbeIdleMs), Idle::Probe);
+  EXPECT_EQ(s.c.state().level, Level::Known);
+  EXPECT_EQ(m.level(3), 4);
+}
+
+TEST(LiveProbe, AWordThisCardWroteKeepsTheCardsLevel) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  m.lexirise.serve(s.rig.api);
+  s.rig.api.writeReplies = {apiOk("{}")};
+  s.step(-1);
+  s.step(-1);  // 本
+  s.drain();
+  s.level(0);  // T: a PATCH this card made
+  s.drain();
+  ASSERT_EQ(s.c.state().level, Level::Tracked);
+  m.lexirise.items[0].proficiency = 4;  // the account says otherwise (a change in the app, or a stale page)
+  m.lexirise.items[0].updatedMs = lexipoint::fakes::kSept2026Ms + 60000;
+  s.now += config::kToastMs + 10;
+  s.c.tick(s.now);
+  bool probed = false;
+  for (int i = 0; i < 5 && !probed; i++, s.now += config::kDeckIdleMs) {
+    probed = idleStep(s, s.now + config::kVocabCardProbeIdleMs) == Idle::Probe;
+  }
+  ASSERT_TRUE(probed);
+  EXPECT_EQ(m.level(3), 4);                      // the mirror takes the account's answer
+  EXPECT_EQ(s.c.state().level, Level::Tracked);  // the card keeps its own write
+}
+
+TEST(LiveProbe, NoProbeWithoutASyncedLoadedMirrorOrWhileAPassRuns) {
+  lexipoint::fakes::FakeFiles files;
+  VocabStore unsynced(files);
+  unsynced.load(Language::Japanese);  // never synced: the full pass comes on its own schedule
+  Saving s(/*complete=*/true, {"xteink"}, &unsynced);
+  EXPECT_FALSE(probeDue(s, s.now + config::kVocabCardProbeIdleMs));
+  VocabStore unloaded(files);  // not loaded yet (the first idle card's flush loads it)
+  Saving t(/*complete=*/true, {"xteink"}, &unloaded);
+  EXPECT_FALSE(probeDue(t, t.now + config::kVocabCardProbeIdleMs));
+  Mirrored m;
+  Saving u(/*complete=*/false, {"xteink"}, &m.store);  // phase B still to come: work first
+  EXPECT_FALSE(probeDue(u, u.now + config::kVocabCardProbeIdleMs));
+}
+
+TEST(LiveProbe, AnIdlePageThatChangesAWordOnTheCardRedrawsItToo) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  m.lexirise.serve(s.rig.api);
+  s.step(-1);
+  s.step(-1);  // 本: at 3
+  s.drain();
+  ASSERT_EQ(s.c.state().level, Level::Fresh);
+  // Many changes in the app: more than the probe holds, so the idle pages after it carry the change.
+  for (uint32_t n = 1; n <= 10; n++) {
+    m.lexirise.items.push_back(
+        {3000 + n, 4000 + n, 1, false, lexipoint::fakes::kSept2026Ms + 90000 + n, "word", std::nullopt});
+  }
+  m.lexirise.items[0].proficiency = 4;
+  m.lexirise.items[0].updatedMs = lexipoint::fakes::kSept2026Ms + 60000;  // older than the ten: past the probe
+  for (int i = 0; i < 6; i++) {
+    s.now += config::kVocabIdleMs;
+    idleStep(s, s.now);
+  }
+  EXPECT_EQ(m.level(3), 4);
+  EXPECT_EQ(s.c.state().level, Level::Known);
 }

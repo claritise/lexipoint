@@ -29,6 +29,7 @@ enum class ApiError {
   Server,        // 5xx
   Http,          // any other non-2xx
   Malformed,     // unparseable or over-limit response
+  Cancelled,     // given up for the reader's input (the call's abort, V7b)
 };
 
 const char* apiErrorName(ApiError error);
@@ -65,7 +66,9 @@ class LexiriseClient {
   // connection is open the whole request, retry included, gets config::kRequestDeadlineMs.
   // `sink`: a 2xx body is streamed to it (up to its maxBytes()) and never held; the response's body
   // stays empty. A sink that stops the body makes the response Malformed.
-  ApiResponse send(const net::Request& request, net::BodySink* sink = nullptr);
+  // `abort` (optional, V7b) is asked between reads and in the connection's waits: true gives the call up (Cancelled,
+  // the connection closed; never resent).
+  ApiResponse send(const net::Request& request, net::BodySink* sink = nullptr, net::Abort abort = nullptr);
 
   void close() { connection_.close(); }
 

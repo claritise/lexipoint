@@ -516,3 +516,70 @@ TEST(Utf16Length, CountsEveryCharacterOfTheView) {
   EXPECT_EQ(utf16Length(std::string_view("a\0b", 3)), 3u);  // NUL doesn't end it
   EXPECT_EQ(utf16Length(""), 0u);
 }
+
+// --- V7b: the whole page's text (a page analysis sends it; a tap takes its sentence's slice) ---
+
+namespace {
+
+// UTF-16 units [start, start + length(sentence)) of the page text, as UTF-8.
+std::string sliceUnits(const std::string& utf8, const uint32_t start, const uint32_t units) {
+  std::string out;
+  uint32_t at = 0;
+  const auto* p = reinterpret_cast<const unsigned char*>(utf8.c_str());
+  while (const uint32_t cp = utf8NextCodepoint(&p)) {
+    const uint32_t n = cp >= 0x10000 ? 2 : 1;
+    if (at >= start && at + n <= start + units) utf8AppendCodepoint(cp, out);
+    at += n;
+  }
+  return out;
+}
+
+void expectEverySentenceIsASliceOfThePage(const PageModel& page, const Script script) {
+  const auto pageText = lexipoint::text::buildPageText(page, script);
+  ASSERT_TRUE(pageText);
+  EXPECT_EQ(utf16Length(pageText->text), pageText->chars.back().start + pageText->chars.back().units);
+  for (size_t l = 0; l < page.lines.size(); l++) {
+    for (size_t t = 0; t < page.lines[l].tokens.size(); t++) {
+      const auto sentence = buildSentence(page, {l, t}, script);
+      if (!sentence) continue;
+      const auto offset = lexipoint::text::pageOffsetOf(*pageText, *sentence);
+      ASSERT_TRUE(offset) << sentence->text;
+      EXPECT_EQ(sliceUnits(pageText->text, *offset, utf16Length(sentence->text)), sentence->text) << l << ":" << t;
+    }
+  }
+}
+
+}  // namespace
+
+TEST(PageText, EveryJapaneseSentenceIsTheSliceOfThePageAtItsOffset) {
+  PageModel page;
+  page.lines.push_back(layout("ったので、窓の外を眺めながら少しだけ待つことにした。港町の坂道は朝から霧に"));
+  page.lines.push_back(layout("包まれていて、灯台の光がぼんやりと滲んで見えた。"));
+  page.lines.push_back(layout("「今日は一気に冷えたねえ」と祖母は笑い、湯気の立つ茶碗を差し出してくれた。", true));
+  page.lines.push_back(layout("その地名を、私は一度も聞いたことがなかった。祖母に尋ねるべきかどうか迷った", true));
+  expectEverySentenceIsASliceOfThePage(page, Script::Japanese);
+}
+
+TEST(PageText, EveryChineseSentenceIsTheSliceOfThePageAtItsOffset) {
+  PageModel page;
+  page.lines.push_back(layout("的时候，雨已经停了。老街两旁的店铺陆陆续续地打开了门，"));
+  page.lines.push_back(layout("卖早点的摊子冒着白白的热气。“好。”“走吧。”他说。"));
+  page.lines.push_back(layout("我深深地吸了一口气，决定先去街尾的旧书店问一问。", true));
+  expectEverySentenceIsASliceOfThePage(page, Script::Chinese);
+}
+
+TEST(PageText, LatinWordsKeepTheirSpacesAndALongSentenceItsCap) {
+  PageModel page;
+  std::string longSentence;
+  for (int i = 0; i < 40; i++) longSentence += "word ";
+  page.lines.push_back(layout("It was late. The (quiet) town slept, and \xE2\x80\x9Cno one\xE2\x80\x9D stirred."));
+  page.lines.push_back(layout(longSentence + "ends."));
+  expectEverySentenceIsASliceOfThePage(page, Script::Latin);
+}
+
+TEST(PageText, APageWithoutTextHasNone) {
+  PageModel page;
+  EXPECT_FALSE(lexipoint::text::buildPageText(page, Script::Japanese));
+  page.lines.push_back(TextLine{{"\xE3\x80\x80"}, true});  // an ideographic space alone
+  EXPECT_FALSE(lexipoint::text::buildPageText(page, Script::Japanese));
+}

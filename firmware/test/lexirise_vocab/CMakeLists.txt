@@ -1,7 +1,10 @@
 add_executable(LexiriseVocabTest
   VocabMirrorTest.cpp
   VocabSyncSimTest.cpp
+  RawPagesTest.cpp
+  ManualSyncTest.cpp
   ${REPO_ROOT}/src/lexirise/vocab/VocabMirror.cpp
+  ${REPO_ROOT}/src/lexirise/vocab/ManualSync.cpp
   ${REPO_ROOT}/src/lexirise/api/VocabPage.cpp
   ${REPO_ROOT}/src/lexirise/api/Requests.cpp
   ${REPO_ROOT}/src/lexirise/api/Responses.cpp

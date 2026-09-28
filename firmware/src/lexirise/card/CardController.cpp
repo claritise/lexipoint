@@ -285,6 +285,15 @@ Outcome CardController::setLevel(const Level level, const char* toastPrefix, con
   return o;
 }
 
+bool CardController::savedLevelChanged(const int word) {
+  if (word < 0 || word >= static_cast<int>(levels_.size())) return false;
+  const Level level = source_.savedLevel(word);
+  for (const int same : source_.sameWord(word)) levels_[same] = level;
+  const Level before = state_.level;
+  if (hasWord()) state_.level = levels_[word_];
+  return state_.level != before;
+}
+
 void CardController::levelFailed(const int word, const Level level, const unsigned long nowMs, const CallFailure why,
                                  const Level wanted, const uint32_t retryInS) {
   if (word < 0 || word >= static_cast<int>(levels_.size())) return;

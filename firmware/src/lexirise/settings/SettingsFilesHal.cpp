@@ -10,6 +10,8 @@
 #include "IgnoredWords.h"
 #include "SettingsStore.h"
 #include "lexirise/deck/BookDeck.h"
+#include "lexirise/page/PageStore.h"
+#include "lexirise/util/Epoch.h"
 #include "lexirise/vocab/VocabMirror.h"
 
 namespace lexipoint {
@@ -50,6 +52,7 @@ class HalSettingsFiles final : public SettingsFiles {
   bool remove(const char* path) override { return Storage.remove(path); }
   bool rename(const char* from, const char* to) override { return Storage.rename(from, to); }
   bool ensureDir(const char* path) override { return Storage.ensureDirectoryExists(path); }
+  bool removeTree(const char* path) override { return Storage.removeDir(path); }
 };
 
 HalSettingsFiles& halFiles() {
@@ -86,6 +89,16 @@ deck::DeckStore& deck::deckStore() {
 
 vocab::VocabStore& vocab::vocabStore() {
   static VocabStore store(halFiles());
+  static const bool clockSet = [] {
+    store.setClock(timing::epochNowS);  // the time the card's answers and writes were known (V7b R5)
+    return true;
+  }();
+  (void)clockSet;
+  return store;
+}
+
+page::PageStore& page::pageStore() {
+  static PageStore store(halFiles());
   return store;
 }
 

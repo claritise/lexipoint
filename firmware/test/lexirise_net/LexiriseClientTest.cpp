@@ -337,3 +337,61 @@ TEST(LexiriseClient, AStreamedBodyOverItsCapIsMalformed) {
   EXPECT_EQ(client.send(kMe, &sink).error, ApiError::Malformed);
   EXPECT_TRUE(sink.got.empty());
 }
+
+// --- A call's abort (v0.2 V7b: the reader's input gives a page's call up) ---
+
+namespace {
+bool abortNow = false;
+bool aborted() { return abortNow; }
+}  // namespace
+
+TEST(LexiriseClient, AnOpenGivenUpForInputIsCancelledAndSendsNothing) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  ASSERT_TRUE(client.configure(kBase, kKey));
+  conn.openResults = {OpenError::Aborted};
+  const auto r = client.send(kMe, nullptr, aborted);
+  EXPECT_EQ(r.error, ApiError::Cancelled);
+  EXPECT_FALSE(r.sent);
+  EXPECT_TRUE(conn.written.empty());
+}
+
+TEST(LexiriseClient, InputAlreadyThereSendsNothing) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  ASSERT_TRUE(client.configure(kBase, kKey));
+  abortNow = true;
+  const auto r = client.send(kMe, nullptr, aborted);
+  abortNow = false;
+  EXPECT_EQ(r.error, ApiError::Cancelled);
+  EXPECT_FALSE(r.sent);
+  EXPECT_TRUE(conn.written.empty());
+  EXPECT_FALSE(conn.isOpen());
+}
+
+TEST(LexiriseClient, AStaleSessionGivenUpIsntResent) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  ASSERT_TRUE(client.configure(kBase, kKey));
+  conn.reads = {ok("{}")};
+  ASSERT_TRUE(client.send(kMe).ok());               // the session stays open
+  conn.reads = {FakeConnection::kClose, ok("{}")};  // stale: it closes before any byte
+  static int asked = 0;
+  asked = 0;
+  // Input comes while the stale read fails: the retry on a fresh session must not go out.
+  const auto r = client.send(kMe, nullptr, [] { return ++asked > 1; });
+  EXPECT_EQ(r.error, ApiError::Cancelled);
+  EXPECT_EQ(conn.written.size(), 2u);  // the first call's and the stale attempt's: no third
+  EXPECT_FALSE(conn.isOpen());
+}
+
+TEST(LexiriseClient, TheAbortIsForgottenAfterTheCall) {
+  FakeConnection conn;
+  LexiriseClient client(conn, "UA", FakeClock::now);
+  ASSERT_TRUE(client.configure(kBase, kKey));
+  abortNow = true;
+  client.send(kMe, nullptr, aborted);
+  conn.reads = {ok("{}")};
+  EXPECT_TRUE(client.send(kMe).ok());  // no abort given: the last one doesn't linger
+  abortNow = false;
+}

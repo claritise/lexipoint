@@ -20,7 +20,8 @@ LexiriseService::LexiriseService(SettingsStore& store, net::WifiControl& wifi, n
                                  std::string userAgent, const Clock clock)
     : store_(store), wifi_(wifi), client_(connection, std::move(userAgent), clock), clock_(clock) {}
 
-api::ApiResponse LexiriseService::send(const net::Request& request, net::BodySink* sink, const bool mayJoin) {
+api::ApiResponse LexiriseService::send(const net::Request& request, net::BodySink* sink, const bool mayJoin,
+                                       const net::Abort abort) {
   // A rejected key (401/403) or a rate limit (429) is honoured without the network (offline-and-errors.md
   // §1, §3); only the key check may probe a rejected key.
   const unsigned long now = clock_();  // one reading: the block and its refusal must agree
@@ -47,7 +48,8 @@ api::ApiResponse LexiriseService::send(const net::Request& request, net::BodySin
     return response;
   }
   if (!checking_) recheckIfStale();  // online now: a key saved while offline gets checked next tick
-  response = client_.send(request, sink);
+  response = client_.send(request, sink, abort);
+  if (response.sent) window_.add(clock_());
   access_.observe(response, clock_());
   // A lookup or save that finds the key rejected tells the web page too (it'd still say "Connected").
   if (!checking_ && response.error == api::ApiError::Unauthorized) status_ = api::keyStatusFrom(response);
@@ -103,8 +105,20 @@ api::ApiResponse LexiriseService::lookup(const Language language, const std::str
   return send(api::lookupRequest(language, lemma));
 }
 
-api::ApiResponse LexiriseService::vocabularyPage(const net::Request& request, net::BodySink& sink) {
-  return send(request, &sink, /*mayJoin=*/false);
+api::ApiResponse LexiriseService::vocabularyPage(const net::Request& request, net::BodySink& sink,
+                                                 const net::Abort abort) {
+  return send(request, &sink, /*mayJoin=*/false, abort);
+}
+
+api::ApiResponse LexiriseService::analyzePage(const net::Request& request, net::BodySink& sink,
+                                              const net::Abort abort) {
+  return send(request, &sink, /*mayJoin=*/false, abort);
+}
+
+api::ApiError LexiriseService::joinForUser() {
+  const net::WifiResult wifi = wifi_.ensureUp();
+  if (wifi == net::WifiResult::Up) return api::ApiError::None;
+  return wifi == net::WifiResult::NotConfigured ? api::ApiError::NoWifiSaved : api::ApiError::NoWifi;
 }
 
 api::ApiResponse LexiriseService::write(const net::Request& request) {
@@ -131,9 +145,9 @@ void LexiriseService::onActivityChanged(const bool reading) {
   if (!reading) releaseWifi();
 }
 
-void LexiriseService::releaseWifi() {
+bool LexiriseService::releaseWifi() {
   closeSession();
-  wifi_.release();
+  return wifi_.release();
 }
 
 }  // namespace lexipoint

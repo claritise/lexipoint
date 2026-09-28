@@ -87,7 +87,11 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
   Ignore then its Undo on a word at x y, checked from the card's `[LXCARD] target …` and `[LXCARD] ignore …` lines;
   writes only the reader's `ignored.ini`) and `vocab-smoke` (v0.2 V7a: leaves a card idle until the vocab mirror
   syncs a page, checked from its `[LXVOCAB]` and `[LXS]` lines; read-only; `press` needs a real side-button press
-  while the page streams). Each is host-tested on synthetic logs in `test_lxctl.py`.
+  while the page streams) and `page-smoke` (v0.2 V7b: a card brings WiFi up, then the page analysis over page turns
+  at reading pace and fast, and a card on the page reached, checked from its `[LXPAGE]`, `[ERS] Rendered page` and
+  `[LXS]` lines; read-only) and `home-sync-smoke` (v0.2 V7b: Home, then the Sync Vocabulary row; its result, only
+  vocabulary-list calls, and WiFi given back after it; read-only). Each is host-tested on synthetic logs in
+  `test_lxctl.py`.
 - **Never open the port in a loop** (a "wait until it answers" poll): each open resets the reader, and a poll that
   opened it every second or two kept it restarting until the poll was stopped (2026-09-27).
 - **Never open it from two processes at once:** the second read fails ("device reports readiness to read but

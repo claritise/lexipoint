@@ -290,16 +290,16 @@ TEST(Service, AVocabularyPageNeverBringsWifiUp) {
   Rig rig;
   rig.wifi.isConnected = false;  // the radio's off (or someone else's): the mirror waits for a lookup's WiFi
   Collect sink;
-  const auto r =
-      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0), sink);
+  const auto r = rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0),
+                                            sink, nullptr);
   EXPECT_EQ(r.error, ApiError::NoWifi);
   EXPECT_EQ(rig.wifi.ensures, 0);
   EXPECT_EQ(rig.conn.opens, 0);
 
   rig.wifi.isConnected = true;
   rig.conn.reads = {httpOk(R"({"items":[]})")};
-  const auto page =
-      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 48), sink);
+  const auto page = rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 48),
+                                               sink, nullptr);
   EXPECT_TRUE(page.ok());
   EXPECT_EQ(sink.got, R"({"items":[]})");
   EXPECT_EQ(rig.wifi.touches, 0);  // the radio's idle teardown isn't put off by the mirror's sync
@@ -317,8 +317,8 @@ TEST(Service, AVocabularyPageGivenUpClosesItsSessionAndTheNextCallOpensAnother) 
   } stops;
   Rig rig;
   rig.conn.reads = {httpOk(R"({"items":[]})"), httpOk(R"({"user":{},"apiKey":{"rateLimitMax":1200}})")};
-  const auto given =
-      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0), stops);
+  const auto given = rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0),
+                                                stops, nullptr);
   EXPECT_EQ(given.error, ApiError::Malformed);
   EXPECT_FALSE(rig.conn.isOpen());  // the rest of that body is never read into the next answer
   const int opens = rig.conn.opens;
@@ -336,10 +336,63 @@ TEST(Service, AVocabularyPageDoesntPushOutTheTlsIdleClose) {
   FakeClock::nowMs = 1000 + config::kTlsIdleCloseMs / 2;
   Collect sink;
   ASSERT_TRUE(
-      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0), sink).ok());
+      rig.service.vocabularyPage(lexipoint::api::vocabularyPageRequest(lexipoint::Language::Japanese, 0), sink, nullptr)
+          .ok());
   rig.service.tick();
   ASSERT_TRUE(rig.conn.isOpen());
   FakeClock::nowMs = 1000 + config::kTlsIdleCloseMs;  // the idle close, counted from the lookup, not the page
   rig.service.tick();
   EXPECT_FALSE(rig.conn.isOpen());
+}
+
+// --- A page's analysis (C12, V7b) ---
+
+TEST(Service, APageAnalysisNeverBringsWifiUpAndIsCountedInTheHour) {
+  Rig rig;
+  FakeClock::nowMs = 5000;
+  rig.wifi.isConnected = false;
+  Collect sink;
+  const auto request = lexipoint::api::analyzePageRequest(lexipoint::Language::Japanese, "猫が鳴いた。", false);
+  EXPECT_EQ(rig.service.analyzePage(request, sink, nullptr).error, ApiError::NoWifi);
+  EXPECT_EQ(rig.wifi.ensures, 0);
+  EXPECT_EQ(rig.service.requestsLastHour(), 0u);  // never sent
+  rig.wifi.isConnected = true;
+  rig.conn.reads = {httpOk(R"({"occurrences":[]})")};
+  EXPECT_TRUE(rig.service.analyzePage(request, sink, nullptr).ok());
+  EXPECT_EQ(sink.got, R"({"occurrences":[]})");
+  EXPECT_EQ(rig.wifi.touches, 0);  // not the reader's WiFi use: the idle teardown comes when it would have
+  EXPECT_EQ(rig.service.requestsLastHour(), 1u);
+  EXPECT_EQ(rig.service.rateLimit(), config::kRateLimitDefault);  // /v1/me hasn't said
+}
+
+TEST(Service, APageAnalysisGivenUpForInputIsCancelledAndClosed) {
+  Rig rig;
+  rig.conn.reads = {"HTTP/1.1 200 OK\r\nContent-Length: 40\r\n\r\n{\"occ", "urrences\":[]}"};
+  static int asked = 0;
+  asked = 0;
+  Collect sink;
+  const auto r = rig.service.analyzePage(lexipoint::api::analyzePageRequest(lexipoint::Language::Japanese, "x", false),
+                                         sink, [] { return ++asked > 1; });  // input comes after the first read
+  EXPECT_EQ(r.error, ApiError::Cancelled);
+  EXPECT_TRUE(r.sent);
+  EXPECT_FALSE(rig.conn.isOpen());  // the rest of that body is never read into the next answer
+  EXPECT_EQ(std::string(lexipoint::api::apiErrorName(r.error)), "cancelled");
+}
+
+TEST(Service, APageRequestCarriesTheWholePageAndFastOnlyWhenAsked) {
+  std::string page;
+  for (int i = 0; i < 400; i++) page += "猫";  // 1200 bytes: past a sentence's kMaxAnalyzeTextBytes cut
+  const auto first = lexipoint::api::analyzePageRequest(lexipoint::Language::Chinese, page + page, false);
+  EXPECT_NE(first.body.find(page + page), std::string::npos);
+  EXPECT_EQ(first.body.find("fast"), std::string::npos);
+  EXPECT_NE(first.body.find("\"language\":\"zh\""), std::string::npos);
+  EXPECT_NE(lexipoint::api::analyzePageRequest(lexipoint::Language::Chinese, "x", true).body.find("\"fast\":true"),
+            std::string::npos);
+}
+
+TEST(Service, TheReadersOwnSyncJoinsWifi) {
+  Rig rig;
+  rig.wifi.isConnected = false;
+  EXPECT_EQ(rig.service.joinForUser(), ApiError::None);
+  EXPECT_EQ(rig.wifi.ensures, 1);
 }

@@ -35,19 +35,11 @@ std::vector<vocab::LiveState> liveStatesOf(const lookup::AnalyzedSentence& analy
   const bool whole = analysis.state.size() < config::kMaxEntries;
   std::vector<vocab::LiveState> live;
   live.reserve(2 * analyzed.words.size());
-  const auto add = [&](const uint32_t id) {
-    if (id == 0 || std::any_of(live.begin(), live.end(), [id](const vocab::LiveState& l) { return l.entryId == id; })) {
-      return;
-    }
-    const api::EntryState* state = analysis.stateFor(id);
-    if (!state && !whole) return;
-    const std::optional<api::EntryState> saved = state ? std::optional<api::EntryState>(*state) : std::nullopt;
-    if (const std::optional<vocab::LiveState> l = vocab::liveStateOf(analyzed.language, id, saved)) live.push_back(*l);
-  };
   for (const size_t w : analyzed.words) {
     const api::Occurrence& occ = analysis.occurrences[w];
-    add(lookup::entryKeyOf(occ));
-    add(occ.entryId);
+    for (const uint32_t id : {lookup::entryKeyOf(occ), occ.entryId}) {
+      vocab::addLiveState(live, analyzed.language, id, analysis.stateFor(id), whole);
+    }
   }
   return live;
 }
@@ -375,6 +367,7 @@ void LiveSource::toMirror(const vocab::LiveState& state, const bool ownWrite) {
   if (!ownWrite && written) return;                                     // this card's write is newer than the analysis
   if (mirrorUpdates_.empty()) mirrorUpdates_.reserve(kMirrorReserved);  // a sentence's words, lemma and surface
   mirrorUpdates_.push_back(state);
+  mirrorUpdates_.back().own = ownWrite;  // the reader's write: it outranks a page's snapshot even with no clock
 }
 
 void LiveSource::recordMirror() {
@@ -414,10 +407,71 @@ std::optional<vocab::PageCall> LiveSource::fetchVocab(const unsigned long nowMs,
   return vocab::sendPage(api_, *plan, cancel);
 }
 
-void LiveSource::applyVocab(const vocab::PageCall& call, const unsigned long nowMs, const uint32_t epochS) {
-  if (!vocab_) return;
-  if (!call.cancelled) vocabPages_++;  // a page given up for input doesn't use the card's share
-  vocab_->apply(call, nowMs, epochS);
+bool LiveSource::hasProbeWork(const unsigned long nowMs) const {
+  return vocab_ && vocabLanguage_ && writes_.empty() && wordCount() > 0 && error_ == api::ApiError::None &&
+         vocab_->cardProbeDue(*vocabLanguage_, nowMs);
+}
+
+std::optional<vocab::PageCall> LiveSource::fetchProbe(const unsigned long nowMs,
+                                                      const api::VocabPageReader::Cancel cancel) {
+  if (!hasProbeWork(nowMs)) return std::nullopt;
+  if (cancel && cancel()) return std::nullopt;  // a button already held: no probe now (none spent)
+  const std::optional<vocab::PagePlan> plan = vocab_->takeCardProbe(*vocabLanguage_, nowMs);
+  if (!plan) return std::nullopt;
+  vocab::PageCall call = vocab::sendPage(api_, *plan, cancel);
+  call.probe = true;
+  return call;
+}
+
+std::vector<int> LiveSource::takeMirrorChanges(const std::vector<uint32_t>& changedEntries) {
+  std::vector<int> changed;
+  if (!vocab_ || changedEntries.empty()) return changed;
+  const auto isChanged = [&changedEntries](const uint32_t id) {
+    return id != 0 && std::find(changedEntries.begin(), changedEntries.end(), id) != changedEntries.end();
+  };
+  const auto wroteHere = [this](const Language language, const uint32_t id) {
+    return std::find(writtenEntries_.begin(), writtenEntries_.end(), std::make_pair(language, id)) !=
+           writtenEntries_.end();
+  };
+  for (int w = 0; w < wordCount(); w++) {
+    lookup::LookupCard& card = cards_[w];
+    if (!isChanged(card.lemmaEntryId) && !isChanged(card.entryId)) continue;
+    if (wroteHere(card.language, card.lemmaEntryId) || wroteHere(card.language, card.entryId)) continue;
+    // As the card reads a state: the lemma's entry if saved, else the surface's.
+    std::optional<api::EntryState> saved;
+    uint32_t savedEntry = 0;
+    for (const uint32_t id : {card.lemmaEntryId, card.entryId}) {
+      if (id == 0) continue;
+      const std::optional<vocab::Entry> e = vocab_->find(card.language, id);
+      if (std::optional<api::EntryState> state = e ? vocab::savedStateOf(*e) : std::nullopt) {
+        saved = std::move(state);
+        savedEntry = id;
+        break;
+      }
+    }
+    if (saved && card.saved) {  // what the card knows beyond the level (notes, tags from the item) stays
+      api::EntryState kept = *card.saved;
+      kept.savedExpressionId = saved->savedExpressionId;
+      kept.proficiency = saved->proficiency;
+      saved = std::move(kept);
+    }
+    const bool same = saved.has_value() == card.saved.has_value() &&
+                      (!saved || (saved->savedExpressionId == card.saved->savedExpressionId &&
+                                  saved->proficiency == card.saved->proficiency));
+    if (same) continue;
+    card.saved = std::move(saved);
+    card.savedEntryId = card.saved ? savedEntry : 0;
+    rebuild(w);
+    changed.push_back(w);
+  }
+  return changed;
+}
+
+vocab::PageApplied LiveSource::applyVocab(const vocab::PageCall& call, const unsigned long nowMs,
+                                          const uint32_t epochS) {
+  if (!vocab_) return {};
+  if (!call.cancelled && !call.probe) vocabPages_++;  // a page given up for input, or a probe, isn't the card's share
+  return vocab_->apply(call, nowMs, epochS);
 }
 
 std::optional<LiveSource::FailedWrite> LiveSource::takeFailedWrite() {
@@ -490,7 +544,10 @@ LiveSource::Fetched LiveSource::analysis(const size_t sentence) const {
   f.kind = Fetched::Kind::Analysis;
   f.sentence = sentence;
   lookup::AnalyzedSentence analyzed;  // only for the cards: dropped when this returns, not carried into apply()
-  f.report = lookup::analyzeTap(api_, sentences_[sentence].tap, analyzed, f.tapped);
+  // From the page's analysis when it has this sentence (V7b): no ①, and its states are the mirror's already.
+  const std::optional<api::AnalyzeResult> known =
+      pageSentences_ ? pageSentences_->analysisOf(sentences_[sentence].tap) : std::nullopt;
+  f.report = lookup::analyzeTap(api_, sentences_[sentence].tap, analyzed, f.tapped, known ? &*known : nullptr);
   f.unreadable = f.report.bodyHead;
   if (f.report.outcome == lookup::LookupOutcome::Card) {
     // Each form's name now, outside RenderLock: apply() only takes it (C16's search, run for every word). The
@@ -506,7 +563,8 @@ LiveSource::Fetched LiveSource::analysis(const size_t sentence) const {
       f.cards.push_back(lookup::cardFor(analyzed, i));
       f.names.push_back(formNameOf(f.cards.back(), page));
     }
-    if (vocab_) f.live = liveStatesOf(analyzed);
+    // A live answer (①'s); the page's was taken when it came.
+    if (vocab_ && !f.report.fromPage) f.live = liveStatesOf(analyzed);
 #if LEXIPOINT_DEV_HARNESS
     if (clock_) {
       // And the stack this task never used so far (bytes): the search's frames are its deepest here.

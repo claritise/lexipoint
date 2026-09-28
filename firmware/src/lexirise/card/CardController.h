@@ -94,6 +94,10 @@ class CardController {
   // had set: the toast's Retry sets it again. `why`: Network "Save failed · Retry", KeyRejected "Lexirise key
   // rejected" (no retry), RateLimited "Rate limited: try in N s · Retry" (offline-and-errors.md §3).
   void levelFailed(int word, Level level, unsigned long nowMs, CallFailure why, Level wanted, uint32_t retryInS);
+  // The source's saved level for `word` changed without the user (the vocab mirror's probe found a change made in
+  // the Lexirise app, V7b): it and the sentence's other occurrences of it take it, no toast. True: what's shown
+  // changed.
+  bool savedLevelChanged(int word);
   // The ignore list couldn't be written (the SD card): the word goes back to `!wanted`, with "Save failed".
   void ignoreFailed(int word, bool wanted, unsigned long nowMs);
   // The ignore of `word` pushed `evicted` out of a full list: its Undo (if still offered) puts that key back.

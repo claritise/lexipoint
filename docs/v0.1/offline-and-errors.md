@@ -127,7 +127,10 @@ own spec before it's built.
   reader's menus, word select and the card keep it). An ActivityManager hook reports this *before* the
   next activity's `onEnter`, so KOSync, the web server, OTA, ... start with the radio off and bring WiFi
   up themselves: Lexipoint can never turn WiFi off under another feature. If Lexipoint's own link
-  drops, it rejoins (it's still its radio) rather than calling it busy. Before deep sleep the base
+  drops, it rejoins (it's still its radio) rather than calling it busy. **The home screen's Sync Vocabulary**
+  (v0.2 V7b, `../v0.2/page-annotations.md` §1.1) is the one join outside reading: the reader pressed it, so it joins
+  the saved network as a card does, holds WiFi up while it runs, and gives WiFi back as soon as it ends (not after
+  `wifi_idle_min`: nothing on the home screen uses it); a network someone else brought up is left alone. Before deep sleep the base
   already turns WiFi off. **While the card is open the idle time doesn't run** (`holdWifi`, P5): the card
   makes one call per loop pass, so with `wifi_idle_min=0` ("connect each time") WiFi would otherwise go
   down between its phase A and B, every step and every save. It's once per card; when the card closes

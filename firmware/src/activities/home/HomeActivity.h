@@ -1,11 +1,18 @@
 #pragma once
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <vector>
 
 #include "./FileBrowserActivity.h"
+#include "./HomeMenuIndex.h"
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
 #include "util/ButtonNavigator.h"
+#if LEXIRISE
+#include "lexirise/vocab/HomeSync.h"    // LEXIPOINT
+#include "lexirise/vocab/ManualSync.h"  // LEXIPOINT
+#endif
 
 struct Rect;
 
@@ -16,6 +23,13 @@ class HomeActivity final : public Activity {
   bool recentsLoaded = false;
   bool firstRenderDone = false;
   bool hasOpdsServers = false;
+#if LEXIRISE
+  bool hasVocabSync = false;                              // LEXIPOINT: the Sync Vocabulary row (v0.2 V7b)
+  std::unique_ptr<lexipoint::vocab::HomeSync> vocabSync;  // LEXIPOINT: a sync under way, or its result shown
+  std::atomic<bool> vocabSyncDrawn{false};                // LEXIPOINT: its popup was drawn: the next step may run
+  lexipoint::vocab::HomeSyncFlow vocabSyncFlow;           // LEXIPOINT: what input does to it (dismissed on release)
+  void loopVocabSync();                                   // LEXIPOINT
+#endif
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
@@ -31,30 +45,12 @@ class HomeActivity final : public Activity {
   const HomeMenuItem initialMenuItem;
   const bool cleanInitialRefresh;
 
-  // Convert HomeMenuItem to menu index (used in onEnter)
-  static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl) {
-    int i = 0;
-    if (item == HomeMenuItem::FILE_BROWSER) return i;
-    ++i;
-    if (item == HomeMenuItem::LIBRARY) return i;
-    ++i;
-    if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
-    if (hasOpdsUrl) ++i;
-    if (item == HomeMenuItem::FILE_TRANSFER) return i;
-    ++i;
-    if (item == HomeMenuItem::SETTINGS_MENU) return i;
-    return 0;
+  // Menu index <-> item (onEnter, loop): home/HomeMenuIndex.h.
+  static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl, bool hasVocabSync = false) {
+    return homeMenuIndexOf(item, hasOpdsUrl, hasVocabSync);
   }
-
-  // Convert menu index to HomeMenuItem (used in loop)
-  static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl) {
-    int i = 0;
-    if (idx == i++) return HomeMenuItem::FILE_BROWSER;
-    if (idx == i++) return HomeMenuItem::LIBRARY;
-    if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
-    if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
-    if (idx == i) return HomeMenuItem::SETTINGS_MENU;
-    return HomeMenuItem::NONE;
+  static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl, bool hasVocabSync = false) {
+    return homeMenuItemAt(idx, hasOpdsUrl, hasVocabSync);
   }
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
@@ -81,4 +77,8 @@ class HomeActivity final : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
   bool isHomeActivity() const override { return true; }
+#if LEXIRISE
+  // LEXIPOINT: a Sync Vocabulary under way keeps the reader awake (a long first sync mustn't be cut by auto-sleep).
+  bool preventAutoSleep() override { return vocabSync && vocabSync->running(); }
+#endif
 };

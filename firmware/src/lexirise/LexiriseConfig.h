@@ -60,9 +60,9 @@ constexpr const char* kVocabPathZh = "/.lexirise/vocab-zh.bin";
 constexpr const char* kVocabTmpPathZh = "/.lexirise/vocab-zh.bin.tmp";
 constexpr const char* kVocabBackupPathZh = "/.lexirise/vocab-zh.bin.bak";
 constexpr const char* kVocabBadPathZh = "/.lexirise/vocab-zh.bin.bad";
-constexpr size_t kVocabMirrorMax = 20000;  // words kept per language (16 B each); past it, new ones aren't taken
+constexpr size_t kVocabMirrorMax = 20000;  // words kept per language (20 B each); past it, new ones aren't taken
 constexpr size_t kVocabHeaderBytes = 72;
-constexpr size_t kVocabRecordBytes = 16;
+constexpr size_t kVocabRecordBytes = 20;  // V7b R5: with its time (version 3)
 constexpr size_t kVocabMaxBytes = kVocabHeaderBytes + kVocabMirrorMax * kVocabRecordBytes;
 // Syncing it (GET /v1/vocabulary, newest change first). Items are ~6.8 KB each (lexirise-api-notes.md "V7's
 // foundations"): a page of kVocabPageItems is ~340 KB, streamed and never held, so one page blocks the card's loop
@@ -78,12 +78,57 @@ static_assert(kVocabProbeItems > kVocabPageOverlap, "a probe leaves the whole ov
 constexpr size_t kVocabPageMaxBytes = 4UL * 1024UL * 1024UL;  // a streamed page larger than this is malformed
 constexpr size_t kJsonStreamMaxStringBytes = 256;  // a streamed string kept (the rest walked): kMaxTokenBytes
 constexpr unsigned kVocabPagesPerCard = 2;         // pages one card may fetch (each blocks the loop)
-constexpr size_t kVocabPendingMax = 256;           // card answers kept for a mirror not loaded yet (16 B each)
-constexpr unsigned kVocabPagesPerHour = 60;        // pages fetched per hour of uptime: 5% of the 1200 req/h limit
+constexpr size_t kVocabPendingMax = 256;     // card answers kept for a mirror not loaded yet (20 B each on Xtensa)
+constexpr unsigned kVocabPagesPerHour = 60;  // pages fetched per hour of uptime: 5% of the 1200 req/h limit
 constexpr unsigned long kVocabSyncIntervalMs = 15UL * timing::kMsPerMinute;  // an incremental sync at most this often
 constexpr unsigned long kVocabFailureWaitMs = 5UL * timing::kMsPerMinute;  // after a page failed (not a 429's own wait)
 constexpr uint32_t kVocabResyncS =
     7U * static_cast<uint32_t>(timing::kSecondsPerDay);  // a full pass again after this (deletions: VocabMirror.h)
+// Page analysis (C12, V7b; docs/v0.2/page-annotations.md §1.1): one analyze/text per page, the answer streamed into a
+// compact page/PageAnalysis (76-93 KB answers for 300-380 UTF-16 units, measured), kept on SD per page.
+constexpr const char* kPageCacheDir = "/.lexirise/pages";             // a folder per book under it
+constexpr const char* kPageIndexPath = "/.lexirise/pages/index.bin";  // the pages kept, oldest first (eviction)
+constexpr const char* kPageIndexTmpPath = "/.lexirise/pages/index.bin.tmp";
+constexpr const char* kPageIndexBackupPath = "/.lexirise/pages/index.bin.bak";
+constexpr const char* kPageIndexBadPath = "/.lexirise/pages/index.bin.bad";
+constexpr size_t kPageCacheFiles = 1000;      // pages kept (13-15 KB each measured: ~15 MB); one more drops the oldest
+constexpr size_t kPageIndexRecordBytes = 12;  // a kept page: its book, section and start (page/PageStore.cpp)
+constexpr size_t kPageIndexMaxBytes = 16 + kPageCacheFiles * kPageIndexRecordBytes;
+constexpr unsigned kPageIndexSaveEvery = 8;   // pages written between the index's saves (SD wear: it's rewritten whole)
+constexpr size_t kPageMaxTextUnits = 4096;    // a page's text longer than this (UTF-16 units) isn't analyzed
+constexpr size_t kPageMaxOccurrences = 2048;  // an answer with more is over its limit (not cached)
+constexpr size_t kPageMaxEntries = 2048;      // entryMetaById / stateByEntryId entries kept (past it: dropped)
+constexpr size_t kPageMaxPoolBytes = 0xFFFF;  // the page's strings (words, lemmas, readings), past it: over limit
+constexpr size_t kPageAnswerMaxBytes = 2UL * 1024UL * 1024UL;  // a streamed answer larger than this is malformed
+constexpr size_t kPageFileMaxBytes = 256UL * 1024UL;           // a cache file larger than this is unreadable
+// When the reader analyzes: a page up this long (the debounce: pages turning faster are never analyzed), at most this
+// share of the key's hourly limit used by this reader's own requests, the limit when /v1/me hasn't said (measured).
+constexpr unsigned long kPagePrefetchDwellMs = 1500;
+constexpr unsigned kPageBudgetPercent = 70;
+constexpr uint32_t kRateLimitDefault = 1200;
+constexpr unsigned long kRateWindowMs = 60UL * timing::kMsPerMinute;
+constexpr size_t kRateWindowBuckets = 60;  // one a minute
+// A failed page analysis waits this long before the same page is tried again (a 429 waits its own time).
+constexpr unsigned long kPageFailureWaitMs = 2UL * timing::kMsPerMinute;
+// The touch line (input/TouchLine.h, V7b R1): given up on after this many changes with no finger down within the
+// window (a line at rest never changes; a bad guess at its level would make every call give up).
+constexpr unsigned kTouchLineFlipsMax = 4;
+constexpr unsigned long kTouchLineFlipWindowMs = 60UL * timing::kMsPerSecond;
+// The home screen's Sync Vocabulary (V7b, claritise 2026-09-28): at most this many pages per press (a large first
+// sync goes on at the next press or on idle cards: the passes are resumable), and its result popup's time.
+constexpr unsigned kVocabManualSyncPagesMax = 200;
+// And at most this many pages an hour across presses (R4: repeated presses mustn't run the key into a 429 that would
+// block the cards). Not enough alone (R10): with the idle pages (kVocabPagesPerHour) and the page analysis (up to
+// kPageBudgetPercent of the limit) it could pass 1200, so a press doesn't join, and a run stops between pages, once
+// this reader's requests in the last hour reach kVocabManualSyncStopPercent of the key's limit.
+constexpr unsigned kVocabManualSyncPagesPerHour = 300;
+constexpr unsigned kVocabManualSyncStopPercent = 90;
+constexpr unsigned long kVocabSyncResultMs = 2000;
+// V7b (claritise, 2026-09-28): a card's probe of the vocabulary (kVocabProbeItems), once its phase B is on screen and
+// it has been idle this long, at most once per kVocabCardProbeIntervalMs (page-annotations.md §1.1 "claritise's
+// decisions").
+constexpr unsigned long kVocabCardProbeIdleMs = 1000;
+constexpr unsigned long kVocabCardProbeIntervalMs = 5UL * timing::kMsPerMinute;
 // The longest FAT/exFAT long name in UTF-8: 255 UTF-16 units, up to 3 bytes each (web/HiddenPath.h).
 constexpr size_t kMaxFatNameBytes = 255 * 3;
 

@@ -5,10 +5,14 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalDisplay.h>
+#include <HalGPIO.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Utf8.h>
 #include <Xtc.h>
+#if LEXIRISE
+#include <Memory.h>  // LEXIPOINT
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -21,6 +25,10 @@
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#if LEXIRISE
+#include "lexirise/input/InputAbort.h"  // LEXIPOINT
+#include "lexirise/vocab/ManualSync.h"  // LEXIPOINT
+#endif
 
 int HomeActivity::getMenuItemCount() const {
   int count = 4;  // File Browser, Library, File transfer, Settings
@@ -30,6 +38,9 @@ int HomeActivity::getMenuItemCount() const {
   if (hasOpdsServers) {
     count++;
   }
+#if LEXIRISE
+  if (hasVocabSync) count++;  // LEXIPOINT
+#endif
   return count;
 }
 
@@ -114,12 +125,21 @@ void HomeActivity::onEnter() {
   Activity::onEnter();
 
   hasOpdsServers = OPDS_STORE.hasServers();
+#if LEXIRISE
+  hasVocabSync = lexipoint::vocab::homeSyncRowShown();  // LEXIPOINT
+#endif
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
 
   const auto base = static_cast<int>(recentBooks.size());
-  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
+#if LEXIRISE
+  const bool vocabRow = hasVocabSync;  // LEXIPOINT
+#else
+  const bool vocabRow = false;
+#endif
+  selectorIndex =
+      initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers, vocabRow);
 
   // Trigger first update
   requestUpdate();
@@ -168,7 +188,54 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferStored = false;
 }
 
+#if LEXIRISE
+// LEXIPOINT: Sync Vocabulary under way (v0.2 V7b): any input stops it; otherwise one step per pass once its popup is
+// on screen; its result stays up config::kVocabSyncResultMs, then the menu is drawn again.
+void HomeActivity::loopVocabSync() {
+  int x = 0;
+  int y = 0;
+  const bool pressed = mappedInput.wasAnyPressed() || mappedInput.wasScreenTouchDown(x, y);
+  const bool released = mappedInput.wasAnyReleased() || mappedInput.wasScreenTouchReleased();
+  const bool fingerDown = mappedInput.isScreenTouchHeld(x, y);
+  const bool held = fingerDown || gpio.rawInputActive();
+  lexipoint::input::sampleIdle(fingerDown);
+  using lexipoint::vocab::HomeSyncAction;
+  const HomeSyncAction action =
+      vocabSyncFlow.next(pressed, released, held, vocabSyncDrawn, vocabSync->running(), vocabSync->over(millis()));
+  if (action == HomeSyncAction::Wait) return;
+  if (action == HomeSyncAction::Stop || action == HomeSyncAction::Step) {
+    if (action == HomeSyncAction::Stop) {
+      vocabSync->stop();
+    } else {
+      vocabSync->step();  // blocking, outside the lock: the render task draws only what refresh() left
+    }
+    {
+      RenderLock lock;
+      vocabSync->refresh();
+      vocabSyncDrawn = false;  // with the refresh: the next frame drawn is the one that shows it
+    }
+    requestUpdate();
+    return;
+  }
+  {  // Dismiss
+    std::unique_ptr<lexipoint::vocab::HomeSync> ended;
+    {
+      RenderLock lock;  // the render task reads the pointer: taken out under the lock
+      ended = std::move(vocabSync);
+    }
+    ended.reset();  // outside it: its destructor gives WiFi back (the TLS close and the radio's teardown block)
+    requestUpdate();
+  }
+}
+#endif
+
 void HomeActivity::loop() {
+#if LEXIRISE
+  if (vocabSync) {  // LEXIPOINT
+    loopVocabSync();
+    return;
+  }
+#endif
   const int menuCount = getMenuItemCount();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
@@ -178,7 +245,12 @@ void HomeActivity::loop() {
       return;
     }
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    switch (indexToMenuItem(menuIndex, hasOpdsServers)) {
+#if LEXIRISE
+    const bool vocabRow = hasVocabSync;  // LEXIPOINT
+#else
+    const bool vocabRow = false;
+#endif
+    switch (indexToMenuItem(menuIndex, hasOpdsServers, vocabRow)) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -194,6 +266,19 @@ void HomeActivity::loop() {
       case HomeMenuItem::SETTINGS_MENU:
         onSettingsOpen();
         break;
+#if LEXIRISE
+      case HomeMenuItem::VOCAB_SYNC:  // LEXIPOINT
+      {
+        vocabSyncFlow = {};
+        auto sync = makeUniqueNoThrow<lexipoint::vocab::HomeSync>();
+        if (sync && !sync->ok()) sync.reset();
+        vocabSyncDrawn = false;
+        RenderLock lock;  // the render task reads the pointer
+        vocabSync = std::move(sync);
+      }
+        requestUpdate();
+        break;
+#endif
       default:
         break;
     }
@@ -313,6 +398,12 @@ void HomeActivity::render(RenderLock&&) {
     menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
     menuIcons.insert(menuIcons.begin() + 2, Blocks);
   }
+#if LEXIRISE
+  if (hasVocabSync) {  // LEXIPOINT: just above Settings (claritise, 2026-09-28)
+    menuItems.insert(menuItems.end() - 1, tr(STR_LEXI_SYNC_VOCABULARY));
+    menuIcons.insert(menuIcons.end() - 1, Wifi);
+  }
+#endif
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
     // Insert Continue Reading at the top if enabled in theme
@@ -333,6 +424,12 @@ void HomeActivity::render(RenderLock&&) {
   const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
                                             tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+#if LEXIRISE
+  if (vocabSync) {  // LEXIPOINT: its popup over the menu (the menu drawn first: a narrower result leaves no trace)
+    vocabSync->draw(renderer);
+    vocabSyncDrawn = true;
+  }
+#endif
 
   renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
 

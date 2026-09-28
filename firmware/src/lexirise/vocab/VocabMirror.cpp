@@ -11,13 +11,26 @@
 
 #include "lexirise/api/AccessPolicy.h"
 #include "lexirise/api/Requests.h"
+#include "lexirise/util/ByteOrder.h"
+#include "lexirise/util/Crc32.h"
 #include "lexirise/util/Timing.h"
 
 namespace lexipoint::vocab {
 namespace {
 
+using bytes::crc32;
+using bytes::get16;
+using bytes::get32;
+using bytes::get64;
+using bytes::get8;
+using bytes::put16;
+using bytes::put32;
+using bytes::put64;
+
 constexpr char kMagic[4] = {'L', 'X', 'V', 'M'};
-constexpr uint16_t kVersion = 2;  // 2: the incremental pass's progress (a version 1 file is set aside, synced again)
+// 2: the incremental pass's progress; 3 (V7b R5): each record's time and own flag, 20 bytes. An older file is set
+// aside and synced again (unreleased: no migration).
+constexpr uint16_t kVersion = 3;
 constexpr uint8_t kFlagSynced = 0x01;
 constexpr uint8_t kFlagFullRunning = 0x02;
 constexpr uint8_t kFlagFullCounted = 0x04;    // the running full pass's list count is known
@@ -28,6 +41,7 @@ constexpr uint8_t kFlagFullUnbounded = 0x08;  // a page of it said no count: it 
 constexpr uint8_t kIncFlagRunning = 0x01;
 constexpr uint8_t kIncFlagCounted = 0x02;
 constexpr uint8_t kIncFlagUnbounded = 0x04;
+constexpr uint8_t kIncFlagReread = 0x08;   // it has read again (PassProgress::reread); 0 in files written before it
 constexpr uint8_t kFlagResyncSoon = 0x40;  // the next full pass was brought forward (resyncSoon)
 constexpr int kFlagSlackShift = 4;
 constexpr uint8_t kFlagSlackMask = 0x30;
@@ -36,11 +50,12 @@ static_assert(config::kVocabPageItems > config::kVocabPageOverlap, "a full page 
 // A record's flags byte (not the header's flags).
 constexpr uint8_t kRecFlagSuspended = 0x01;
 constexpr uint8_t kRecFlagLive = 0x02;  // a record put by a card's live answer (Entry::live)
+constexpr uint8_t kRecFlagOwn = 0x04;   // the reader's own write (Entry::own)
 
 // Where a pass's progress sits in the header, and its flag bits (the full pass's share the header's flags byte).
 struct PassLayout {
   size_t offset, newest, count, flags;
-  uint8_t running, counted, unbounded;
+  uint8_t running, counted, unbounded, reread;  // reread: 0 for the full pass (it has no tie stop)
 };
 
 // The header's fields, by offset (little-endian).
@@ -58,48 +73,28 @@ constexpr size_t kAtFullCount = 40;
 constexpr size_t kAtIncOffset = 44;  // the incremental pass under way (version 2)
 constexpr size_t kAtIncNewest = 48;
 constexpr size_t kAtIncCount = 56;
-constexpr size_t kAtIncFlags = 60;  // then seven spare bytes
+constexpr size_t kAtIncFlags = 60;
+constexpr size_t kAtLastSync = 61;   // SyncState::lastSyncS (V7b R1; 0 in files written before it)
+constexpr size_t kAtMoreFlags = 65;  // V7b R7: 1 overflowed, 2 the full pass under way refused an item; then two spare
+constexpr uint8_t kMoreOverflowed = 0x01;
+constexpr uint8_t kMoreFullRefused = 0x02;
 constexpr size_t kAtCrc = 68;
 static_assert(kAtCrc + 4 == config::kVocabHeaderBytes, "the header ends with its CRC");
-constexpr PassLayout kFullLayout{kAtFullOffset,    kAtFullNewest,    kAtFullCount,      kAtFlags,
-                                 kFlagFullRunning, kFlagFullCounted, kFlagFullUnbounded};
-constexpr PassLayout kIncLayout{kAtIncOffset,    kAtIncNewest,    kAtIncCount,      kAtIncFlags,
-                                kIncFlagRunning, kIncFlagCounted, kIncFlagUnbounded};
+constexpr PassLayout kFullLayout{kAtFullOffset,    kAtFullNewest,    kAtFullCount,       kAtFlags,
+                                 kFlagFullRunning, kFlagFullCounted, kFlagFullUnbounded, 0};
+constexpr PassLayout kIncLayout{kAtIncOffset,    kAtIncNewest,    kAtIncCount,       kAtIncFlags,
+                                kIncFlagRunning, kIncFlagCounted, kIncFlagUnbounded, kIncFlagReread};
 static_assert(config::kLanguageCodeBytes == 2, "the header keeps a two-letter language code");
 // A record's fields, by offset: entry id, saved id, next review (u32 each), level, flags, mark, one spare byte.
 constexpr size_t kRecAtEntry = 0;
 constexpr size_t kRecAtSaved = 4;
 constexpr size_t kRecAtReview = 8;
-constexpr size_t kRecAtLevel = 12;
-constexpr size_t kRecAtFlags = 13;
-constexpr size_t kRecAtMark = 14;
+constexpr size_t kRecAtAsOf = 12;
+constexpr size_t kRecAtLevel = 16;
+constexpr size_t kRecAtFlags = 17;
+constexpr size_t kRecAtMark = 18;
 constexpr size_t kRecordFields = kRecAtMark + 2;  // the mark, then one spare byte
-static_assert(kRecordFields == config::kVocabRecordBytes, "a record is 16 bytes");
-
-void put16(std::string& out, const size_t at, const uint16_t v) {
-  out[at] = static_cast<char>(v & 0xFF);
-  out[at + 1] = static_cast<char>(v >> 8);
-}
-void put32(std::string& out, const size_t at, const uint32_t v) {
-  for (size_t i = 0; i < 4; i++) out[at + i] = static_cast<char>((v >> (8 * i)) & 0xFF);
-}
-void put64(std::string& out, const size_t at, const uint64_t v) {
-  for (size_t i = 0; i < 8; i++) out[at + i] = static_cast<char>((v >> (8 * i)) & 0xFF);
-}
-uint8_t get8(const std::string_view in, const size_t at) { return static_cast<uint8_t>(in[at]); }
-uint16_t get16(const std::string_view in, const size_t at) {
-  return static_cast<uint16_t>(get8(in, at) | (get8(in, at + 1) << 8));
-}
-uint32_t get32(const std::string_view in, const size_t at) {
-  uint32_t v = 0;
-  for (size_t i = 0; i < 4; i++) v |= static_cast<uint32_t>(get8(in, at + i)) << (8 * i);
-  return v;
-}
-uint64_t get64(const std::string_view in, const size_t at) {
-  uint64_t v = 0;
-  for (size_t i = 0; i < 8; i++) v |= static_cast<uint64_t>(get8(in, at + i)) << (8 * i);
-  return v;
-}
+static_assert(kRecordFields == config::kVocabRecordBytes, "a record is 20 bytes");
 
 // A pass's progress into the header (its flag bits OR'd into the flags byte `out` already holds), and back; false:
 // a slack past the overlap (not a file serializeMirror writes).
@@ -110,7 +105,7 @@ void putPass(std::string& out, const PassLayout& at, const PassProgress& p) {
   const uint32_t shortOfOverlap = config::kVocabPageOverlap - std::min<uint32_t>(p.slack, config::kVocabPageOverlap);
   out[at.flags] = static_cast<char>(static_cast<uint8_t>(out[at.flags]) | (p.running ? at.running : 0) |
                                     (p.lastCount ? at.counted : 0) | (p.unbounded ? at.unbounded : 0) |
-                                    (shortOfOverlap << kFlagSlackShift));
+                                    (p.reread ? at.reread : 0) | (shortOfOverlap << kFlagSlackShift));
 }
 bool getPass(const std::string_view in, const PassLayout& at, PassProgress& p) {
   const uint8_t flags = get8(in, at.flags);
@@ -121,24 +116,9 @@ bool getPass(const std::string_view in, const PassLayout& at, PassProgress& p) {
   p.newestMs = get64(in, at.newest);
   if ((flags & at.counted) != 0) p.lastCount = get32(in, at.count);
   p.unbounded = (flags & at.unbounded) != 0;
+  p.reread = at.reread != 0 && (flags & at.reread) != 0;
   p.slack = static_cast<uint8_t>(config::kVocabPageOverlap - shortOfOverlap);
   return true;
-}
-
-// CRC-32 (IEEE, reflected), a nibble at a time: 16 table entries in flash.
-constexpr uint32_t kCrcNibbles[16] = {0x00000000, 0x1DB71064, 0x3B6E20C8, 0x26D930AC, 0x76DC4190, 0x6B6B51F4,
-                                      0x4DB26158, 0x5005713C, 0xEDB88320, 0xF00F9344, 0xD6D6A3E8, 0xCB61B38C,
-                                      0x9B64C2B0, 0x86D3D2D4, 0xA00AE278, 0xBDBDF21C};
-uint32_t crc32(const std::string_view a, const std::string_view b) {
-  uint32_t crc = 0xFFFFFFFF;
-  for (const std::string_view part : {a, b}) {
-    for (const char c : part) {
-      crc ^= static_cast<uint8_t>(c);
-      crc = (crc >> 4) ^ kCrcNibbles[crc & 0x0F];
-      crc = (crc >> 4) ^ kCrcNibbles[crc & 0x0F];
-    }
-  }
-  return ~crc;
 }
 
 bool isRefusal(const api::ApiError error) {
@@ -205,7 +185,20 @@ void resyncSoon(SyncState& s, const uint32_t epochS) {
   s.fullDoneS = epochS - (config::kVocabResyncS - kSoonS);
 }
 
-Entry entryOf(const api::VocabItem& item, const uint8_t mark) {
+// Whether putting `entry` changes what the reader sees of the word (saved or not, its level, suspended, its review
+// time): a new pass's mark or the live flag alone don't (they're the file's bookkeeping, written all the same).
+bool visiblyChanges(const Entry* known, const Entry& entry) {
+  return !known || known->savedId != entry.savedId || known->proficiency != entry.proficiency ||
+         known->suspended != entry.suspended || known->nextReviewS != entry.nextReviewS;
+}
+
+// When a page's item was known: the page's read time, else (no clock) its updated_at, a time it was true at least.
+uint32_t readAsOf(const api::VocabItem& item, const uint32_t epochS) {
+  if (epochS >= static_cast<uint32_t>(config::kMinValidEpochS)) return epochS;
+  return static_cast<uint32_t>(item.updatedMs / timing::kMsPerSecond);
+}
+
+Entry entryOf(const api::VocabItem& item, const uint8_t mark, const uint32_t asOfS) {
   Entry e;
   e.entryId = item.entryId;
   e.savedId = item.savedId;
@@ -213,6 +206,7 @@ Entry entryOf(const api::VocabItem& item, const uint8_t mark) {
   e.proficiency = static_cast<uint8_t>(item.proficiency);
   e.suspended = item.suspended;
   e.mark = mark;
+  e.asOfS = asOfS;
   return e;
 }
 
@@ -228,7 +222,14 @@ Mirror::Put Mirror::put(const Entry& entry) {
   const auto it = std::lower_bound(entries_.begin(), entries_.end(), entry.entryId,
                                    [](const Entry& e, const uint32_t id) { return e.entryId < id; });
   if (it != entries_.end() && it->entryId == entry.entryId) {
-    if (*it == entry) return Put::Unchanged;
+    if (it->sameState(entry)) {
+      // The same state known again: only its time moves on (in memory: not a change the file must record).
+      if (entry.asOfS > it->asOfS) {
+        it->asOfS = entry.asOfS;
+        it->own = entry.own;
+      }
+      return Put::Unchanged;
+    }
     *it = entry;
     return Put::Changed;
   }
@@ -245,11 +246,32 @@ bool Mirror::erase(const uint32_t entryId) {
   return true;
 }
 
+size_t Mirror::dropOwnUnknownRemovals() {
+  const size_t before = entries_.size();
+  entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
+                                [](const Entry& e) { return e.savedId == 0 && e.own && e.asOfS == 0; }),
+                 entries_.end());
+  return before - entries_.size();
+}
+
 size_t Mirror::sweep(const uint8_t generation) {
   const size_t before = entries_.size();
-  entries_.erase(
-      std::remove_if(entries_.begin(), entries_.end(), [generation](const Entry& e) { return e.mark != generation; }),
-      entries_.end());
+  entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
+                                [generation](const Entry& e) { return e.mark != generation && e.savedId != 0; }),
+                 entries_.end());
+  return before - entries_.size();
+}
+
+size_t Mirror::dropRemovalsUpTo(const uint32_t completeAsOfS) {
+  const size_t before = entries_.size();
+  // A removal known as of the mirror's completeness or before (its absence now says the same), or of unknown time but
+  // an answer's; the reader's own of unknown time stays (it outranks any page) until a full pass ends (dropOwnUnknown).
+  entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
+                                [completeAsOfS](const Entry& e) {
+                                  return e.savedId == 0 &&
+                                         ((e.asOfS == 0 && !e.own) || (e.asOfS != 0 && e.asOfS <= completeAsOfS));
+                                }),
+                 entries_.end());
   return before - entries_.size();
 }
 
@@ -272,6 +294,8 @@ std::string serializeMirror(const Mirror& mirror, const Language language) {
   put32(out, kAtCount, static_cast<uint32_t>(entries.size()));
   put64(out, kAtCursor, s.cursorMs);
   put32(out, kAtFullDone, s.fullDoneS);
+  put32(out, kAtLastSync, s.lastSyncS);
+  out[kAtMoreFlags] = static_cast<char>((s.overflowed ? kMoreOverflowed : 0) | (s.fullRefused ? kMoreFullRefused : 0));
   putPass(out, kFullLayout, s.full);
   putPass(out, kIncLayout, s.inc);
   size_t at = config::kVocabHeaderBytes;
@@ -279,8 +303,10 @@ std::string serializeMirror(const Mirror& mirror, const Language language) {
     put32(out, at + kRecAtEntry, e.entryId);
     put32(out, at + kRecAtSaved, e.savedId);
     put32(out, at + kRecAtReview, e.nextReviewS);
+    put32(out, at + kRecAtAsOf, e.asOfS);
     out[at + kRecAtLevel] = static_cast<char>(e.proficiency);
-    out[at + kRecAtFlags] = static_cast<char>((e.suspended ? kRecFlagSuspended : 0) | (e.live ? kRecFlagLive : 0));
+    out[at + kRecAtFlags] = static_cast<char>((e.suspended ? kRecFlagSuspended : 0) | (e.live ? kRecFlagLive : 0) |
+                                              (e.own ? kRecFlagOwn : 0));
     out[at + kRecAtMark] = static_cast<char>(e.mark);
     at += config::kVocabRecordBytes;
   }
@@ -309,6 +335,9 @@ bool parseMirror(const std::string_view bytes, const Language language, Mirror& 
   parsed.sync.generation = get8(bytes, kAtGeneration);
   parsed.sync.cursorMs = get64(bytes, kAtCursor);
   parsed.sync.fullDoneS = get32(bytes, kAtFullDone);
+  parsed.sync.lastSyncS = get32(bytes, kAtLastSync);
+  parsed.sync.overflowed = (get8(bytes, kAtMoreFlags) & kMoreOverflowed) != 0;
+  parsed.sync.fullRefused = (get8(bytes, kAtMoreFlags) & kMoreFullRefused) != 0;
   if (!getPass(bytes, kFullLayout, parsed.sync.full) || !getPass(bytes, kIncLayout, parsed.sync.inc)) return false;
   parsed.reserve(count);
   size_t at = config::kVocabHeaderBytes;
@@ -321,9 +350,11 @@ bool parseMirror(const std::string_view bytes, const Language language, Mirror& 
     e.proficiency = get8(bytes, at + kRecAtLevel);
     e.suspended = (get8(bytes, at + kRecAtFlags) & kRecFlagSuspended) != 0;
     e.live = (get8(bytes, at + kRecAtFlags) & kRecFlagLive) != 0;
+    e.own = (get8(bytes, at + kRecAtFlags) & kRecFlagOwn) != 0;
+    e.asOfS = get32(bytes, at + kRecAtAsOf);
     e.mark = get8(bytes, at + kRecAtMark);
-    // Sorted, unique, in range: anything else wasn't written by serializeMirror.
-    if (e.entryId <= last || e.savedId == 0 || e.proficiency > config::kMaxProficiency) return false;
+    // Sorted, unique, in range (a removal is always live): anything else wasn't written by serializeMirror.
+    if (e.entryId <= last || (e.savedId == 0 && !e.live) || e.proficiency > config::kMaxProficiency) return false;
     last = e.entryId;
     parsed.put(e);  // appends: each is past the last
   }
@@ -347,6 +378,14 @@ std::optional<LiveState> liveStateOf(const Language language, const uint32_t ent
   return state;
 }
 
+void addLiveState(std::vector<LiveState>& out, const Language language, const uint32_t id, const api::EntryState* state,
+                  const bool whole) {
+  if (id == 0 || (!state && !whole)) return;
+  if (std::any_of(out.begin(), out.end(), [id](const LiveState& l) { return l.entryId == id; })) return;
+  const std::optional<api::EntryState> saved = state ? std::optional<api::EntryState>(*state) : std::nullopt;
+  if (const std::optional<LiveState> l = liveStateOf(language, id, saved)) out.push_back(*l);
+}
+
 std::optional<api::EntryState> savedStateOf(const Entry& entry) {
   if (entry.savedId == 0) return std::nullopt;
   api::EntryState state;
@@ -357,18 +396,42 @@ std::optional<api::EntryState> savedStateOf(const Entry& entry) {
 }
 
 LiveApplied applyLive(Mirror& mirror, const LiveState& state) {
-  if (!state.saved) return mirror.erase(state.entryId) ? LiveApplied::Changed : LiveApplied::None;
-  Entry entry;
   const Entry* known = mirror.find(state.entryId);
+  // The mirror knows this entry as of later than the answer (a sync page read since, or a newer write): nothing.
+  if (known && known->asOfS != 0 && state.asOfS != 0 && known->asOfS > state.asOfS) return LiveApplied::None;
+  if (!state.saved) {
+    // Kept as a removal (not erased): a page analyzed before it may still have the word saved in its snapshot, and
+    // the mirror must speak for it (page::applyMirrorStates). For an entry the mirror had, and for any the reader
+    // removed themselves; not for every word an answer lists as unsaved (most of a page: the mirror would fill up).
+    if (known && known->savedId == 0) {
+      if (state.asOfS <= known->asOfS && !(state.own && !known->own)) return LiveApplied::None;
+      Entry later = *known;  // a removal known later (or now the reader's own): in memory, as the time is
+      later.asOfS = std::max(known->asOfS, state.asOfS);
+      later.own = known->own || state.own;
+      mirror.put(later);
+      return LiveApplied::MarkOnly;
+    }
+    if (!known && !state.own) return LiveApplied::None;
+    const Mirror::Put put =
+        mirror.put(Entry{state.entryId, 0, 0, 0, false, mirror.sync.generation, true, state.asOfS, state.own});
+    if (put == Mirror::Put::Full) mirror.sync.overflowed = true;  // written: the absence no longer speaks
+    return LiveApplied::Changed;
+  }
+  Entry entry;
   if (known && known->savedId == state.savedId && known->proficiency == state.proficiency) {
-    // The answer agrees. With this generation's mark: nothing (it stays a page's entry, so a tie at the cursor still
-    // reads Unchanged). With an older one (a running full pass hasn't reached it, or a pass that couldn't sweep left
-    // it): this generation's mark, live (the pass still takes the page's item), in memory only, so a card agreeing
-    // with the mirror during a weekly resync doesn't cost a whole-file write.
-    if (known->mark == mirror.sync.generation) return LiveApplied::None;
+    // The answer agrees. It moves the entry's time on, and with an older mark (a running full pass hasn't reached it,
+    // or a pass that couldn't sweep left it) takes this generation's, live (the pass still takes the page's item): in
+    // memory only, so a card agreeing with the mirror doesn't cost a whole-file write. With this generation's mark and
+    // no newer time: nothing (it stays a page's entry, so a tie at the cursor still reads Unchanged).
+    const bool newer = state.asOfS > known->asOfS || (state.own && !known->own);
+    if (known->mark == mirror.sync.generation && !newer) return LiveApplied::None;
     Entry marked = *known;
-    marked.mark = mirror.sync.generation;
-    marked.live = true;
+    if (known->mark != mirror.sync.generation) {
+      marked.mark = mirror.sync.generation;
+      marked.live = true;
+    }
+    marked.asOfS = std::max(known->asOfS, state.asOfS);
+    marked.own = known->own || state.own;
     mirror.put(marked);
     return LiveApplied::MarkOnly;
   }
@@ -378,7 +441,13 @@ LiveApplied applyLive(Mirror& mirror, const LiveState& state) {
   entry.proficiency = state.proficiency;
   entry.mark = mirror.sync.generation;  // seen now: a full pass under way keeps it (and still takes its item)
   entry.live = true;
+  entry.asOfS = state.asOfS;
+  entry.own = state.own;
   const Mirror::Put put = mirror.put(entry);
+  if (put == Mirror::Put::Full && !mirror.sync.overflowed) {
+    mirror.sync.overflowed = true;  // a saved word the mirror can't hold: its absence no longer says unsaved
+    return LiveApplied::Changed;
+  }
   return put == Mirror::Put::Added || put == Mirror::Put::Changed ? LiveApplied::Changed : LiveApplied::None;
 }
 
@@ -387,11 +456,11 @@ PageCall sendPage(api::LexiriseApi& api, const PagePlan& plan, const api::VocabP
   call.plan = plan;
   api::VocabPageReader reader(cancel);
   const api::ApiResponse got =
-      api.vocabularyPage(api::vocabularyPageRequest(plan.language, plan.offset, plan.limit), reader);
+      api.vocabularyPage(api::vocabularyPageRequest(plan.language, plan.offset, plan.limit), reader, cancel);
   call.error = got.error;
   call.retryAfterS = got.retryAfterS;
   call.sent = got.sent;
-  if (reader.cancelled()) {
+  if (reader.cancelled() || got.error == api::ApiError::Cancelled) {  // mid-body, or in a wait of the call (V7b)
     call.cancelled = true;
     return call;
   }
@@ -405,22 +474,37 @@ PageCall sendPage(api::LexiriseApi& api, const PagePlan& plan, const api::VocabP
   return call;
 }
 
+bool fullPassDue(const SyncState& s, const uint32_t epochS) {
+  if (!s.synced) return true;
+  // A last pass stamped after now means the clock moved back (or the stamp is wrong): due, rather than waiting it out.
+  const bool clockSet = epochS >= static_cast<uint32_t>(config::kMinValidEpochS);
+  return clockSet && s.fullDoneS != 0 && (epochS < s.fullDoneS || epochS - s.fullDoneS >= config::kVocabResyncS);
+}
+
 std::optional<PagePlan> nextPage(const Mirror& mirror, const RunState& run, const Language language,
                                  const unsigned long nowMs, const uint32_t epochS) {
   if (run.waitUntilMs && !timing::reached(nowMs, *run.waitUntilMs)) return std::nullopt;
   const SyncState& s = mirror.sync;
   if (s.full.running) return PagePlan{language, Pass::Full, s.full.offset, config::kVocabPageItems};
-  const bool clockSet = epochS >= static_cast<uint32_t>(config::kMinValidEpochS);
-  // A last pass stamped after now means the clock moved back (or the stamp is wrong): due, rather than waiting it out.
-  const bool resyncDue =
-      clockSet && s.fullDoneS != 0 && (epochS < s.fullDoneS || epochS - s.fullDoneS >= config::kVocabResyncS);
-  if (!s.synced || resyncDue) return PagePlan{language, Pass::Full, 0, config::kVocabPageItems};
+  if (fullPassDue(s, epochS)) return PagePlan{language, Pass::Full, 0, config::kVocabPageItems};
   // An incremental pass's first page is a probe (config::kVocabProbeItems): the usual answer is "nothing new", and a
   // few items say so as well as a whole page; the pages after it, and one sent back to the top, as their offset says.
   if (s.inc.running) return PagePlan{language, Pass::Incremental, s.inc.offset, pageLimit(s.inc.offset)};
   if (!run.incDone || timing::reached(nowMs, run.incDoneMs + config::kVocabSyncIntervalMs)) {
     return PagePlan{language, Pass::Incremental, 0, config::kVocabProbeItems};
   }
+  return std::nullopt;
+}
+
+std::optional<PagePlan> manualPage(const Mirror& mirror, const Language language, const uint32_t epochS,
+                                   const bool incStarted) {
+  const SyncState& s = mirror.sync;
+  if (s.full.running) return PagePlan{language, Pass::Full, s.full.offset, config::kVocabPageItems};
+  if (!s.synced || (fullPassDue(s, epochS) && !incStarted)) {
+    return PagePlan{language, Pass::Full, 0, config::kVocabPageItems};
+  }
+  if (s.inc.running) return PagePlan{language, Pass::Incremental, s.inc.offset, pageLimit(s.inc.offset)};
+  if (!incStarted) return PagePlan{language, Pass::Incremental, 0, config::kVocabProbeItems, true};
   return std::nullopt;
 }
 
@@ -445,12 +529,14 @@ NextPage endPage(PassProgress& p, const PageCall& call, const std::optional<uint
 }
 
 // A full pass's page (applyPage, after the checks). False: a stale answer (nothing applied); `full`: words not kept.
-bool applyFullPage(Mirror& mirror, RunState& run, const PageCall& call, const uint32_t epochS, size_t& full) {
+bool applyFullPage(Mirror& mirror, RunState& run, const PageCall& call, const uint32_t epochS, size_t& full,
+                   std::vector<uint32_t>* changedEntries) {
   SyncState& s = mirror.sync;
   const api::VocabPage& page = call.page;
   if (!s.full.running) {
     if (call.plan.offset != 0) return false;  // a stale answer: a pass starts at the top
     s.full.start(page.newestMs);
+    s.fullRefused = false;
     // Wraps after 256 passes: harmless, since every entry carries the last pass's mark once it ends (the sweep drops
     // the rest), except after a pass that couldn't sweep, whose older marks could match again 255 passes later.
     s.generation = static_cast<uint8_t>(s.generation + 1);
@@ -469,8 +555,15 @@ bool applyFullPage(Mirror& mirror, RunState& run, const PageCall& call, const ui
     const Entry* known = mirror.find(item.entryId);
     // This pass read it already, newer (newest first). One a live answer put still takes the page's item.
     if (known && known->mark == s.generation && !known->live) continue;
-    if (mirror.put(entryOf(item, s.generation)) == Mirror::Put::Full) full++;
+    const Entry entry = entryOf(item, s.generation, readAsOf(item, epochS));
+    const bool visible = visiblyChanges(known, entry);  // before the put: `known` points into the mirror
+    const Mirror::Put put = mirror.put(entry);
+    if (put == Mirror::Put::Full) full++;
+    if (changedEntries && visible && (put == Mirror::Put::Added || put == Mirror::Put::Changed)) {
+      changedEntries->push_back(item.entryId);
+    }
   }
+  if (full > 0) s.overflowed = s.fullRefused = true;  // written with the page (a full pass's pages always are)
   const NextPage next = endPage(s.full, call, reread);
   if (next.offset) {
     s.full.offset = *next.offset;
@@ -488,6 +581,9 @@ bool applyFullPage(Mirror& mirror, RunState& run, const PageCall& call, const ui
     }
   }
   s.synced = true;
+  if (!s.fullRefused) s.overflowed = false;  // the whole account fits again: absence speaks once more
+  mirror.dropOwnUnknownRemovals();           // the account as read is the truth now (no clock to say otherwise)
+  s.fullRefused = false;
   s.cursorMs = std::max(s.cursorMs, s.full.newestMs);
   s.full = PassProgress();
   run.incDone = false;  // what changed during the pass comes with an incremental pass straight after
@@ -496,7 +592,7 @@ bool applyFullPage(Mirror& mirror, RunState& run, const PageCall& call, const ui
 
 // An incremental pass's page. False: a stale answer (nothing applied); `changed`: the mirror changed.
 bool applyIncrementalPage(Mirror& mirror, RunState& run, const PageCall& call, const unsigned long nowMs,
-                          const uint32_t epochS, size_t& full, bool& changed) {
+                          const uint32_t epochS, size_t& full, bool& changed, std::vector<uint32_t>* changedEntries) {
   SyncState& s = mirror.sync;
   const api::VocabPage& page = call.page;
   // What the file must be written for: an entry changed, the cursor moved, or the pass's progress, which the file keeps
@@ -505,7 +601,12 @@ bool applyIncrementalPage(Mirror& mirror, RunState& run, const PageCall& call, c
   // that starts and ends on its first page, changing nothing, writes nothing.
   const bool progressInFile = s.inc.running;
   if (call.plan.offset == 0) {
+    const bool reread = s.inc.running && s.inc.reread;  // a re-read sent back to the top is still that pass
+    // A pass beginning from the top: the mirror will be complete as of now once it ends (a re-read sent back to the
+    // top keeps its earlier start: what it read before may be older).
+    if (!s.inc.running) run.incStartS = epochS >= static_cast<uint32_t>(config::kMinValidEpochS) ? epochS : 0;
     s.inc.start(page.newestMs);
+    s.inc.reread = reread;
   } else if (!s.inc.running || call.plan.offset != s.inc.offset) {
     return false;  // stale
   }
@@ -524,18 +625,29 @@ bool applyIncrementalPage(Mirror& mirror, RunState& run, const PageCall& call, c
       break;
     }
     if (!item.usable()) continue;
-    const Mirror::Put put = mirror.put(entryOf(item, s.generation));
+    const Entry entry = entryOf(item, s.generation, readAsOf(item, epochS));
+    const bool visible = visiblyChanges(mirror.find(item.entryId), entry);
+    const Mirror::Put put = mirror.put(entry);
     if (put == Mirror::Put::Full) full++;
-    changed = changed || put == Mirror::Put::Added || put == Mirror::Put::Changed;
+    const bool entryChanged = put == Mirror::Put::Added || put == Mirror::Put::Changed;
+    changed = changed || entryChanged;  // the file records marks and the live flag too
+    if (changedEntries && entryChanged && visible) changedEntries->push_back(item.entryId);
     // As old as the cursor and already in the mirror as it is: the ties after it in tie order (stable across pages,
     // measured) were taken before, so a large group tied at the cursor isn't read again every pass. A later one of
-    // the group changed in the same millisecond is missed here (a known limit: caught by the weekly full pass).
-    if (i >= repeated && item.updatedMs != 0 && item.updatedMs == s.cursorMs && put == Mirror::Put::Unchanged) {
+    // the group changed in the same millisecond is missed here (a known limit: caught by the weekly full pass). Not
+    // once the pass has read again (PassProgress::reread): its pages then repeat items anywhere.
+    if (!s.inc.reread && i >= repeated && item.updatedMs != 0 && item.updatedMs == s.cursorMs &&
+        put == Mirror::Put::Unchanged) {
       reachedCursor = true;
       break;
     }
   }
+  if (full > 0 && !s.overflowed) {
+    s.overflowed = true;  // an item refused at the cap: absence no longer says unsaved
+    changed = true;
+  }
   const NextPage next = endPage(s.inc, call, reread);
+  if (next.reread) s.inc.reread = true;  // from now on its pages may repeat anything: no tie stop
   // The re-read wins, cursor or not: items newer than the cursor may have moved into the gap.
   if (next.reread || (!reachedCursor && next.offset)) {
     s.inc.offset = *next.offset;
@@ -552,6 +664,16 @@ bool applyIncrementalPage(Mirror& mirror, RunState& run, const PageCall& call, c
     resyncSoon(s, epochS);
     changed = true;
   }
+  // Complete as of the pass's start, when it ran from the top this boot and could bound what it read; memory only when
+  // nothing else changed (a quiet pass still writes nothing: the file's time may read older).
+  if (run.incStartS != 0 && !s.inc.unbounded && s.synced) {
+    s.lastSyncS = std::max(s.lastSyncS, run.incStartS);
+    // A removal known as of the mirror's completeness or before is no longer needed: its absence now says unsaved to
+    // any page it would outrank. One known later (made during this pass, after its start) stays.
+    // Not while overflowed: then absence doesn't say unsaved (applyMirrorStates), so a removal still has to.
+    if (!s.overflowed && mirror.dropRemovalsUpTo(s.lastSyncS) > 0) changed = true;
+  }
+  run.incStartS = 0;
   s.inc = PassProgress();
   run.incDone = true;
   run.incDoneMs = nowMs;
@@ -560,7 +682,8 @@ bool applyIncrementalPage(Mirror& mirror, RunState& run, const PageCall& call, c
 
 }  // namespace
 
-bool applyPage(Mirror& mirror, RunState& run, const PageCall& call, const unsigned long nowMs, const uint32_t epochS) {
+bool applyPage(Mirror& mirror, RunState& run, const PageCall& call, const unsigned long nowMs, const uint32_t epochS,
+               std::vector<uint32_t>* changedEntries) {
   if (call.cancelled) return false;  // the reader had input to handle: nothing learned, nothing to wait out
   if (call.error != api::ApiError::None) {
     run.waitUntilMs =
@@ -576,9 +699,9 @@ bool applyPage(Mirror& mirror, RunState& run, const PageCall& call, const unsign
   }
   size_t full = 0;
   if (call.plan.pass == Pass::Full) {
-    if (!applyFullPage(mirror, run, call, epochS, full)) return changed;
+    if (!applyFullPage(mirror, run, call, epochS, full, changedEntries)) return changed;
     changed = true;
-  } else if (!applyIncrementalPage(mirror, run, call, nowMs, epochS, full, changed)) {
+  } else if (!applyIncrementalPage(mirror, run, call, nowMs, epochS, full, changed, changedEntries)) {
     return changed;
   }
   if (full > 0) {
@@ -647,6 +770,59 @@ std::optional<PagePlan> VocabStore::next(const Language language, const unsigned
   return nextPage(s.mirror, s.run, language, nowMs, epochS);
 }
 
+bool VocabStore::cardProbeDueLocked(const Language language, const unsigned long nowMs) {
+  const Slot& s = slot(language);
+  if (!s.loaded || !s.mirror.sync.synced || s.mirror.sync.full.running || s.mirror.sync.inc.running) return false;
+  if (s.run.waitUntilMs && !timing::reached(nowMs, *s.run.waitUntilMs)) return false;
+  if (lastCardProbeMs_ && !timing::reached(nowMs, *lastCardProbeMs_ + config::kVocabCardProbeIntervalMs)) return false;
+  return budgetLeftLocked(nowMs);
+}
+
+std::optional<LiveState> VocabStore::pendingState(const Language language, const uint32_t entryId) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (slot(language).loaded) return std::nullopt;
+  for (auto it = pending_.rbegin(); it != pending_.rend(); ++it) {
+    if (it->language == language && it->entryId == entryId) return *it;
+  }
+  return std::nullopt;
+}
+
+bool VocabStore::manualBudgetLeft(const unsigned long nowMs) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  manualTimes_.erase(
+      std::remove_if(manualTimes_.begin(), manualTimes_.end(),
+                     [nowMs](const unsigned long t) { return timing::reached(nowMs, t + timing::kMsPerHour); }),
+      manualTimes_.end());
+  return manualTimes_.size() < config::kVocabManualSyncPagesPerHour;
+}
+
+std::optional<PagePlan> VocabStore::manualNext(const Language language, const uint32_t epochS, const bool incStarted) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const Slot& s = slot(language);
+  if (!s.loaded) return std::nullopt;
+  return manualPage(s.mirror, language, epochS, incStarted);
+}
+
+std::optional<unsigned> VocabStore::passPercent(const Language language) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const SyncState& s = slot(language).mirror.sync;
+  const PassProgress& p = s.full.running ? s.full : s.inc;
+  if (!p.running || !p.lastCount || *p.lastCount == 0) return std::nullopt;
+  return static_cast<unsigned>(std::min<uint64_t>(100, static_cast<uint64_t>(p.offset) * 100 / *p.lastCount));
+}
+
+bool VocabStore::cardProbeDue(const Language language, const unsigned long nowMs) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return cardProbeDueLocked(language, nowMs);
+}
+
+std::optional<PagePlan> VocabStore::takeCardProbe(const Language language, const unsigned long nowMs) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!cardProbeDueLocked(language, nowMs)) return std::nullopt;
+  lastCardProbeMs_ = nowMs;
+  return PagePlan{language, Pass::Incremental, 0, config::kVocabProbeItems};
+}
+
 bool VocabStore::writeLocked(const Language language) {
   Slot& s = slot(language);
   if (!replaceSafely(files_, mirrorFile(language), serializeMirror(s.mirror, language))) {
@@ -658,13 +834,17 @@ bool VocabStore::writeLocked(const Language language) {
   return true;
 }
 
-bool VocabStore::apply(const PageCall& call, const unsigned long nowMs, const uint32_t epochS) {
+PageApplied VocabStore::apply(const PageCall& call, const unsigned long nowMs, const uint32_t epochS) {
   std::lock_guard<std::mutex> lock(mutex_);
+  PageApplied out;
   Slot& s = slot(call.plan.language);
-  if (!s.loaded) return true;
-  if (call.sent) {
+  if (!s.loaded) return out;
+  if (call.sent && !call.manual) {  // the reader's own sync has its own budget (manualBudgetLeft), not the idle one
     if (pageTimes_.empty()) pageTimes_.reserve(config::kVocabPagesPerHour);
     pageTimes_.push_back(nowMs);
+  } else if (call.sent) {
+    if (manualTimes_.empty()) manualTimes_.reserve(config::kVocabManualSyncPagesPerHour);
+    manualTimes_.push_back(nowMs);
   }
   if (call.cancelled) {
     LOG_INF(kLogTag, "%s %s offset %u given up: input came", passName(call.plan.pass), languageCode(call.plan.language),
@@ -673,16 +853,19 @@ bool VocabStore::apply(const PageCall& call, const unsigned long nowMs, const ui
     LOG_INF(kLogTag, "%s %s offset %u failed (%s)", passName(call.plan.pass), languageCode(call.plan.language),
             static_cast<unsigned>(call.plan.offset), api::apiErrorName(call.error));
   }
-  const bool changed = applyPage(s.mirror, s.run, call, nowMs, epochS);
+  const bool changed = applyPage(s.mirror, s.run, call, nowMs, epochS, &out.changedEntries);
   // A page given up for input writes nothing, even a slot left dirty by a failed write: the reader has input to
   // handle, and that write waits for a later page, idle window or close.
-  if (call.cancelled || (!changed && !s.dirty)) return true;
-  return writeLocked(call.plan.language);
+  if (call.cancelled || (!changed && !s.dirty)) return out;
+  out.file = writeLocked(call.plan.language) ? PageApplied::File::Written : PageApplied::File::Failed;
+  return out;
 }
 
-void VocabStore::record(const std::vector<LiveState>& states) {
+void VocabStore::record(const std::vector<LiveState>& given) {
   std::lock_guard<std::mutex> lock(mutex_);
-  for (const LiveState& state : states) {
+  const uint32_t now = clock_ ? clock_() : 0;
+  for (LiveState state : given) {
+    if (state.asOfS == 0) state.asOfS = now;  // known now (0 still with no clock)
     Slot& s = slot(state.language);
     if (s.loaded) {
       if (applyLive(s.mirror, state) == LiveApplied::Changed) s.dirty = true;

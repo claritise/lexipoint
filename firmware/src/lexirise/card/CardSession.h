@@ -149,7 +149,7 @@ class CardSession {
     return live_ ? live_->fetchVocab(nowMs, epochS, cancel) : std::nullopt;
   }
   // Outside RenderLock (the mirror's file is written): the card's state doesn't change.
-  void applyVocab(const std::optional<vocab::PageCall>& call, unsigned long nowMs, uint32_t epochS);
+  vocab::PageApplied applyVocab(const std::optional<vocab::PageCall>& call, unsigned long nowMs, uint32_t epochS);
   // What the card's answers taught the mirror, into its memory (LiveSource::recordMirror: no SD I/O, so after every
   // answer, before the redraw).
   void recordMirror() {
@@ -161,9 +161,21 @@ class CardSession {
   bool shouldFlushMirror(unsigned long nowMs, bool rendering, bool touching,
                          std::optional<unsigned long> cardDueMs) const;
 
+  // V7b (claritise, 2026-09-28): the mirror's probe as the card settles (LiveSource::hasProbeWork): by the same idle
+  // rule, after only config::kVocabCardProbeIdleMs (phase B on screen, nothing to fetch, send, draw or handle).
+  bool shouldProbeVocab(unsigned long nowMs, bool rendering, bool touching,
+                        std::optional<unsigned long> cardDueMs) const;
+  std::optional<vocab::PageCall> fetchProbe(const unsigned long nowMs,
+                                            const api::VocabPageReader::Cancel cancel = nullptr) {
+    return live_ ? live_->fetchProbe(nowMs, cancel) : std::nullopt;
+  }
+  // Under RenderLock, after a page's applyVocab: the words the mirror now says otherwise take its saved level
+  // (LiveSource::takeMirrorChanges, CardController::savedLevelChanged). True: redraw.
+  bool mirrorChanged(const std::vector<uint32_t>& changedEntries);
+
   // An idle card's one blocking step now, in priority order: the book deck's (shouldFetchDeck), then the mirror's file
-  // (shouldFlushMirror), then a mirror page (shouldFetchVocab); None: nothing yet.
-  enum class IdleStep : uint8_t { None, Deck, Flush, Vocab };
+  // (shouldFlushMirror), then the probe (shouldProbeVocab), then a mirror page (shouldFetchVocab); None: nothing yet.
+  enum class IdleStep : uint8_t { None, Deck, Flush, Probe, Vocab };
   IdleStep nextIdleStep(unsigned long nowMs, bool rendering, bool touching, std::optional<unsigned long> cardDueMs,
                         uint32_t epochS) const;
   // `nowMs`: the idle time starts again after it (a write that failed is tried in the next idle window, not every

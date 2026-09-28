@@ -170,6 +170,12 @@ bool HalGPIO::rawInputActive() {
   return (g1.raw >= 0 && g1.raw < kIdleRailMin) || (g2.raw >= 0 && g2.raw < kIdleRailMin);
 }
 
+int HalGPIO::rawTouchLevel() {  // LEXIPOINT
+  const auto& touch = BoardConfig::ACTIVE.touch;
+  if (touch.controller == BoardConfig::TouchController::None || touch.irq < 0) return -1;
+  return digitalRead(touch.irq) == HIGH ? 1 : 0;
+}
+
 unsigned long HalGPIO::getHeldTime() const { return inputMgr.getHeldTime(); }
 
 unsigned long HalGPIO::getPowerButtonHeldTime() const { return inputMgr.getPowerButtonHeldTime(); }

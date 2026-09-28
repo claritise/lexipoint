@@ -110,8 +110,21 @@ CardSession::IdleStep CardSession::nextIdleStep(const unsigned long nowMs, const
                                                 const uint32_t epochS) const {
   if (shouldFetchDeck(nowMs, rendering, touching, cardDueMs)) return IdleStep::Deck;
   if (shouldFlushMirror(nowMs, rendering, touching, cardDueMs)) return IdleStep::Flush;
+  if (shouldProbeVocab(nowMs, rendering, touching, cardDueMs)) return IdleStep::Probe;
   if (shouldFetchVocab(nowMs, rendering, touching, cardDueMs, epochS)) return IdleStep::Vocab;
   return IdleStep::None;
+}
+
+bool CardSession::shouldProbeVocab(const unsigned long nowMs, const bool rendering, const bool touching,
+                                   const std::optional<unsigned long> cardDueMs) const {
+  return idleFor(nowMs, rendering, touching, cardDueMs, config::kVocabCardProbeIdleMs) && live_->hasProbeWork(nowMs);
+}
+
+bool CardSession::mirrorChanged(const std::vector<uint32_t>& changedEntries) {
+  if (!live_) return false;
+  bool redraw = false;
+  for (const int w : live_->takeMirrorChanges(changedEntries)) redraw = controller_.savedLevelChanged(w) || redraw;
+  return live_->takeShownChanged() || redraw;
 }
 
 bool CardSession::shouldFetchVocab(const unsigned long nowMs, const bool rendering, const bool touching,
@@ -120,11 +133,12 @@ bool CardSession::shouldFetchVocab(const unsigned long nowMs, const bool renderi
          !(deckAllowed_ && live_->hasDeckWork()) && live_->hasVocabWork(nowMs, epochS);
 }
 
-void CardSession::applyVocab(const std::optional<vocab::PageCall>& call, const unsigned long nowMs,
-                             const uint32_t epochS) {
-  if (!live_ || !call) return;
-  live_->applyVocab(*call, nowMs, epochS);
+vocab::PageApplied CardSession::applyVocab(const std::optional<vocab::PageCall>& call, const unsigned long nowMs,
+                                           const uint32_t epochS) {
+  if (!live_ || !call) return {};
+  vocab::PageApplied applied = live_->applyVocab(*call, nowMs, epochS);
   lastActivityMs_ = nowMs;  // the next page waits its own idle time too
+  return applied;
 }
 
 void CardSession::applyDeck(const deck::DeckCall& call, const unsigned long nowMs) {

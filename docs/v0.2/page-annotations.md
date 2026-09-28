@@ -1,7 +1,8 @@
 # Page annotations: marking the page with what you know
 
 **Status:** proposed 2026-09-24. Supersedes backlog item C6 (`00-overview.md`) and folds in the
-other page ideas. ~~Nothing here is built.~~ The vocab mirror (§1.2) is being built (V7a, 2026-09-28). It depends on
+other page ideas. ~~Nothing here is built.~~ The vocab mirror (§1.2) is built (V7a, 2026-09-28); page analysis (§1.1) is built on the host (V7b, 2026-09-28,
+"As built (V7b)"; device checks owed). It depends on
 **page analysis** and the **vocab mirror** (§1), which it shares with C5 (difficulty preview) and C11 (the SRS app).
 
 Related: `../v0.1/sentence-extraction.md` (the page → text walk, reused in reverse),
@@ -28,12 +29,397 @@ your level rises. This is what `analyze/text` was built for (it powers Lexirise'
   the next turn.
 - **Debounce fast flipping:** don't prefetch while pages turn faster than 1 per 1.5 s.
 - **Cache** results on SD: `/.lexirise/cache/<bookId>/<section>-<pageStart>.bin` (compact
-  occurrences, no strings the vocab mirror already has). The key includes font and layout settings,
-  since a page boundary moves with them. Invalidate on a vocab-mirror change for any entry on that page.
+  occurrences, no strings the vocab mirror already has). ~~The key includes font and layout settings,
+  since a page boundary moves with them. Invalidate on a vocab-mirror change for any entry on that page.~~
+  (Superseded 2026-09-28 by "V7b design" (c) below: the file holds the hash of the exact text sent, which any layout
+  change that moves the page's end changes; the split doesn't depend on the reader's words, so a mirror change
+  re-analyzes nothing: the saved state comes from the mirror when the card opens.)
 - **Lookups reuse it:** a tap on an analyzed page skips request ① entirely. The card goes straight to
   phase A, and only `dictionary/lookup` goes out.
 - **Budget:** 60–150 pages/h is 5–13% of the 1200 req/h limit. Watch `rateLimitMax` from `/me`, and
   stop prefetching (keep on-demand lookups) above 70% of the window.
+
+**V7b design (2026-09-28, on `lexi/V7`; ~~awaiting claritise's answer on (a) and (d)'s saved state before any
+firmware~~ answered the same day, "claritise's decisions" below).** Measured first, read-only (`tools/lexirise/probe_v7b.py`: `../reference/lexirise-api-notes.md` "Page
+analysis (V7b), measured"): a page-sized answer is 76–93 KB and ~1.9 s from the Mac, first byte at ~1.3 s; every
+sentence sent alone split exactly as it does inside the page, cut sentences at the page's edges included; Lexirise
+refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined page still gives the first split.
+
+- **(a) The radio: prefetch only over WiFi already up; no join, no longer radio time.** Today WiFi comes up only for
+  a card and stays up `wifi_idle_min` after it (D10, default 5 min, `../v0.1/settings.md` §1). Options:
+  1. **Only while WiFi is already up** (recommended for V7b): the prefetch sends as V7a's pages do
+     (`mayJoin=false`: NoWifi when the station isn't connected; it doesn't count as WiFi use, so the idle teardown
+     comes when it would have; nor does it hold the TLS session open). Pages read within `wifi_idle_min` of a card
+     get analyzed (at ~40 s a page, the default's 5 min is ~7 pages); after that, reading is as today, radio off.
+     No new radio time, no setting, no battery question. The cost: each prefetch usually opens its own TLS session
+     (a page outlasts `kTlsIdleCloseMs`), ~2.5 s of handshake on the device (`../v0.1/device-checks.md`), inside the
+     window WiFi is up anyway.
+  2. **The prefetch keeps WiFi up** (counts as WiFi use): once a card brings WiFi up it stays up for the whole
+     reading session.
+  3. **Join on page turns:** WiFi up whenever a book is open and Lexirise is on, every page analyzed.
+  4. **A setting** ("Analyze pages ahead": Off / While WiFi is on / Always).
+
+  2–4 put WiFi on while reading, which is a battery trade (D10's kind) and **claritise's decision**; nothing measures
+  the X4 Pro's current with WiFi up yet (no figure in the docs), so it would come with a device measurement. V7b
+  builds 1 only. V9's marks on every page need 2, 3 or 4: the question comes back then, with numbers.
+- **The call blocks the reader's loop, so it gives way to input.** Lexipoint's calls are synchronous, on the loop
+  task (no worker task: a second task's TLS-sized stack would come out of the internal RAM the handshake's 40 KB
+  pre-flight needs, `../v0.1/lexirise-client.md`). The prefetch runs from the reader's loop only when nothing is
+  rendering, and gives up for input as V7a's pages do, but checked in every wait of the call (the TCP connect, the
+  handshake's poll loop, the ~1.3 s before the first byte), not only as body bytes arrive, and for a touch too:
+  the side and power buttons from `HalGPIO::rawInputActive`, a touch from the touch controller's interrupt line (V7a's
+  candidate fix, `BoardConfig::ACTIVE.touch.irq` low: **unmeasured**, the device check below decides whether a tap made
+  during a prefetch is seen). A page turn during a prefetch then costs the request and the next handshake, not the
+  turn. Rare: the prefetch starts `kPagePrefetchDwellMs` (1.5 s, the debounce) after the page is drawn and is done
+  within ~3–5 s of a page read in 30 s or more. If the device check finds a tap lost, the fallback is a worker task
+  (measured for internal RAM first), not a longer dwell.
+- **(b) Memory: streamed, compact, in PSRAM.** A page's answer (up to ~100 KB, over `kHttpMaxBodyBytes`) is never
+  held: `net::BodySink` → `json::StreamReader` → a page visitor that writes straight into one `PageAnalysis`:
+  sorted fixed-size arrays (occurrences, entries, the saved states) and one string pool, each reserved once
+  (`kPageMaxOccurrences`, `kPageMaxEntries`, `kPagePoolMaxBytes`; past a cap the page isn't analyzed and lookups on it
+  send ① as today), so above 4 KB they land in PSRAM (malloc's threshold) and nothing makes per-entry nodes in internal
+  RAM (no `std::map`, no `std::string` per occurrence: `AnalyzeResult` stays the sentence's type). Occurrences come
+  before `entryMetaById` in the answer (measured), so only the entries the page's occurrences name are kept. The
+  measured pages hold ~210 occurrences, ~130 entries and up to ~35 saved states: ~10 KB compact. Internal RAM adds
+  only the TLS session (as a card's) and the stream's parse state (`kJsonStreamMaxStringBytes`). The V1 merge at page
+  scale (below) holds a second `PageAnalysis` (the `fast` answer, ~10 KB PSRAM) until it's merged.
+- **(c) The cache file.** ~~`/.lexirise/cache/<book>/<spine>-<visibleTextOffset>.bin`: `<book>` is `h` + the FNV-1a-32
+  of the book's path (as `bookSlug`'s fallback), `<visibleTextOffset>` the page's start in the section
+  (`Page::visibleTextOffset`, codepoints of visible text, layout-independent). Binary, through `SafeFile`: a header
+  (magic, version, language, whether it's a first pass or a merged refined one, the UTF-16 length and FNV-1a-32 of
+  the exact text sent, when it was analyzed, the counts, a CRC), then the arrays: an occurrence 20 B (span, entry,
+  lemma entry, word-like, the lemma's and reading's places in the pool; the surface is the page text's own slice), an
+  entry 20 B (id, rank, frequency, the reading and part of speech in the pool), a saved state 12 B (entry, saved id,
+  level, seen count), then the pool. ~10 KB a page, at most `kPageCacheMaxBytes`.~~ (Superseded 2026-09-28 by "As built
+  (V7b)" below: `/.lexirise/pages/`, the word kept in the pool too, 13-15 KB a page measured, written plainly.) **Hit** only when the language,
+  length and hash match the page's text now: a font, margin, spacing or orientation change that moves the page's end
+  changes the text, so the settings needn't be in the key (a layout that keeps the same start and text reuses it,
+  rightly). A miss is analyzed again and overwrites the file. **The mirror** (V7a): the split never depends on the
+  reader's words, so nothing is re-analyzed for a mirror change; the file's saved states are a snapshot, and the
+  card's state comes from the mirror (d). ~~**Eviction:** `/.lexirise/cache/books.ini`, newest book last with its page
+  count; past `kPageCacheBooks` books the oldest book's folder goes (a few files per idle prefetch window, never a
+  long blocking delete); past `kPageCacheBookPages` pages a book's folder is emptied and starts again (orphans from
+  old layouts go with it).~~ (Superseded 2026-09-28: one index of pages, oldest first, "As built (V7b)": the SD layer
+  lists no folders, so a page is removed by name.) A file that doesn't check out is removed and the page analyzed
+  again.
+- **(d) The hooks.**
+  - **Page n+1's text before it's drawn:** a section is laid out ahead of the page shown
+    (`EpubReaderActivity::loop` keeps `BUILD_WINDOW_AHEAD` pages built), and the reader's idle prewarm already loads
+    page n+1 from the section file (`section->loadPage(currentPage + 1)`) and warms its glyphs, 400 ms after a
+    render with nothing building and the heap clear. The hook goes there: `buildPageModel` (as word select does) and a
+    new ~~`text::pageText`~~ `text::buildPageText`, as built (the `SentenceBuilder` join over the whole page: the D5 rules, ruby excluded as `wordText()`
+    never returns it) give the text sent. ~~At a section's last page, n+1 is the next section's first page only when
+    its section file is already built (`Section::loadSectionFile`, no build started: a build releases the SD font
+    caches); otherwise that page is analyzed once it's shown.~~ (Superseded 2026-09-28: at a section's last page
+    nothing more is read ahead; the next section's first page is analyzed once it's shown, "As built (V7b)".)
+  - **What's analyzed, in order:** page n if it isn't cached (a jump, a card that just brought WiFi up, the card's
+    own page), then n+1; one call per loop pass; never while a card or menu is open (the reader's loop only), under
+    RenderLock, while building, or before the page has been up `kPagePrefetchDwellMs`; nothing while pages turn
+    faster than that. The analysis is written to the cache, and its saved states go into the vocab mirror as a card's
+    analysis does (`LiveSource`'s `liveStatesOf`: the live answer wins).
+  - **Budget:** every Lexirise request the service sends counts in an hourly window (60 one-minute buckets); the
+    prefetch stops above 70% of `rateLimitMax` (`/v1/me`: 1200 per 3,600,000 ms, measured; answers carry no
+    rate-limit headers, so the key's use elsewhere is unseen, and a 429's block, `AccessPolicy`, stops it too).
+    Reading at 60–120 pages/h is 5–10% (first passes; a refined page is two calls).
+  - **The lookup's reuse:** word select hands the card the current page's `PageAnalysis` when it's cached for the
+    page's text now. `LiveSource::analysis(sentence)` then builds the sentence's `AnalyzedSentence` from the page's
+    occurrences inside the sentence's span (shifted by its start in the page text: `BuiltSentence` records it) instead
+    of sending ① (measured: each sentence alone splits and names entries exactly as the page does); the next sentence
+    on the page likewise. The sentence's `AnalyzedSentence` is today's type, so phase A, the form names (C16), Met
+    before (C14) and stepping are unchanged; phase B's `dictionary/lookup` goes out as before. A sentence past the
+    page's analysis (a page not cached) sends ① as today.
+  - **V1's whole words at page scale:** a first-pass answer (`morphoPending: true`, the usual one for a page Lexirise
+    hasn't seen) is the word-level split, cached as it is. A refined answer (a page it has seen: the prefetch itself
+    makes Lexirise refine it ~1.5–2.5 min later, measured, so a page analyzed again after an eviction or a layout
+    change comes back refined) is followed by the page's `fast` call and merged by `wholeWords`' rule (measured on the
+    two pages: 5 and 14 ranked whole words put back, 深深, 长得, 小さな, 一気に among them); if the `fast` call fails the
+    page isn't cached (the over-split refined answer would stay), and is tried again later. So the cache holds what
+    ① would give the card, and "refined results only" (the build order's V7b line) means refined answers only after
+    V1's merge. No re-analysis to upgrade a first pass: nothing in V7b uses grammar (V11 will).
+  - **The saved state on a cached page (a decision for claritise):** without ①, the card's saved state isn't live.
+    Each entry's state comes from the vocab mirror (which the page's own analysis updated, and which holds every save
+    and level change made on the reader at once); ~~the file's snapshot only fills an entry the mirror has no record of
+    when the page was analyzed after the mirror's last full pass (a prefetch's states lost to a deep sleep before the
+    mirror was written), or when the mirror isn't loaded yet this boot.~~ (Corrected 2026-09-28, V7b R1: the mirror
+    keeps a removal the reader's answers or writes reported, so it speaks for a removed word too; ~~for an entry it
+    doesn't hold at all, the page's snapshot stands until the mirror's last pass, full or incremental, ended after the
+    page was analyzed (`SyncState::lastSyncS`, not the cursor: a removal doesn't move the cursor)~~ (R3: an entry the
+    reader's own answers or writes put speaks always; any other entry, and the lack of one, only once the mirror is
+    complete as of a time after the page was analyzed, `SyncState::lastSyncS`: the start of the last incremental pass
+    that ran from the top to its end, not a pass's end, since a pass holds only what was in the account when its first
+    page was read; else the page's snapshot, the newer word, stands); and all of it while the mirror isn't loaded, but
+    for the reader's pending answers and writes: "As built (V7b)".) (Superseded 2026-09-28, R5, by one model after
+    four patched holes: **the newer word wins.** Every mirror entry carries the time its state was known; the page's
+    snapshot has its analysis time; the newer of the two says; a word the mirror doesn't hold is unsaved only once the
+    mirror is complete as of a time after the page; with a time unknown, only the reader's own writes outrank the
+    snapshot. "As built (V7b)", "The saved-state rule (R5)".) **The difference:** a word saved or changed in
+    the Lexirise app since the page was analyzed shows its older state until the mirror's next sync (on idle cards,
+    `kVocabSyncIntervalMs`). Recommended: accept it (the reader's own changes are immediate; the alternative, sending ①
+    anyway, gives the speed back).
+
+**claritise's decisions (2026-09-28, relayed by the coordinator):**
+
+1. **The radio: "Only if already on".** Page analysis and the prefetch never join WiFi: (a)'s option 1, as built.
+2. **The saved state on an analyzed page:** the recommendation stands (① skipped, the state from the mirror, then the
+   page's snapshot), and claritise asked for a sync button, placed by them: **"put it on the home screen"**. Two
+   freshness measures come with it:
+   - **(a2) A probe as a card opens.** Once the card's phase A and B are on screen, the incremental pass's probe (the
+     `kVocabProbeItems` page) runs after a short idle (`kVocabCardProbeIdleMs`, 1 s: the reader is reading the meaning;
+     a tap or step in that second goes first) instead of V7a's `kVocabIdleMs`, at most once per
+     `kVocabCardProbeIntervalMs` (5 min: a change made in the app is usually made in one sitting before reading, so
+     the first card after it finds it; at most 12 probes an hour, inside `kVocabPagesPerHour`, ~1% of the limit; the
+     default `wifi_idle_min` is 5 min, so a burst of cards on one WiFi-up probes once). Over WiFi already up only, the
+     card's own: never a join; it gives way to input as every V7a page does (and now a touch, below). A probe that
+     changes a word on the open card updates that word's saved state through the card's usual redraw (the same
+     path a live answer takes; nothing new drawn). Nothing between the tap and phase B waits on it: it runs only on a
+     card with nothing to fetch, send or draw.
+   - **(b2) "Sync vocabulary" on the home screen.** A menu entry, shown only when Lexirise is on and a key is set
+     (compiled out without Lexirise). Pressing it is the reader's own request, so it **may join WiFi** (the saved
+     network, as a card does); it runs the incremental pass to the cursor for each language switched on (and the full
+     pass where one is due or under way), with the home screen's own popup and progress bar
+     (`GUI.drawPopup`, `GUI.fillPopupProgress`) and a result popup; any button cancels. Its look is a mockup for
+     claritise's glance first (`reference/v7b-home-sync.html`), built once they've seen it. **Signed off by claritise
+     2026-09-28:** the place "Just above Settings" (after File Transfer), and the short wording set: the row "Sync
+     Vocabulary"; the popups "Syncing vocabulary..." · "Vocabulary up to date" · "Synced · N words changed" · "Sync
+     failed · No Wi-Fi" · "Sync stopped" (the mockup's own wording superseded in place there). R2 (2026-09-28): a rejected key
+     and a rate limit use the card's own "Lexirise key rejected" and "Lexirise: rate limited"; ~~the plain "Sync failed"
+     for other failures and a singular "Synced · 1 word changed" are asked of claritise (pending).~~ **Answered by
+     claritise 2026-09-28:** other failures show plain "Sync failed" (signed off), and "yes" to the singular "Synced · 1
+     word changed" (picked by the count: `vocab::syncedText`). R5 (2026-09-28): a press with the hour's manual pages spent
+     (`kVocabManualSyncPagesPerHour`) shows the card's "Lexirise: rate limited" at once, without joining WiFi (the
+     coordinator tells claritise about the reuse); R10 (2026-09-28): so does a press once this reader's requests in the
+     last hour reach `kVocabManualSyncStopPercent` of the key's limit.
+- **(e) Nothing on screen changes.** No new drawing, no setting, no card change. What differs: a card on an analyzed
+  page reaches phase A without waiting for ① (on the device a warm ① is ~0.4 s, and ~1.1 s when it came back refined
+  and needed the `fast` call: `../v0.1/device-checks.md`), and the dev log gains `[LXPAGE]` lines. Marks are V9's.
+- **(f) Tests and checks.** Host: ~~`text::pageText`~~ `text::buildPageText` (every `describeTap` sentence is the page text's slice at its
+  start, fixtures from `test/lexirise_sentence`); the page visitor on synthetic answers (key orders, caps, a
+  malformed or cut body, a streamed body in pieces equal to one piece); the page-scale merge against `wholeWords` on
+  the V1 fixtures; the file (round trip, CRC, version, text-hash and language misses, caps, eviction and the books
+  index); the sentence slice (equal to `parseAnalyze` of the same synthetic sentence); the state precedence; the
+  prefetch policy (pure: dwell, flipping, WiFi up only, rendering, a card open, the budget at 70% and across the
+  millis wrap, a 429's block, give-up for input in each wait); `LiveSource` on a cached page (the fake API sees only
+  `dictionary/lookup`). `lxctl.py page-smoke` (read-only, a dev build, one held session): open a card (WiFi up),
+  close it, turn pages at reading pace and fast, then open a card on a prefetched page, asserting from the log: one
+  `analyze/text` per page, none while flipping, none on the card, and each `[LXPAGE]` line's time and heap. **Owed
+  on the device:** a tap and a side button during a prefetch (handled at once, the page given up); a prefetch's heap
+  (free, lowest, largest) with a fresh TLS session; its time to the first byte and to the end; the file's write time;
+  the reuse's phase A time against ①.
+- **Also in V7b** (carried from V7a's review, its landing commit): a persisted re-read bit, so a re-read or a
+  restart at the top can't end an incremental pass inside a cursor tie; the page log's "written" only when written;
+  `kVocabPendingMax`'s comment (20 B on Xtensa); `parseVocabPage` over the measured raw pages on the host, and in
+  Known limits that a page that never parses holds a full pass; `loggablePath`'s `/v1/vocabulary?` prefix pinned in
+  `RequestsTest`; `kMsDigits` in `VocabPage.cpp`; a device check for a tap during the first idle card's file read.
+
+**As built (V7b, 2026-09-28, on `lexi/V7`):**
+
+- **What's analyzed, when** (`page/Prefetch.h` `PagePrefetcher`, the reader's side `page/ReaderPages`, called from
+  `EpubReaderActivity::loop()` after the idle prewarm): the page on screen, then the next, each once, when the page
+  has been drawn and up `config::kPagePrefetchDwellMs` (1.5 s: pages turned faster are never analyzed), the station is
+  connected already (`LexiriseService::wifiConnected`; never a join, claritise's "Only if already on"), nothing renders
+  or lays out, Lexirise is usable for the book, no 429 or rejected key, and this reader's own requests over the last
+  hour (`api::RequestWindow`, minute buckets, counting every request that reached Lexirise) are below
+  `config::kPageBudgetPercent` of the key's limit (`/v1/me`'s `rateLimitMax`, else the measured
+  `config::kRateLimitDefault`). One page per loop pass; the text comes from the section's layout (`Section::loadPage`
+  under RenderLock; the page model without measuring: only the tokens make the text), `page::describePage`
+  (`text::buildPageText`, the book's language, or the page's own text for a book that doesn't say). At a section's
+  last page the next isn't read. A page over `config::kPageMaxTextUnits` isn't sent.
+- **The call** (`LexiriseApi::analyzePage`, `api::analyzePageRequest`: the default mode, the page's whole text) is
+  streamed (`page::PageReader`, a `net::BodySink` over `json::StreamReader`) into a `page::PageAnalysis`: sorted
+  arrays and one string pool, the entries the occurrences name only (measured on the probe's pages: 206 and 220
+  occurrences, 107 and 129 entries, a 4.2-4.6 KB pool; `RawPages` in `test/lexirise_page`, run with
+  `LEXIPOINT_RAW_PAGES`). Like a mirror page it's never counted as the reader's WiFi use or TLS activity. **It gives
+  way to input:** the client asks the call's abort between reads and the TLS connection in its handshake, write and
+  read waits (`net::Connection::setAbort`, `ApiError::Cancelled`, the connection closed), and the reader's abort is a
+  side or power button (`HalGPIO::rawInputActive`) or a finger on the screen (~~`HalGPIO::rawTouchActive`~~ `HalGPIO::rawTouchLevel` read through `input::TouchLine`, R1; the touch
+  controller's interrupt line: unmeasured, `../v0.1/device-checks.md` "v0.2 V7b"); the TCP connect itself (DNS and
+  SYN, inside the SDK) can't be interrupted. A page given up waits a whole dwell again; a failed one
+  `config::kPageFailureWaitMs` (a 429 its own retry time).
+- **A refined answer** (`morphoPending: false`: Lexirise has refined the text before) gets the page's `fast` call and
+  V1's merge (`page::mergeWholeWords`, `lookup::wholeWords`' rule, pinned against it); if that call fails the page
+  isn't kept (and waits). On the probe's refined pages the merge gave back the first pass's split (206 and 220
+  occurrences).
+- **The file** (`page/PageStore`, `../v0.1/settings.md` §3 "The page cache"): `/.lexirise/pages/<book>/<spine>-<start>.bin`
+  (`<book>` the FNV-1a 32 of the book's path, 8 hex digits; `<start>` `Page::visibleTextOffset`), used only when its
+  language, length and text hash match the page's text now; 13.0 and 14.8 KB for the probe's pages. Written plainly
+  (it's regenerable: a torn one fails its CRC and is removed); `/.lexirise/pages/index.bin` (crash-safe) keeps the
+  pages oldest first, at most `config::kPageCacheFiles`, one more removes the oldest page's file. A page analyzed
+  again moves to the newest end; a read doesn't reorder (no write for a read).
+- **The mirror:** the page's states go to the vocab mirror as a live answer (`VocabStore::record`) only when it's
+  loaded already (one not loaded keeps only the newest card answers, which a page's hundred entries would push out).
+- **The card** (`page/PageSentences`, given to `LiveSource` by word select when it knows the section): the first
+  sentence asked reads the page's file once (outside RenderLock, never as the card opens) for the page's text as word
+  select laid it out; a sentence in the same language is the page's occurrences over its span (`page::sliceSentence`,
+  its start from `text::pageOffsetOf`; an occurrence across the sentence's cut edge is left out) and
+  `lookup::analyzeTap` skips ① (`known`); the card's words, form names, Met before and stepping are as before, phase B
+  asks `dictionary/lookup`. Its states (`page::applyMirrorStates`; superseded by R5's rule, below, the struck and
+  R3/R4 text kept for the record): ~~the mirror's entry when it holds one (a removal:
+  unsaved); unsaved when it doesn't and its cursor has passed the page's analysis time (R1: the cursor is the
+  account's newest change, which a removal doesn't move) unsaved when it doesn't and its last pass ended after the
+  page's analysis time~~ ~~(R3, 2026-09-28) an entry the reader's own answers or writes put (`live`: a removal is always
+  one) is the mirror's; once the mirror is complete as of a time after the page's analysis (`SyncState::lastSyncS`:
+  the first page's time of the last incremental pass that ran from the top to its end this boot and could bound what
+  it read; a full pass never sets it, nor a pass resumed after a restart; in the file when it's written, a quiet pass
+  keeping it in memory only, so after a restart it can read older, never newer), any entry it holds is its and one it
+  doesn't hold is unsaved; else the page's snapshot (and all of it while the mirror isn't loaded, but for the reader's
+  pending answers and writes, `VocabStore::pendingState`). **Removals** (V7b R1, `vocab::Entry` with
+  saved id 0, always `live`): a live answer or a write that says a word the mirror holds isn't saved keeps it as a
+  removal instead of erasing it (only for an entry it held: the unsaved words an answer lists aren't added), in the
+  file like any record; a page's item for the entry replaces it; a full pass's end drops the removals older than it
+  (R3: one made during the pass, marked with its generation, is kept: the pass may have read the word before) (R4,
+  2026-09-28: a full pass's sweep never drops a removal, since a page analyzed before it may still need it and the
+  mirror isn't complete past that page until the incremental pass after it); the incremental pass from the top that
+  ends after a full pass has ended (`lastSyncS` then past every page analyzed before that full pass began) drops the
+  removals made before the full pass (an older mark); one made since (during the full pass, or during that incremental
+  pass, after its start) stays until the same happens after the next full pass. Bounded by the mirror's cap: a
+  removal only ever replaces an entry the mirror held (`config::kVocabMirrorMax` in all), so they can't grow past it
+  even if no incremental pass ends.~~ (Struck 2026-09-28, R8: R3's precedence and R1/R4's removals, superseded by the saved-state rule (R5), below.)
+- **The saved-state rule (R5, 2026-09-28; replaces R1-R4's precedence above).** Every mirror entry carries `asOfS`,
+  the time its state was known: a sync page's item, the page's read time (with no clock, the item's `updated_at`, a
+  time it was surely true at: the read time is right because a page read after a change reflects it, and the reader's
+  writes reach the account before they reach the mirror); a live answer, the answer's time (a card's, stamped as it's
+  recorded, `VocabStore::setClock`; a page prefetch's, its analysis time); the reader's own write, the write's time,
+  flagged `own`; a removal, its time. The file keeps both (version 3, 20-byte records: `../v0.1/settings.md` §3; an
+  older file is set aside and synced again). A page sentence's word: the newer of the entry and the page's snapshot
+  says (`vocab::mirrorOutranks`: the same second, the mirror); a word the mirror doesn't hold is unsaved only once
+  the mirror is complete as of a time after the page (`SyncState::lastSyncS`), else the snapshot stands; before the
+  mirror loads, the reader's pending answers and writes (with their times) take the entry's place. **With a time
+  unknown** (the clock not set when the entry or the page was known): the reader's own writes still win, and anything
+  else leaves the snapshot (the conservative way). **Removals** now: kept for an entry the mirror held and for any
+  entry the reader removed themselves (`LiveState::own`: not for every word an answer lists unsaved, which would fill
+  the mirror and then refuse real saves); a page's item replaces one; a sweep never drops one; the incremental pass
+  from the top that sets `lastSyncS` drops those known as of it or before (then the word's absence says unsaved), and
+  those of unknown time. Bounded by the mirror's cap (`config::kVocabMirrorMax` entries, removals included). A page
+  reading an entry again whose state didn't change moves its time on in memory only (no file write; after a restart
+  the time reads older, which is safe: the state was the same then). The `live` flag no longer decides precedence (a
+  full pass still takes a live entry's page item). Pinned in one place: `SavedStateRule` in
+  `test/lexirise_page/SavedStateTest.cpp`, every earlier scenario (R1 M1, R2 S2, R3 S1, R4 S1, R5 M1/M2) and the
+  reviewers' probes. Such a sentence isn't given to the mirror again (it isn't a live answer). The dev log says
+  `[LXPAGE] card: page <spine>-<start> analyzed: no analyze/text for its sentences` (or `not analyzed`).
+- **The log** (every build): `[LXPAGE] <this|next> page (<n> of section <s>): <analyzed|kept already|failed|unusable|
+  given up for input|no text> in <ms> ms (<error>), <occurrences> occurrences[ (refined, merged)], <calls> calls in
+  <ms> ms, written in <ms> ms[ (failed)]; heap <free> free, <min> min, <largest> largest`. **R1:** a page is analyzed
+  only once it's drawn (`page::Drawn`, set where `renderBook` draws it), and its dwell counts from its latest drawing
+  (a card closed over it draws it again: nothing starts as the reader gets back to it); a page given up for input
+  waits a dwell from the call's end; an answer that can't be read or kept (malformed, over a cap: `page::fitsFile`,
+  checked before any write, a merge of two answers can pass one) is `unusable` and not asked again on this showing;
+  whether Lexirise is usable for the book is worked out once per page shown and when the settings change. **The touch
+  line** (`input/TouchLine`, `input/InputAbort`): which level means a finger isn't assumed (the X4 Pro's config, the
+  SDK's pin mode and the controller's mode all bear on it): the idle level is learned from the reader's and the card's
+  loop passes with no finger down (the dev log says `[LXIN] touch line idles <high|low>` once), anything else is a
+  touch, nothing is before it's learned, and a line that changes `config::kTouchLineFlipsMax` times within
+  `kTouchLineFlipWindowMs` with no finger down is never used again that boot (logged), so it can't make every call give
+  up. One `input::inputCame` serves the page's call, the mirror's pages and the card's probe. Device checks owed: `../v0.1/device-checks.md` "v0.2 V7b".
+- **The probe as a card opens** (claritise's (a2); `VocabStore::takeCardProbe`, `CardSession::shouldProbeVocab`, the
+  card's idle step `Probe`): once the card has nothing to fetch, send, draw or handle and has been idle
+  `config::kVocabCardProbeIdleMs` (1 s), the incremental pass's probe (`kVocabProbeItems`, from the top) over the card's
+  WiFi, for a loaded mirror that has synced with no pass under way and no failure's wait, at most once per
+  `config::kVocabCardProbeIntervalMs` (5 min) across cards, inside the hourly page budget, not in the card's share of
+  pages. It's the incremental pass's first page as any (a longer change goes on by V7a's idle pages). The first card of
+  a boot probes once the mirror has loaded (its first idle window's file read, `kDeckIdleMs`), a second later. A word on
+  the card whose entry the probe changed takes the mirror's state (`LiveSource::takeMirrorChanges`, the lemma's entry
+  first, notes and tags from its item kept; not an entry this card wrote) and its level (`CardController::
+  savedLevelChanged`, no toast), and the card is redrawn through the usual path (R1: an idle mirror page that
+  changes a word on the card does the same); the log says `[LXVOCAB] card probe:
+  <n> items in <ms> ms (<error>), <n> entries changed[, the card redrawn]`. It gives way to a button or a touch like a
+  page (the mirror's pages now take the call's abort too, `LexiriseApi::vocabularyPage`); a probe given up is spent
+  (the next in 5 min).
+- **Sync Vocabulary on the home screen** (claritise's (b2), signed off 2026-09-28; `vocab/ManualSync` pure,
+  `vocab/HomeSync` the device side, hooks in `HomeActivity` and `HomeMenuItem::VOCAB_SYNC`, all inside `#if LEXIRISE`):
+  a row just above Settings with the Wi-Fi icon, shown when Lexirise is on, a key is set and a language is switched on
+  (`vocab::syncRowShown`, read as the home screen opens). Pressed: the home screen's popup "Syncing vocabulary..." with
+  its progress bar; the reader's own request, so it joins WiFi once, first (`LexiriseService::joinForUser`, the saved
+  network as a card joins: the only join outside a lookup's calls; WiFi is held up while it runs, ~~and its idle
+  teardown counts from the end~~ and given back as soon as it ends (R2: nothing on the home screen uses it,
+  `../v0.1/offline-and-errors.md` §5)); then one page per loop pass for each language switched on: the full pass while one is under
+  way or due, then an incremental pass from the top (a probe first) to the cursor (`VocabStore::manualNext`: no
+  interval, no failure's wait, outside the idle pages' hourly budget, which its pages don't count against either (R2:
+  a big manual sync never holds the idle pages back for an hour; `PageCall::manual`); at most `config::kVocabManualSyncPagesMax` pages a
+  press, and `config::kVocabManualSyncPagesPerHour` across presses in an hour (R4: ~~repeated presses can't run the key
+  into a 429 that would block the cards~~ (2026-09-28, R10: not with the page analysis and the idle pages counted; a
+  run also stops at `config::kVocabManualSyncStopPercent` of the key's hour, "R10" below); past it a press says "Synced" with what it read), the passes resumable, so a large first sync goes on at the next press or on idle cards). The progress is the
+  pass's offset against its list count (a probe: half the language). Any button or touch stops it (between pages, and
+  a page under way gives up by `input::inputCame`). The result for `config::kVocabSyncResultMs` over the menu drawn
+  again: "Vocabulary up to date" (nothing changed and nothing left: a run the page cap stopped says "Synced"), "Synced ·
+  N words changed" (distinct entries whose saved state, level, suspension or review time a page added or changed: R2,
+  a weekly full pass's new marks alone count nothing, `visiblyChanges`), "Sync failed · No Wi-Fi", "Lexirise key
+  rejected" and "Lexirise: rate limited" (R2: the card's own words for them), "Sync failed" (any other failure; signed off by
+  claritise 2026-09-28, as is "Synced · 1 word changed" for one, picked by the count), "Sync stopped"; then the menu. What the popup shows is worked out under RenderLock after each
+  step (`HomeSync::refresh`): the render task never reads the sync while a step changes it. The log:
+  `[LXVOCAB] home sync: <result> after <n> pages, <n> words changed`.
+- **R2:** nothing starts while the toolbar or a panel is over the page or pages turn by themselves (`readerBusy`);
+  the drawn page travels from the render task in one atomic word (`page::packDrawn`); the reader's own answers and
+  writes waiting for the mirror's load win over a page's snapshot (`VocabStore::pendingState`); an answer's small
+  arrays (the entries, ~2 KB, and the states) are reserved as their first element arrives, after the handshake, and
+  being under 4 KB they're in internal RAM (the occurrences and the pool, larger, in PSRAM).
+- **R3:** a page is known by its section and its first visible character, not its index (a reflow gives the same
+  index other text: it's analyzed again); an input already queued on a loop pass holds a page's step back until it's
+  handled; the V1 merge carries a cut answer's `statesCut`; the page index is saved every `config::kPageIndexSaveEvery`
+  pages and as the reader closes (`PageStore::flush`: the index is rewritten whole, 12 KB when full; a power loss
+  between saves leaves up to `kPageIndexSaveEvery - 1` pages unindexed: read by name and replaced when analyzed again,
+  never evicted); an unreadable index takes the whole page folder with it (`SettingsFiles::removeTree`: its pages
+  can't be evicted one by one any more). The home screen's sync: what a loop pass does is ~~`vocab::homeSyncAction`~~
+  `vocab::HomeSyncFlow` (R9; pure: stop on a press, a step once its popup is drawn, the result dismissed ~~when its
+  time is up or on input once shown~~ on the release of a press that began while it was shown, or when its time is up
+  with nothing held, so the dismissing press never reaches the menu: a Confirm starting a second sync, a Back opening
+  the last book, a tap on the row underneath); the sync ends outside the render lock (its release of WiFi blocks),
+  logged `[LXVOCAB] home sync: WiFi <given back|left up (not Lexipoint's)|not up> in <ms> ms` (R9: "not up" when it
+  never joined); a press while Lexirise refuses calls (a 429's wait, a rejected key) says so without joining (R9);
+  `lxctl.py home-sync-smoke` checks it, and taps the result: no second sync (read-only, never run here).
+- **R5 also:** a press of Sync Vocabulary with the hour's pages spent says "Lexirise: rate limited" at once, without
+  joining WiFi; the home screen keeps the reader awake while a sync runs (`preventAutoSleep`); the home menu's index
+  is `home/HomeMenuIndex.h` (pure, every OPDS × Sync Vocabulary combination tested); a page step counts only calls
+  answered (one given up isn't, in the step or the log's count).
+- **R7:** the binary files' helpers have one home (`util/ByteOrder.h`, `util/Crc32.h` with `bytes::Fnv1a`), the
+  files byte for byte as before (the pinned tests unchanged); a tap on an analyzed page whose slice has no word (a
+  token crossing the sentence's cut edge) asks ① after all (`LookupReport::fromPage`).
+- **R8:** a chapter's first read is analyzed too: a section build paused ahead (it stays open until the chapter's
+  end) isn't busy, only a build tick due now (`EpubReaderActivity::buildTickDue`, one predicate with
+  `skipLoopDelay`); the reader's conditions are a pure `page::readerConditions` (tested); while the mirror is
+  overflowed its removals stay (absence can't speak for them); the home sync applies each page with the wall clock
+  read after its call (a cold boot's first page gets the time its call set).
+- **R9:** a page step and page-smoke both count only calls answered with an HTTP status; one log tag for the page
+  analysis (`page::kLogTag`); §1.2's V7a statements that V7b changed are struck in place.
+- **R10:** a call given up for input waits a whole dwell from its end: the same drawing told again on every pass
+  doesn't restart the dwell from the drawing (`PagePrefetcher::shown` restarts it only on a new drawing); a button
+  still held (release-mode page turns, a long Confirm: no edge queued) or a finger down is busy
+  (`ReaderInputs::inputHeld`, from `HalGPIO::rawInputActive`), and a step with input there already reads nothing and
+  calls nothing; a loop pass's decision (the cheap gates, the page's start once per drawing, the dwell, the
+  conditions) is the pure `page::PagePass` (tested), `ReaderPages` only its device glue. A press that stopped the home
+  sync inside a call (its edge seen only on the next pass, maybe with "Sync stopped" drawn already) doesn't dismiss
+  the result on its release: `HomeSyncFlow` arms only on a press after a pass with the result shown and nothing held.
+  A press of Sync Vocabulary doesn't join, and a run stops between pages, once this reader's requests in the last
+  hour reach `config::kVocabManualSyncStopPercent` of the key's limit (`ManualSync::KeyUse`: the page analysis and
+  the idle pages count too; `kVocabManualSyncPagesPerHour` alone could pass the default limit).
+- **Known limits:** the next section's first page isn't analyzed ahead; a page analyzed while the mirror isn't loaded
+  shows its snapshot's states, but for the reader's own answers and writes, until the mirror loads (the first idle
+  card), ~~and once it's loaded can lose to an older card's answer for the same word (a live entry wins whatever its
+  age) until the next incremental pass from the top ends~~ (superseded 2026-09-28 by "The saved-state rule (R5)": the
+  newer of the entry and the page says, whoever put the entry); **a change stamped behind the cursor** (`updated_at`
+  not in commit order, or a later word of a group tied at the cursor changed in its own millisecond: V7a's known
+  limits) is missed by the incremental pass, which still makes the mirror complete as of its start, so a card on a
+  page analyzed before then shows that word unsaved although the page's snapshot said saved (V7a hid this: ① was
+  live); it heals with a later answer for the word (a card's, a page's) or the weekly full pass (pinned by
+  `SavedStateRule.AChangeStampedBehindTheCursorIsMissedUntilALaterAnswerOrTheWeeklyPass`; no guard: whether
+  `updated_at` follows commit order is an open measurement, `../reference/lexirise-api-notes.md`); **at the mirror's
+  cap** (`kVocabMirrorMax`) the reader's own removal of a word the mirror doesn't hold isn't kept (`Put::Full`), and
+  the page's snapshot stands; and (R7) once the mirror has refused any entry at its cap (`SyncState::overflowed`, set
+  by a page's item or a live answer refused, cleared when a full pass ends having refused nothing), a word's absence
+  no longer says unsaved: absent words fall back to the page's snapshot (the size alone doesn't decide: a full
+  mirror that refused nothing is complete); the reader's own removal of unknown time (no clock) stays until a full
+  pass ends; the home screen's sync joins WiFi without a way to interrupt it (up to `kWifiJoinMaxMs`: a device check
+  times a press during it); a word removed in the Lexirise app shows
+  its page's saved state until a mirror pass ends after the page's analysis (the probe as a card opens, or the idle
+  pages); a quick tap between two samples of the touch line (every few ms while a call waits) may be missed; the hourly count is this reader's only
+  (the key's use elsewhere is unseen; a 429 stops it); ~~an index lost or unreadable leaves its pages on the card,
+  unindexed (they're found again by name when their page is read, and overwritten, but never evicted)~~ (R3/R4: an
+  unreadable index, one that doesn't parse, is too large or fails to read, takes the page folder with it; only a power
+  loss between the index's saves leaves pages unindexed, at most `kPageIndexSaveEvery - 1` each time: read by name
+  and replaced when analyzed again, never evicted); removing the page folder after an unreadable index blocks the
+  loop once (up to `kPageCacheFiles` files, within a page step, and input can't interrupt it: a device check times
+  the pause); the page index's last save runs as the reader
+  activity is destroyed, under the activity manager's lock (up to 12 KB, crash-safe); the TCP connect of a page's call (DNS and SYN, up to
+  `kHttpTimeoutMs` on a weak signal) can't be interrupted by input.
 
 ### 1.2 Vocab mirror
 
@@ -72,7 +458,8 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
   array, in PSRAM on the device (malloc prefers PSRAM past 4 KB, `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL`); a write
   builds the file's bytes in one buffer (PSRAM too). The TLS session and the page's parse state are the only internal
   RAM a page adds; the dev log gives the heap per page (`../v0.1/device-checks.md` "v0.2 V7a").
-- **When it syncs: only on an idle card, over WiFi already up.** Like V3's deck steps (`CardSession::shouldFetchVocab`
+- **When it syncs: ~~only on an idle card, over WiFi already up~~** (V7b, 2026-09-28: also the card's probe as it
+  settles, and the home screen's Sync Vocabulary, which joins WiFi itself: §1.1 "As built (V7b)"). Like V3's deck steps (`CardSession::shouldFetchVocab`
   after the deck's turn): nothing to fetch, send, draw or handle, no finger down, nothing due, no write queued, idle
   `config::kVocabIdleMs` (longer than a deck step's), and the card reached Lexirise (its words came and its last call
   didn't fail). One page per idle window, at most `config::kVocabPagesPerCard` per card and `kVocabPagesPerHour` in
@@ -85,10 +472,12 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
   isn't updated during a call; it sees the side buttons and the power button, but not the capacitive Home key, which
   the touch controller reports), so the press is handled, not lost (the page's TLS connection is closed with it, so
   the next word's phase B pays a new handshake); nothing is learned, no failure wait, and it doesn't count toward the
-  card's pages; a button already held as a page is due gives it up before the request (no request spent). **A tap or a
+  card's pages; a button already held as a page is due gives it up before the request (no request spent). ~~**A tap or a
   Home press made and released during a page is likely lost** (unmeasured): the touch controller is only read by the
   loop's input update, which the page blocks, as the side buttons were before the cancel (`../v0.1/device-checks.md`);
-  one still held when the page ends is seen after it. Not while reading without a card: a page blocks the loop (a few
+  one still held when the page ends is seen after it.~~ (Superseded 2026-09-28 by V7b: a finger on the screen gives a
+  page up too, `HalGPIO::rawTouchActive` OR'd into the cancel, and the cancel is asked in every wait of the call, not
+  only as body bytes arrive: §1.1 "As built (V7b)"; whether a quick tap is always seen is a device check.) Not while reading without a card: a page blocks the loop (a few
   seconds: the device check times it), which a page turn mustn't wait on. No new setting.
 - **The file is read and written only on an idle card** (`CardSession::shouldFlushMirror`: the deck's idle rule,
   `config::kDeckIdleMs`, before a deck step or a page), after a page, and as the card closes (a write only); never
@@ -144,7 +533,9 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
   entries go into the mirror (`stateByEntryId` lists level-0 and suspended items too, measured:
   `../v0.1/lookup-flow.md` §5, the level-0 item a removal leaves, and the reference notes' "Suspended (Ignore)", so an
   answer never erases them), and an entry the answer doesn't list isn't saved there either (unless the answer was cut
-  at `config::kMaxEntries`), so **the live answer wins** where they disagree; except an entry this card wrote (its
+  at `config::kMaxEntries`; V7b: an entry the mirror held is kept as a removal rather than erased, with its time, and
+  ~~**the live answer wins** where they disagree~~ the newer of the mirror's and an answer's state wins: §1.1 "The
+  saved-state rule (R5)"), so **the live answer wins** where they disagree; except an entry this card wrote (its
   write is newer than a later analysis). Each save, level change and removal goes in once Lexirise took it
   (`LiveSource::recordMirror`, memory only, after every answer), kept under the entry whose state the card had (the
   surface word's when only it was saved; a new save's under the lemma); a removal stays at level 0, as Lexirise keeps
@@ -152,28 +543,39 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
   the page's item when it reaches it (the answer has no review time or suspension). Written with the file (above); a
   card closed by sleep loses what it hadn't written (sleep is a deep sleep: the reader restarts), which is harmless:
   Lexirise has it, and the next incremental pass brings it back.
-- **Use.** The card's saved state still comes from `analyze/text`; nothing it draws changes. ~~The mirror is the
+- **Use.** ~~The card's saved state still comes from `analyze/text`; nothing it draws changes.~~ (Superseded
+  2026-09-28 by V7b: on a page analyzed ahead, a card's saved states come from the mirror by the saved-state rule, and
+  a probe or an idle page that changes a word on the open card redraws it: §1.1 "As built (V7b)".) ~~The mirror is the
   offline source (`VocabStore::savedState(language, entryId)`) and V9's~~ (corrected 2026-09-28: nothing calls it yet)
   `VocabStore::savedState(language, entryId)` is there for V9's marks and the offline saved state they'll show; the
   StarDict answer offline isn't given it (it has no entry ids, and its popup would change).
 - **Known limits.** The sync moves only while cards sit idle (a reader who closes cards at once syncs slowly: the
   device check measures a first full sync); a page given up for a button costs a request (the hourly budget counts it;
-  a button already held when a page is due gives it up before its request, which costs nothing); the Home key and a
+  a button already held when a page is due gives it up before its request, which costs nothing); ~~the Home key and a
   touch don't give a page up (only the side and power buttons do), and one made and released during a page is likely
   lost (the device check says; the candidate fix, once it's confirmed: `HalGPIO::rawTouchActive()` reading the touch
   controller's interrupt line, `BoardConfig::ACTIVE.touch.irq` held low, OR'd into the cancel
   `LexiriseCardActivity::idleStep` passes); the button is only looked at as body bytes arrive, so a server that stalls
-  holds a press until the read times out (`config::kHttpTimeoutMs`); a word changed during a full pass reaches the
+  holds a press until the read times out (`config::kHttpTimeoutMs`)~~ (superseded 2026-09-28 by V7b: a touch gives a
+  page up too, through the learned touch line, `input::inputCame`, and the abort is asked in every wait of the call,
+  the TCP connect aside: §1.1 "As built (V7b)"; the capacitive Home key still doesn't); a word changed during a full pass reaches the
   mirror with the incremental pass right after it; the re-read after a drop relies on `languageCount` counting exactly
   the items listed (measured for sentence cards; a page without it brings a full pass forward, and were Lexirise to
   stop sending it, full passes would repeat every interval, within the hourly page budget, but for the once-only rule
   above); ~~how items sharing an `updated_at` are ordered across offset pages is unmeasured~~ (measured 2026-09-28:
   stably, the reference notes); a saved id that isn't a whole number isn't kept (all measured ids are); the cursor
   assumes `updated_at` is in commit order (a change stamped earlier than one already read is caught only by the weekly
-  full pass), and even in order, a later word of a group tied at the cursor changed in the cursor's own millisecond
+  full pass; V7b: meanwhile a card on a page analyzed before shows it unsaved, §1.1 Known limits), and even in order, a later word of a group tied at the cursor changed in the cursor's own millisecond
   waits for it (pinned by a test); each page that changes the mirror or leaves a pass under way rewrites the whole
   file (up to `config::kVocabMaxBytes`: the device check times it); a quiet incremental pass (one page, nothing new)
-  writes nothing.
+  writes nothing. **A page that never parses holds its pass** (V7b, 2026-09-28): an unreadable page waits
+  `kVocabFailureWaitMs` and is asked again at the same offset, so a full pass stops there for good (and the
+  incremental passes wait behind it) until Lexirise answers it readably; the measured pages (the dev account's lists,
+  `research/v7/`) all parse, whole and streamed in 1 KB pieces (`RawPages` in `test/lexirise_vocab`, run with
+  `LEXIPOINT_RAW_PAGES` on the raw answers: skipped without it). **An incremental pass that has read again**
+  (`PassProgress::reread`, V7b: in the file, bit 3 of its flags) no longer ends at an unchanged item as old as the
+  cursor: its pages repeat items anywhere, so it ends at an older item or the list's end (before V7b a re-read, or one
+  sent back to the top, could end the pass inside a group tied at the cursor, the rest waiting for the weekly pass).
 
 ## 2. The annotations
 
@@ -225,10 +627,10 @@ Chapter-level extras (same data, no inline drawing):
 
 | Needs | For | Status |
 |---|---|---|
-| Page analysis (§1.1) | Everything | Not built. v0.1 analyzes per sentence |
-| Vocab mirror (§1.2) | Offline marks, A4, A5, immediate updates after a save | ~~Not built~~ V7a (in progress, 2026-09-28) |
+| Page analysis (§1.1) | Everything | ~~Not built. v0.1 analyzes per sentence; V7b designed (§1.1 "V7b design", 2026-09-28)~~ V7b built on the host (2026-09-28; device checks owed) |
+| Vocab mirror (§1.2) | Offline marks, A4, A5, immediate updates after a save | ~~Not built~~ ~~V7a (in progress, 2026-09-28)~~ V7a done on the host (landed 2026-09-28; device check owed) |
 | **Kana readings** | A6 for Japanese, A8 readings | **Solved:** converted on the device (`../v0.1/languages.md` §3a). Chinese pinyin works as is |
-| `analyze/text` maximum text length | Page analysis in one request, and A9 | **No limit hit up to 20k chars** (tested). ~70 bytes of response per character, so ~20 KB per page |
+| `analyze/text` maximum text length | Page analysis in one request, and A9 | **No limit hit up to 20k chars** (tested). ~~~70 bytes of response per character, so ~20 KB per page~~ (Superseded 2026-09-28: ~200–310 B per UTF-16 unit, 76–93 KB a page, `../reference/lexirise-api-notes.md` "Page analysis (V7b), measured") |
 | Whether analyze bumps `seen_count` | Whether prefetching inflates your stats | **Tested: it doesn't.** Prefetching is safe |
 | Tokenizer quality | A1 accuracy (一日中雨 came back as one token) | Report issues to Lexirise |
 

@@ -285,7 +285,7 @@ base_url=https://api.lexirise.app
   | Header offset | Bytes | Field |
   |---|---|---|
   | 0 | 4 | `LXVM` |
-  | 4 | 2 | version (2: the incremental pass's progress; a version 1 file is set aside and synced again) |
+  | 4 | 2 | version (2: the incremental pass's progress; 3, V7b R5: 20-byte records with each state's time; an older file is set aside and synced again) |
   | 6 | 2 | the record's size |
   | 8 | 2 | the language code (`ja` / `zh`) |
   | 10 | 1 | flags: 1 synced (a full pass has ended), 2 a full pass under way, 4 its list count (offset 40) is set, 8 a page of it had no count (it sweeps nothing), bits 4–5 how far short of `kVocabPageOverlap` its next page's slack is (a re-read: all of it), 64 the next full pass was brought forward once (no count) |
@@ -299,19 +299,39 @@ base_url=https://api.lexirise.app
   | 44 | 4 | the incremental pass under way: its next offset |
   | 48 | 8 | its newest `updated_at` (the cursor once it ends) |
   | 56 | 4 | its list count at its last page |
-  | 60 | 1 | its flags: 1 under way, 2 its count set, 4 a page of it had no count, bits 4–5 how far short of the overlap its next page's slack is |
-  | 61 | 7 | spare (0) |
+  | 60 | 1 | its flags: 1 under way, 2 its count set, 4 a page of it had no count, 8 it has read again (no tie stop: V7b, 2026-09-28; 0 in older files), bits 4–5 how far short of the overlap its next page's slack is |
+  | 61 | 4 | ~~when the last pass ended~~ the time the mirror is complete as of: the start of the last incremental pass that ran from the top to its end (R3; seconds since the epoch; 0: unknown; V7b R1, 0 in older files) |
+  | 65 | 1 | V7b R7: 1 the mirror refused an entry at its cap (absence no longer says unsaved), 2 the full pass under way refused an item (0 in older files) |
+  | 66 | 2 | spare (0) |
   | 68 | 4 | CRC-32 (IEEE) of bytes 0–67 and every record |
 
-  A record: the entry id (`dictionary_id`), the saved expression's id, `next_review_at` (seconds; 0: none), each 4
-  bytes; the level (0–4), flags (1: suspended; 2: put by a card's live answer, not a page), the full pass that last
-  saw it, and a spare byte. At most `config::kVocabMirrorMax` records (`kVocabMaxBytes`). A file that doesn't check
+  A record (20 bytes, version 3): the entry id (`dictionary_id`), the saved expression's id, `next_review_at`
+  (seconds; 0: none), the time its state was known (seconds; 0: unknown), each 4 bytes (a saved id 0: a removal,
+  always flagged 2); the level (0–4), flags (1: suspended; 2: put by a card's live answer, not a page; 4: the reader's
+  own write), the full pass that last saw it, and a spare byte. At most `config::kVocabMirrorMax` records (`kVocabMaxBytes`). A file that doesn't check
   out (magic, version, language, size, CRC, order, a slack past the overlap in either pass's bits 4–5) is set aside as
   `.bad` (flag bits it doesn't know are ignored) and the mirror synced again from Lexirise; nothing in it is the
   user's own (it's all in their account), so hand edits aren't kept. Written crash-safely like the others (`SafeFile`:
   `.tmp`, `.bak`), outside the card's render lock: after a page that changes the mirror or the pass's progress (a
   quiet incremental pass writes nothing), on an idle card after its answers changed it, and as the card closes; read
   once per boot per language, on the first idle card in it.
+- **The page cache** (v0.2 V7b, C12; no setting): each analyzed page's `analyze/text` answer, compact,
+  `/.lexirise/pages/<book>/<section>-<start>.bin` (`<book>`: the FNV-1a 32 of the book's path in 8 hex digits;
+  `<section>`: the spine index; `<start>`: the page's first visible character in it), `page/PageAnalysis`. **Binary**,
+  little-endian: a 48-byte header (`LXPA`, version 1 (u16), the language code (2), flags (1: refined and merged), three
+  spare, the page text's UTF-16 length (u32) and FNV-1a 32 (u32), when it was analyzed (u64 ms since the epoch; 0:
+  unknown), the counts of occurrences, entries, saved states and the pool's bytes (u32 each), a CRC-32 of the header's
+  first 44 bytes and everything after it), then occurrences (32 B: start, end, entry, lemma entry, u32 each; the word,
+  the lemma and the reading as u16 place and length in the pool; flags, 1 word-like; three spare), entries' facts
+  (20 B: id, rank, the frequency's float bits; the reading and part of speech), saved states (16 B: id; the saved id
+  as a pool string; the level; three spare; the seen count), both sorted by id, then the pool (UTF-8, at most
+  `config::kPageMaxPoolBytes`). A file that doesn't check out is removed. `/.lexirise/pages/index.bin` (crash-safe,
+  `SafeFile`): a 16-byte header (`LXPI`, version 1, the record's size, the count, an FNV-1a 32 checksum) and 12 bytes
+  per kept page (the book, the section, the start: u32 each), oldest first, at most `config::kPageCacheFiles`, saved
+  every `config::kPageIndexSaveEvery` pages and as the reader closes; ~~one unreadable is set aside (`.bad`) and the
+  cache starts again~~ (V7b R3/R4) one unreadable (it doesn't parse, is too large, or fails to read) takes the whole
+  `/.lexirise/pages/` folder with it and the cache starts again. Nothing in them is the user's own (it's all from
+  Lexirise, asked again when missing).
 - **`reading` lives in `[ja]`** (it moved from `state.ini`, which is dropped).
 - Unknown keys are **kept** on rewrite, so a newer firmware's settings survive a downgrade.
 - A missing file means all defaults with no key, so Lexirise is effectively off until a key is set.

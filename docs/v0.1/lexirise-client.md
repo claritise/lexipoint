@@ -65,6 +65,12 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
 - **Request bodies** are built by `net/JsonWriter`: escaping, and invalid UTF-8 replaced, so the body is
   always valid JSON.
 - **The key is never logged.** Log lines carry the method, path, status and error name only.
+- **A call can be given up for the reader's input** (v0.2 V7b: a page's analysis, the vocab mirror's pages and the
+  card's probe; `LexiriseClient::send(request, sink, abort)`, `net::Connection::setAbort`): the abort is asked before
+  the request is written (true: nothing is sent), between reads, in the wait for the clock (SNTP) before the
+  handshake (`ensureClock`), and in the TLS connection's handshake, write and read waits (not inside the TCP connect, which blocks in the SDK); once it's true the call ends `Cancelled` (`sent`
+  says whether the request went out), the connection is closed (the rest of an answer is never read into the next
+  one), a stale session isn't retried, and the abort is forgotten when the call returns.
 
 ## 2. Endpoints
 

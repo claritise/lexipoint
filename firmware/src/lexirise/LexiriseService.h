@@ -13,6 +13,7 @@
 #include "api/KeyCheck.h"
 #include "api/LexiriseApi.h"
 #include "api/LexiriseClient.h"
+#include "api/RequestWindow.h"
 #include "net/Connection.h"
 #include "net/WifiSession.h"
 #include "settings/Settings.h"
@@ -64,7 +65,22 @@ class LexiriseService final : public api::LexiriseApi {
   api::ApiResponse savedItem(const net::Request& request) override { return send(request); }
   // GET /v1/vocabulary, a page streamed into `sink` (V7a): only while WiFi is up already (never a join: the mirror's
   // sync adds no radio time the reader didn't cause), else NoWifi without the network.
-  api::ApiResponse vocabularyPage(const net::Request& request, net::BodySink& sink) override;
+  api::ApiResponse vocabularyPage(const net::Request& request, net::BodySink& sink, net::Abort abort) override;
+  // POST /v1/analyze/text for a whole page (V7b), streamed: as vocabularyPage, never a join and never counted as the
+  // reader's WiFi use or TLS activity; `abort` gives it up in any of the call's waits.
+  api::ApiResponse analyzePage(const net::Request& request, net::BodySink& sink, net::Abort abort) override;
+
+  // WiFi up for something the reader asked for on the home screen (V7b's Sync Vocabulary): the saved network, as a
+  // card joins. The only join outside a lookup's own calls; NoWifi / NoWifiSaved when it can't.
+  api::ApiError joinForUser();
+  // Whether the station is connected now (the page analysis goes only then).
+  bool wifiConnected() { return wifi_.connected(); }
+  // This reader's requests that reached Lexirise in the last hour, and the key's hourly limit (/v1/me's; the
+  // measured config::kRateLimitDefault until it has answered): the page analysis's budget (V7b).
+  unsigned requestsLastHour() { return window_.count(clock_()); }
+  uint32_t rateLimit() const {
+    return status_.me.rateLimitMax != 0 ? status_.me.rateLimitMax : config::kRateLimitDefault;
+  }
 
   // Main-loop tick: a queued key check, the idle TLS close, and the WiFi idle teardown.
   void tick();
@@ -78,12 +94,13 @@ class LexiriseService final : public api::LexiriseApi {
   // `reading`: a reader activity is on screen or under it. Leaving reading gives WiFi back and closes
   // the TLS session, so the next activity never shares the radio with Lexipoint (net/WifiLease.h).
   void onActivityChanged(bool reading);
-  // Closes the session and gives WiFi back now if Lexipoint owns it.
-  void releaseWifi();
+  // Closes the session and gives WiFi back now if Lexipoint owns it (true: it did).
+  bool releaseWifi();
 
  private:
   // `mayJoin` false: only over a station already connected (NoWifi otherwise, never a join).
-  api::ApiResponse send(const net::Request& request, net::BodySink* sink = nullptr, bool mayJoin = true);
+  api::ApiResponse send(const net::Request& request, net::BodySink* sink = nullptr, bool mayJoin = true,
+                        net::Abort abort = nullptr);
   void closeSession();
 
   SettingsStore& store_;
@@ -99,6 +116,7 @@ class LexiriseService final : public api::LexiriseApi {
   bool wifiHeld_ = false;
   SettingsWatch wifiIdleWatch_;
   int wifiIdleMin_ = 0;
+  api::RequestWindow window_;
 };
 
 // The device instance (LexiriseServiceHal.cpp; not linked into host tests).

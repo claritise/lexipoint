@@ -50,6 +50,11 @@ class FakeApi final : public api::LexiriseApi {
   std::function<api::ApiResponse(const net::Request&)> vocabServer;
   size_t vocabChunkBytes = 7;
   std::vector<net::Request> vocabRequests;
+  // analyzePage (V7b): scripted replies (none = offline), their bodies streamed into the sink `vocabChunkBytes` at a
+  // time; `pageAbortAfter` pieces in, the call's abort is asked (and a true gives it up: Cancelled).
+  std::deque<api::ApiResponse> pageReplies;
+  std::vector<net::Request> pageRequests;
+  size_t pageAbortAfter = SIZE_MAX;
 
   api::ApiResponse analyze(Language, const std::string_view sentence) override {
     analyzed.emplace_back(sentence);
@@ -75,7 +80,26 @@ class FakeApi final : public api::LexiriseApi {
     items.push_back(request);
     return next(itemReplies);
   }
-  api::ApiResponse vocabularyPage(const net::Request& request, net::BodySink& sink) override {
+  api::ApiResponse analyzePage(const net::Request& request, net::BodySink& sink, const net::Abort abort) override {
+    pageRequests.push_back(request);
+    api::ApiResponse r = next(pageReplies);
+    if (!r.ok()) return r;
+    const std::string body = std::move(r.body);
+    r.body.clear();
+    size_t pieces = 0;
+    for (size_t at = 0; at < body.size(); at += vocabChunkBytes, pieces++) {
+      if (pieces >= pageAbortAfter && abort && abort()) {
+        r.error = api::ApiError::Cancelled;
+        return r;
+      }
+      if (!sink.onBody(body.data() + at, std::min(vocabChunkBytes, body.size() - at))) {
+        r.error = api::ApiError::Malformed;
+        break;
+      }
+    }
+    return r;
+  }
+  api::ApiResponse vocabularyPage(const net::Request& request, net::BodySink& sink, net::Abort) override {
     vocabRequests.push_back(request);
     api::ApiResponse r = vocabServer ? vocabServer(request) : next(vocabReplies);
     if (!r.ok() && r.body.empty()) return r;

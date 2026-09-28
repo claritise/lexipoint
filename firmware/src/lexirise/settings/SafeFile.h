@@ -31,6 +31,8 @@ class SettingsFiles {
   virtual bool remove(const char* path) = 0;
   virtual bool rename(const char* from, const char* to) = 0;  // fails if `to` exists (SdFat semantics)
   virtual bool ensureDir(const char* path) = 0;
+  // A folder and everything in it (the page cache's, V7b: regenerable). False: not done (the default).
+  virtual bool removeTree(const char* /*path*/) { return false; }
 };
 
 // One safely replaced file and its companions.

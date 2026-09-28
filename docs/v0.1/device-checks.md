@@ -151,19 +151,121 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## v0.2 V7b: still owed on the device
+
+V7b (page analysis: `../v0.2/page-annotations.md` §1.1 "As built (V7b)") is on `lexi/V7`, not yet run on the device.
+Read-only from Lexirise. `lxctl.py page-smoke [x y]` (a dev build, one held session) drives the first checks below
+(WiFi up from a card, the dwell, a turn, fast turns, a card on an analyzed page) and records each step's time and
+heap. Each step logs `[LXPAGE] <this|next> page (...): <kind> in <ms> ms (<error>), ... calls; heap
+<free> free, <min> min, <largest> largest`; a card on an analyzed page logs `[LXPAGE] card: page <s>-<start> analyzed:
+no analyze/text for its sentences`.
+
+- **First: with no input, a page's call completes and V7a's page isn't given up** (V7b R1): the log's `[LXIN] touch
+  line idles <high|low>` once, then `[LXPAGE] ... analyzed` (not `given up for input`) and an idle card's `[LXVOCAB]
+  page ...` without `given up for input`. If calls are given up with no finger down, the touch line's learned level is
+  wrong: say which, and the fix is to drop the line from `input::inputCame` (buttons only).
+- **Only over WiFi already up:** after a reboot (radio off), read a few pages: no `[LXPAGE]` line and no join. Open a
+  card (WiFi comes up), close it, read on at a normal pace: each page logs `this page ... kept already` or `analyzed`
+  and `next page ... analyzed`; once `wifi_idle_min` has passed and WiFi is down, nothing more.
+- **Pages turned fast:** flip pages faster than one per 1.5 s: no `[LXPAGE]` line until you stop.
+- **A tap or a side button during a page's call** (the heart of it): turn the page (a tap on the page-turn zone, and
+  separately a side button) while a call is under way (within ~3 s of a page settling, WiFi up): the page turns at
+  once and the log says `given up for input`. Record whether a quick tap is ever lost or late (the touch line is read
+  every few ms while the call waits; a tap between samples may be missed). If taps are lost, the fallback is a worker
+  task for the call (measure its internal RAM first).
+- **The call's time and heap** with a fresh TLS session (the card's closed after 30 s): the `[LXPAGE]` line's time
+  (the Mac measured ~1.9 s for a 300-380-unit page) and the heap's `min` and `largest` against a card's lookup.
+- **The file's write time:** the `[LXPAGE]` line's `written in <ms> ms`, and `/.lexirise/pages/` on the card
+  afterwards (13-15 KB per page).
+- **A card on an analyzed page:** tap a word on a page logged `analyzed`: the card's phase A without `analyze/text` in
+  the log (`[LXS] POST /v1/analyze/text` absent; `dictionary/lookup` only), and its time against a card on a page not
+  analyzed. Save a word, turn to the next page (analyzed ahead, the word on it): the card shows it saved (the mirror).
+- **The probe as a card opens:** change a word's level in the Lexirise app, then open a card on a page holding it
+  (more than 5 min after the last probe, the mirror loaded): about a second after phase B, `[LXVOCAB] card probe: 5
+  items ... 1 entries changed, the card redrawn` and the word shows the new level. Tap a word during the probe: handled
+  at once (`given up for input`). A card opened again within 5 min: no probe line.
+- **Touch-line noise:** after a minute of normal tapping and swiping, and quick double taps (two taps in a row, a few
+  times: the idle level may be sampled on a debounce edge), no `[LXIN] touch line changes with no finger down` line
+  (the line wasn't given up on). `TouchLine::idle` adopts any differing level at once (V7b R7: measured first, no code
+  change); if a quick double tap gives the line up, the candidate fix is to adopt a new idle level only after N
+  agreeing samples.
+- **A finger held at boot:** keep a finger on the screen through the boot and the first page: the line's idle level
+  is learned only once it's lifted (the `[LXIN] touch line idles ...` line after that), and a call afterwards isn't
+  given up with no finger down.
+- **The first card after a boot on a cached page:** save a word, close the card within 3 s (before the mirror loads),
+  then tap the word again on the same (analyzed) page: it shows saved (the reader's pending save wins).
+- **Automatic page turns and the toolbar with WiFi up:** with auto page turn on, no `[LXPAGE]` step and the turns keep
+  their time; with the toolbar (or Contents, Text, More) open for longer than 1.5 s, no `[LXPAGE]` step until it
+  closes and the page has been up 1.5 s again.
+- **A page turn while a prefetch opens a new session** (the TLS session closed, a weak signal): turn the page just as
+  a `[LXPAGE]` step starts: the TCP connect (DNS and SYN, up to `kHttpTimeoutMs`) can't be interrupted; record how
+  long the turn waits.
+- **A press during the home sync's join:** press a side button (and tap) while Sync Vocabulary joins WiFi (WiFi off
+  before, the saved network slow or out of reach): the join can't be interrupted; time how long until "Sync stopped".
+- **Page analysis on a chapter's first read** (V7b R8): delete the book's section cache (`.crosspoint/epub_<hash>/
+  sections/`), open the chapter and run `lxctl.py page-smoke`: pages are analyzed while the chapter is still being
+  laid out ahead.
+- **The first Sync Vocabulary after a full power-off** (the clock unset): the result comes, and the mirror file's
+  last-sync time is set (copy it to the Mac, or the next card's probe/page lines behave as synced).
+- **Confirm, Back and a tap on each result popup** (V7b R9): on "Vocabulary up to date", "Synced · N words
+  changed", "Sync failed · No Wi-Fi", "Lexirise: rate limited" and "Sync stopped", press Confirm, then Back, then tap
+  the popup: each dismisses it on its release, and nothing else happens (no second sync, no book opened, no row
+  acted on).
+- **A page turn during a prefetch's handshake and first-byte wait:** by side button and by tap, just as a
+  `[LXPAGE]` step starts (TLS closed) and ~1 s into it: the turn is prompt, the step `given up for input`.
+- **The prefetch's heap with a fresh TLS session during a first read** (the section's build paused ahead): the
+  `[LXPAGE]` line's `min` and `largest`.
+- **Sync Vocabulary while 429-blocked:** after a rate limit on a card, press it: "Lexirise: rate limited" at once, no
+  join (`home sync: WiFi not up`).
+- **WiFi after a home sync:** after the result popup goes, WiFi is off (no `wifi_idle_min` wait; the log's release).
+- **A stale mirror and a page analyzed mid-sync** (V7b R3): with a mirror not synced for a while, save a word in the
+  app, then read on so a page holding it is analyzed while a full pass is under way (a fresh mirror: its pages come
+  on idle cards): a card on that page shows the word saved (the page's snapshot), not unsaved.
+- **The home screen's freeze as WiFi is given back:** after a home sync's result, the `home sync: WiFi given back in
+  <ms> ms` line: how long the home screen doesn't answer (the TLS close and the radio's teardown).
+- **A tap exactly as a home sync's step starts:** tap repeatedly while it runs: each tap stops it at once ("Sync
+  stopped"), none lost, none acting on the menu underneath.
+- **`lxctl.py home-sync-smoke`** (a dev build, read-only): runs the sync from the home screen and checks the result,
+  the calls and WiFi given back.
+- **The reader's removal on a prefetched page** (V7b R5 M1): open a card on the first page after a boot, close it
+  within ~3 s (the mirror not loaded yet), let the page be analyzed, remove a saved word on it (⋯ Undo save, or T
+  then Undo), then reopen the card on the same page: the word shows unsaved.
+- **A press with the hour's pages spent:** press Sync Vocabulary until a press says "Lexirise: rate limited" (after
+  `kVocabManualSyncPagesPerHour` pages): no WiFi join for it (no `[LXS]` line, no radio).
+- **A held button on a page** (V7b R10): with WiFi up, on a page up longer than 1.5 s, hold a side button (release-mode
+  page turns on) and, separately, hold Confirm: no stream of `given up for input` lines while it's held (none, or one).
+- **A press during a home sync's page** (V7b R10): press a side button while a page downloads (not during the join):
+  "Sync stopped" stays up ~2 s, not dismissed as the button comes up.
+- **A long sync with sleep at 1 min:** set auto-sleep to 1 min and run a first sync (a fresh mirror) longer than that:
+  the reader doesn't sleep until the result.
+- **Removing the page cache after an unreadable index:** put a junk `/.lexirise/pages/index.bin` on a card with many
+  cached pages; time the loop's pause on the next page analysis.
+- **Sync Vocabulary on the home screen:** with Lexirise on and a key set, the row sits just above Settings (and is
+  absent with Lexirise off or no key). Press it with WiFi off: it joins, "Syncing vocabulary..." with the bar, then
+  "Vocabulary up to date" (or "Synced · N words changed" after a change in the app) for 2 s, and the menu again; the
+  log's `[LXVOCAB] home sync: ...`. With the saved network out of reach: "Sync failed · No Wi-Fi". A side button or a
+  tap while it runs: "Sync stopped" at once. With a fresh mirror (vocab-<lang>.bin moved aside): the full pass's bar
+  moves, and the time per page.
+- **A refined page:** a page Lexirise refined already (read it twice more than ~3 min apart, after a font change so
+  it's asked again): the line says `(refined, merged)` and `2 calls`; a word the refined pass cuts (深深, 一边, 小さな)
+  is whole on the card.
+
 ## v0.2 V7a: still owed on the device
 
 V7a (the vocab mirror: `../v0.2/page-annotations.md` §1.2 "As built (V7a)") is on `lexi/V7`, not yet run on the
 device. Read-only from Lexirise: the log must show only `GET /v1/vocabulary?…` for the sync (and a card's usual calls).
 A dev build logs each page: `[LXVOCAB] <full|incremental> <ja|zh> offset <n>: <items> items, mirror <words> words`,
-then `[LXVOCAB] page <items> items in <ms> ms (<error>[, given up for input]), applied and written in <ms> ms; heap
+then `[LXVOCAB] page <items> items in <ms> ms (<error>[, given up for input]), applied in <ms> ms (file <written|not
+written|write failed>); heap
 <free> free, <min> min, <largest> largest` (internal RAM; `min` is the lowest since boot); the file's read or write,
 `[LXVOCAB] mirror file read or written in <ms> ms`. **`lxctl.py vocab-smoke [x y] [press]`** (a dev build, one held
 session: opening the port resets the reader, `../v0.1/dev-harness.md` §3, which lists it with the other one-session smokes; it sends `AWAKE 1` first) opens the card on
-the word at x y, leaves it idle until a page is logged and checks from the log: a page with its time and heap, and
-only `GET /v1/vocabulary?` during the sync; `press`: you press and release a real side button while a page
+the word at x y, leaves it idle until a page is logged and checks from the log: a page with its time and heap (V7b:
+on a synced mirror, the card's probe instead, `[LXVOCAB] card probe: 5 items in <ms> ms ...` about a second after the
+card settles, which usually ends the pass so no idle page follows for `kVocabSyncIntervalMs`), and only
+`GET /v1/vocabulary?` during the sync; `press`: you press and release a real side button while a page
 streams (an injected press isn't seen), and it must be given up; the log is read past pages that came whole until one
-is. It needs a whole page to press into: a synced mirror's first page is a quick probe, so move
+is. It needs a whole page to press into: a synced mirror's first call is the card's quick probe, so move
 `/.lexirise/vocab-<lang>.bin` aside first (a full pass runs), or change more words in the app than the probe holds. It
 records the numbers the checks below ask for.
 
@@ -198,7 +300,7 @@ records the numbers the checks below ask for.
 - **Deep sleep right after a save:** save a word, let the reader sleep before the card goes idle; after waking, the
   word's state comes back with the next incremental pass (it wasn't in the file).
 - **Each page's write on a large mirror:** each page that changes the mirror or leaves a pass under way rewrites the
-  whole file; with the 20,000-word file, note the `applied and written in <ms> ms` of a few pages (a first full sync
+  whole file; with the 20,000-word file, note the `applied in <ms> ms (file written)` of a few pages (a first full sync
   of 20,000 words writes it once per page, about 64 MB in all, and fills the mirror by sorted inserts, `Mirror::put`
   moving the entries after each new one: that's part of the apply time to watch). If it's too slow, the fallback is to
   write the file every N pages during a full pass (its progress is resumable either way: a lost page is read again).
@@ -224,10 +326,14 @@ records the numbers the checks below ask for.
   (the log's `incremental <lang> offset <n>` lines go on from where the last wake stopped, never back to 0 until the
   pass ends), and the cursor moves once it does.
 - **A quiet incremental pass on a wake, against a large file:** with the 20,000-word file and nothing changed in the
-  app, the first idle card after a wake runs one page: its line says `applied and written in <ms> ms` near 0 (no
-  file write), not the whole file's write time.
-- **The wake's probe page:** the first idle card after a wake, nothing changed in the app: the page line says
-  `5 items` (`config::kVocabProbeItems`); note its time against a whole page's.
+  app, the first idle card after a wake runs one page: its line says `applied in <ms> ms (file not written)`, near 0
+  (no file write; corrected 2026-09-28, V7b: the line said "written" either way), not the whole file's write time.
+- **A tap during the first idle card's file read** (carried from V7a's review): with the 20,000-word file, open a
+  card and tap a word (or step) just as the first idle window reads the mirror (`mirror file read or written`): the
+  tap is handled after the read, not lost (the read blocks the loop like a page, with no cancel).
+- **The wake's probe page:** the first card after a wake, nothing changed in the app: ~~the page line says `5 items`~~
+  (V7b R6: the card's probe comes first) `[LXVOCAB] card probe: 5 items in <ms> ms` about a second after the card
+  settles (`config::kVocabProbeItems`); note its time against a whole page's.
 - **A card's close during a weekly resync on a large mirror:** with the 20,000-word file and a full pass under way,
   open a card on words the mirror has as they are and close it: no `mirror file read or written` for them, and the
   close as fast as without a mirror.

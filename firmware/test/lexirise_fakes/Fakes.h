@@ -63,6 +63,12 @@ class FakeFiles : public SettingsFiles {
     return true;
   }
   bool ensureDir(const char*) override { return true; }
+  bool removeTree(const char* path) override {
+    const std::string prefix = std::string(path) + "/";
+    for (auto it = files.begin(); it != files.end();)
+      it = it->first.rfind(prefix, 0) == 0 ? files.erase(it) : std::next(it);
+    return true;
+  }
 };
 
 // Scripted connection: each read() pops the next chunk; kClose means the peer closed, kStall a

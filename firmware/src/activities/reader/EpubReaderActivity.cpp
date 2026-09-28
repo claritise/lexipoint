@@ -377,6 +377,7 @@ void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int to
   wordSelect->setBook(lexipoint::lookup::bookLanguageFor(epub->getLanguage(), epub->getPath()),  // LEXIPOINT
                       epub->getTitle(), epub->getPath());
   if (touchX >= 0) wordSelect->setInitialTouch(touchX, touchY);
+  wordSelect->setSpine(currentSpineIndex);  // LEXIPOINT: where the page's analysis is kept (C12, V7b)
 #endif
   startActivityForResult(std::move(wordSelect), [this](const ActivityResult&) { requestUpdate(); });
 }
@@ -420,6 +421,26 @@ void EpubReaderActivity::loop() {
       }
     }
   }
+
+#if LEXIRISE
+  // LEXIPOINT: page analysis (C12, V7b): this page and the next, over WiFi already up, once the page has been up a
+  // moment; a button or a touch gives a call up at once.
+  if (section) {
+    int touchX = 0;
+    int touchY = 0;
+    // Nothing while the toolbar or a panel is over the page (its snapshot is held, and a menu is open) or while pages
+    // turn by themselves (a call would hold up the turn).
+    // An input already queued for this pass (a press, a release, a finger down or just lifted: a tap, a swipe) is
+    // handled below first: no call starts ahead of it.
+    const bool inputQueued = mappedInput.wasAnyPressed() || mappedInput.wasAnyReleased() ||
+                             mappedInput.isScreenTouchHeld(touchX, touchY) || mappedInput.wasScreenTouchReleased();
+    const bool readerBusy = overlay != Overlay::None || automaticPageTurnActive || inputQueued;
+    // A paused build (a chapter's first read) isn't busy: only a build tick due now is (buildTickDue).
+    lexiPages.step(*section, currentSpineIndex, lexipoint::page::unpackDrawn(lexiDrawn.load()),
+                   mappedInput.isScreenTouchHeld(touchX, touchY), readerBusy, buildTickDue(), epub->getPath(),
+                   epub->getLanguage());
+  }
+#endif
 
   if (section && !section->isBuilding() && section->isPartial() && !RenderLock::peek() && buildViewportWidth > 0 &&
       !partialRebuildStartFailed &&
@@ -1192,10 +1213,14 @@ void EpubReaderActivity::onReturnFromEndOfBook() {
   }
 }
 
-bool EpubReaderActivity::skipLoopDelay() {
+// A background build tick is due now (not merely a build left open: a fresh build pauses BUILD_WINDOW_AHEAD pages
+// ahead until the reader nears it). LEXIPOINT: one predicate for skipLoopDelay and the page analysis's busy gate.
+bool EpubReaderActivity::buildTickDue() const {
   return section && section->isBuilding() && !buildHeapPaused &&
          (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD);
 }
+
+bool EpubReaderActivity::skipLoopDelay() { return buildTickDue(); }
 
 void EpubReaderActivity::renderBook() {
   currentPageLinks.clear();
@@ -1484,6 +1509,10 @@ void EpubReaderActivity::renderBook() {
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
+#if LEXIRISE
+    lexiDrawn.store(
+        lexipoint::page::packDrawn(currentSpineIndex, section->currentPage, lastRenderCompleteMs));  // LEXIPOINT
+#endif
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||

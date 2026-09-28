@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -27,6 +28,7 @@
 #include "ReaderScene.h"
 #include "lexirise/deck/BookDeck.h"
 #include "lexirise/lookup/LexiriseLookup.h"
+#include "lexirise/page/PageSentences.h"
 #include "lexirise/settings/IgnoredWords.h"
 #include "lexirise/vocab/VocabMirror.h"
 
@@ -129,6 +131,9 @@ class LiveSource final : public CardSource {
   // entry this card wrote (its write is newer), and each write that went through. Taken into the mirror's memory by
   // recordMirror(); its file is read and written only on an idle card (flushMirror), never before a redraw.
   void setVocabMirror(vocab::VocabStore& store);
+  // The page's analysis (C12, V7b): a sentence it holds is taken from it and request ① isn't sent (its states from
+  // the mirror, page::PageSentences); none, or a sentence it can't give, asks ① as before.
+  void setSentenceSource(std::unique_ptr<page::SentenceSource> source) { pageSentences_ = std::move(source); }
   // A page of the mirror's sync is due (CardSession::shouldFetchVocab says when the card is idle enough): the card
   // reached Lexirise (its words came, and its last call didn't fail), no write is queued, it has fetched fewer than
   // config::kVocabPagesPerCard, and the store has a page due within its budget. `epochS`: the wall clock (time()).
@@ -137,7 +142,17 @@ class LiveSource final : public CardSource {
   // asked first, a button already held gives it up before any request is sent.
   std::optional<vocab::PageCall> fetchVocab(unsigned long nowMs, uint32_t epochS,
                                             api::VocabPageReader::Cancel cancel = nullptr);
-  void applyVocab(const vocab::PageCall& call, unsigned long nowMs, uint32_t epochS);  // SD I/O, outside RenderLock
+  // V7b: the mirror's probe as the card settles (VocabStore::takeCardProbe; CardSession::shouldProbeVocab says when):
+  // the same conditions as a page (hasVocabWork), not counted in the card's share of pages. Network I/O, outside
+  // RenderLock; its answer goes through applyVocab().
+  bool hasProbeWork(unsigned long nowMs) const;
+  std::optional<vocab::PageCall> fetchProbe(unsigned long nowMs, api::VocabPageReader::Cancel cancel = nullptr);
+  // After a page changed the mirror (PageApplied::changedEntries): each word on the card whose saved state the mirror
+  // now says otherwise takes it (not an entry this card wrote: its write is newer), rebuilt as a save's answer is;
+  // returns the words changed (the controller takes their levels). Under RenderLock.
+  std::vector<int> takeMirrorChanges(const std::vector<uint32_t>& changedEntries);
+  // SD I/O, outside RenderLock.
+  vocab::PageApplied applyVocab(const vocab::PageCall& call, unsigned long nowMs, uint32_t epochS);
   // What apply() learned for the mirror since the last call, into the store's memory (no SD I/O: after every answer,
   // under RenderLock or not; a language not loaded yet keeps it until it is).
   void recordMirror();
@@ -247,6 +262,10 @@ class LiveSource final : public CardSource {
   IgnoredWordStore* ignoredStore_ = nullptr;  // the reader's ignore list (none: nothing is ignored)
   // This card's ignores and their Undos, newest last (a handful): they win over the store.
   std::vector<std::pair<IgnoredKey, bool>> ignoredHere_;
+  // The page's analysis (none: every sentence asks ①). A read-once cache (it reads the page's file on the first
+  // sentence asked), so it's asked from the const fetch() and changes behind the pointer: the source's own state only,
+  // nothing apply() or the render task reads.
+  std::unique_ptr<page::SentenceSource> pageSentences_;
   vocab::VocabStore* vocab_ = nullptr;           // the vocab mirror (none: nothing kept or synced)
   std::optional<Language> vocabLanguage_;        // the tapped sentence's: the mirror this card syncs
   unsigned vocabPages_ = 0;                      // pages this card fetched

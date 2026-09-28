@@ -17,6 +17,9 @@
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
 #include "components/OptionPopup.h"
+#if LEXIRISE
+#include "lexirise/page/ReaderPages.h"  // LEXIPOINT
+#endif
 
 class EpubReaderActivity final : public ReaderActivity {
   std::shared_ptr<Epub> epub;
@@ -86,6 +89,8 @@ class EpubReaderActivity final : public ReaderActivity {
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
 #if LEXIRISE
   lexipoint::BookLanguageRow moreBookLanguage{lexipoint::bookLanguageStore()};  // LEXIPOINT: the More panel's row
+  lexipoint::page::ReaderPages lexiPages;  // LEXIPOINT: page analysis (C12, V7b): this page and the next, ahead
+  std::atomic<uint64_t> lexiDrawn{0};      // LEXIPOINT: the page renderBook drew last, and when (page::packDrawn)
 #endif
 
   // Footnote support
@@ -208,6 +213,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void onReturnFromEndOfBook() override;
 
   bool skipLoopDelay() override;
+  bool buildTickDue() const;  // LEXIPOINT: skipLoopDelay's predicate, shared with the page analysis (not gated)
 
   ScreenshotInfo getScreenshotInfo() const override;
   CrossPointPosition getCurrentPosition() const;

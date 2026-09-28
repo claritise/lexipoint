@@ -14,6 +14,7 @@ using json::Type;
 constexpr size_t kUint32DigitsMax = 10;  // "4294967295"
 constexpr size_t kIsoMinBytes = 20;      // "YYYY-MM-DDTHH:MM:SSZ"
 constexpr size_t kIsoSecondsEnd = 19;    // where a fraction or the zone starts, after "YYYY-MM-DDTHH:MM:SS"
+constexpr size_t kMsDigits = 3;          // a fraction's digits that make its milliseconds
 
 // A whole number in [0, UINT32_MAX], as a JSON number or a string of digits (an id may come either way).
 bool wholeNumber(const Type type, const std::string_view text, uint32_t& out) {
@@ -64,15 +65,15 @@ std::optional<uint64_t> parseIsoTimeMs(const std::string_view text) {
   if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 60) return std::nullopt;
   size_t at = kIsoSecondsEnd;
   int ms = 0;
-  if (text[at] == '.') {  // a fraction: its first three digits are the ms
+  if (text[at] == '.') {  // a fraction: its first kMsDigits digits are the ms
     at++;
     const size_t start = at;
     while (at < text.size() && text[at] >= '0' && text[at] <= '9') {
-      if (at - start < 3) ms = ms * 10 + (text[at] - '0');
+      if (at - start < kMsDigits) ms = ms * 10 + (text[at] - '0');
       at++;
     }
     if (at == start) return std::nullopt;
-    for (size_t n = at - start; n < 3; n++) ms *= 10;
+    for (size_t n = at - start; n < kMsDigits; n++) ms *= 10;
   }
   int64_t offsetS = 0;
   if (at < text.size() && (text[at] == 'Z' || text[at] == 'z') && at + 1 == text.size()) {

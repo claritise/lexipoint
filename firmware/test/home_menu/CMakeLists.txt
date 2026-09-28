@@ -1,0 +1,5 @@
+add_executable(HomeMenuTest HomeMenuIndexTest.cpp)
+target_compile_definitions(HomeMenuTest PRIVATE LEXIRISE=1)
+target_include_directories(HomeMenuTest PRIVATE ${REPO_ROOT}/src)
+target_link_libraries(HomeMenuTest PRIVATE crosspoint_test_common GTest::gtest_main)
+gtest_discover_tests(HomeMenuTest)

@@ -52,12 +52,13 @@ bool loadRoot(WOLFSSL_CTX* ctx, const char* pem, const char* name) {
 
 }  // namespace
 
-bool ensureClock() {
+bool ensureClock(Connection* aborts) {
   if (time(nullptr) >= config::kMinValidEpochS) return true;
   if (!esp_sntp_enabled()) configTzTime("UTC0", config::kNtpServerPrimary, config::kNtpServerSecondary);
   const uint32_t deadline = millis() + config::kNtpWaitMs;
   while (!pastDeadline(deadline)) {
     if (time(nullptr) >= config::kMinValidEpochS) return true;
+    if (aborts && aborts->checkAbort()) return false;  // the reader's input: the call gives up (open: Aborted)
     pollWait(config::kClockPollMs);
   }
   LOG_ERR(kLogTag, "Clock not set (no NTP answer in %u ms)", (unsigned)config::kNtpWaitMs);
@@ -68,13 +69,14 @@ OpenError TlsConnection::open(const Endpoint& endpoint) {
   close();
   const uint32_t started = millis();
 
-  if (!ensureClock()) return OpenError::ClockNotSet;
+  if (!ensureClock(this)) return checkAbort() ? OpenError::Aborted : OpenError::ClockNotSet;
   if (ESP.getFreeHeap() < HttpDownloader::MIN_TLS_FREE_HEAP ||
       ESP.getMaxAllocHeap() < HttpDownloader::MIN_TLS_MAX_ALLOC) {
     LOG_ERR(kLogTag, "Pre-flight: free %u, max block %u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
     return OpenError::LowMemory;
   }
 
+  if (checkAbort()) return OpenError::Aborted;
   if (!transport_.connect(endpoint.host.c_str(), endpoint.port, config::kHttpTimeoutMs)) {
     LOG_ERR(kLogTag, "TCP connect to %s:%u failed", endpoint.host.c_str(), (unsigned)endpoint.port);
     return OpenError::ConnectFailed;
@@ -131,6 +133,10 @@ OpenError TlsConnection::open(const Endpoint& endpoint) {
       close();
       return OpenError::Timeout;
     }
+    if (checkAbort()) {
+      close();
+      return OpenError::Aborted;
+    }
     pollWait(config::kIoPollMs);
   }
   connected_ = true;
@@ -152,7 +158,7 @@ bool TlsConnection::writeAll(const char* data, const size_t len) {
       sent += static_cast<size_t>(n);
       continue;
     }
-    if (!isWantIo(wolfSSL_get_error(ssl, n)) || pastDeadline(deadline)) {
+    if (!isWantIo(wolfSSL_get_error(ssl, n)) || pastDeadline(deadline) || checkAbort()) {
       close();
       return false;
     }
@@ -175,6 +181,10 @@ int TlsConnection::read(char* buffer, const size_t capacity, const uint32_t time
       return -1;
     }
     if (pastDeadline(deadline)) return 0;
+    if (checkAbort()) {
+      close();
+      return -1;
+    }
     pollWait(config::kIoPollMs);
   }
 }

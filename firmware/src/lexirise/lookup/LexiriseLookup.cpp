@@ -10,11 +10,45 @@
 #include "lexirise/text/Utf8Prefix.h"
 
 namespace lexipoint::lookup {
+namespace {
 
-LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, AnalyzedSentence& out, size_t& word) {
+// ② the occurrence under the tap.
+LookupReport matchTap(const text::TapContext& tap, AnalyzedSentence sentence, AnalyzedSentence& out, size_t& word) {
+  LookupReport report;
+  const auto match = matchOccurrence(sentence.analysis.occurrences, tap.sentence->tapOffset);
+  if (!match) {
+    report.outcome = LookupOutcome::NotFound;
+    return report;
+  }
+  for (size_t i = 0; i < sentence.analysis.occurrences.size(); i++) {
+    if (sentence.analysis.occurrences[i].wordLike) sentence.words.push_back(i);
+  }
+  word = static_cast<size_t>(std::find(sentence.words.begin(), sentence.words.end(), *match) - sentence.words.begin());
+  out = std::move(sentence);
+  report.outcome = LookupOutcome::Card;
+  return report;
+}
+
+}  // namespace
+
+LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, AnalyzedSentence& out, size_t& word,
+                        const api::AnalyzeResult* known) {
   LookupReport report;
   if (!tap.sentence || !tap.language.language) return report;  // not a Lexirise lookup
   const Language language = *tap.language.language;
+  AnalyzedSentence sentence;
+  sentence.language = language;
+  if (known) {
+    sentence.analysis = *known;  // the page's analysis: V1's merge already made where it was refined
+    LookupReport fromPage = matchTap(tap, std::move(sentence), out, word);
+    // The page's slice has no word here (tokens crossing the sentence's cut edges are left out): ask ① after all.
+    if (fromPage.outcome != LookupOutcome::NotFound) {
+      fromPage.fromPage = true;
+      return fromPage;
+    }
+    sentence = AnalyzedSentence();
+    sentence.language = language;
+  }
 
   // ① analyze the sentence
   const api::ApiResponse analyzed = api.analyze(language, tap.sentence->text);
@@ -22,8 +56,6 @@ LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, Anal
     report.error = analyzed.error;
     return report;
   }
-  AnalyzedSentence sentence;
-  sentence.language = language;
   if (api::parseAnalyze(analyzed.body, sentence.analysis) != api::ParseStatus::Ok) {
     report.error = api::ApiError::Malformed;
     report.bodyHead = bodyHead(analyzed.body);
@@ -39,19 +71,7 @@ LookupReport analyzeTap(api::LexiriseApi& api, const text::TapContext& tap, Anal
     }
   }
 
-  // ② the occurrence under the tap
-  const auto match = matchOccurrence(sentence.analysis.occurrences, tap.sentence->tapOffset);
-  if (!match) {
-    report.outcome = LookupOutcome::NotFound;
-    return report;
-  }
-  for (size_t i = 0; i < sentence.analysis.occurrences.size(); i++) {
-    if (sentence.analysis.occurrences[i].wordLike) sentence.words.push_back(i);
-  }
-  word = static_cast<size_t>(std::find(sentence.words.begin(), sentence.words.end(), *match) - sentence.words.begin());
-  out = std::move(sentence);
-  report.outcome = LookupOutcome::Card;
-  return report;
+  return matchTap(tap, std::move(sentence), out, word);
 }
 
 uint32_t entryKeyOf(const api::Occurrence& occ) { return occ.lemmaEntryId != 0 ? occ.lemmaEntryId : occ.entryId; }

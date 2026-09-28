@@ -22,6 +22,7 @@
 #include "lexirise/lookup/PageTap.h"             // LEXIPOINT
 #include "lexirise/lookup/StarDictCandidates.h"  // LEXIPOINT
 #include "lexirise/lookup/StarDictChoice.h"      // LEXIPOINT
+#include "lexirise/page/PageSentences.h"         // LEXIPOINT
 #include "lexirise/settings/BookTags.h"          // LEXIPOINT
 #include "lexirise/settings/IgnoredWords.h"      // LEXIPOINT
 #include "lexirise/vocab/VocabMirror.h"          // LEXIPOINT
@@ -546,6 +547,16 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
   source->setBookTitles(lexipoint::bookTagStore());        // "Met before"'s book titles (C14)
   source->setIgnoredWords(lexipoint::ignoredWordStore());  // the reader's ignored words (C17), read before it opens
   source->setVocabMirror(lexipoint::vocab::vocabStore());  // the vocab mirror (C13, V7a), loaded on the first idle card
+  // The page's analysis, when the reader kept one for this page's very text (C12, V7b): no request ① for its sentences.
+  if (spineIndex >= 0) {
+    if (auto described = lexipoint::page::describePage(pageModel, *book, settings, bookPath,
+                                                       static_cast<uint32_t>(spineIndex), page->visibleTextOffset)) {
+      auto sentences = std::make_unique<lexipoint::page::PageSentences>(
+          lexipoint::page::pageStore(), described->page.key, std::move(described->built), described->page.language);
+      sentences->setMirror(&lexipoint::vocab::vocabStore());
+      source->setSentenceSource(std::move(sentences));
+    }
+  }
   // The book's deck, filled by its tag (C4): the card makes sure it exists once a save went through.
   if (auto deck = lexipoint::deck::bookDeckFor(settings, bookTitle, bookPath, lexipoint::bookTagStore())) {
     source->setBookDeck(std::move(*deck), lexipoint::deck::deckStore());

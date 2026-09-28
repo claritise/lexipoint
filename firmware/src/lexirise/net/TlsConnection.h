@@ -33,6 +33,7 @@ class TlsConnection final : public Connection {
 };
 
 // Makes sure the system clock is plausible (NTP, bounded wait). Needs WiFi up.
-bool ensureClock();
+// `aborts` (optional): its call's abort is asked in the wait (up to config::kNtpWaitMs).
+bool ensureClock(Connection* aborts = nullptr);
 
 }  // namespace lexipoint::net

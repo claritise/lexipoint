@@ -23,6 +23,9 @@ net::Request analyzeRequest(Language language, std::string_view text);
 // The same with `fast: true`: the word-level split and each word's entry, reading, rank and saved state, but no
 // lemmas (v0.2 V1: it keeps whole words that a refined answer cuts into morphemes, lexirise-api-notes.md).
 net::Request analyzeWordsRequest(Language language, std::string_view text);
+// A whole page's text (V7b, page-annotations.md §1.1), default mode or (`fast`) the word-level split: cut only at
+// config::kPageMaxTextUnits' bytes (a longer page isn't asked at all).
+net::Request analyzePageRequest(Language language, std::string_view text, bool fast);
 
 // POST /v1/dictionary/lookup for a lemma (read-only, so safe to resend).
 net::Request lookupRequest(Language language, std::string_view lemma);

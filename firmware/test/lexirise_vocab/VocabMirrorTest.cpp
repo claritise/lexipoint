@@ -339,7 +339,7 @@ TEST_F(Fixture, LiveAnswersAndWritesUpdateTheMirrorAndTheLiveAnswerWins) {
   store->record({LiveState{Language::Japanese, 500002, true, 100002, 4}, LiveState{Language::Japanese, 500003},
                  LiveState{Language::Japanese, 42, true, 777, 1}});
   EXPECT_EQ(store->find(Language::Japanese, 500002)->proficiency, 4);
-  EXPECT_FALSE(store->find(Language::Japanese, 500003));
+  EXPECT_EQ(store->find(Language::Japanese, 500003)->savedId, 0u);  // kept as a removal (V7b R1)
   EXPECT_EQ(store->find(Language::Japanese, 42)->savedId, 777u);
   const int writesBefore = files.writes;
   EXPECT_TRUE(store->flush());
@@ -522,7 +522,7 @@ TEST_F(Fixture, AnswersForALanguageNotLoadedYetWaitForItsLoad) {
   EXPECT_FALSE(store.loaded(Language::Japanese));
   store.load(Language::Japanese);
   EXPECT_EQ(store.find(Language::Japanese, 500001)->proficiency, 4);
-  EXPECT_FALSE(store.find(Language::Japanese, 500002));
+  EXPECT_EQ(store.find(Language::Japanese, 500002)->savedId, 0u);  // a removal (V7b R1)
   EXPECT_TRUE(store.dirty());
 }
 
@@ -1064,18 +1064,19 @@ TEST_F(Fixture, APassLeftUnderWayIsWrittenThoughItsPagesChangedNoEntry) {
 
 // --- Review round 10 ---
 
-TEST(VocabMirrorFile, TheVersion2FileIsByteForByteAsBefore) {
-  // Written by the code before the pass progress became PassProgress (round 10): the format mustn't move.
+TEST(VocabMirrorFile, TheVersion3FileIsPinned) {
+  // Version 3 (V7b R5): 20-byte records with each state's time and the own flag. The format mustn't move.
   Mirror m;
   m.sync.synced = true;
   m.sync.cursorMs = 123456789012ULL;
   m.sync.fullDoneS = 1790000000;
   m.sync.generation = 7;
   m.sync.resyncSoon = true;
+  m.sync.lastSyncS = 1790000100;
   m.sync.full = PassProgress{true, 96, 99999999999ULL, 345, 1, true};
   m.sync.inc = PassProgress{true, 144, 88888888888ULL, 300, 0, true};
-  m.put(Entry{30, 3, 0, 4, false, 7, false});
-  m.put(Entry{10, 1, 1790300000, 0, true, 6, true});
+  m.put(Entry{30, 3, 0, 4, false, 7, false, 1790000200, false});
+  m.put(Entry{10, 1, 1790300000, 0, true, 6, true, 1790000300, true});
   std::string hex;
   for (const char c : serializeMirror(m, Language::Japanese)) {
     char b[3];
@@ -1083,9 +1084,9 @@ TEST(VocabMirrorFile, TheVersion2FileIsByteForByteAsBefore) {
     hex += b;
   }
   EXPECT_EQ(hex,
-            "4c58564d020010006a615f0702000000141a99be1c000000ffe776481700000060000000803bb16a5901000090000000"
-            "38ce30b2140000002c0100002700000000000000bdd9b78a0a0000000100000060cfb56a000306001e00000003000000"
-            "0000000004000700");
+            "4c58564d030014006a615f0702000000141a99be1c000000ffe776481700000060000000803bb16a5901000090000000"
+            "38ce30b2140000002c01000027e43bb16a00000015f9abaa0a0000000100000060cfb56aac3cb16a000706001e000000"
+            "0300000000000000483cb16a04000700");
 }
 
 TEST_F(Fixture, AQuietIncrementalPassAsksForAProbeOnly) {
@@ -1222,4 +1223,229 @@ TEST(VocabSync, ADropOfFiveOrMoreAfterTheProbeSendsThePassBackToAProbe) {
     EXPECT_EQ(p.limits[1], config::kVocabProbeItems);
     EXPECT_TRUE(p.hasEveryWord()) << drop;
   }
+}
+
+// --- V7b (carried from V7a's review) ---
+
+TEST(VocabSync, AReReadDoesntEndThePassInsideACursorTie) {
+  std::vector<Listed> list;
+  for (uint32_t i = 1; i <= 4; i++) list.push_back({i, 1, kSept2026Ms + i, true});
+  for (uint32_t i = 11; i <= 20; i++) list.push_back({i, 1, kSept2026Ms + 1000, true});  // ten tied: the cursor
+  Mirror m;
+  RunState run;
+  unsigned long now = kStartMs;
+  syncPass(m, run, list, now, 50);
+  ASSERT_EQ(m.sync.cursorMs, kSept2026Ms + 1000);
+  for (uint32_t i = 11; i <= 20; i++) {  // cards said another level for each: live, and not what the account has
+    ASSERT_EQ(applyLive(m, LiveState{Language::Japanese, i + 1000, true, i, 3}), LiveApplied::Changed);
+  }
+  now += config::kVocabSyncIntervalMs + 1;
+  auto plan = nextPage(m, run, Language::Japanese, now, kEpochS);
+  ASSERT_EQ(plan->limit, config::kVocabProbeItems);
+  applyPage(m, run, pageOf(list, *plan, plan->limit), now, kEpochS);  // the probe: 11-15 refreshed
+  // Three older words deleted: the next page sees the drop and reads again from before it, over items it refreshed.
+  list.erase(std::remove_if(list.begin(), list.end(), [](const Listed& l) { return l.id <= 3; }), list.end());
+  for (int i = 0; i < 20 && m.sync.inc.running; i++) {
+    plan = nextPage(m, run, Language::Japanese, now, kEpochS);
+    applyPage(m, run, pageOf(list, *plan, 5), now, kEpochS);
+    if (m.sync.inc.running && m.sync.inc.slack == 0) EXPECT_TRUE(m.sync.inc.reread);
+  }
+  for (uint32_t i = 11; i <= 20; i++) {
+    EXPECT_EQ(m.find(i + 1000)->proficiency, 1) << i;  // every one refreshed, the ones after the re-read too
+  }
+}
+
+TEST(VocabSync, AReReadSentBackToTheTopIsStillAReRead) {
+  Mirror m;
+  RunState run;
+  m.sync.synced = true;
+  m.sync.cursorMs = kSept2026Ms + 1000;
+  m.sync.inc.running = true;  // a pass under way, sent back to the top by a re-read
+  m.sync.inc.offset = 0;
+  m.sync.inc.slack = 0;
+  m.sync.inc.reread = true;
+  std::vector<Listed> list;
+  for (uint32_t i = 11; i <= 20; i++) {
+    list.push_back({i, 1, kSept2026Ms + 1000, true});
+    m.put(Entry{i + 1000, i, 0, 1, false, 0, false});  // as the pass already read them: unchanged, at the cursor
+  }
+  const auto plan = nextPage(m, run, Language::Japanese, kStartMs, kEpochS);
+  ASSERT_TRUE(plan);
+  applyPage(m, run, pageOf(list, *plan, plan->limit), kStartMs, kEpochS);
+  EXPECT_TRUE(m.sync.inc.running);  // no tie stop: on to the rest
+  EXPECT_TRUE(m.sync.inc.reread);
+}
+
+TEST(VocabMirrorFile, TheReReadBitRoundTrips) {
+  Mirror m;
+  m.sync.synced = true;
+  m.sync.inc.start(kSept2026Ms);
+  m.sync.inc.offset = 7;
+  m.sync.inc.slack = 0;
+  m.sync.inc.reread = true;
+  Mirror back;
+  ASSERT_TRUE(parseMirror(serializeMirror(m, Language::Japanese), Language::Japanese, back));
+  EXPECT_EQ(back.sync.inc, m.sync.inc);
+  m.sync.inc.reread = false;
+  ASSERT_TRUE(parseMirror(serializeMirror(m, Language::Japanese), Language::Japanese, back));
+  EXPECT_FALSE(back.sync.inc.reread);
+}
+
+// --- V7b R1: removals ---
+
+TEST(VocabRemoval, ALiveRemovalIsKeptOnlyForAnEntryTheMirrorHadAndOnlyALaterIncrementalPassDropsIt) {
+  Mirror m;
+  m.sync.synced = true;
+  EXPECT_EQ(applyLive(m, LiveState{Language::Japanese, 9, false, 0, 0}), LiveApplied::None);  // not had: nothing
+  EXPECT_EQ(m.size(), 0u);
+  ASSERT_EQ(applyLive(m, LiveState{Language::Japanese, 9, true, 90, 2}), LiveApplied::Changed);
+  EXPECT_EQ(applyLive(m, LiveState{Language::Japanese, 9, false, 0, 0}), LiveApplied::Changed);
+  ASSERT_TRUE(m.find(9));
+  EXPECT_EQ(m.find(9)->savedId, 0u);
+  EXPECT_TRUE(m.find(9)->live);
+  EXPECT_FALSE(savedStateOf(*m.find(9)));
+  EXPECT_EQ(applyLive(m, LiveState{Language::Japanese, 9, false, 0, 0}), LiveApplied::None);  // already
+  Mirror back;
+  ASSERT_TRUE(parseMirror(serializeMirror(m, Language::Japanese), Language::Japanese, back));
+  EXPECT_EQ(back.find(9)->savedId, 0u);
+  EXPECT_EQ(m.sweep(m.sync.generation), 0u);                            // made during this pass: kept (R3)
+  EXPECT_EQ(m.sweep(static_cast<uint8_t>(m.sync.generation + 1)), 0u);  // never by a sweep (R4)
+  EXPECT_EQ(m.dropRemovalsUpTo(0), 1u);  // a removal of unknown time goes once the mirror is complete again (R5)
+  EXPECT_EQ(m.size(), 0u);
+}
+
+TEST(VocabRemoval, APagesItemReplacesARemoval) {
+  std::vector<Listed> list{{9, 2, kSept2026Ms + 5000, true}};
+  Mirror m;
+  RunState run;
+  syncPass(m, run, list, kStartMs, 50);
+  ASSERT_EQ(applyLive(m, LiveState{Language::Japanese, 1009, false, 0, 0}), LiveApplied::Changed);
+  byId(list, 9).updatedMs = kSept2026Ms + 9000;  // saved again in the app
+  syncPass(m, run, list, kStartMs + config::kVocabSyncIntervalMs + 1, 50);
+  EXPECT_EQ(m.find(1009)->savedId, 9u);
+}
+
+TEST(VocabMirrorFile, ARecordWithoutASavedIdMustBeARemoval) {
+  Mirror m;
+  m.put(Entry{5, 0, 0, 0, false, 0, true});
+  std::string bytes = serializeMirror(m, Language::Japanese);
+  Mirror back;
+  ASSERT_TRUE(parseMirror(bytes, Language::Japanese, back));
+  m = Mirror();
+  m.put(Entry{5, 0, 0, 0, false, 0, false});  // not live: not a file serializeMirror writes for a removal
+  EXPECT_FALSE(parseMirror(serializeMirror(m, Language::Japanese), Language::Japanese, back));
+}
+
+TEST(VocabSync, TheMirrorIsCompleteAsOfTheStartOfAnIncrementalPassFromTheTop) {
+  std::vector<Listed> list;
+  for (uint32_t i = 1; i <= 12; i++) list.push_back({i, 1, kSept2026Ms + i * 1000, true});
+  Mirror m;
+  RunState run;
+  // A full pass over two pages at E and E+200 s; a word is saved in the app at E+50 s, after its first page (it goes
+  // to the top, already read): the full pass doesn't have it, so it can't say the mirror is complete as of its end.
+  const PagePlan first{Language::Japanese, Pass::Full, 0, 8};
+  applyPage(m, run, pageOf(list, first, 8), kStartMs, kEpochS);
+  list.push_back({99, 2, kSept2026Ms + 500000, true});
+  const PagePlan second{Language::Japanese, Pass::Full, m.sync.full.offset, 8};
+  applyPage(m, run, pageOf(list, second, 8), kStartMs, kEpochS + 200);
+  ASSERT_TRUE(m.sync.synced);
+  EXPECT_FALSE(m.find(1099));
+  EXPECT_EQ(m.sync.lastSyncS, 0u);  // a page analyzed at E+100 keeps its snapshot (the word saved)
+  // The incremental pass after it, from the top at E+300 over two pages: complete as of E+300 once it ends.
+  const PagePlan probe{Language::Japanese, Pass::Incremental, 0, config::kVocabProbeItems};
+  applyPage(m, run, pageOf(list, probe, 1), kStartMs, kEpochS + 300);  // cut short: the pass goes on
+  ASSERT_TRUE(m.sync.inc.running);
+  EXPECT_EQ(m.sync.lastSyncS, 0u);
+  const PagePlan rest{Language::Japanese, Pass::Incremental, m.sync.inc.offset, config::kVocabPageItems};
+  applyPage(m, run, pageOf(list, rest, 50), kStartMs, kEpochS + 400);
+  ASSERT_FALSE(m.sync.inc.running);
+  EXPECT_TRUE(m.find(1099));
+  EXPECT_EQ(m.sync.lastSyncS, kEpochS + 300);  // its start, not its end
+  Mirror back;
+  ASSERT_TRUE(parseMirror(serializeMirror(m, Language::Japanese), Language::Japanese, back));
+  EXPECT_EQ(back.sync.lastSyncS, kEpochS + 300);
+}
+
+TEST(VocabSync, APassResumedAfterARestartLeavesTheTimeAlone) {
+  std::vector<Listed> list;
+  for (uint32_t i = 1; i <= 12; i++) list.push_back({i, 1, kSept2026Ms + i * 1000, true});
+  Mirror m;
+  RunState run;
+  syncPass(m, run, list, kStartMs, 50);
+  const PagePlan probe{Language::Japanese, Pass::Incremental, 0, config::kVocabProbeItems};
+  for (uint32_t i = 20; i <= 30; i++) list.push_back({i, 1, kSept2026Ms + 900000 + i, true});
+  applyPage(m, run, pageOf(list, probe, config::kVocabProbeItems), kStartMs, kEpochS + 300);
+  ASSERT_TRUE(m.sync.inc.running);
+  const uint32_t before = m.sync.lastSyncS;
+  RunState restarted;  // every sleep is a restart: the pass carries on from the file, its start unknown
+  const PagePlan rest{Language::Japanese, Pass::Incremental, m.sync.inc.offset, config::kVocabPageItems};
+  applyPage(m, restarted, pageOf(list, rest, 50), kStartMs, kEpochS + 900);
+  ASSERT_FALSE(m.sync.inc.running);
+  EXPECT_EQ(m.sync.lastSyncS, before);
+}
+
+// --- V7b R2: what counts as a change for the reader ---
+
+TEST(VocabSync, ANewFullPassOverAnUnchangedAccountChangesNoEntryForTheReader) {
+  std::vector<Listed> list;
+  for (uint32_t i = 1; i <= 12; i++) list.push_back({i, 2, kSept2026Ms + i * 1000, true});
+  Mirror m;
+  RunState run;
+  syncPass(m, run, list, kStartMs, 5);
+  // A full pass again (a week later): each page re-marks the entries, and writes them (the marks are the file's).
+  const PagePlan plan{Language::Japanese, Pass::Full, 0, 5};
+  std::vector<uint32_t> changed;
+  EXPECT_TRUE(applyPage(m, run, pageOf(list, plan, 5), kStartMs, kEpochS + config::kVocabResyncS, &changed));
+  EXPECT_TRUE(changed.empty());
+  EXPECT_EQ(m.find(1012)->mark, m.sync.generation);
+  // A level changed in the app is one.
+  byId(list, 5).proficiency = 4;  // on the next page
+  const PagePlan next{Language::Japanese, Pass::Full, m.sync.full.offset, 5};
+  applyPage(m, run, pageOf(list, next, 5), kStartMs, kEpochS + config::kVocabResyncS, &changed);
+  EXPECT_EQ(changed, std::vector<uint32_t>{1005});
+}
+
+TEST(VocabStorePending, APendingAnswerIsReadBeforeTheLoad) {
+  FakeFiles files;
+  VocabStore store(files);
+  store.record({LiveState{Language::Japanese, 7, true, 70, 2}, LiveState{Language::Japanese, 7, true, 70, 3}});
+  const auto pending = store.pendingState(Language::Japanese, 7);
+  ASSERT_TRUE(pending);
+  EXPECT_EQ(pending->proficiency, 3);  // the newest
+  EXPECT_FALSE(store.pendingState(Language::Chinese, 7));
+  store.load(Language::Japanese);
+  EXPECT_FALSE(store.pendingState(Language::Japanese, 7));  // loaded: find() says
+  EXPECT_EQ(store.find(Language::Japanese, 7)->proficiency, 3);
+}
+
+TEST(VocabRemoval, ARemovalMadeDuringTheIncrementalPassOutlivesItsEnd) {
+  std::vector<Listed> list;
+  for (uint32_t i = 1; i <= 12; i++) list.push_back({i, 1, kSept2026Ms + i * 1000, true});
+  Mirror m;
+  RunState run;
+  syncPass(m, run, list, kStartMs, 50);  // the full pass
+  // An incremental pass begins from the top; a live answer then reports word 3 removed (this generation's mark).
+  for (uint32_t i = 20; i <= 30; i++) list.push_back({i, 1, kSept2026Ms + 900000 + i, true});
+  const PagePlan probe{Language::Japanese, Pass::Incremental, 0, config::kVocabProbeItems};
+  applyPage(m, run, pageOf(list, probe, config::kVocabProbeItems), kStartMs, kEpochS + 300);
+  ASSERT_TRUE(m.sync.inc.running);
+  // Known at E+350, after the pass's start (E+300): a page analyzed between them may still say saved.
+  ASSERT_EQ(applyLive(m, LiveState{Language::Japanese, 1003, false, 0, 0, kEpochS + 350}), LiveApplied::Changed);
+  list.erase(std::remove_if(list.begin(), list.end(), [](const Listed& l) { return l.id == 3; }), list.end());
+  const PagePlan rest{Language::Japanese, Pass::Incremental, m.sync.inc.offset, config::kVocabPageItems};
+  applyPage(m, run, pageOf(list, rest, 50), kStartMs, kEpochS + 400);
+  ASSERT_FALSE(m.sync.inc.running);
+  EXPECT_EQ(m.sync.lastSyncS, kEpochS + 300);
+  ASSERT_TRUE(m.find(1003));  // a page analyzed after this pass's start may still say saved
+  EXPECT_EQ(m.find(1003)->savedId, 0u);
+}
+
+TEST(VocabRemoval, TheReadersOwnRemovalOfUnknownTimeStaysUntilAFullPassEnds) {
+  Mirror m;
+  m.put(Entry{5, 0, 0, 0, false, 0, true, 0, true});   // the reader's, no clock
+  m.put(Entry{6, 0, 0, 0, false, 0, true, 0, false});  // an answer's, no clock
+  EXPECT_EQ(m.dropRemovalsUpTo(1790000000), 1u);       // the answer's goes
+  EXPECT_TRUE(m.find(5));
+  EXPECT_EQ(m.dropOwnUnknownRemovals(), 1u);  // the full pass's end
+  EXPECT_FALSE(m.find(5));
 }

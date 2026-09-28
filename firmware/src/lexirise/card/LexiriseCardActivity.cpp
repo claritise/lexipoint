@@ -20,6 +20,7 @@
 #include "lexirise/card/CardOrientation.h"
 #include "lexirise/card/CardPainter.h"
 #include "lexirise/card/CardStringsI18n.h"
+#include "lexirise/input/InputAbort.h"
 #include "lexirise/settings/SettingsStore.h"
 #include "lexirise/util/Timing.h"
 
@@ -124,6 +125,7 @@ void LexiriseCardActivity::idleStep() {
   int y = 0;
   const bool touching = mappedInput.isScreenTouchHeld(x, y);
   if (touching) session_.touched(millis());
+  input::sampleIdle(touching);
   const uint32_t epochS = epochNow();
   const CardSession::IdleStep next = session_.nextIdleStep(millis(), RenderLock::peek(), touching, nextDueMs_, epochS);
   if (next == CardSession::IdleStep::Deck) {
@@ -138,25 +140,57 @@ void LexiriseCardActivity::idleStep() {
     LOG_INF(vocab::kLogTag, "mirror file read or written in %lu ms", millis() - start);
     return;
   }
+  if (next == CardSession::IdleStep::Probe) {
+    // V7b: the mirror's probe as the card settles (a few items: well under a second or two); a button or a touch
+    // gives it up. A word on the card the probe changed is redrawn with its new level.
+    const unsigned long start = millis();
+    const std::optional<vocab::PageCall> probe = session_.fetchProbe(start, input::inputCame);
+    const vocab::PageApplied applied = session_.applyVocab(probe, millis(), epochS);
+    const bool redrawNeeded = takeMirrorChanges(applied);
+    if (probe) {
+      LOG_INF(vocab::kLogTag, "card probe: %u items in %lu ms (%s%s), %u entries changed%s",
+              static_cast<unsigned>(probe->page.items.size()), millis() - start, api::apiErrorName(probe->error),
+              probe->cancelled ? ", given up for input" : "", static_cast<unsigned>(applied.changedEntries.size()),
+              redrawNeeded ? ", the card redrawn" : "");
+    }
+    if (redrawNeeded) redraw();
+    return;
+  }
   if (next != CardSession::IdleStep::Vocab) return;
   // Blocking too (a page streams in a few seconds); nothing shown changes. Logged for the device check (V7a): the
   // page's time and the heap during it (the lowest free and largest block since boot, internal RAM).
   const unsigned long start = millis();
-  // A side button pressed while it streams gives the page up (read straight from the hardware: the debounced state
-  // isn't updated during the call), so the press is handled, not lost.
-  const std::optional<vocab::PageCall> page = session_.fetchVocab(start, epochS, [] { return gpio.rawInputActive(); });
+  // A button pressed or the screen touched while it waits or streams gives the page up (read straight from the
+  // hardware: the debounced state isn't updated during the call), so the input is handled, not lost (V7b: the touch
+  // controller's line too, and in every wait of the call).
+  const std::optional<vocab::PageCall> page = session_.fetchVocab(start, epochS, input::inputCame);
   const unsigned long took = millis() - start;
   const unsigned long applyStart = millis();
-  session_.applyVocab(page, applyStart, epochS);  // the mirror's file rewritten whole (SD I/O)
+  // The mirror's file rewritten whole when the page changed it (SD I/O).
+  const vocab::PageApplied result = session_.applyVocab(page, applyStart, epochS);
   const unsigned long applied = millis() - applyStart;
+  // A word on the card the page changed (a change made in the app) takes the mirror's level, as after the probe.
+  const bool redrawNeeded = takeMirrorChanges(result);
   if (page) {
     const HalMemory::HeapStats heap = HalMemory::getInternalHeap();
+    const char* file = result.file == vocab::PageApplied::File::Written  ? "written"
+                       : result.file == vocab::PageApplied::File::Failed ? "write failed"
+                                                                         : "not written";
     LOG_INF(vocab::kLogTag,
-            "page %u items in %lu ms (%s%s), applied and written in %lu ms; heap %u free, %u min, %u largest",
+            "page %u items in %lu ms (%s%s), applied in %lu ms (file %s); heap %u free, %u min, %u largest",
             static_cast<unsigned>(page->page.items.size()), took, api::apiErrorName(page->error),
-            page->cancelled ? ", given up for input" : "", applied, static_cast<unsigned>(heap.freeBytes),
+            page->cancelled ? ", given up for input" : "", applied, file, static_cast<unsigned>(heap.freeBytes),
             static_cast<unsigned>(heap.minFreeBytes), static_cast<unsigned>(heap.largestBlockBytes));
   }
+  if (redrawNeeded) redraw();
+}
+
+bool LexiriseCardActivity::takeMirrorChanges(const vocab::PageApplied& applied) {
+  if (applied.changedEntries.empty()) return false;
+  RenderLock lock;
+  const bool redrawNeeded = session_.mirrorChanged(applied.changedEntries);
+  nextDueMs_ = controller_.nextDueMs();
+  return redrawNeeded;
 }
 
 void LexiriseCardActivity::readGestures(const unsigned long now) {

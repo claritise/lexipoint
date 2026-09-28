@@ -1200,21 +1200,30 @@ VOCAB_FLUSH = "[4000] [INF] [LXVOCAB] mirror file read or written in 35 ms"
 VOCAB_GET = ("[13000] [INF] [LXS] GET /v1/vocabulary?language=ja&limit=50&offset=0&sortId=updated_at&sortDesc=true "
              "-> 200 (ok)")
 VOCAB_PASS = "[13010] [INF] [LXVOCAB] full ja offset 0: 50 items, mirror 48 words"
-VOCAB_PAGE = ("[13020] [INF] [LXVOCAB] page 50 items in 2410 ms (ok), applied and written in 40 ms; heap 91000 free, "
-              "62000 min, 38000 largest")
+VOCAB_PAGE = ("[13020] [INF] [LXVOCAB] page 50 items in 2410 ms (ok), applied in 40 ms (file written); heap 91000 "
+              "free, 62000 min, 38000 largest")
 VOCAB_GIVEN = "[13005] [INF] [LXVOCAB] full ja offset 0 given up: input came"
-VOCAB_PAGE_GIVEN = ("[13006] [INF] [LXVOCAB] page 0 items in 700 ms (malformed, given up for input), applied and "
-                    "written in 0 ms; heap 90000 free, 62000 min, 38000 largest")
+VOCAB_PAGE_GIVEN = ("[13006] [INF] [LXVOCAB] page 0 items in 700 ms (malformed, given up for input), applied in 0 "
+                    "ms (file not written); heap 90000 free, 62000 min, 38000 largest")
 
 
 class VocabSmokeRules(unittest.TestCase):
     def test_a_page_with_its_time_and_heap_passes(self):
         pages = lxctl.check_vocab_log([MET_BEFORE_GET, VOCAB_FLUSH, VOCAB_GET, VOCAB_PASS, VOCAB_PAGE])
-        self.assertEqual(pages, [{"items": 50, "ms": 2410, "error": "ok", "written_ms": 40, "free": 91000,
-                                  "min": 62000, "largest": 38000}])
+        self.assertEqual(pages, [{"kind": "page", "items": 50, "ms": 2410, "error": "ok", "applied_ms": 40,
+                                  "file": "written", "free": 91000, "min": 62000, "largest": 38000}])
+
+    def test_a_synced_mirrors_card_probe_counts_as_the_page(self):
+        probe = "[5100] [INF] [LXVOCAB] card probe: 5 items in 820 ms (ok), 0 entries changed"
+        pages = lxctl.check_vocab_log([MET_BEFORE_GET, VOCAB_FLUSH, VOCAB_GET, probe])
+        self.assertEqual(pages, [{"kind": "probe", "items": 5, "ms": 820, "error": "ok", "changed": 0}])
+        with self.assertRaisesRegex(RuntimeError, "other than the vocabulary list"):
+            lxctl.check_vocab_log([VOCAB_FLUSH, "[5000] [INF] [LXS] POST /v1/vocabulary -> 200 (ok)", probe])
+        card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
+        self.assertIn('"card probe: %u items in %lu ms (%s%s), %u entries changed%s"', card)
 
     def test_no_page_fails(self):
-        with self.assertRaisesRegex(RuntimeError, "no mirror page logged"):
+        with self.assertRaisesRegex(RuntimeError, "no mirror page or card probe logged"):
             lxctl.check_vocab_log([MET_BEFORE_GET, VOCAB_FLUSH])
 
     def test_another_call_during_the_sync_fails(self):
@@ -1241,13 +1250,19 @@ class VocabSmokeRules(unittest.TestCase):
             lxctl.check_vocab_log([VOCAB_FLUSH, VOCAB_GET, VOCAB_PAGE, VOCAB_GIVEN, VOCAB_PAGE_GIVEN], pressed=True)
         with self.assertRaisesRegex(RuntimeError, "no page was given up"):
             lxctl.check_vocab_log([VOCAB_FLUSH, VOCAB_GET, VOCAB_PAGE], pressed=True)
+        # A card probe's GET before a page given up before its request doesn't make it look mid-stream (R8).
+        probe = "[13003] [INF] [LXVOCAB] card probe: 5 items in 800 ms (ok), 0 entries changed"
+        with self.assertRaisesRegex(RuntimeError, "before its request"):
+            lxctl.check_vocab_log([VOCAB_FLUSH, VOCAB_GET, probe, VOCAB_GIVEN, VOCAB_PAGE_GIVEN], pressed=True)
 
     def test_the_constants_and_log_lines_match_the_firmware(self):
         c = header_constants("src/lexirise/LexiriseConfig.h")
         self.assertEqual(lxctl.VOCAB_IDLE_MS, c["kVocabIdleMs"])
         card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
-        self.assertIn('"page %u items in %lu ms (%s%s), applied and written in %lu ms; heap %u free, %u min, '
-                      '%u largest"', card)
+        self.assertIn('"page %u items in %lu ms (%s%s), applied in %lu ms (file %s); heap %u free, %u min, %u largest"',
+                      card)
+        for file in ('"written"', '"write failed"', '"not written"'):
+            self.assertIn(file, card)
         self.assertIn('"mirror file read or written in %lu ms"', card)
         mirror = open(os.path.join(REPO, "src/lexirise/vocab/VocabMirror.cpp"), encoding="utf-8").read()
         self.assertIn('given up: input came"', mirror)
@@ -1259,8 +1274,8 @@ class FakeVocabHarness:
     """The device's side of vocab-smoke: a LONG opens a card; the idle card then logs the mirror's file and a page
     (`probe_first`: a quick probe page, then a whole one given up for a button)."""
 
-    def __init__(self, stardict=False, page=True, probe_first=False):
-        self.stardict, self.page, self.probe_first = stardict, page, probe_first
+    def __init__(self, stardict=False, page=True, probe_first=False, card_probe=False):
+        self.stardict, self.page, self.probe_first, self.card_probe = stardict, page, probe_first, card_probe
         self.stream: list[str] = []
         self.sent: list[str] = []
 
@@ -1269,6 +1284,8 @@ class FakeVocabHarness:
         if cmd.startswith("LONG "):
             self.stream.append("[1] [DBG] [ACT] Entering activity: "
                                + ("DictionaryDefinition" if self.stardict else "LexiriseCard"))
+        elif cmd == "SYNC" and self.card_probe:  # a synced mirror: the card's probe, and no idle page after it
+            self.stream += [VOCAB_FLUSH, VOCAB_GET, "[5100] [INF] [LXVOCAB] card probe: 5 items in 820 ms (ok), 0 entries changed"]
         elif cmd == "SYNC" and self.probe_first:
             probe = VOCAB_PAGE.replace("page 50 items in 2410 ms", "page 5 items in 310 ms")
             self.stream += [VOCAB_FLUSH, VOCAB_GET, VOCAB_PASS, probe,
@@ -1296,9 +1313,13 @@ class VocabSmokeDriver(unittest.TestCase):
         self.assertEqual([p["items"] for p in pages], [5, 0])  # the probe came whole, then the page given up
         self.assertIn("given up for input", pages[-1]["error"])
 
+    def test_a_synced_mirrors_card_probe_passes(self):
+        pages = lxctl.vocab_smoke(FakeVocabHarness(card_probe=True), (240, 400), watch_s=0.01)
+        self.assertEqual(pages[-1]["kind"], "probe")
+
     def test_stardict_or_no_page_raise(self):
         for harness, message in ((FakeVocabHarness(stardict=True), "StarDict"),
-                                 (FakeVocabHarness(page=False), "no mirror page logged")):
+                                 (FakeVocabHarness(page=False), "no mirror page or card probe logged")):
             with self.assertRaisesRegex(RuntimeError, message):
                 lxctl.vocab_smoke(harness, (240, 400), watch_s=0.01)
 
@@ -1308,6 +1329,255 @@ class VocabSmokeDriver(unittest.TestCase):
             self.assertRegex(cmd, usages[cmd.split()[0]])
         protocol = open(os.path.join(REPO, "src/lexirise/dev/DevProtocol.cpp"), encoding="utf-8").read()
         self.assertIn("AWAKE", protocol)
+
+
+
+# --- page-smoke (v0.2 V7b) ---
+
+PAGE_DRAWN = "[{t}] [DBG] [ERS] Rendered page in 420ms"
+PAGE_STEP = ("[{t}] [INF] [LXPAGE] {which} page ({page} of section 2): {kind} in {ms} ms (ok), 206 occurrences, "
+             "{calls} calls in {ms} ms, written in 30 ms; heap 91000 free, 62000 min, 38000 largest")
+PAGE_ANALYZE = "[{t}] [INF] [LXS] POST /v1/analyze/text -> 200 (ok)"
+PAGE_CARD = "[{t}] [INF] [LXPAGE] card: page 2-1200 {found}: no analyze/text for its sentences"
+
+
+def page_log(first_step_at=3000, card_found="analyzed", card_asks=False, write=False):
+    log = [PAGE_DRAWN.format(t=1000),
+           PAGE_STEP.format(t=first_step_at, which="this", page=3, kind="kept already", ms=20, calls=0),
+           PAGE_ANALYZE.format(t=first_step_at + 2400),
+           PAGE_STEP.format(t=first_step_at + 2500, which="next", page=4, kind="analyzed", ms=2400, calls=1),
+           "[9000] [DBG] [ACT] Entering activity: LexiriseCard",
+           PAGE_CARD.format(t=9010, found=card_found)]
+    if card_asks:
+        log.append("[9100] [INF] [LXS] POST /v1/analyze/text -> 200 (ok)")
+    if write:
+        log.append("[9200] [INF] [LXS] POST /v1/vocabulary -> 200 (ok)")
+    log.append("[9500] [DBG] [ACT] Exiting activity: LexiriseCard")
+    return log
+
+
+class PageSmokeRules(unittest.TestCase):
+    def test_this_page_and_the_next_after_the_dwell_pass(self):
+        steps = lxctl.check_page_log(page_log())
+        self.assertEqual([s["which"] for s in steps], ["this", "next"])
+        self.assertEqual(steps[1]["ms"], 2400)
+        self.assertEqual(steps[1]["calls"], 1)
+
+    def test_a_step_right_after_a_card_closed_over_the_page_fails(self):
+        log = page_log()
+        log += [PAGE_DRAWN.format(t=9600), PAGE_STEP.format(t=9700, which="next", page=5, kind="kept already", ms=20,
+                                                            calls=0)]
+        with self.assertRaisesRegex(RuntimeError, "after the page was drawn"):
+            lxctl.check_page_log(log)
+
+    def test_a_step_before_the_dwell_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "after the page was drawn"):
+            lxctl.check_page_log(page_log(first_step_at=2000))  # started 1000 ms after the page was drawn
+
+    def test_a_step_with_no_drawing_before_it_fails(self):
+        log = [line for line in page_log() if "Rendered page" not in line]
+        with self.assertRaisesRegex(RuntimeError, "no page drawing logged"):
+            lxctl.check_page_log(log)
+
+    def test_no_next_page_fails(self):
+        log = [line for line in page_log() if "next page" not in line]
+        with self.assertRaisesRegex(RuntimeError, "this page and the next"):
+            lxctl.check_page_log(log)
+
+    def test_the_card_must_use_the_pages_analysis(self):
+        with self.assertRaisesRegex(RuntimeError, "didn't find its analysis"):
+            lxctl.check_page_log(page_log(card_found="not analyzed"))
+        with self.assertRaisesRegex(RuntimeError, "still sent analyze/text"):
+            lxctl.check_page_log(page_log(card_asks=True))
+
+    def test_a_page_analyzed_twice_or_an_extra_call_fails(self):
+        twice = page_log()
+        twice.insert(3, PAGE_ANALYZE.format(t=5600))
+        twice.insert(4, PAGE_STEP.format(t=5700, which="next", page=4, kind="analyzed", ms=50, calls=1))
+        with self.assertRaisesRegex(RuntimeError, "more than once"):
+            lxctl.check_page_log(twice)
+        extra = page_log()
+        extra.insert(1, PAGE_ANALYZE.format(t=1200))
+        with self.assertRaisesRegex(RuntimeError, "analyze/text calls outside cards"):
+            lxctl.check_page_log(extra)
+
+    def test_a_call_given_up_before_it_was_sent_isnt_counted(self):
+        log = page_log()
+        log.insert(1, "[1500] [INF] [LXS] POST /v1/analyze/text -> 0 (cancelled)")
+        lxctl.check_page_log(log)
+
+    def test_a_call_given_up_after_it_was_sent_is_left_out_of_both_counts(self):
+        # The step given up logs 0 calls (Prefetch counts answered calls), its call "(cancelled)": both leave it out.
+        log = page_log()
+        log.insert(1, "[3400] [INF] [LXS] POST /v1/analyze/text -> 0 (cancelled)")
+        log.insert(2, PAGE_STEP.format(t=3500, which="this", page=2, kind="given up for input", ms=900, calls=0))
+        lxctl.check_page_log(log)
+        src = open(os.path.join(REPO, "src/lexirise/page/Prefetch.cpp"), encoding="utf-8").read()
+        self.assertIn("response.status != 0 && response.error != api::ApiError::Cancelled ? 1 : 0", src)
+
+    def test_a_call_failing_before_an_answer_is_left_out_of_both_counts(self):
+        log = page_log()
+        log.insert(1, "[3400] [INF] [LXS] POST /v1/analyze/text -> 0 (low-memory)")
+        log.insert(2, PAGE_STEP.format(t=3500, which="this", page=2, kind="failed", ms=900, calls=0))
+        lxctl.check_page_log(log)
+
+    def test_a_write_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "write to Lexirise"):
+            lxctl.check_page_log(page_log(write=True))
+
+    def test_the_constants_and_log_lines_match_the_firmware(self):
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        self.assertEqual(lxctl.PAGE_DWELL_MS, c["kPagePrefetchDwellMs"])
+        pages = open(os.path.join(REPO, "src/lexirise/page/ReaderPages.cpp"), encoding="utf-8").read()
+        joined = re.sub(r'"\s+"', "", pages)  # adjacent string literals, as the compiler joins them
+        self.assertIn('"%s page (%d of section %d): %s in %lu ms (%s), %u occurrences%s, %u calls in %lu ms, written '
+                      'in %lu ms%s; heap %u free, %u min, %u largest"', joined)
+        for kind in ("analyzed", "kept already", "failed", "unusable", "given up for input", "no text"):
+            self.assertIn(f'"{kind}"', pages)
+        sentences = open(os.path.join(REPO, "src/lexirise/page/PageSentences.cpp"), encoding="utf-8").read()
+        self.assertIn('"card: page %u-%u %s"', sentences)
+        self.assertIn('"analyzed: no analyze/text for its sentences"', sentences)
+
+
+class FakePageHarness:
+    """The device's side of page-smoke: LONG opens a card, HOME closes it, each turn draws a page and, after the
+    dwell, logs this page's and the next page's steps; the second card finds the page analyzed."""
+
+    def __init__(self):
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+        self.t = 1000
+        self.cards = 0
+        self.page = 0
+
+    def _page(self):
+        self.t += 500
+        self.stream.append(PAGE_DRAWN.format(t=self.t))
+        self.t += 2000
+        self.page += 1
+        self.stream.append(PAGE_STEP.format(t=self.t, which="this", page=self.page, kind="kept already", ms=20,
+                                            calls=0))
+        self.t += 2500
+        self.stream.append(PAGE_ANALYZE.format(t=self.t - 100))
+        self.stream.append(PAGE_STEP.format(t=self.t, which="next", page=self.page + 1, kind="analyzed", ms=2400,
+                                            calls=1))
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LONG "):
+            self.cards += 1
+            self.stream.append("[1] [DBG] [ACT] Entering activity: LexiriseCard")
+            if self.cards == 2:
+                self.stream.append(PAGE_CARD.format(t=self.t + 10, found="analyzed"))
+        elif cmd == "HOME":  # the card closes over the page: the reader draws it again
+            self.stream.append("[2] [DBG] [ACT] Exiting activity: LexiriseCard")
+            if self.cards == 1:
+                self._page()
+            else:
+                self.t += 300
+                self.stream.append(PAGE_DRAWN.format(t=self.t))
+        elif cmd == lxctl.PAGE_TURN:
+            self._page()
+        return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class PageSmokeDriver(unittest.TestCase):
+    def test_it_brings_wifi_up_with_a_card_then_turns_and_opens_a_card_on_the_page(self):
+        h = FakePageHarness()
+        steps = lxctl.page_smoke(h, (240, 400), watch_s=0.01)
+        self.assertGreaterEqual(len(steps), 4)
+        self.assertEqual(h.sent[:2], ["AWAKE 1", "LONG 240 400"])
+        self.assertEqual(h.sent.count(lxctl.PAGE_TURN), 1 + lxctl.PAGE_FAST_TURNS)
+        self.assertEqual(h.sent[-3:], ["LONG 240 400", "SYNC", "HOME"])
+
+    def test_its_commands_are_the_devices(self):
+        usages = device_usages()
+        for cmd in ("LONG 240 400", "SYNC", "HOME", lxctl.PAGE_TURN):
+            self.assertRegex(cmd, usages[cmd.split()[0]])
+
+
+
+# --- home-sync-smoke (v0.2 V7b) ---
+
+HOME_RESULT = "[30000] [INF] [LXVOCAB] home sync: {result} after 4 pages, {n} words changed"
+HOME_WIFI = "[32100] [INF] [LXVOCAB] home sync: WiFi given back in 180 ms"
+HOME_GET = "[20000] [INF] [LXS] GET /v1/vocabulary?language=ja&limit=5&offset=0&sortId=updated_at&sortDesc=true -> 200 (ok)"
+
+
+class HomeSyncSmokeRules(unittest.TestCase):
+    def test_a_result_then_wifi_given_back_passes(self):
+        r = lxctl.check_home_sync_log([HOME_GET, HOME_RESULT.format(result="synced", n=3), HOME_WIFI])
+        self.assertEqual(r, {"result": "synced", "pages": 4, "changed": 3, "wifi": "given back", "release_ms": 180})
+
+    def test_no_result_a_failure_or_no_release_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "no home sync result"):
+            lxctl.check_home_sync_log([HOME_GET])
+        with self.assertRaisesRegex(RuntimeError, "failed"):
+            lxctl.check_home_sync_log([HOME_RESULT.format(result="failed", n=0), HOME_WIFI])
+        with self.assertRaisesRegex(RuntimeError, "given back"):
+            lxctl.check_home_sync_log([HOME_RESULT.format(result="up to date", n=0)])
+
+    def test_another_call_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "other than the vocabulary list"):
+            lxctl.check_home_sync_log(["[1] [INF] [LXS] POST /v1/vocabulary -> 200 (ok)",
+                                       HOME_RESULT.format(result="synced", n=1), HOME_WIFI])
+
+    def test_the_log_lines_match_the_firmware(self):
+        sync = open(os.path.join(REPO, "src/lexirise/vocab/ManualSync.cpp"), encoding="utf-8").read()
+        self.assertIn('"home sync: %s after %u pages, %u words changed"', sync)
+        for word in ('"up to date"', '"synced"', '"no WiFi"', '"stopped"', '"failed"'):
+            self.assertIn(word, sync)
+        home = open(os.path.join(REPO, "src/lexirise/vocab/HomeSync.cpp"), encoding="utf-8").read()
+        self.assertIn('"home sync: WiFi %s in %lu ms"', re.sub(r'"\s+"', "", home))
+        self.assertIn('"given back"', home)
+
+
+class FakeHomeHarness:
+    def __init__(self, leaks=False):
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+        self.leaks = leaks  # the dismissing tap reaches the menu: a second sync
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd == "HOME" and seen is not None:
+            seen.append("[1] [DBG] [ACT] Entering activity: Home")
+        elif cmd == f"TAP {lxctl.HOME_SYNC_ROW[0]} {lxctl.HOME_SYNC_ROW[1]}":
+            self.stream += [HOME_GET, HOME_RESULT.format(result="up to date", n=0)]
+        elif cmd == f"TAP {lxctl.HOME_SYNC_POPUP[0]} {lxctl.HOME_SYNC_POPUP[1]}":
+            self.stream += [HOME_WIFI]
+            if self.leaks:
+                self.stream += [HOME_GET, HOME_RESULT.format(result="up to date", n=0)]
+        return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class HomeSyncSmokeDriver(unittest.TestCase):
+    def test_it_goes_home_and_taps_the_row(self):
+        h = FakeHomeHarness()
+        r = lxctl.home_sync_smoke(h, watch_s=0.01)
+        self.assertEqual(r["result"], "up to date")
+        self.assertEqual(h.sent, ["AWAKE 1", "HOME", "SYNC", f"TAP {lxctl.HOME_SYNC_ROW[0]} {lxctl.HOME_SYNC_ROW[1]}",
+                                  f"TAP {lxctl.HOME_SYNC_POPUP[0]} {lxctl.HOME_SYNC_POPUP[1]}"])
+
+    def test_a_dismissing_tap_that_starts_a_second_sync_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "a second home sync|after the home sync ended"):
+            lxctl.home_sync_smoke(FakeHomeHarness(leaks=True), watch_s=0.01)
+
+    def test_a_failed_join_says_wifi_not_up(self):
+        r = lxctl.check_home_sync_log([HOME_RESULT.format(result="no WiFi", n=0),
+                                       "[32100] [INF] [LXVOCAB] home sync: WiFi not up in 1 ms"])
+        self.assertEqual(r["wifi"], "not up")
+
+    def test_its_commands_are_the_devices(self):
+        usages = device_usages()
+        for cmd in ("HOME", "SYNC", "TAP 240 562"):
+            self.assertRegex(cmd, usages[cmd.split()[0]])
 
 
 if __name__ == "__main__":

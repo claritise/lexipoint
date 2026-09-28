@@ -19,9 +19,10 @@ net::Request meRequest() { return {net::Method::Get, "/v1/me", ""}; }
 namespace {
 
 // analyze/text, the full analysis or (`fast`) the word-level one.
-net::Request analyze(const Language language, const std::string_view text, const bool fast) {
+net::Request analyze(const Language language, const std::string_view text, const bool fast,
+                     const size_t maxBytes = config::kMaxAnalyzeTextBytes) {
   net::JsonObject body;
-  body.add("text", utf8Prefix(text, config::kMaxAnalyzeTextBytes)).add("language", languageCode(language));
+  body.add("text", utf8Prefix(text, maxBytes)).add("language", languageCode(language));
   if (fast) body.add("fast", true);
   net::Request request{net::Method::Post, "/v1/analyze/text", body.str()};
   request.idempotent = true;  // read-only analysis: a repeat is harmless
@@ -36,6 +37,10 @@ net::Request analyzeRequest(const Language language, const std::string_view text
 
 net::Request analyzeWordsRequest(const Language language, const std::string_view text) {
   return analyze(language, text, true);
+}
+
+net::Request analyzePageRequest(const Language language, const std::string_view text, const bool fast) {
+  return analyze(language, text, fast, config::kPageMaxTextUnits * config::kMaxUtf8BytesPerUtf16Unit);
 }
 
 net::Request lookupRequest(const Language language, const std::string_view lemma) {

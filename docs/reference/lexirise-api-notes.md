@@ -454,11 +454,38 @@ were sent once, by hand; they're the tool's last five sentences now, so a rerun 
   2026-09-28** (`probe_v7.py --ties`, read-only): the dev account's Chinese list has 99 adjacent `updated_at` ties in
   102 items, and paging it gives the same order as one page, so ties are ordered stably across `offset` pages. Not
   measured: whether `updated_at` follows commit order (V7a's cursor assumes it; a change stamped earlier than one
-  already read is caught only by the weekly full pass).
+  already read is caught only by the weekly full pass; since V7b R5 it also makes a card on a page analyzed before the
+  missed change show the word unsaved until a later answer or that pass: `../v0.2/page-annotations.md` §1.1 Known
+  limits). **Open measurement** (V7b R6): save or change a word in the app during a long-running incremental pass,
+  or two in quick succession from two clients, and compare their `updated_at` with the order the list returns.
 - **Page-sized `analyze/text`:** ~160–260 bytes of answer per character (128 chars: 26 KB in 1.4 s; 256: 44 KB in
   2.0 s; 512: 81 KB in 2.7 s; 186 Chinese chars: 48 KB in 3.0 s), all first-pass (`morphoPending: true`) for new
-  text. A ~300-character page is ~50 KB and 2–3 s, which a prefetch during reading covers. (The 2026-09-24 figure of
+  text. ~~A ~300-character page is ~50 KB and 2–3 s, which a prefetch during reading covers.~~ (Superseded
+  2026-09-28: 76–93 KB and ~1.9 s for 300–380 units with new text, "Page analysis (V7b), measured" below; the
+  repeated paragraph here was partly seen text.) (The 2026-09-24 figure of
   ~70 B/char was the 20,000-character test, where the per-answer overhead is spread thin.)
+
+## Page analysis (V7b), measured (2026-09-28, read-only)
+
+`tools/lexirise/probe_v7b.py` (dev key, from the Mac, a fresh connection per call; raw in `research/v7b/`, gitignored),
+on two pages written for it (Japanese 382 UTF-16 units, Chinese 301; each starting and ending mid-sentence), for
+`../v0.2/page-annotations.md` §1.1 "V7b design":
+
+- **Size and time (default mode, first pass):** Japanese 76 KB (~200 B/unit), Chinese 93 KB (~310 B/unit: the dev
+  account has saved Chinese words, and `stateByEntryId` held 28 of them); **~1.3 s to the first byte, ~1.9 s to the
+  end**. Occurrences are most of it (62 of 76 KB; 71 of 93 KB), then `entryMetaById`. The pages held 206 and 220
+  occurrences (177 and 193 word-like), 107 and 129 entries. Keys arrive in the order `occurrences`, `grammar`,
+  `grammarStates`, `morphoPending`, `entryMetaById`, `stateByEntryId` (every answer). `fast: true`: 43 and 56 KB,
+  ~1.7–1.8 s, the same split. The same page again seconds later: still a first pass, the same split.
+- **A sentence alone splits as the page does:** each of the pages' 26 sentences, sent alone (as the card's ① sends
+  it), gave exactly the page's occurrences over its span (words, spans, entries, lemma entries), the cut first and
+  last sentences included.
+- **The refined pass at page scale:** the Japanese page refined by ~93 s, the Chinese by ~140 s (polled every 20 s),
+  with grammar (16 and 42 items). 13 and 18 first-pass tokens changed. `fast` on the refined page gave the first
+  answer's split again; V1's rule (a ranked `fast` word over several refined tokens) put back 5 and 14 whole words
+  (小さな, 一気に, 九時, 一度; 深深, 长得, 陆陆续续, 空荡荡, 一口气, …).
+- **Rate limit:** `/v1/me` says `rateLimitMax: 1200`, `rateLimitTimeWindow: 3600000`; no answer carries rate-limit
+  headers, so the device can count only its own requests.
 
 ## Readings and counts for V6's card additions (measured 2026-09-28, read-only)
 
