@@ -156,7 +156,8 @@ the direct attempt would disturb the scan; `tearDown` waits the same way), and t
 `config::kWifiConnectMs` (8 s), or until `config::kWifiJoinMaxMs` (11 s) after the join began: one clock for
 the whole join. `config::kMaxCallMs` counts it plus `kWifiRadioSlackMs` (the station's start-up can block
 ~1 s between the clock's checks): 45 s, under `lxctl`'s 50 s wait with the 5 s margin `test_lxctl` checks
-against the header. The
+against the header. (v0.2 V7c: TLS session resumption's full-handshake fallback stays inside the same TCP-and-handshake
+budget, so the bound holds: `lexirise-client.md` §1 "Session resumption".) The
 sequence and the per-poll decision are pure (`net::join`, `net::attemptStep`, WifiSession supplies the
 radio). The log says the channel (`WiFi up in N ms (channel C)`) and a failed direct attempt. Accepted
 trade-offs: a join that fails altogether (away from WiFi, a wrong password) now blocks up to 8 s, or 11 s with

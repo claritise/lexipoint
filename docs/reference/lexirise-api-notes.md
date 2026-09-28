@@ -487,6 +487,45 @@ on two pages written for it (Japanese 382 UTF-16 units, Chinese 301; each starti
 - **Rate limit:** `/v1/me` says `rateLimitMax: 1200`, `rateLimitTimeWindow: 3600000`; no answer carries rate-limit
   headers, so the device can count only its own requests.
 
+## Caches (V7c), measured (2026-09-28, read-only)
+
+`tools/lexirise/probe_v7c.py` (dev key, from the Mac; raw in `research/v7c/`, gitignored), for `../v0.2/00-overview.md`
+C21 "V7c design". The Mac's round trip to the server is ~0.35 s (a `HEAD /` on a kept-alive connection), so the Mac's
+times are mostly network, not the server's work.
+
+- **`dictionary/lookup` (phase B):** 18 words written for the probe (10 Japanese, 8 Chinese, common and rare): answers
+  of 0.5–1.3 KB (median 0.7 KB), all `translation_status: ready`. What the card keeps of one (`api::LookupResult`:
+  the word, reading, two senses with their part of speech, level, rank, frequency) is 39–140 bytes of text (median
+  ~90). On a kept-alive connection a lookup takes 0.35–0.40 s, one round trip: the server's own time is a few tens
+  of ms at most, and the same word asked again takes the same. A fresh connection adds ~0.66 s from the Mac (TCP and
+  TLS: two round trips). On the device a warm call was ~370 ms (P1's soak) and a new session 2.5 s
+  (`../v0.1/device-checks.md`).
+- **Answers change a little over days:** 16 lookups kept from 2026-09-27 (`research/v4`) asked again: the same ids;
+  ranks moved by under 1% on 13 of them (the dictionary grows), the frequency score on one; one word's senses were
+  rewritten (笑う: "laugh" · "to laugh, to smile" became "to laugh, to smile" · "to ridicule, to make fun of"); the two
+  entries created `pending` by a lookup the day before (書きこむ, とり出す: "dictionary/lookup creates an entry" above)
+  were `ready` with meanings.
+- **TLS:** TLS 1.3 (`TLS_AES_256_GCM_SHA384`), nginx on one address. The leaf's key is P-256 (its CertificateVerify is
+  `ecdsa_secp256r1_sha256`); the chain's signatures are P-384; the Certificate message is 3.4 KB. **The server hands
+  out session tickets and accepts them:** two NewSessionTickets after every handshake (a resumed one too), lifetime
+  hint 86400 s, each ticket 32 bytes (an id into the server's session cache, not a self-contained ticket). Resumed
+  8 of 8 right after, the same ticket twice, and one ticket each after 6, 16, 31 and 61 minutes (`openssl s_client
+  -sess_out` / `-sess_in`): every one resumed. A resumed handshake
+  sends no Certificate and no CertificateVerify, and still exchanges an X25519 key share (`psk_dhe_ke`); early data
+  is off (max early data 0). From the Mac a resumed handshake takes as long as a full one (~0.33 s, one round trip),
+  so what resumption saves on the device is the CPU time of parsing and verifying the chain (three P-384 signatures
+  and the P-256 CertificateVerify), which only the device can time.
+- **Keep-alive:** an idle HTTP connection stays open 70 s and is closed by 80 s (nginx's default is 75 s).
+- **Lemma repetition over a real text:** the manga spike's volume (`manga.md` §4: 178 pages of `analyze/text`
+  answers, private, in `research/spike/`), Japanese dialogue: 10,272 word-like occurrences of 2,233 lemmas. Counting
+  by lemma entry, and taking the words a reader taps to be those ranked above 3000 (or unranked: 2,563 occurrences,
+  1,477 lemmas), the share of taps that meet a lemma already looked up in the volume is 42% if the reader taps every
+  occurrence of such a word, 27% if they tap half the later ones again, 16% if a quarter; within 35-page windows
+  (a chapter's size) 23–35%, 13–21% and 7–12%. Ranked above 10000: 40%, 25%, 14%. **All words** (stepping on a card
+  goes word by word): 78% over the volume, 48–69% per window. So most taps on rare words are a first meeting, and a
+  cache kept across chapters (and books) pays about half again what one chapter's does. Not measured: prose, Chinese,
+  and what readers really tap (the device log will say).
+
 ## Readings and counts for V6's card additions (measured 2026-09-28, read-only)
 
 Dev key, from the Mac; raw in `research/v6/` (gitignored).

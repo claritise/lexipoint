@@ -100,16 +100,17 @@ bool CardSession::shouldFetchDeck(const unsigned long nowMs, const bool renderin
   return deckAllowed_ && idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) && live_->hasDeckWork();
 }
 
-bool CardSession::shouldFlushMirror(const unsigned long nowMs, const bool rendering, const bool touching,
-                                    const std::optional<unsigned long> cardDueMs) const {
-  return idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) && live_->mirrorFlushDue();
+bool CardSession::shouldFlushFiles(const unsigned long nowMs, const bool rendering, const bool touching,
+                                   const std::optional<unsigned long> cardDueMs) const {
+  return idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) &&
+         (live_->mirrorFlushDue() || live_->lookupFlushDue());
 }
 
 CardSession::IdleStep CardSession::nextIdleStep(const unsigned long nowMs, const bool rendering, const bool touching,
                                                 const std::optional<unsigned long> cardDueMs,
                                                 const uint32_t epochS) const {
   if (shouldFetchDeck(nowMs, rendering, touching, cardDueMs)) return IdleStep::Deck;
-  if (shouldFlushMirror(nowMs, rendering, touching, cardDueMs)) return IdleStep::Flush;
+  if (shouldFlushFiles(nowMs, rendering, touching, cardDueMs)) return IdleStep::Flush;
   if (shouldProbeVocab(nowMs, rendering, touching, cardDueMs)) return IdleStep::Probe;
   if (shouldFetchVocab(nowMs, rendering, touching, cardDueMs, epochS)) return IdleStep::Vocab;
   return IdleStep::None;

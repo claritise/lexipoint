@@ -312,7 +312,9 @@ base_url=https://api.lexirise.app
   out (magic, version, language, size, CRC, order, a slack past the overlap in either pass's bits 4–5) is set aside as
   `.bad` (flag bits it doesn't know are ignored) and the mirror synced again from Lexirise; nothing in it is the
   user's own (it's all in their account), so hand edits aren't kept. Written crash-safely like the others (`SafeFile`:
-  `.tmp`, `.bak`), outside the card's render lock: after a page that changes the mirror or the pass's progress (a
+  `.tmp`, `.bak`), outside the card's render lock (superseded 2026-09-28, V7c R9: but for a card that leaves without
+  `end()`, sleep or the stack cleared, which writes under the lock `exitActivity` holds, as the reader's page loads do SD
+  I/O; the lemma cache the same): after a page that changes the mirror or the pass's progress (a
   quiet incremental pass writes nothing), on an idle card after its answers changed it, and as the card closes; read
   once per boot per language, on the first idle card in it.
 - **The page cache** (v0.2 V7b, C12; no setting): each analyzed page's `analyze/text` answer, compact,
@@ -332,6 +334,16 @@ base_url=https://api.lexirise.app
   cache starts again~~ (V7b R3/R4) one unreadable (it doesn't parse, is too large, or fails to read) takes the whole
   `/.lexirise/pages/` folder with it and the cache starts again. Nothing in them is the user's own (it's all from
   Lexirise, asked again when missing).
+- **The lemma cache** (v0.2 V7c, C21; no setting): phase B's `dictionary/lookup` answers as the card keeps them,
+  `/.lexirise/lookups/<ja|zh>/<nn>.bin` (`<nn>`: the text's FNV-1a 32 modulo `config::kLookupBuckets`, 2 hex digits),
+  `lookup/LookupCache`. **Binary**, little-endian: a 16-byte header (`LXLK`, version 1 (u8), the language (u8), the count
+  (u16), the records' bytes (u32), a CRC-32 of the records), then each record: its length after the field (u16), when
+  it was fetched (u32 s since the epoch), the rank (u32), the frequency's float bits (u32), then as u16-length strings
+  the text looked up, the word, the reading and the level, the sense count (u8) and each sense's translation and part
+  of speech (strings). Oldest first, at most `config::kLookupBucketMax` records and `kLookupBucketMaxBytes`; a record
+  over `kLookupRecordMaxBytes` isn't kept. No saved state in it. Written plainly (regenerable); a file that doesn't
+  check out is removed. Nothing in it is the user's own (it's all from Lexirise, asked again when missing or older than
+  `config::kLookupMaxAgeS`).
 - **`reading` lives in `[ja]`** (it moved from `state.ini`, which is dropped).
 - Unknown keys are **kept** on rewrite, so a newer firmware's settings survive a downgrade.
 - A missing file means all defaults with no key, so Lexirise is effectively off until a key is set.

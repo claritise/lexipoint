@@ -53,7 +53,7 @@ refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined 
      get analyzed (at ~40 s a page, the default's 5 min is ~7 pages); after that, reading is as today, radio off.
      No new radio time, no setting, no battery question. The cost: each prefetch usually opens its own TLS session
      (a page outlasts `kTlsIdleCloseMs`), ~2.5 s of handshake on the device (`../v0.1/device-checks.md`), inside the
-     window WiFi is up anyway.
+     window WiFi is up anyway (V7c's design resumes the session: `00-overview.md` C21 "V7c design").
   2. **The prefetch keeps WiFi up** (counts as WiFi use): once a card brings WiFi up it stays up for the whole
      reading session.
   3. **Join on page turns:** WiFi up whenever a book is open and Lexirise is on, every page analyzed.
@@ -116,7 +116,7 @@ refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined 
     own page), then n+1; one call per loop pass; never while a card or menu is open (the reader's loop only), under
     RenderLock, while building, or before the page has been up `kPagePrefetchDwellMs`; nothing while pages turn
     faster than that. The analysis is written to the cache, and its saved states go into the vocab mirror as a card's
-    analysis does (`LiveSource`'s `liveStatesOf`: the live answer wins).
+    analysis does (`LiveSource`'s `liveStatesOf`: ~~the live answer wins~~ (Superseded 2026-09-28, V7c, from V7b's review: the newer of the two says, §1.1 "The saved-state rule (R5)".)).
   - **Budget:** every Lexirise request the service sends counts in an hourly window (60 one-minute buckets); the
     prefetch stops above 70% of `rateLimitMax` (`/v1/me`: 1200 per 3,600,000 ms, measured; answers carry no
     rate-limit headers, so the key's use elsewhere is unseen, and a 429's block, `AccessPolicy`, stops it too).
@@ -189,7 +189,8 @@ refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined 
      (`kVocabManualSyncPagesPerHour`) shows the card's "Lexirise: rate limited" at once, without joining WiFi (the
      coordinator tells claritise about the reuse); R10 (2026-09-28): so does a press once this reader's requests in the
      last hour reach `kVocabManualSyncStopPercent` of the key's limit.
-- **(e) Nothing on screen changes.** No new drawing, no setting, no card change. What differs: a card on an analyzed
+- **(e) ~~Nothing on screen changes.~~** (Superseded 2026-09-28 by claritise's decisions above: the home screen gains
+  the Sync Vocabulary row, signed off; the card and the reader draw nothing new.) No new drawing, no setting, no card change. What differs: a card on an analyzed
   page reaches phase A without waiting for ① (on the device a warm ① is ~0.4 s, and ~1.1 s when it came back refined
   and needed the `fast` call: `../v0.1/device-checks.md`), and the dev log gains `[LXPAGE]` lines. Marks are V9's.
 - **(f) Tests and checks.** Host: ~~`text::pageText`~~ `text::buildPageText` (every `describeTap` sentence is the page text's slice at its
@@ -278,7 +279,8 @@ refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined 
   the time its state was known: a sync page's item, the page's read time (with no clock, the item's `updated_at`, a
   time it was surely true at: the read time is right because a page read after a change reflects it, and the reader's
   writes reach the account before they reach the mirror); a live answer, the answer's time (a card's, stamped as it's
-  recorded, `VocabStore::setClock`; a page prefetch's, its analysis time); the reader's own write, the write's time,
+  recorded, `VocabStore::setClock`; a page prefetch's, ~~its analysis time~~ the time before its call when the clock
+  is set, after it otherwise: superseded 2026-09-28 by V7c, `00-overview.md` C21 "As built (V7c)"); the reader's own write, the write's time,
   flagged `own`; a removal, its time. The file keeps both (version 3, 20-byte records: `../v0.1/settings.md` §3; an
   older file is set aside and synced again). A page sentence's word: the newer of the entry and the page's snapshot
   says (`vocab::mirrorOutranks`: the same second, the mirror); a word the mirror doesn't hold is unsaved only once
@@ -440,13 +442,14 @@ refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined 
 **As built (V7a, 2026-09-28, on `lexi/V7`)** (claritise approved V7 on 2026-09-28, "yes keep going", told the reader
 keeps a copy of their vocabulary on the SD card, read-only from their account):
 
-- **What's kept**, per saved word, one 16-byte record (`vocab::Entry`, `config::kVocabRecordBytes`): the entry a save
+- **What's kept**, per saved word, one ~~16-byte~~ record (`vocab::Entry`, `config::kVocabRecordBytes`; 20 bytes since V7b R5, with the time
+  its state was known: superseded 2026-09-28, V7c, §1.1 "The saved-state rule (R5)"): the entry a save
   targets (the item's `dictionary_id`, which is `stateByEntryId`'s key), the saved expression's id (`id`, the state's
   `saved_expression_id`), the level, `suspended` and `next_review_at` (measured: `../reference/lexirise-api-notes.md`
   "V7's foundations"). **Sentence cards aren't kept** (`unit_type` other than `word`): they mark no word on a page. At
   most `config::kVocabMirrorMax` words per language (past it a new word isn't kept, logged). The file, one per
   language, binary (sorted records behind a header with the sync's progress and a CRC): `../v0.1/settings.md` §3.
-  Binary rather than lines: a record is a fixed 16 bytes, read straight into a sorted array for a binary search, and a
+  Binary rather than lines: a record is a fixed ~~16~~ `kVocabRecordBytes` bytes (superseded 2026-09-28, V7c), read straight into a sorted array for a binary search, and a
   torn or hand-edited file is caught by its CRC. A file that doesn't check out is set aside (`.bad`) and synced again.
 - **Memory.** A page is never held: the HTTP body goes to a sink as it's decoded (`net::BodySink`), a push JSON
   reader (`net/JsonStream`, the same events as `JsonReader`) keeps only the path and one value of at most
@@ -479,7 +482,8 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
   page up too, `HalGPIO::rawTouchActive` OR'd into the cancel, and the cancel is asked in every wait of the call, not
   only as body bytes arrive: §1.1 "As built (V7b)"; whether a quick tap is always seen is a device check.) Not while reading without a card: a page blocks the loop (a few
   seconds: the device check times it), which a page turn mustn't wait on. No new setting.
-- **The file is read and written only on an idle card** (`CardSession::shouldFlushMirror`: the deck's idle rule,
+- **The file is read and written only on an idle card** (~~`CardSession::shouldFlushMirror`~~ `CardSession::shouldFlushFiles` since V7c, with the lemma cache's answers,
+  superseded 2026-09-28: the deck's idle rule,
   `config::kDeckIdleMs`, before a deck step or a page), after a page, and as the card closes (a write only); never
   between an answer and its redraw. A write that fails isn't tried again on that card's idle windows (the memory keeps
   the change; the close tries once more, then the next card).
@@ -528,14 +532,16 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
 - **Deletions.** A dictionary word removed in Lexirise stays in the list at level 0 with a new `updated_at` (measured,
   "Suspended (Ignore)" in the reference notes), so an incremental pass takes it. An item really gone (a sentence card,
   or anything removed outright) never shows in that order: the next full pass drops every word it didn't see.
-  Meanwhile the live answer wins for every word the card analyzes (below).
+  Meanwhile ~~the live answer wins~~ the newer state wins (superseded 2026-09-28, V7c: §1.1 "The saved-state rule
+  (R5)") for every word the card analyzes (below).
 - **The card's answers and writes.** Each analysis's states (`stateByEntryId`) for every word's lemma and surface
   entries go into the mirror (`stateByEntryId` lists level-0 and suspended items too, measured:
   `../v0.1/lookup-flow.md` §5, the level-0 item a removal leaves, and the reference notes' "Suspended (Ignore)", so an
   answer never erases them), and an entry the answer doesn't list isn't saved there either (unless the answer was cut
   at `config::kMaxEntries`; V7b: an entry the mirror held is kept as a removal rather than erased, with its time, and
   ~~**the live answer wins** where they disagree~~ the newer of the mirror's and an answer's state wins: §1.1 "The
-  saved-state rule (R5)"), so **the live answer wins** where they disagree; except an entry this card wrote (its
+  saved-state rule (R5)"), so ~~**the live answer wins** where they disagree~~ (struck 2026-09-28, V7c: the clause the R5
+  line above already superseded); except an entry this card wrote (its
   write is newer than a later analysis). Each save, level change and removal goes in once Lexirise took it
   (`LiveSource::recordMirror`, memory only, after every answer), kept under the entry whose state the card had (the
   surface word's when only it was saved; a new save's under the lemma); a removal stays at level 0, as Lexirise keeps

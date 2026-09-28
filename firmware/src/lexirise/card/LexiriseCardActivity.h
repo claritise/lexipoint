@@ -60,7 +60,9 @@ class LexiriseCardActivity final : public Activity {
   void apply(const Outcome& outcome);
   void end(LiveOutcome ending);
   void logAnswer(const CardSession::Answer& answer) const;
-  void redraw();  // requestUpdate(), telling the session a frame is on its way
+  void logCacheRead(const LiveSource::Fetched& fetched) const;
+  void flushFiles(bool closing);  // the idle Flush step, and the close's
+  void redraw();                  // requestUpdate(), telling the session a frame is on its way
   // A mirror page's (or the probe's) changes into the card's words, under RenderLock; true: a word shown changed.
   bool takeMirrorChanges(const vocab::PageApplied& applied);
   // An idle card's one blocking step, if any, in CardSession::nextIdleStep's order: the book deck's, else the vocab

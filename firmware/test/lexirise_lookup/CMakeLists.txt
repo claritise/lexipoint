@@ -6,6 +6,8 @@ add_executable(LexiriseLookupTest
   LongPressTest.cpp
   StarDictChoiceTest.cpp
   WholeWordsTest.cpp
+  LookupCacheTest.cpp
+  ${REPO_ROOT}/src/lexirise/lookup/LookupCache.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LexiriseLookup.cpp
   ${REPO_ROOT}/src/lexirise/lookup/WholeWords.cpp
   ${REPO_ROOT}/src/lexirise/lookup/LookupCard.cpp
@@ -24,6 +26,7 @@ target_compile_definitions(LexiriseLookupTest PRIVATE LEXIRISE=1)
 target_include_directories(LexiriseLookupTest PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/lib/Utf8
+  ${REPO_ROOT}/test/lexirise_fakes/stubs
 )
 
 target_link_libraries(LexiriseLookupTest PRIVATE

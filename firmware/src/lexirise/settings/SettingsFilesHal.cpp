@@ -10,6 +10,7 @@
 #include "IgnoredWords.h"
 #include "SettingsStore.h"
 #include "lexirise/deck/BookDeck.h"
+#include "lexirise/lookup/LookupCache.h"
 #include "lexirise/page/PageStore.h"
 #include "lexirise/util/Epoch.h"
 #include "lexirise/vocab/VocabMirror.h"
@@ -95,6 +96,11 @@ vocab::VocabStore& vocab::vocabStore() {
   }();
   (void)clockSet;
   return store;
+}
+
+lookup::LookupCache& lookup::lookupCache() {
+  static LookupCache cache(halFiles(), timing::epochNowS, millis);
+  return cache;
 }
 
 page::PageStore& page::pageStore() {

@@ -133,11 +133,7 @@ void LexiriseCardActivity::idleStep() {
     return;
   }
   if (next == CardSession::IdleStep::Flush) {
-    // The vocab mirror's file (V7a): read once per boot (up to kVocabMaxBytes, its CRC checked), written when the
-    // card's answers changed it. Logged for the device check (the first card's load on a large mirror).
-    const unsigned long start = millis();
-    session_.flushMirror(/*load=*/true, millis());
-    LOG_INF(vocab::kLogTag, "mirror file read or written in %lu ms", millis() - start);
+    flushFiles(/*closing=*/false);
     return;
   }
   if (next == CardSession::IdleStep::Probe) {
@@ -241,6 +237,7 @@ void LexiriseCardActivity::logWord(const SmokeState& shown, const bool hadInput)
 void LexiriseCardActivity::fetchAnswer() {
   LiveSource::Fetched fetched = session_.fetch(millis());  // blocking: WiFi, TLS, one request (two for an analysis
                                                            // that came back refined: lookup::wholeWords)
+  logCacheRead(fetched);
   CardSession::Answer answer;
   SmokeState shown;
   {
@@ -254,6 +251,33 @@ void LexiriseCardActivity::fetchAnswer() {
   session_.recordMirror();  // what the answer taught the vocab mirror (V7a), in memory: its file waits for idle
   if (answer.ended) return end(*answer.ended);
   if (answer.redraw) redraw();
+}
+
+void LexiriseCardActivity::logCacheRead(const LiveSource::Fetched& fetched) const {
+  // The lemma cache's read before phase B (V7c): its time on every card (the read a miss adds), and this boot's hits.
+  if (fetched.kind != LiveSource::Fetched::Kind::Entry ||
+      fetched.cacheRead.outcome == lookup::CacheRead::Outcome::Off) {
+    return;
+  }
+  if (fetched.cacheRead.outcome == lookup::CacheRead::Outcome::Pending) {
+    LOG_INF(lookup::kCacheLogTag, "cache pending: this card's answer, not written yet");
+    return;
+  }
+  LOG_INF(lookup::kCacheLogTag, "cache %s in %lu ms (%u of %u hits this boot)",
+          lookup::cacheOutcomeName(fetched.cacheRead.outcome), fetched.cacheRead.ms, fetched.cacheRead.hits,
+          fetched.cacheRead.reads);
+}
+
+void LexiriseCardActivity::flushFiles(const bool closing) {
+  // SD I/O outside the lock (CardSession::flushFiles: the lemma cache's answers, V7c, up to kLookupPendingMax buckets
+  // on a close; then the vocab mirror's file, V7a), each part logged with its time for the device checks.
+  const CardSession::FilesFlushed done = session_.flushFiles(closing, millis(), millis);
+  const char* when = closing ? " (closing)" : "";
+  if (done.lookups.answers > 0) {
+    LOG_INF(lookup::kCacheLogTag, "cache: %u answers %s in %lu ms%s", static_cast<unsigned>(done.lookups.answers),
+            done.lookups.written ? "written" : "not written", done.lookupsMs, when);
+  }
+  if (done.mirrorIo) LOG_INF(vocab::kLogTag, "mirror file read or written in %lu ms%s", done.mirrorMs, when);
 }
 
 void LexiriseCardActivity::logAnswer(const CardSession::Answer& answer) const {
@@ -319,7 +343,7 @@ void LexiriseCardActivity::end(const LiveOutcome ending) {
   if (finishing_) return;
   finishing_ = true;
   flushWrites(/*lockHeld=*/false);
-  session_.flushMirror(/*load=*/false, millis());  // what the card taught the mirror, to its file (only if it's loaded)
+  flushFiles(/*closing=*/true);  // the lemma cache's answers and what the card taught the mirror (if it's loaded)
   if (outcome_) {
     *outcome_ = ending;
     outcome_->unsentSaves = session_.unsentSaves();
@@ -331,7 +355,12 @@ void LexiriseCardActivity::end(const LiveOutcome ending) {
 void LexiriseCardActivity::onExit() {
   // Leaving without end() (sleep, or the stack cleared under the card): the queued writes are still
   // attempted; a failure here can only be logged (word select's result handler doesn't run).
-  if (!finishing_) flushWrites(/*lockHeld=*/true);
+  if (!finishing_) {
+    flushWrites(/*lockHeld=*/true);
+    // V7c R8: the lemma cache's answers and the mirror's file too, as end() writes them (SD I/O under the lock
+    // exitActivity holds, as the reader's page loads are; HalStorage serialises the card).
+    flushFiles(/*closing=*/true);
+  }
   if (live_) service().holdWifi(false);
   // Ghost cleanup: after every Nth card the reader's redraw is a half refresh (popup-ui.md §2). Here,
   // under the lock exitActivity holds, so no card redraw in flight can take the promotion.

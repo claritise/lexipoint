@@ -28,6 +28,7 @@
 #include "ReaderScene.h"
 #include "lexirise/deck/BookDeck.h"
 #include "lexirise/lookup/LexiriseLookup.h"
+#include "lexirise/lookup/LookupCache.h"
 #include "lexirise/page/PageSentences.h"
 #include "lexirise/settings/IgnoredWords.h"
 #include "lexirise/vocab/VocabMirror.h"
@@ -69,8 +70,12 @@ class LiveSource final : public CardSource {
     // Item: refused (a 429 or a rejected key, usually by AccessPolicy without the network): not kept, asked again
     // retryAfterS (else the default) after apply()'s time, when the answer came.
     bool refused = false;
-    bool clearFailed = false;               // Write: removed (DELETE), but its notes and tags weren't cleared
-    bool saveRetry = false;                 // Entry: the lookup again, for a save, after it failed once
+    bool clearFailed = false;  // Write: removed (DELETE), but its notes and tags weren't cleared
+    bool saveRetry = false;    // Entry: the lookup again, for a save, after it failed once
+    // Entry: the lemma cache's read before the call (V7c; Outcome::Off without a cache), and the answer to keep when
+    // the call brought one it may keep.
+    lookup::CacheReadLog cacheRead;
+    std::optional<lookup::CachedLookup> toCache;
     std::string unreadable;                 // a response we couldn't read: its start, for the log
     uint32_t retryAfterS = 0;               // Write or Item refused with 429: seconds until Lexirise may be asked
     std::vector<lookup::LookupCard> cards;  // Analysis: each word's card ...
@@ -129,7 +134,8 @@ class LiveSource final : public CardSource {
   // still comes from analyze/text; the mirror takes it: each analysis's states (for every word's lemma and surface
   // entries; an entry the answer doesn't list isn't saved, unless the answer was cut at config::kMaxEntries), except an
   // entry this card wrote (its write is newer), and each write that went through. Taken into the mirror's memory by
-  // recordMirror(); its file is read and written only on an idle card (flushMirror), never before a redraw.
+  // recordMirror(); its file is read and written only on an idle card or as the card closes (flushMirror), never before
+  // a redraw.
   void setVocabMirror(vocab::VocabStore& store);
   // The page's analysis (C12, V7b): a sentence it holds is taken from it and request ① isn't sent (its states from
   // the mirror, page::PageSentences); none, or a sentence it can't give, asks ① as before.
@@ -158,9 +164,24 @@ class LiveSource final : public CardSource {
   void recordMirror();
   // The mirror's file wants reading (this card's language isn't loaded yet) or writing (memory changed).
   bool mirrorFlushDue() const;
-  // SD I/O, outside RenderLock, on an idle card (CardSession::shouldFlushMirror) or as the card closes: records, then
-  // `load`s this card's language (once per boot), then writes what changed.
-  void flushMirror(bool load);
+  // SD I/O on an idle card (CardSession::shouldFlushFiles) or as the card closes, outside RenderLock but for a close
+  // without end() (sleep, the stack cleared: under the lock exitActivity holds, V7c R9): records, then
+  // `load`s this card's language (once per boot), then writes what changed. True: the file was read or written.
+  bool flushMirror(bool load);
+  // The lemma cache (C21, V7c; lookup/LookupCache.h): phase B reads it before its call (one bucket: a hit makes no
+  // call); an answer the call brought is kept in memory (the newest config::kLookupPendingMax) and written by
+  // flushLookups(), never before phase B is drawn. `cache` outlives the card; none: phase B always calls.
+  void setLookupCache(lookup::LookupCache& cache) { lookupCache_ = &cache; }
+  size_t pendingLookups() const { return lookupWrites_.size(); }
+  // Answers wait for the cache's file, and no write of them failed on this card (that one waits for the close).
+  bool lookupFlushDue() const;
+  // SD I/O on an idle card or as the card closes (`closing`: tried even after a failure), as flushMirror()'s: outside
+  // RenderLock but for a close without end().
+  struct LookupsFlushed {
+    size_t answers = 0;  // answers written or tried (0: nothing to do)
+    bool written = false;
+  };
+  LookupsFlushed flushLookups(bool closing);
   deck::DeckCall fetchDeck();  // one call (network I/O) for the book deck's next step; step None when there's none
   void applyDeck(const deck::DeckCall& call);
 
@@ -266,11 +287,14 @@ class LiveSource final : public CardSource {
   // sentence asked), so it's asked from the const fetch() and changes behind the pointer: the source's own state only,
   // nothing apply() or the render task reads.
   std::unique_ptr<page::SentenceSource> pageSentences_;
-  vocab::VocabStore* vocab_ = nullptr;           // the vocab mirror (none: nothing kept or synced)
-  std::optional<Language> vocabLanguage_;        // the tapped sentence's: the mirror this card syncs
-  unsigned vocabPages_ = 0;                      // pages this card fetched
-  bool mirrorWriteFailed_ = false;               // the mirror's file couldn't be written on this card
-  std::vector<vocab::LiveState> mirrorUpdates_;  // apply()'s, until recordMirror()
+  lookup::LookupCache* lookupCache_ = nullptr;      // the lemma cache (none: phase B always calls)
+  std::vector<lookup::CachedLookup> lookupWrites_;  // answers for it, newest last, until flushLookups()
+  bool lookupWriteFailed_ = false;                  // not tried again on this card's idle windows (the close does)
+  vocab::VocabStore* vocab_ = nullptr;              // the vocab mirror (none: nothing kept or synced)
+  std::optional<Language> vocabLanguage_;           // the tapped sentence's: the mirror this card syncs
+  unsigned vocabPages_ = 0;                         // pages this card fetched
+  bool mirrorWriteFailed_ = false;                  // the mirror's file couldn't be written on this card
+  std::vector<vocab::LiveState> mirrorUpdates_;     // apply()'s, until recordMirror()
   // Entries this card wrote (a save, a level, a removal): a later analysis's state for them may predate the write.
   std::vector<std::pair<Language, uint32_t>> writtenEntries_;
   // Queues `state` for the mirror; `ownWrite`: from this card's write (later analyses don't override it).

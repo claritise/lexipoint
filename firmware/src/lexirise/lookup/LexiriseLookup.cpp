@@ -119,7 +119,8 @@ std::string bodyHead(const std::string_view body) {
   return std::string(text::utf8Prefix(body, config::kLoggedBodyBytes));
 }
 
-api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string* unreadable) {
+api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string* unreadable,
+                           std::optional<api::LookupResult>* answer) {
   card.complete = true;
   const api::ApiResponse looked = api.lookup(card.language, card.headword());
   api::LookupResult entry;
@@ -129,6 +130,13 @@ api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string*
     if (looked.ok() && unreadable) *unreadable = bodyHead(looked.body);
     return card.translationError;
   }
+  if (answer) *answer = entry;
+  applyLookup(card, std::move(entry));
+  return api::ApiError::None;
+}
+
+void applyLookup(LookupCard& card, api::LookupResult entry) {
+  card.complete = true;
   card.translationUnavailable = false;
   card.translationError = api::ApiError::None;
   if (!entry.reading.empty()) card.reading = entry.reading;
@@ -138,7 +146,6 @@ api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string*
   if (entry.frequency > 0) card.frequency = entry.frequency;
   card.translationPending = entry.translationPending && card.senses.empty();
   if (card.partOfSpeech.empty() && !card.senses.empty()) card.partOfSpeech = card.senses.front().partOfSpeech;
-  return api::ApiError::None;
 }
 
 LookupReport lookupWithLexirise(api::LexiriseApi& api, const text::TapContext& tap, LookupCard& card) {

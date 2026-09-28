@@ -50,7 +50,11 @@ std::string syncedText(const unsigned changed) {
 HomeSync::HomeSync() {
   sync_ = makeUniqueNoThrow<ManualSync>(vocabStore(), service(), join, settingsStore().snapshot(), timing::epochNowS,
                                         blocked, keyUse);
-  if (sync_) service().holdWifi(true);  // up between pages, whatever the idle setting
+  if (sync_) {
+    service().holdWifi(true);  // up between pages, whatever the idle setting
+  } else {
+    LOG_ERR(kLogTag, "home sync: OOM (%u bytes)", static_cast<unsigned>(sizeof(ManualSync)));
+  }
   refresh();
 }
 

@@ -81,8 +81,9 @@ inline bool budgetLeft(const unsigned used, const uint32_t limit) {
 class PagePrefetcher {
  public:
   using Clock = unsigned long (*)();  // millis() on the device, a fake in tests: the call's end, the file's write time
-  // The wall clock (seconds; 0 while it isn't set: timing::epochNowS), read after a page's call: the boot's first
-  // call sets it (the TLS connection waits for SNTP), so a page analyzed then still gets its time.
+  // The wall clock (seconds; 0 while it isn't set: timing::epochNowS), read before a page's call, and again after it
+  // when it wasn't set: the boot's first call sets it (the TLS connection waits for SNTP), so a page analyzed then
+  // still gets its time.
   using WallClock = uint32_t (*)();
   PagePrefetcher(api::LexiriseApi& api, PageStore& store, Clock clock, WallClock wall)
       : api_(api), store_(store), clock_(clock), wall_(wall) {}
@@ -153,6 +154,11 @@ class PagePass {
   explicit PagePass(PagePrefetcher& prefetch) : prefetch_(prefetch) {}
   // Whether prefetch.step() is due now.
   bool ready(const Pass& pass, unsigned long nowMs, PageStarts& starts);
+  // The cheap gates alone (the page on screen and drawn, Lexirise usable, WiFi up): ReaderPages asks them before the
+  // pass's other reads, ready() first of all.
+  static bool cheapGates(const Pass& pass) {
+    return pass.onScreen && pass.drawnMs != 0 && pass.reader.usable && pass.reader.wifiConnected;
+  }
 
  private:
   PagePrefetcher& prefetch_;

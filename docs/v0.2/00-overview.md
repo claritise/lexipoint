@@ -686,8 +686,203 @@ mirror gives saved state offline. On top of them, cheapest and most likely to pa
 7. **A kanji / hanzi pack on SD** for the character breakdown, instead of one lookup per character.
 
 With 1–4, most taps on a forward read would need no network: the network is left for saves, level
-changes and reviews. **Nothing here is measured yet.** Measure 1–3 first (hit rate of the lemma
-cache over a chapter, chapter-call time and memory, cache survival across a font change).
+changes and reviews. ~~**Nothing here is measured yet.** Measure 1–3 first (hit rate of the lemma
+cache over a chapter, chapter-call time and memory, cache survival across a font change).~~ (Superseded
+2026-09-28: 1 and 5 measured read-only for V7c, `../reference/lexirise-api-notes.md` "Caches (V7c), measured";
+3 is V7b's page file, keyed by the page text's hash; the decisions in "V7c design" below.)
+
+### V7c design (2026-09-28, on `lexi/V7`; ~~awaiting the go-ahead before any firmware~~ approved the same day, relayed by the coordinator: build (1) and (2), keep the idle close at 30 s, no word prefetching; built: "As built (V7c)" below)
+
+**Where a card's time goes now** (V7b landed): on an analyzed page the card skips ① and sends only ③
+`dictionary/lookup`, which is one round trip on a warm session (~370 ms on the device) and whose server time is a few
+tens of ms (measured). The rest is the session: a new one is 2.5 s on the device (`../v0.1/device-checks.md`), of
+which the network is two round trips (~0.7 s from here), so most of it is the handshake's CPU. **Today the reader
+handshakes** (`LexiriseService`, `net/TlsConnection`): for a card whose calls come more than `kTlsIdleCloseMs` (30 s)
+after the reader's last call; for **every page prefetch** and mirror page outside those 30 s (they don't move the idle
+close, so their session is closed at the next tick: one handshake a page while WiFi is up); for **every new word's save**
+(`LexiriseService::write` closes the session before a write that isn't idempotent, the save's POST); after a call given up for input; after
+WiFi goes down. The server itself keeps an idle connection 70–80 s.
+
+**(1) The lemma cache: built.** It pays on repeats: measured on a real volume, 16–42% of taps on rare words meet a
+lemma looked up before in the volume (by how often a reader taps a word again), about half that within one chapter,
+and 78% of all words when stepping (`../reference/lexirise-api-notes.md` "Caches (V7c), measured"). A hit makes phase
+B instant: it saves the lookup (~0.4 s warm) and, on a cold session, the handshake too (~2.9 s together); on an
+analyzed page the card then makes no call at all, so it doesn't bring WiFi up (a join is up to ~6 s).
+
+- **What:** phase B's answer as the card keeps it (`api::LookupResult`: word, reading, the `kMaxTranslations` senses,
+  level, rank, frequency; 39–140 bytes of text measured), and the time it was fetched. Only an answer that is `ready`
+  and has a sense; a pending entry, a failure or an unreadable answer is never kept. No saved state: that comes from
+  ①, the page's file and the mirror, as now, so a save or a level change invalidates nothing.
+- **Key:** the language and the exact text phase B sends (`LookupCard::headword()`, the lemma), since the request is
+  by text, not by entry; the record holds the text, so a hash collision is a miss.
+- **Where:** SD, `/.lexirise/lookups/<ja|zh>/<nn>.bin`: `config::kLookupBuckets` (64) files per language, the bucket
+  from the FNV-1a 32 of the text; each file a header (magic, version, count, CRC) and its records, at most
+  `kLookupBucketMax` (64) records and `kLookupBucketMaxBytes`, the oldest fetched dropped past it: at most 4096 lemmas
+  per language, ~0.5 MB at the measured sizes. Written plainly through the SD layer, like the page files (it's
+  regenerable: a torn file fails its CRC and is removed). No index file and nothing loaded at boot.
+- **Invalidation:** a record older than `kLookupMaxAgeS` (30 days) is a miss and is replaced by the new answer
+  (measured drift: ranks under 1% a day, a sense list rewritten on one word in 16, pending entries ready within a
+  day); a file whose version isn't this build's (the kept fields changed) is a miss and is rewritten. With the clock not
+  set (a card fully offline after a restart, before any NTP), a record is taken whatever its age. A lookup is only
+  ever written after a call, so its fetch time is always known.
+- **When:** read ~~in `lookup::completeCard`~~ (as built: in `LiveSource::fetch`, before `completeCard`) before the call, on the card's fetch (outside RenderLock, where the call
+  would run): one bucket, read into one buffer (PSRAM past 4 KB), freed after. A miss's answer is queued in memory
+  (the newest few) and written on an idle pass of the card, never before phase B is drawn, ~~never as the card
+  closes (a cache: a lost write costs one lookup later)~~ (superseded 2026-09-28, as built: and as the card closes, with
+  the mirror's file, since a card closed within the idle window would otherwise keep nothing). Stepping onto a word looked up on an earlier card is a hit.
+- **Memory:** nothing resident; a bucket's buffer during a read or a write (≤ `kLookupBucketMaxBytes`). (Made so
+  2026-09-28, V7c R2: as first built a read decoded every record of the bucket; now it decodes only the match, "As built (V7c)".)
+- **Log:** ~~`[LXLOOK] <hit|miss|stale> <lang> in <ms> ms` per phase B and a per-boot count~~ (superseded 2026-09-28,
+  V7c R2: the as-built lines, "As built (V7c)"), so the device log gives the real hit rate.
+
+**(2) TLS session resumption: built.** Measured: the server gives 32-byte tickets with every handshake and accepts
+them (after an hour too: the API notes), and a resumed handshake skips the chain (3.4 KB) and its verification
+(three P-384 signatures and a P-256 one), keeping the X25519 exchange. On the device that's most of the 2.5 s; an
+estimate of 1–1.5 s saved per handshake, for every handshake listed above, is a device check.
+
+- **Build flag:** `HAVE_SESSION_TICKET` in the `[lexirise]` section of `platformio.ini` (off in this wolfSSL build:
+  `user_settings.h` never sets it), so the Lexirise envs only; the Lexirise-off build is unchanged. Flash cost measured
+  at build.
+- **`net::TlsConnection`** keeps the newest session (`wolfSSL_get1_session` ~~once a response has been read~~ (superseded
+  2026-09-28, V7c R5: once a NewSessionTicket has been read on that connection, "As built (V7c)"): TLS 1.3
+  tickets come after the handshake) and offers it on the next open (`wolfSSL_set_session`); a server that refuses
+  it does a full handshake in the same exchange ~~(no retry code)~~ (superseded 2026-09-28, V7c R2: and a handshake
+  that fails having offered one is tried once more in full, "As built (V7c)"). Replaced after every connection (the server sends
+  new tickets on a resumed one too); dropped when the host changes, when a handshake fails, and past its lifetime.
+  In RAM only (~~~0.7 KB internal~~ ~0.4 KB internal, to measure (V7c R2): one `WOLFSSL_SESSION`, the 32-byte ticket in its static buffer); **never on SD** (it
+  resumes an authenticated session); a restart or deep sleep loses it, so a boot's first call is a full handshake.
+- **Trust unchanged:** a resumed session is the one verified before (chain, host name, the two ISRG roots); no early
+  data. The `[LXT] Verified …` line says `resumed` or `full`.
+- **Not changed:** `kTlsIdleCloseMs` (30 s), and the prefetch and mirror calls still don't hold the session. Holding it
+  through a reading stretch (the page prefetch moving the idle close, up to the server's 70 s) would make most cards
+  warm, but holds the open session's internal RAM while reading, which is unmeasured; with a resumed handshake the
+  gain may be small. The device check measures both first; a change would come back as a question with the numbers.
+
+**Not built, and why:** C21 2 (a chapter at once: a ~6 s call blocks the loop, and V7b's prefetch covers a forward
+read while WiFi is up; V9 revisits it); 3 (V7b's page file already hits by the text's hash; a layout change re-splits
+pages, rare); 4 (prefetching likely unknown words: most taps are a first meeting, which only a guess could serve, at
+a cost in requests against the key's 1200/h with an unknown precision; decided once the device log gives the lemma
+cache's real hit rate); 5's "fast lookups" setting (a new setting and a battery trade: claritise's, as V7b's radio
+options); 6 (seeding the clock from the RTC is outside V7c's line and needs the HalClock accessor, P8); 7 (a separate
+pack); caching `GET /v1/vocabulary/{id}` (a saved word's own data: the mirror's domain).
+
+**Device checks owed with the build** (`../v0.1/device-checks.md` "v0.2 V7c", written by the build): a full and a
+resumed handshake's time and heap (free, lowest, largest), the first call after boot and one after 30 s idle; OTA,
+KOSync and a font download still connect with the flag; a hit's phase B time and a bucket's read and write times; a
+card on an analyzed page whose word hits makes no call and doesn't join WiFi; the hit count over a reading session.
+
+**Also in V7c** (carried from V7b's review, its landing commit): `page-annotations.md` §1.2's "16-byte record" lines
+and "the live answer wins" clause brought up to the R5 rule and 20-byte records; `kVocabPendingMax`'s size comment
+(28 B); §1.1 (e) "nothing on screen changes" superseded by claritise's decisions (the home screen's row); `ReaderPages`'
+early return before the per-pass reads; the page step after the partial-rebuild check; the failure wait's comment (any
+page); a page stamped before its call when the clock is set; `home-sync-smoke` waits before tapping the result;
+`LOG_ERR` on a failed `HomeSync` allocation.
+
+### As built (V7c, 2026-09-28, on `lexi/V7`)
+
+- **The lemma cache** (`lookup/LookupCache`, pure over `SettingsFiles`; the device's in `SettingsFilesHal.cpp`,
+  `lookup::lookupCache()`, with `timing::epochNowS` and `millis`): the file as `../v0.1/settings.md` §3 "The lemma
+  cache"; the bounds in `LexiriseConfig.h` (`kLookupBuckets`, `kLookupBucketMax`, `kLookupRecordMaxBytes`,
+  `kLookupBucketMaxBytes`, `kLookupMaxAgeS`, `kLookupPendingMax`). `LiveSource::setLookupCache` (word select gives it the
+  device's); `LiveSource::fetch` reads the focused word's bucket before phase B (`CacheRead`: hit, miss, stale), a hit
+  fills the card through `lookup::applyLookup` (the same fields as the call's answer: never a saved state, which stays
+  ①'s, the page's and the mirror's) and makes no call; a miss calls as before (`completeCard` hands back the entry) and
+  a `cacheable` answer (ready, with a sense, under the record cap) waits in `LiveSource` (the newest `kLookupPendingMax`)
+  until the card's idle Flush step (~~`CardSession::shouldFlushMirror`~~ `CardSession::shouldFlushFiles`, R2, after
+  `kDeckIdleMs`) or its close writes it (`LiveSource::flushLookups`, then the mirror's `flushMirror`): one read and one
+  write per bucket touched; a failed write isn't tried again on that card's idle windows (the close tries once more).
+  **R2:** a read walks the bucket comparing each record's text in place and decodes only the match
+  (`lookup::findInBucket`: no per-record strings on the heap before phase B's handshake); a file too large or that
+  doesn't check out is removed, one that fails to read (an SD error) is a miss and stays, and a write skips a bucket it
+  couldn't read (never replaced with less). The idle step and the close log `[LXLOOK] cache: <n> answers <written|not
+  written> in <ms> ms[ (closing)]` and `[LXVOCAB] mirror file read or written in <ms> ms[ (closing)]`
+  (`LexiriseCardActivity::flushFiles`); a close after quick steps writes up to `kLookupPendingMax` buckets before the
+  card finishes (timed: a device check). A record whose time is unknown is stale once the clock is set; with
+  the clock not set any record is taken (R3: one stamped more than `kLookupMaxAgeS` ahead is stale). A file that
+  doesn't check out is removed. The log: `[LXLOOK] cache <hit|miss|
+  stale> in <ms> ms (<hits> of <reads> hits this boot)` before each phase B (the counts carried in `CacheRead`, R2). Tests: `LookupCacheTest` (files, keys,
+  staleness, caps, what's never kept, a miss is one bounded read and nothing else) and `LiveLookupCache` in
+  `test/lexirise_card` (a miss adds only its read, nothing written before phase B is drawn, the idle step and the close
+  write it, another card hits it with no call, a hit keeps ①'s saved level, a pending or failed answer isn't kept).
+- **TLS session resumption** (`net/TlsSession.h`: `SessionKeeper` and `openResuming`, pure; `net/TlsConnection` the
+  device's side): as `../v0.1/lexirise-client.md` §1 "Session resumption". `HAVE_SESSION_TICKET` in `[lexirise]`.
+  Tests: `TlsSessionTest` (the first handshake full, its session offered next; a refused resumption is a full
+  handshake in the same exchange; a failed one falls back to a full handshake the call never sees; the session dropped
+  on a failed or timed-out handshake and for another host or port (R3); failures before the handshake keep it; references released
+  once; R2: `keepOnClose`, a session kept only with a ticket, its length read from the session itself, so a larger
+  stateless ticket is kept too; R5: and only when that ticket was read on the closing connection, `ticketSeen` changed
+  since its handshake ended: ~~a resumed connection shares the session it was offered, its handshake writes a new
+  resumption secret into it~~ (corrected 2026-09-28, R9: a resumed connection works on its own copy, wolfSSL's
+  `HaveUniqueSessionObj` duplicating a session the keeper holds, and its handshake writes the new resumption secret into
+  that copy), and one closed before its NewSessionTicket would hold the old ticket with the new secret,
+  so it keeps nothing and the next open is full, never a failed resumption; a session wolfSSL refuses to offer
+  (expired) is dropped and not retried, `Attempted::refused`). **R2:** the kept session is dropped when WiFi is given back (`LexiriseService::
+  releaseWifi`: leaving reading, where OTA, fonts and KOSync want the internal RAM, and a home sync's end;
+  `Connection::forgetSession`), not on the idle close or the radio's idle teardown while reading. **Cost, measured
+  2026-09-28** (`pio run -e x4pro`, this code with and without the flag): 4,292 bytes of flash
+  and 192 bytes of static RAM (the flag's ticket code and wolfSSL's one-session client cache growing by the ticket
+  buffer); at run time every wolfSSL connection's heap `WOLFSSL_SESSION` grows by the same 192 bytes (R8). Held at run time while reading: one `WOLFSSL_SESSION` in internal RAM between connections (~0.4 KB, the
+  static session cache row's size from `nm`; to measure on the device).
+  The rest of V7c (the lemma cache, the nits) adds 8,108 bytes of flash and 88 of static RAM (`x4pro`, against `main` @
+  `035313a1`).
+- **The flag reaches every wolfSSL user in the X4 Pro builds** (OTA, KOSync, font downloads through the SDK's
+  `SecureClient`): ~~their TLS 1.3 ClientHello now offers PSK key-exchange modes and~~ (struck 2026-09-28, V7c R8: it
+  offered them already, `NO_PSK` isn't set) they now parse a server's NewSessionTickets, and the tickets are stored in
+  wolfSSL's one-session cache, and every connection's heap `WOLFSSL_SESSION` grows by 192 bytes (the ticket buffer); none of them asks for a session back (`SecureClient` never calls `wolfSSL_set_session`),
+  so they still handshake in full. Device checks below. (R4: so a
+  server's ticket longer than wolfSSL's static `SESSION_TICKET_LEN` is held on the heap in its one-row client session
+  cache after an OTA check, a KOSync sync or a font download: a few hundred bytes, which the existing heap device checks
+  see).
+- **V7b's carried nits:** §1.2's record size and "the live answer wins" struck in place (`page-annotations.md`);
+  `kVocabPendingMax`'s comment (28 B); §1.1 (e) superseded; `ReaderPages::step` returns on the cheap gates (drawn, usable,
+  WiFi) before the pass's other reads; the reader's page step runs after the partial build's start
+  (`EpubReaderActivity::loop`: a build it starts is busy first); `kPageFailureWaitMs`'s comment (any page waits); a page
+  is stamped before its call when the clock is set, after it when the call set it (`PagePrefetcher::step`, pinned in
+  `PrefetchTest`); `home-sync-smoke` waits `HOME_SYNC_TAP_AFTER_S` for the result's popup before tapping it (tested);
+  `LOG_ERR` when `HomeSync` can't allocate its sync.
+- **Known limits:** a hit shows the meaning as it was fetched, up to 30 days old (ranks drift under 1% a day; a word's
+  senses can be rewritten); a card closed before its phase B came keeps nothing; the cache is per text, so a lemma
+  Lexirise names differently in two sentences is two records; the session is lost on a restart or deep sleep (a boot's
+  first call is a full handshake); whether a resumed handshake is as fast as estimated (1–1.5 s saved) is a device check.
+  **R2:** a stale record (over 30 days) isn't used as an offline fallback: offline, that word's card shows no meaning, as
+  before V7c (using it is a choice for claritise later); the cache isn't keyed by `base_url` (only a developer changes
+  it, and the dictionary behind another host is the same one: documented, not keyed); `Fetched` carries the cache's
+  read and answer (~240 B more on the loop task's frames held across a miss's handshake: a device check).
+- **R3 (2026-09-28):** `lxctl.py cache-smoke` (read-only, one held session, host-tested on synthetic logs with its log
+  formats pinned against the source; never run here); the kept session is keyed by host and port
+  (`SessionKeeper::offer(host, port)`); a record stamped more than `kLookupMaxAgeS` ahead of the clock is stale too (a
+  clock that was wrong when it was written); the mirror's line is logged only when the flush read or wrote
+  (`LiveSource::flushMirror` says); `PagePass::cheapGates`, one home for the reader's cheap gates; the record's field
+  offsets named.
+- **R4+R5 (2026-09-28):** the kept session only when its ticket came on the closing connection (`keepOnClose`, above);
+  a session wolfSSL refuses dropped, not retried (`Attempted`); a write groups its answers by bucket once and touches no
+  bucket when none can be kept; the length prefix named (`kLengthBytes`); `cache-smoke` says words already looked up
+  stay cached 30 days (fresh coordinates needed).
+- **R6+R7 (2026-09-28):** `-DWOLFSSL_TICKET_NONCE_MALLOC` beside `HAVE_SESSION_TICKET` (the flag made every wolfSSL user
+  parse NewSessionTickets, and a nonce over 8 bytes, rustls's 32, failed the connection: `../v0.1/lexirise-client.md`
+  §1 "wolfSSL scope", with the other new hard failure, a ticket lifetime over 7 days); measured 912 bytes of flash and
+  8 of static RAM (`x4pro`, with and without it). A session offered to a handshake that then fails, times out or is
+  given up is dropped; a rejected certificate isn't retried in full (`Attempted::certificateRejected`); the handshake
+  tears down without keeping (`TlsConnection::teardown`), so the keeper's offered pointer stays valid; an idle step run
+  for the cache doesn't retry the mirror's failed write (the close does); the flush order lives in
+  `CardSession::flushFiles` (the activity only logs); `Fetched` carries the read's log (`CacheReadLog`), not its entry.
+  **Known limit (R6):** the cache isn't keyed by account; `translation_target` is account-wide
+  (`../reference/lexirise-api-notes.md`), so another account on the same card with another target language sees the
+  cached senses in the old one for up to 30 days.
+- **R8 (2026-09-28):** the fallback to a full handshake fits one open's budget: `TlsConnection::open` sets a deadline
+  of a TCP connect and a handshake (`2 * kHttpTimeoutMs`, as `kMaxCallMs` counts them), each step stops by it, and the
+  fallback runs only with `config::kTlsFallbackMinMs` (~~3 s~~ 4 s since R9: a full handshake with its TCP connect took
+  2.5 s on the device, and less than 4 s would likely time out anyway) or more of it left (`openResuming`'s `timeLeft`; tested), so
+  a call's bound stays `kMaxCallMs` (45 s). The card takes its own answer not yet written for the same lemma (no SD
+  read, no call; `[LXLOOK] cache pending: ...`); a card left without `end()` (sleep, the stack cleared) writes its
+  pending answers and the mirror as it exits (`onExit`, under the lock `exitActivity` holds, as the reader's page loads
+  do SD I/O).
+- **R9 (2026-09-28):** the closing flush's lock stated where the code and `../v0.1/settings.md` §3 said "outside
+  RenderLock" only: a card that leaves without `end()` flushes under `exitActivity`'s lock (tested:
+  `CardSession::flushFiles(closing)` writes both and never reads the mirror); `config::kTlsOpenBudgetMs` names the open's
+  budget (`kMaxCallMs` uses it); the pending answers aren't reserved for the whole card (a card that looks nothing up
+  holds none); the cache's folders made once per write.
+- **Device checks owed:** `../v0.1/device-checks.md` "v0.2 V7c".
 
 ## C22. One font for everything
 
@@ -945,13 +1140,14 @@ when it's settled.
 ~~17. **Reopen offline review?**~~ **Yes** (claritise, 2026-09-25). Plan and clock findings in C11.
 18. Does **this device's RTC** hold the right time now? It depends on whether it ever joined WiFi through CrossPoint's own screen. Check with Settings → Customise Status Bar (the clock / sync row), or a dev-harness `CLOCK` command once built (C11).
 19. How long does a study session stay valid for syncing answers later? Not in the reference. **Test running:** a session started 2026-09-25 17:38 UTC gets one real review on 2026-09-27 (`../reference/lexirise-api-notes.md`, "Study API"). Starting a session was confirmed read-only (C11).
-12. Lemma-cache hit rate over a chapter; time and memory of a whole-chapter `analyze/text`; TLS session resumption's heap cost on wolfSSL (C21).
+12. ~~Lemma-cache hit rate over a chapter; time and memory of a whole-chapter `analyze/text`; TLS session resumption's heap cost on wolfSSL (C21).~~ (Superseded 2026-09-28: the hit rate measured on a real volume and resumption on the server, `../reference/lexirise-api-notes.md` "Caches (V7c), measured"; what's left is on the device, C21 "V7c design"; the chapter call isn't built.)
 
 **Needs claritise:**
 13. The one font: which family (Noto Serif CJK or Sans), Chinese letterforms (JP forms, or ship JP + SC), and whether it replaces the UI fonts on the approved card (C22).
 14. ~~The keep / remove / unsure list for slimming (C23).~~ **Approved 2026-09-25: `slimming.md`.** Still open there: S1 (the font, which is item 13), S2 (a built-in fallback font), S3 (keeping TXT).
 15. The card's orientation on a sideways manga strip (`manga.md` §6, already owed).
 16. The save-uses-context rule in C10 (proposed, not yet signed off).
+20. **"Synced · 0 words changed" on a capped run** (carried from V7b's review): a Sync Vocabulary press stopped by its page cap after reading pages that changed nothing says "Synced" with the count 0; keep it, or say something else? (`page-annotations.md` §1.1 "Sync Vocabulary on the home screen".)
 
 ## Questions to put to Lexirise
 

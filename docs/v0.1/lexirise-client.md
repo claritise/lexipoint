@@ -47,14 +47,47 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
   server may have acted on it before dropping the connection). Nothing else is retried.
   Timeouts: 6 s for connect, handshake and each read, and **15 s for the whole request** once the
   connection is open (the stale-session retry shares it), so a trickling server can't hold the main
-  loop. One call is bounded by WiFi join 6 s + NTP 5 s + TCP/handshake 12 s + 15 s (P11: the join is 3 s direct +
+  loop. One call is bounded by WiFi join 6 s + NTP 5 s + TCP/handshake 12 s (V7c: the resumption fallback included,
+  §1 "Session resumption") + 15 s (P11: the join is 3 s direct +
   8 s scan within 11 s, plus 2 s radio slack: `config::kMaxCallMs` = 45 s, `offline-and-errors.md` §5).
 - **Idle close:** the TLS session is closed 30 s after the last call (and on WiFi teardown, and on
-  leaving reading), so it never sits on internal heap.
+  leaving reading), so it never sits on internal heap (V7c: but for the small resumption session kept while reading,
+  below, dropped when WiFi is given back).
+- **Session resumption (v0.2 V7c, C21):** `net::TlsConnection` keeps the last session with the host after a connection
+  closes (`net::SessionKeeper`, `net/TlsSession.h`: one `WOLFSSL_SESSION` holding the server's 32-byte ticket, in
+  internal RAM, never on SD) and offers it to the next handshake (`wolfSSL_set_session`), which then skips the
+  certificate chain and its verification (the chain, the host name and the pinned roots were verified when it was made;
+  no early data). A server that doesn't take it answers with a full handshake; one wolfSSL refuses to offer (past its ticket's
+  lifetime) is dropped, the handshake full; a handshake that fails having offered
+  one drops it and is tried once more in full (`net::openResuming`), inside the same open's budget (a TCP connect and a
+  handshake, `2 * kHttpTimeoutMs`, which `kMaxCallMs` counts: each step stops by the open's deadline, and the full retry
+  runs only with `config::kTlsFallbackMinMs` (4 s, R9: a full handshake with its TCP connect took 2.5 s) of it left, else the call fails as it would have; V7c R8), unless it rejected the server's certificate (a
+  resumed handshake verifies none: the server did a full one, and another would be rejected the same way; V7c R7); a
+  timeout drops it too, and so does a handshake given up for the reader's input once the session was offered (~~it may
+  hold that handshake's new secret already~~ corrected 2026-09-28, V7c R9: conservative, the handshake worked on its own
+  copy, `HaveUniqueSessionObj` duplicating a session the keeper holds, so the kept one wasn't modified; V7c R7). The keeper owns the session while it's offered: a handshake tears
+  down without keeping anything (`TlsConnection::teardown`), only `close()` of a connected session keeps one. Kept only when the session
+  carries a ticket read on that connection (V7c R5, the mechanism corrected in R9: a resumed connection works on its own copy of the
+  session, `SetupPskKey` → `HaveUniqueSessionObj`; its client Finished writes a new resumption secret into the copy while
+  the ticket changes only with a NewSessionTicket, `SetTicket`, so a copy closed before one holds the old ticket with the
+  new secret, which can't resume: nothing is kept, the next open is full); replaced after every connection (a resumed one gets new tickets); dropped for another host or port; ~~wolfSSL
+  refuses one past its ticket's lifetime~~ (struck 2026-09-28, V7c R7: said above). A restart loses it, and giving WiFi back drops it (V7c R2: leaving reading, a
+  home sync's end; `Connection::forgetSession`). `[LXT] Verified <host> (<version>, <cipher>, resumed|full)
+  in <ms> ms` says which. Needs `HAVE_SESSION_TICKET` (the `[lexirise]` section; its cost: `../v0.2/00-overview.md` C21
+  "As built (V7c)").
 - **The web page never blocks on the network:** a key check is queued (`requestKeyCheck`) and run by
   `LexiriseService::tick()` from the main loop, off `WebServer::handleClient`'s stack; the page polls.
-- **wolfSSL scope:** the SHA-384/P-384 flags apply to every wolfSSL user in the X4 Pro builds. OTA,
-  OPDS, KOSync and font downloads now also offer those suites; P1's on-device list re-tests them.
+- **wolfSSL scope:** the SHA-384/P-384 flags (and V7c's `HAVE_SESSION_TICKET`) apply to every wolfSSL user in the X4 Pro builds. OTA,
+  OPDS, KOSync and font downloads now also offer those suites; P1's on-device list re-tests them. **V7c:** with
+  `HAVE_SESSION_TICKET` every one of them parses a TLS 1.3 server's NewSessionTickets after its handshake (none resumes:
+  `SecureClient` never offers a session). Two ways that could fail a connection, found in wolfSSL 5.7.2's `tls13.c`:
+  a ticket nonce longer than 8 bytes (rustls sends 32) failed the read with "Nonce length not supported", so
+  `WOLFSSL_TICKET_NONCE_MALLOC` is set too (the nonce then goes on the heap, freed with its session or when the next
+  ticket replaces it); and a ticket lifetime over 7 days (604,800 s, TLS 1.3's cap) fails with `SERVER_HINT_ERROR`,
+  which no compliant server sends. Also new with the flag (R8): a ticket too large for the heap left fails with
+  `MEMORY_E`, and one read while the millisecond clock reads 0 with `GETTIME_ERROR`; and every connection's heap
+  `WOLFSSL_SESSION` is 192 bytes larger (the ticket buffer), OTA, KOSync, OPDS and fonts included. Device checks:
+  `device-checks.md` "v0.2 V7c".
 - **Clock source:** NTP only for now. Seeding the system clock from the RTC (so a network that blocks
   NTP still works, and the first call after boot skips the wait) needs a HalClock date accessor, a
   change to base code; tracked for P8 (it only matters on NTP-blocking networks).

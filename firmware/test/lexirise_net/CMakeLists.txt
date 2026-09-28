@@ -15,6 +15,7 @@ add_executable(LexiriseNetTest
   ServiceTest.cpp
   JsonStreamTest.cpp
   VocabPageTest.cpp
+  TlsSessionTest.cpp
   ${REPO_ROOT}/src/lexirise/net/JsonStream.cpp
   ${REPO_ROOT}/src/lexirise/api/VocabPage.cpp
   ${REPO_ROOT}/src/lexirise/net/JsonWriter.cpp

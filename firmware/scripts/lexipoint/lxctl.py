@@ -50,6 +50,12 @@ Examples:
   lxctl.py home-sync-smoke [x y]      # a dev build, Lexirise on with a key, WiFi saved: Home, then tap Sync
                                       # Vocabulary (x y: the row, default theme without OPDS); checks the result,
                                       # read-only calls, and WiFi given back after it (V7b). One held session
+  lxctl.py cache-smoke [x1 y1 x2 y2]  # a dev build, a Japanese or Chinese book open at running text (upright
+                                      # portrait), WiFi saved; two words not looked up before (x1 y1, x2 y2): a
+                                      # card on the first (cache miss, one dictionary/lookup, the answer written
+                                      # as it closes); past the TLS idle close, the first again (a hit, no lookup);
+                                      # then the second (a miss); a TLS session after the first card resumed
+                                      # (which call isn't said) (V7c). Read-only; one held session
   lxctl.py page-smoke [x y]           # a dev build, a Japanese or Chinese book open at running text (upright
                                       # portrait), WiFi saved: a card on the word at x y brings WiFi up; then the
                                       # page and the next are analyzed, a turn, fast turns, and a card on the page
@@ -880,8 +886,8 @@ def ignore_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT, watch_s: floa
 # "[LXVOCAB] page <items> items in <ms> ms (<error>[, given up for input]), applied in <ms> ms (file <written|not
 # written|write failed>); heap <free> free, <min> min, <largest> largest" (LexiriseCardActivity::idleStep, every build); a page given up for a
 # button logs "[LXVOCAB] <pass> <lang> offset <n> given up: input came" (VocabStore::apply); the mirror's file read or
-# write, "[LXVOCAB] mirror file read or written in <ms> ms". Lexirise calls: the service's "[LXS] ..." lines
-# (DECK_CALL_LOG).
+# write, "[LXVOCAB] mirror file read or written in <ms> ms[ (closing)]" (only when it read or wrote). Lexirise calls:
+# the service's "[LXS] ..." lines (DECK_CALL_LOG).
 VOCAB_LOG = re.compile(r"^\[(\d+)\] \[\w+\] \[LXVOCAB\] ")
 VOCAB_PAGE_LOG = re.compile(r"\[LXVOCAB\] page (\d+) items in (\d+) ms \(([^)]*)\), applied in (\d+) ms "
                             r"\(file (written|not written|write failed)\); heap (\d+) free, (\d+) min, (\d+) largest")
@@ -1141,6 +1147,9 @@ HOME_SYNC_ROW = (240, 314 + 72 * 3 + 32)
 HOME_SYNC_WATCH_S = 120.0  # a join, then up to a few dozen pages on a first sync
 # The result popup's centre (Lyra: y 132, 53 tall): the smoke taps it and a second sync mustn't follow (R9).
 HOME_SYNC_POPUP = (240, 158)
+# The result is logged before its popup is drawn: the tap waits this long (well inside kVocabSyncResultMs, 2 s), so it's
+# a press on the popup shown, the one HomeSyncFlow dismisses on its release.
+HOME_SYNC_TAP_AFTER_S = 0.8
 HOME_SYNC_AFTER_S = 5.0  # watched after the result goes: nothing more may start
 
 
@@ -1183,12 +1192,132 @@ def home_sync_smoke(h: Harness, row: tuple[int, int] = HOME_SYNC_ROW,
     h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
     h.command(f"TAP {row[0]} {row[1]}", seen=log)
     log.extend(read_for(h, watch_s, lambda line: bool(HOME_SYNC_LOG.search(line))))
+    log.extend(read_for(h, HOME_SYNC_TAP_AFTER_S))  # the popup drawn first
     h.command(f"TAP {HOME_SYNC_POPUP[0]} {HOME_SYNC_POPUP[1]}", seen=log)  # dismiss the result: on its release only
     log.extend(read_for(h, watch_s, lambda line: bool(HOME_SYNC_WIFI_LOG.search(line))))
     log.extend(read_for(h, HOME_SYNC_AFTER_S))
     r = check_home_sync_log(log)
     print(f"home-sync-smoke OK: {r['result']} after {r['pages']} pages, {r['changed']} words changed; WiFi "
           f"{r['wifi']} in {r['release_ms']} ms")
+    return r
+
+
+# cache-smoke (v0.2 V7c, C21): the lemma cache and TLS session resumption, read-only, from the log. Before each phase B
+# the card logs "[LXLOOK] cache <hit|miss|stale> in <ms> ms (<h> of <n> hits this boot)"; the idle Flush step and the
+# close "[LXLOOK] cache: <n> answers <written|not written> in <ms> ms[ (closing)]" (LexiriseCardActivity); each TLS
+# session "[LXT] Verified <host> (<version>, <cipher>, <resumed|full>) in <ms> ms, free heap <n>" (TlsConnection).
+CACHE_READ_LOG = re.compile(r"\[LXLOOK\] cache (hit|miss|stale) in (\d+) ms \((\d+) of (\d+) hits this boot\)")
+CACHE_WRITE_LOG = re.compile(r"\[LXLOOK\] cache: (\d+) answers (written|not written) in (\d+) ms( \(closing\))?")
+TLS_VERIFIED_LOG = re.compile(r"\[LXT\] Verified (\S+) \(([^,]+), ([^,]+), (resumed|full)\) in (\d+) ms, "
+                              r"free heap (\d+)")
+CACHE_LOOKUP = ("POST", "/v1/dictionary/lookup")
+CACHE_SECOND_WORD = (READER_ON_TEXT[0], READER_ON_TEXT[1] + 120)  # another line of the page: pass a real word
+TLS_IDLE_CLOSE_S = 30.0  # config::kTlsIdleCloseMs (test_lxctl checks it)
+CACHE_IDLE_WAIT_S = TLS_IDLE_CLOSE_S + 5.0  # past it: the session closed, the next call handshakes again
+CARD_CLOSED = "Exiting activity: LexiriseCard"
+
+
+def card_spans(log: list[str]) -> list[tuple[int, int]]:
+    """Each card's lines as (first, past the last) in `log`, from its opening to its exit (the close's flush is logged
+    before the exit)."""
+    spans: list[tuple[int, int]] = []
+    start: int | None = None
+    for i, line in enumerate(log):
+        if CARD_OPENED in line:
+            start = i
+        elif start is not None and CARD_CLOSED in line:
+            spans.append((start, i + 1))
+            start = None
+    return spans
+
+
+def check_cache_log(log: list[str]) -> dict[str, int]:
+    """V7c on the device, from the log of three cards: the first word's card missed the cache, sent one
+    dictionary/lookup and wrote its answer; the same word's second card hit, with no lookup; the second word's card
+    missed, and a TLS session after the first card was resumed; nothing written to Lexirise. Returns the read, write
+    and handshake times; raises RuntimeError on the first broken rule."""
+    spans = card_spans(log)
+    if len(spans) < 3:
+        raise RuntimeError(f"{len(spans)} cards opened and closed, not 3 (a dev build? Lexirise, not StarDict?)")
+    first, again, second = (log[a:b] for a, b in spans[-3:])
+
+    def reads(card: list[str]) -> list[re.Match]:
+        return [m for line in card if (m := CACHE_READ_LOG.search(line))]
+
+    def lookups(card: list[str]) -> int:
+        return sum(1 for c in deck_calls(card) if (c[1], c[2]) == CACHE_LOOKUP)
+
+    r1 = reads(first)
+    if not r1 or r1[0].group(1) != "miss":
+        raise RuntimeError(f"the first card's cache read wasn't a miss: {[m.group(0) for m in r1]} (a word looked up "
+                           "before stays cached for 30 days: pass the coordinates of words never looked up, "
+                           "cache-smoke x1 y1 x2 y2)")
+    if lookups(first) != 1:
+        raise RuntimeError(f"the first card sent {lookups(first)} dictionary/lookup calls, not 1")
+    writes = [m for line in first if (m := CACHE_WRITE_LOG.search(line))]
+    written = [m for m in writes if m.group(2) == "written"]
+    if not written:
+        raise RuntimeError(f"the first card's answer wasn't written to the cache: {[m.group(0) for m in writes]}")
+    r2 = reads(again)
+    if not r2 or r2[0].group(1) != "hit":
+        raise RuntimeError(f"the same word's second card didn't hit the cache: {[m.group(0) for m in r2]}")
+    if lookups(again):
+        raise RuntimeError("the same word's second card still sent dictionary/lookup")
+    r3 = reads(second)
+    if not r3 or r3[0].group(1) != "miss":
+        raise RuntimeError(f"the second word's cache read wasn't a miss: {[m.group(0) for m in r3]} (cached for 30 "
+                           "days once looked up: pass fresh coordinates, cache-smoke x1 y1 x2 y2)")
+    after = log[spans[-3][1]:]
+    handshakes = [m for line in after if (m := TLS_VERIFIED_LOG.search(line))]
+    resumed = [m for m in handshakes if m.group(4) == "resumed"]
+    if not resumed:
+        raise RuntimeError(f"no resumed TLS session after the idle close: {[m.group(0) for m in handshakes]}")
+    bad = [line for line in log if "[LXS] " in line and any(w in line for w in PAGE_WRITES)]
+    if bad:
+        raise RuntimeError(f"a write to Lexirise during a read-only smoke: {bad[0]}")
+    full = [m for line in log if (m := TLS_VERIFIED_LOG.search(line)) and m.group(4) == "full"]
+    return {"miss_ms": int(r1[0].group(2)), "hit_ms": int(r2[0].group(2)), "write_ms": int(written[-1].group(3)),
+            "resumed_ms": int(resumed[0].group(5)), "resumed_heap": int(resumed[0].group(6)),
+            "full_ms": int(full[0].group(5)) if full else -1}
+
+
+def cache_smoke(h: Harness, first: tuple[int, int] = READER_ON_TEXT, second: tuple[int, int] = CACHE_SECOND_WORD,
+                idle_s: float = CACHE_IDLE_WAIT_S, watch_s: float = LEXI_CALL_TIMEOUT_S) -> dict[str, int]:
+    """V7c's lemma cache and TLS resumption on the device, read-only. A dev build, one held serial session
+    (dev-harness.md §3), a Japanese or Chinese book open at running text, upright portrait, Lexirise on, WiFi saved;
+    `first` and `second`: two words not looked up before. A card on the first (its phase B's lookup answered, then
+    closed: the answer written as it closes); `idle_s` past the TLS idle close, a card on the first again (a hit); then
+    a card on the second (a miss). Some TLS session after the first card must have resumed (the log doesn't say for
+    which call). Checked by check_cache_log."""
+    h.command("AWAKE 1")
+    log: list[str] = []
+
+    def card(at: tuple[int, int], done) -> None:
+        h.command(f"LONG {at[0]} {at[1]}", seen=log)
+        log.extend(collect_until(h, (CARD_OPENED, DEFINITION_OPENED), LEXI_CALL_TIMEOUT_S))
+        if DEFINITION_OPENED in log[-1]:
+            raise RuntimeError(f"StarDict answered the word at {at}, not Lexirise")
+        log.extend(read_for(h, watch_s, done))
+        h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+        h.command("HOME", seen=log)
+        log.extend(collect_until(h, (CARD_CLOSED,), CARD_CLOSE_WAIT_S + LEXI_CALL_TIMEOUT_S))
+
+    def looked_up(line: str) -> bool:
+        m = DECK_CALL_LOG.search(line)
+        return bool(m) and (m.group(2), m.group(3)) == CACHE_LOOKUP
+
+    def cache_hit(line: str) -> bool:
+        m = CACHE_READ_LOG.search(line)
+        return bool(m) and m.group(1) == "hit"
+
+    card(first, looked_up)
+    log.extend(read_for(h, idle_s))  # the TLS session closes
+    card(first, cache_hit)
+    card(second, looked_up)
+    r = check_cache_log(log)
+    full = f"{r['full_ms']} ms" if r["full_ms"] >= 0 else "not seen"
+    print(f"cache-smoke OK: miss read {r['miss_ms']} ms, hit read {r['hit_ms']} ms, written in {r['write_ms']} ms; "
+          f"TLS resumed in {r['resumed_ms']} ms (free heap {r['resumed_heap']}), full {full}")
     return r
 
 
@@ -1381,6 +1510,13 @@ def main() -> None:
                 home_sync_smoke(h, tuple(map(int, nums[:2])) if len(nums) >= 2 else HOME_SYNC_ROW)
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"home-sync-smoke FAILED: {e}")
+        elif c == "cache-smoke":
+            nums = [int(x) for x in a.args if x.lstrip("-").isdigit()]
+            try:
+                cache_smoke(h, tuple(nums[:2]) if len(nums) >= 2 else READER_ON_TEXT,
+                            tuple(nums[2:4]) if len(nums) >= 4 else CACHE_SECOND_WORD)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"cache-smoke FAILED: {e}")
         elif c == "page-smoke":
             nums = [x for x in a.args if x.lstrip("-").isdigit()]
             try:

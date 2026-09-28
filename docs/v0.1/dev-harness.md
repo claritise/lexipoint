@@ -90,8 +90,11 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
   while the page streams) and `page-smoke` (v0.2 V7b: a card brings WiFi up, then the page analysis over page turns
   at reading pace and fast, and a card on the page reached, checked from its `[LXPAGE]`, `[ERS] Rendered page` and
   `[LXS]` lines; read-only) and `home-sync-smoke` (v0.2 V7b: Home, then the Sync Vocabulary row; its result, only
-  vocabulary-list calls, and WiFi given back after it; read-only). Each is host-tested on synthetic logs in
-  `test_lxctl.py`.
+  vocabulary-list calls, and WiFi given back after it; it waits `HOME_SYNC_TAP_AFTER_S` for the result's popup before
+  tapping it, so the tap is a press on the popup shown; read-only) and `cache-smoke` (v0.2 V7c: three cards, a lemma
+  cache miss written as the card closes, a hit on the same word past the TLS idle close, a second word, and a TLS session
+  after the first card resumed (which call isn't said), checked from the `[LXLOOK]`, `[LXT] Verified` and `[LXS]`
+  lines; read-only). Each is host-tested on synthetic logs in `test_lxctl.py`.
 - **Never open the port in a loop** (a "wait until it answers" poll): each open resets the reader, and a poll that
   opened it every second or two kept it restarting until the poll was stopped (2026-09-27).
 - **Never open it from two processes at once:** the second read fails ("device reports readiness to read but

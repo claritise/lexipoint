@@ -71,6 +71,7 @@ class LexiriseClient {
   ApiResponse send(const net::Request& request, net::BodySink* sink = nullptr, net::Abort abort = nullptr);
 
   void close() { connection_.close(); }
+  void forgetSession() { connection_.forgetSession(); }
 
  private:
   enum class Attempt { Done, StaleSession };

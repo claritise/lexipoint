@@ -3,7 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -183,12 +185,14 @@ struct Saving {
   CardSession session;
   unsigned long now = 0;
   // `mirror`: the vocab mirror the card is given (V7a), before its analysis.
+  // `cache`: the lemma cache (V7c).
   explicit Saving(const bool complete = true, std::vector<std::string> tags = {"xteink"},
-                  lexipoint::vocab::VocabStore* mirror = nullptr)
+                  lexipoint::vocab::VocabStore* mirror = nullptr, lexipoint::lookup::LookupCache* cache = nullptr)
       : source(rig.api, rig.tap(1, 0), rig.page, std::move(tags)),
         c(source, ReadingMode::Kana),
         session(c, targets, input, &source) {
     if (mirror) source.setVocabMirror(*mirror);
+    if (cache) source.setLookupCache(*cache);
     rig.api.analyzeReplies = {apiOk(kAnalyze)};
     rig.api.lookupReplies = {apiOk(kLookupYomu)};
     c.open(now);
@@ -3296,8 +3300,8 @@ Idle idleStep(Saving& s, const unsigned long nowMs) {
     case CardSession::IdleStep::Deck:
       s.session.applyDeck(s.session.fetchDeck(), nowMs);
       return Idle::Deck;
-    case CardSession::IdleStep::Flush:
-      s.session.flushMirror(/*load=*/true, nowMs);
+    case CardSession::IdleStep::Flush:  // as LexiriseCardActivity::flushFiles
+      s.session.flushFiles(/*closing=*/false, nowMs);
       return Idle::Flushed;
     case CardSession::IdleStep::Vocab: {
       const lexipoint::vocab::PageApplied applied =
@@ -3513,7 +3517,7 @@ TEST(LiveMirror, NoSdWriteBeforeTheRedrawOnlyOnAnIdleCard) {
   EXPECT_EQ(idleStep(s, s.now + 1), Idle::Nothing);  // not idle yet
   EXPECT_EQ(idleStep(s, s.now + config::kDeckIdleMs), Idle::Flushed);
   EXPECT_GT(m.files.writes, writes);
-  EXPECT_FALSE(s.session.shouldFlushMirror(s.now + 10 * config::kDeckIdleMs, false, false, std::nullopt));
+  EXPECT_FALSE(s.session.shouldFlushFiles(s.now + 10 * config::kDeckIdleMs, false, false, std::nullopt));
 }
 
 TEST(LiveMirror, TheMirrorIsReadOnTheFirstIdleStepNotAsTheCardOpens) {
@@ -3589,7 +3593,7 @@ TEST(LiveMirror, AnAnalysisThatMatchesTheMirrorLeavesNothingToWrite) {
   const int writes = files.writes;
   Saving s(/*complete=*/true, {"xteink"}, &store);
   EXPECT_FALSE(store.dirty());
-  EXPECT_FALSE(s.session.shouldFlushMirror(s.now + 10 * config::kDeckIdleMs, false, false, std::nullopt));
+  EXPECT_FALSE(s.session.shouldFlushFiles(s.now + 10 * config::kDeckIdleMs, false, false, std::nullopt));
   EXPECT_EQ(files.writes, writes);
 }
 
@@ -3864,4 +3868,285 @@ TEST(LiveProbe, AnIdlePageThatChangesAWordOnTheCardRedrawsItToo) {
   }
   EXPECT_EQ(m.level(3), 4);
   EXPECT_EQ(s.c.state().level, Level::Known);
+}
+
+// The lemma cache (C21, V7c; lookup/LookupCache.h) on the card: a hit makes no call, a miss adds only its read, and the
+// answer is written on an idle card or as it closes, never saved state.
+namespace {
+
+using lexipoint::lookup::CacheRead;
+using lexipoint::lookup::LookupCache;
+
+uint32_t cacheWallS = 1790300000;
+uint32_t cacheWall() { return cacheWallS; }
+
+struct Cached {
+  lexipoint::fakes::FakeFiles files;
+  LookupCache cache{files, cacheWall};
+};
+
+}  // namespace
+
+TEST(LiveLookupCache, AMissCallsAndAddsNothingButTheRead) {
+  Cached k;
+  Saving s(/*complete=*/false, {"xteink"}, nullptr, &k.cache);  // phase A shown
+  const int reads = k.files.reads;
+  const int writes = k.files.writes;
+  s.fetchOne();  // B
+  EXPECT_EQ(s.rig.api.looked, std::vector<std::string>{"読む"});
+  EXPECT_EQ(k.files.reads, reads + 1);  // one bucket read before the call
+  EXPECT_EQ(k.files.writes, writes);    // nothing written before phase B is drawn
+  EXPECT_EQ(s.c.state().phase, Phase::Complete);
+  EXPECT_EQ(s.c.currentWord().senses, std::vector<std::string>{"to read"});
+  EXPECT_EQ(s.source.pendingLookups(), 1u);
+}
+
+TEST(LiveLookupCache, TheAnswerIsWrittenOnAnIdleCardThenAnotherCardHitsIt) {
+  Cached k;
+  {
+    Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+    EXPECT_FALSE(s.session.shouldFlushFiles(s.now, false, false, s.c.nextDueMs()));  // phase B just drawn
+    EXPECT_EQ(idleStep(s, s.now + config::kDeckIdleMs), Idle::Flushed);
+    EXPECT_EQ(s.source.pendingLookups(), 0u);
+  }
+  Saving again(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  EXPECT_TRUE(again.rig.api.looked.empty());  // no dictionary/lookup
+  EXPECT_EQ(again.c.state().phase, Phase::Complete);
+  EXPECT_EQ(again.c.currentWord().senses, std::vector<std::string>{"to read"});
+  EXPECT_EQ(again.c.currentWord().badge, "N5");
+  EXPECT_EQ(again.source.pendingLookups(), 0u);  // a hit isn't written again
+  EXPECT_EQ(k.cache.hits(), 1u);
+}
+
+TEST(LiveLookupCache, TheCloseWritesWhatTheIdleWindowDidnt) {
+  Cached k;
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  s.session.flushLookups(/*closing=*/true);  // as the card closes
+  EXPECT_EQ(s.source.pendingLookups(), 0u);
+  EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Hit);
+}
+
+TEST(LiveLookupCache, AHitKeepsTheSavedStateFromTheAnalysis) {
+  Cached k;
+  // 本 looked up on an earlier card: the record holds its meaning only.
+  lexipoint::api::LookupResult hon;
+  hon.word = "本";
+  hon.senses = {lexipoint::api::Sense{"book", "noun"}};
+  ASSERT_TRUE(k.cache.write({lexipoint::lookup::CachedLookup{Language::Japanese, "本", hon, cacheWallS}}));
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  s.step(-1);
+  s.step(-1);  // 本: saved at 3 in ①'s answer
+  s.fetchOne();
+  EXPECT_EQ(s.rig.api.looked, std::vector<std::string>{"読む"});  // 本's came from the cache
+  EXPECT_EQ(s.c.currentWord().senses, std::vector<std::string>{"book"});
+  EXPECT_EQ(s.c.state().level, Level::Fresh);  // ①'s proficiency 3, untouched by the hit
+}
+
+TEST(LiveLookupCache, APendingOrFailedAnswerIsntKept) {
+  Cached k;
+  Saving s(/*complete=*/false, {"xteink"}, nullptr, &k.cache);
+  s.rig.api.lookupReplies = {apiOk(R"({"word":"読む","translation_status":"pending","translations":[]})")};
+  s.fetchOne();
+  EXPECT_EQ(s.source.pendingLookups(), 0u);
+  Saving t(/*complete=*/false, {"xteink"}, nullptr, &k.cache);
+  t.rig.api.lookupReplies = {apiFailure(ApiError::Network)};
+  t.fetchOne();
+  EXPECT_EQ(t.source.pendingLookups(), 0u);
+  EXPECT_TRUE(t.c.currentWord().senses.empty());
+}
+
+TEST(LiveLookupCache, TheMirrorsFlushSaysWhenItDidNoIO) {
+  // flushFiles logs the mirror's line only when it read or wrote (R3).
+  Cached k;
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  EXPECT_FALSE(s.session.flushMirror(/*load=*/true, s.now));  // no mirror
+  Mirrored m;
+  Saving t(/*complete=*/true, {"xteink"}, &m.store);
+  EXPECT_TRUE(t.session.flushMirror(/*load=*/true, t.now));   // the card's answer changed it: written
+  EXPECT_FALSE(t.session.flushMirror(/*load=*/true, t.now));  // nothing more
+}
+
+TEST(LiveLookupCache, WithoutACacheNothingIsReadOrKept) {
+  Saving s(/*complete=*/true);
+  EXPECT_EQ(s.source.pendingLookups(), 0u);
+  EXPECT_EQ(s.rig.api.looked, std::vector<std::string>{"読む"});
+}
+
+namespace {
+
+// A sentence of ten distinct words, each with a ready answer: enough for kLookupPendingMax's eviction.
+constexpr const char* kTen[] = {"一", "二", "三", "四", "五", "六", "七", "八", "九", "十"};
+
+struct TenWords {
+  FakeApi api;
+  PageModel model;
+  ReaderPage page;
+  Cached k;
+  std::unique_ptr<LiveSource> source;
+  std::unique_ptr<CardController> c;
+  explicit TenWords(const std::vector<std::string>& words = std::vector<std::string>(std::begin(kTen),
+                                                                                     std::end(kTen))) {
+    TextLine line;
+    line.startsParagraph = true;
+    std::string analyze = R"({"occurrences":[)";
+    std::vector<std::tuple<std::string, int, int>> boxes;
+    const int n = static_cast<int>(words.size());
+    for (int i = 0; i < n; i++) {
+      line.tokens.push_back(words[i]);
+      boxes.emplace_back(words[i], 20 + 26 * i, 26);
+      analyze += std::string(i ? "," : "") + R"({"word":")" + words[i] + R"(","isWordLike":true,"charStart":)" +
+                 std::to_string(i) + R"(,"charEnd":)" + std::to_string(i + 1) + R"(,"entryId":)" +
+                 std::to_string(100 + i) + "}";
+    }
+    line.tokens.push_back("。");
+    analyze += R"(,{"word":"。","isWordLike":false,"charStart":)" + std::to_string(n) + R"(,"charEnd":)" +
+               std::to_string(n + 1) + "}]}";
+    model.lines = {line};
+    ReaderLine pl;
+    pl.y = 100;
+    for (const auto& [text, x, w] : boxes) pl.tokens.push_back(PageToken{text, x, w});
+    page.lines = {pl};
+    api.analyzeReplies = {apiOk(analyze)};
+    api.lookupReplies = {apiOk(R"({"word":"x","translation_status":"ready","translations":[{"translation":"t"}]})")};
+    TapContext tap;
+    tap.sentence = buildSentence(model, {0, 0}, Script::Japanese);
+    tap.language.language = Language::Japanese;
+    source = std::make_unique<LiveSource>(api, tap, page);
+    source->setLookupCache(k.cache);
+    c = std::make_unique<CardController>(*source, ReadingMode::Kana);
+    c->open(0);
+  }
+};
+
+}  // namespace
+
+TEST(LiveLookupCache, AFailedIdleWriteWaitsForTheCloseWhichTriesAgain) {
+  Cached k;
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  k.files.failWriteOf = lexipoint::lookup::bucketPath(Language::Japanese, "読む");  // one write fails
+  EXPECT_EQ(idleStep(s, s.now + config::kDeckIdleMs), Idle::Flushed);
+  EXPECT_EQ(s.source.pendingLookups(), 1u);
+  EXPECT_FALSE(s.source.lookupFlushDue());
+  const int writes = k.files.writes;
+  EXPECT_EQ(idleStep(s, s.now + 10 * config::kDeckIdleMs), Idle::Nothing);  // not again on idle
+  EXPECT_EQ(s.session.flushLookups(/*closing=*/false).answers, 0u);         // nor if asked outright
+  EXPECT_EQ(k.files.writes, writes);
+  EXPECT_TRUE(s.session.flushLookups(/*closing=*/true).written);  // the close does
+  EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Hit);
+}
+
+TEST(LiveLookupCache, AStaleRecordIsAskedAgainAndReplaced) {
+  Cached k;
+  lexipoint::api::LookupResult old;
+  old.word = "読む";
+  old.senses = {lexipoint::api::Sense{"an old meaning", "verb"}};
+  ASSERT_TRUE(k.cache.write(
+      {lexipoint::lookup::CachedLookup{Language::Japanese, "読む", old, cacheWallS - config::kLookupMaxAgeS - 1}}));
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  EXPECT_EQ(s.rig.api.looked, std::vector<std::string>{"読む"});
+  EXPECT_EQ(s.c.currentWord().senses, std::vector<std::string>{"to read"});
+  s.session.flushLookups(/*closing=*/true);
+  const CacheRead again = k.cache.read(Language::Japanese, "読む");
+  ASSERT_EQ(again.outcome, CacheRead::Outcome::Hit);
+  EXPECT_EQ(again.entry->senses.at(0).translation, "to read");
+}
+
+TEST(LiveLookupCache, ACorruptBucketIsAMissRemovedAndRewritten) {
+  Cached k;
+  const std::string path = lexipoint::lookup::bucketPath(Language::Japanese, "読む");
+  k.files.files[path] = "LXLK junk";
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  EXPECT_EQ(s.rig.api.looked, std::vector<std::string>{"読む"});
+  EXPECT_EQ(k.files.files.count(path), 0u);
+  s.session.flushLookups(/*closing=*/true);
+  EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Hit);
+}
+
+TEST(LiveLookupCache, OnlyTheNewestAnswersWaitForTheWrite) {
+  TenWords t;
+  ASSERT_EQ(t.source->advance(), LiveSource::Advance::Changed);  // A
+  for (int i = 0; i < 10; i++) {
+    t.source->focus(i, 0);
+    ASSERT_EQ(t.source->advance(), LiveSource::Advance::Changed);  // B for word i
+  }
+  EXPECT_EQ(t.api.looked.size(), 10u);
+  EXPECT_EQ(t.source->pendingLookups(), config::kLookupPendingMax);
+  t.source->flushLookups(/*closing=*/true);
+  EXPECT_EQ(t.k.cache.read(Language::Japanese, kTen[0]).outcome, CacheRead::Outcome::Miss);  // the oldest two dropped
+  EXPECT_EQ(t.k.cache.read(Language::Japanese, kTen[1]).outcome, CacheRead::Outcome::Miss);
+  for (int i = 2; i < 10; i++) EXPECT_EQ(t.k.cache.read(Language::Japanese, kTen[i]).outcome, CacheRead::Outcome::Hit);
+}
+
+TEST(LiveLookupCache, ASavesRetriedLookupCanBeAHit) {
+  Cached k;
+  Saving s(/*complete=*/false, {"xteink"}, nullptr, &k.cache);
+  s.rig.api.lookupReplies = {apiFailure(ApiError::Network)};
+  s.fetchOne();  // B fails: no translation yet
+  ASSERT_TRUE(s.c.currentWord().senses.empty());
+  lexipoint::api::LookupResult yomu;
+  yomu.word = "読む";
+  yomu.senses = {lexipoint::api::Sense{"to read", "verb"}};
+  ASSERT_TRUE(k.cache.write({lexipoint::lookup::CachedLookup{Language::Japanese, "読む", yomu, cacheWallS}}));
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  s.level(1);  // L: a save, which needs the translation
+  s.drain();
+  EXPECT_EQ(s.rig.api.looked, std::vector<std::string>{"読む"});  // the failed call only: the retry hit the cache
+  ASSERT_EQ(s.rig.api.written.size(), 1u);
+  EXPECT_NE(s.rig.api.written[0].body.find("to read"), std::string::npos);
+}
+
+TEST(LiveLookupCache, AnIdleStepForTheCacheDoesntRetryAFailedMirrorWrite) {
+  Mirrored m;
+  Cached k;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store, &k.cache);
+  m.files.failWriteOf = config::kVocabTmpPathJa;  // the mirror's next write fails (SafeFile writes the .tmp first)
+  EXPECT_EQ(idleStep(s, s.now + config::kDeckIdleMs), Idle::Flushed);
+  EXPECT_EQ(s.source.pendingLookups(), 0u);  // the cache's went
+  const int mirrorWrites = m.files.writes;
+  s.step(-1);  // を: phase B, a new answer for the cache
+  s.fetchOne();
+  ASSERT_EQ(s.source.pendingLookups(), 1u);
+  EXPECT_EQ(idleStep(s, s.now + config::kDeckIdleMs), Idle::Flushed);  // for the cache only
+  EXPECT_EQ(s.source.pendingLookups(), 0u);
+  EXPECT_EQ(m.files.writes, mirrorWrites);  // the mirror's failed write waits for the close
+  const CardSession::FilesFlushed closed = s.session.flushFiles(/*closing=*/true, s.now);
+  EXPECT_TRUE(closed.mirrorIo);  // the close tries it again
+  EXPECT_GT(m.files.writes, mirrorWrites);
+}
+
+TEST(LiveLookupCache, TheSameWordTwiceOnACardIsLookedUpOnce) {
+  // Before any idle write: the second takes the card's own pending answer, with no SD read and no call.
+  TenWords t({"猫", "と", "猫"});
+  ASSERT_EQ(t.source->advance(), LiveSource::Advance::Changed);  // A
+  t.source->focus(0, 0);
+  ASSERT_EQ(t.source->advance(), LiveSource::Advance::Changed);  // B: a miss, called
+  const int reads = t.k.files.reads;
+  t.source->focus(2, 0);
+  const LiveSource::Fetched f = t.source->fetch(0);
+  EXPECT_EQ(f.cacheRead.outcome, CacheRead::Outcome::Pending);
+  EXPECT_EQ(t.k.files.reads, reads);
+  EXPECT_EQ(t.api.looked, std::vector<std::string>{"猫"});
+  EXPECT_EQ(f.card.senses.size(), 1u);
+  EXPECT_EQ(t.source->pendingLookups(), 1u);
+}
+
+TEST(LiveLookupCache, AClosingFlushWritesBothAndReadsNoMirror) {
+  // As end() and onExit() without end() do (V7c R9): the cache's answers and the mirror's changes written, the mirror
+  // never read (load false: a close only writes).
+  Mirrored m;
+  Cached k;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store, &k.cache);
+  const CardSession::FilesFlushed done = s.session.flushFiles(/*closing=*/true, s.now);
+  EXPECT_TRUE(done.lookups.written);
+  EXPECT_EQ(done.lookups.answers, 1u);
+  EXPECT_TRUE(done.mirrorIo);  // the card's answer changed it: written
+  lexipoint::fakes::FakeFiles files;
+  VocabStore unloaded{files};
+  Cached k2;
+  Saving t(/*complete=*/true, {"xteink"}, &unloaded, &k2.cache);
+  const int reads = files.reads;
+  const CardSession::FilesFlushed closed = t.session.flushFiles(/*closing=*/true, t.now);
+  EXPECT_TRUE(closed.lookups.written);
+  EXPECT_EQ(files.reads, reads);  // a mirror not loaded isn't read as the card closes
+  EXPECT_FALSE(unloaded.loaded(Language::Japanese));
 }

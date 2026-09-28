@@ -78,7 +78,7 @@ static_assert(kVocabProbeItems > kVocabPageOverlap, "a probe leaves the whole ov
 constexpr size_t kVocabPageMaxBytes = 4UL * 1024UL * 1024UL;  // a streamed page larger than this is malformed
 constexpr size_t kJsonStreamMaxStringBytes = 256;  // a streamed string kept (the rest walked): kMaxTokenBytes
 constexpr unsigned kVocabPagesPerCard = 2;         // pages one card may fetch (each blocks the loop)
-constexpr size_t kVocabPendingMax = 256;     // card answers kept for a mirror not loaded yet (20 B each on Xtensa)
+constexpr size_t kVocabPendingMax = 256;     // card answers kept for a mirror not loaded yet (28 B each on Xtensa)
 constexpr unsigned kVocabPagesPerHour = 60;  // pages fetched per hour of uptime: 5% of the 1200 req/h limit
 constexpr unsigned long kVocabSyncIntervalMs = 15UL * timing::kMsPerMinute;  // an incremental sync at most this often
 constexpr unsigned long kVocabFailureWaitMs = 5UL * timing::kMsPerMinute;  // after a page failed (not a 429's own wait)
@@ -108,8 +108,20 @@ constexpr unsigned kPageBudgetPercent = 70;
 constexpr uint32_t kRateLimitDefault = 1200;
 constexpr unsigned long kRateWindowMs = 60UL * timing::kMsPerMinute;
 constexpr size_t kRateWindowBuckets = 60;  // one a minute
-// A failed page analysis waits this long before the same page is tried again (a 429 waits its own time).
+// A failed page analysis waits this long before any page is tried again (a 429 waits its own time).
 constexpr unsigned long kPageFailureWaitMs = 2UL * timing::kMsPerMinute;
+// The lemma cache (C21, V7c; docs/v0.2/00-overview.md C21 "V7c design"): phase B's answers on SD, by language and the
+// text looked up, in kLookupBuckets files per language (the bucket from the text's FNV-1a 32). A record is what the
+// card keeps of an answer (39-140 bytes of text measured); one over kLookupRecordMaxBytes isn't kept. A bucket holds at
+// most kLookupBucketMax records and kLookupBucketMaxBytes (the oldest go first), so the read before phase B is one
+// small file.
+constexpr const char* kLookupCacheDir = "/.lexirise/lookups";  // a folder per language under it
+constexpr size_t kLookupBuckets = 64;
+constexpr size_t kLookupBucketMax = 64;
+constexpr size_t kLookupRecordMaxBytes = 1024;
+constexpr size_t kLookupBucketMaxBytes = 16UL * 1024UL;
+constexpr uint32_t kLookupMaxAgeS = 30U * static_cast<uint32_t>(timing::kSecondsPerDay);  // older: asked again
+constexpr size_t kLookupPendingMax = 8;  // answers a card keeps for its next idle window's write (the newest)
 // The touch line (input/TouchLine.h, V7b R1): given up on after this many changes with no finger down within the
 // window (a line at rest never changes; a bad guess at its level would make every call give up).
 constexpr unsigned kTouchLineFlipsMax = 4;
@@ -156,6 +168,13 @@ constexpr uint32_t kRequestDeadlineMs = 15000;
 // An idle TLS session is closed after this, so it never sits on internal heap that CrossPoint's TLS users
 // (KOSync, fonts, OTA) pre-flight for. Keep-alive still covers a lookup's back-to-back calls.
 constexpr unsigned long kTlsIdleCloseMs = 30000;
+// One TLS open's budget: a TCP connect and a handshake, each up to kHttpTimeoutMs (kMaxCallMs counts it once). V7c: a
+// handshake offered the kept session that failed is tried once more in full only inside it, with at least
+// kTlsFallbackMinMs of it left: a full handshake, TCP connect included, took 2.5 s on the device
+// (docs/v0.1/device-checks.md), and 4 s leaves room for a slower network; less than that and the fallback would likely
+// time out anyway (the call fails as it did, the next open is full).
+constexpr uint32_t kTlsOpenBudgetMs = 2 * kHttpTimeoutMs;
+constexpr uint32_t kTlsFallbackMinMs = 4000;
 constexpr const char* kUserAgentProduct = "Lexipoint";
 // What the reader calls itself on the network (D22): File Transfer's hotspot, http://lexipoint.local/, and the
 // name routers list it under (the prefix, then the WiFi MAC: "Lexipoint-AABBCCDDEEFF").
@@ -303,7 +322,6 @@ constexpr unsigned long kVocabIdleMs = 8000;
 
 // The longest one Lexirise call can block (WiFi join, NTP, TCP + handshake, the request). The web page
 // polls a queued key check for this long, and lxctl's LEXI wait is checked against it (test_lxctl).
-constexpr uint32_t kMaxCallMs =
-    kWifiJoinMaxMs + kWifiRadioSlackMs + kNtpWaitMs + 2 * kHttpTimeoutMs + kRequestDeadlineMs;
+constexpr uint32_t kMaxCallMs = kWifiJoinMaxMs + kWifiRadioSlackMs + kNtpWaitMs + kTlsOpenBudgetMs + kRequestDeadlineMs;
 
 }  // namespace lexipoint::config

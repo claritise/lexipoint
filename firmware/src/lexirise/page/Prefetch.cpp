@@ -94,6 +94,9 @@ PagePrefetcher::Step PagePrefetcher::step(PageTexts& texts, const net::Abort abo
     return out;
   }
   const unsigned long callStart = clock_();
+  // The time the page's answer is known as of: before the call when the clock is set (a change made in the app during
+  // the call isn't claimed), else after it (the boot's first call sets it: the TLS connection waits for SNTP).
+  const uint32_t beforeS = wall_ ? wall_() : 0;
   PageAnalysis page;
   api::ApiResponse response = ask(api_, *text, /*fast=*/false, page, abort);
   // Calls counted as the log shows them answered, with an HTTP status (page-smoke counts the same way): one given up
@@ -112,8 +115,8 @@ PagePrefetcher::Step PagePrefetcher::step(PageTexts& texts, const net::Abort abo
     }
   }
   const unsigned long callEnd = clock_();
-  // Stamped after the call (it may have set the clock): the time the page's answer was known.
-  const uint64_t epochMs = static_cast<uint64_t>(wall_ ? wall_() : 0) * timing::kMsPerSecond;
+  const uint32_t knownS = beforeS != 0 ? beforeS : (wall_ ? wall_() : 0);
+  const uint64_t epochMs = static_cast<uint64_t>(knownS) * timing::kMsPerSecond;
   out.callMs = callEnd - callStart;
   out.error = response.error;
   if (response.error == api::ApiError::Cancelled) {
@@ -156,10 +159,9 @@ PagePrefetcher::Step PagePrefetcher::step(PageTexts& texts, const net::Abort abo
 bool PagePass::ready(const Pass& pass, const unsigned long nowMs, PageStarts& starts) {
   // Only a page on screen and drawn counts (its dwell counts from its latest drawing: a card closed over it redraws
   // it); until then nothing is due.
-  if (!pass.onScreen || pass.drawnMs == 0) return false;
   // The cheap gates first: nothing reads the section's file for a page that won't be analyzed (shown() later still
   // counts the dwell from the drawing).
-  if (!pass.reader.usable || !pass.reader.wifiConnected) return false;
+  if (!cheapGates(pass)) return false;
   if (pass.drawnMs != startForMs_) {
     if (pass.reader.rendering) return false;  // a render under way: next pass
     const std::optional<uint32_t> start = starts.startOf();

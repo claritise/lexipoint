@@ -37,6 +37,8 @@ class Connection {
   // the session failed (the connection is then closed).
   virtual int read(char* buffer, size_t capacity, uint32_t timeoutMs) = 0;
   virtual void close() = 0;
+  // Drops what close() keeps for the next open (TlsConnection: the resumption session, V7c); nothing by default.
+  virtual void forgetSession() {}
 
   // The abort for the next call (nullptr: none); aborted() says whether it gave the call up.
   void setAbort(const Abort abort) {

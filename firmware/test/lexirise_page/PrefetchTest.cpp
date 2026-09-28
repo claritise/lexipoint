@@ -347,7 +347,27 @@ TEST(Prefetch, AReflowsNewTextAtTheSameIndexIsAnotherPage) {
   EXPECT_TRUE(r.prefetch.due(kDue + 100000 + config::kPagePrefetchDwellMs, ok()));
 }
 
-TEST(Prefetch, APageIsStampedWithTheWallClockAfterItsCall) {
+TEST(Prefetch, APageIsStampedBeforeItsCallWhenTheClockIsSet) {
+  // A change made in the app during the call isn't claimed by the page's snapshot (V7b's carried nit).
+  Rig r;
+  wallS = 1790300000;
+  r.api.pageReplies = {apiOk(answer(true))};
+  r.api.pageAbortAfter = 0;
+  lexipoint::fakes::FakeClock::nowMs = kDue;
+  static int asked = 0;
+  asked = 0;
+  r.prefetch.step(r.texts, [] {
+    if (++asked > 1) wallS = 1790300009;  // asked first before the step's reads, then during the call: it takes a while
+    return false;
+  });
+  ASSERT_GT(asked, 1);
+  const auto kept = r.store.read(PageKey{1, 2, 0}, Language::Japanese, 1, textHash("猫"));
+  ASSERT_TRUE(kept);
+  EXPECT_EQ(kept->analyzedMs, 1790300000ULL * 1000ULL);
+  wallS = 0;
+}
+
+TEST(Prefetch, APageIsStampedWithTheWallClockAfterItsCallWhenItWasntSet) {
   Rig r;
   wallS = 0;  // the clock not set yet: the boot's first call sets it (SNTP) during the call
   r.api.pageReplies = {apiOk(answer(true))};

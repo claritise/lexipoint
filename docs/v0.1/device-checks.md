@@ -151,6 +151,57 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## v0.2 V7c: still owed on the device
+
+V7c (the lemma cache and TLS session resumption: `../v0.2/00-overview.md` C21 "As built (V7c)") is on `lexi/V7`, not
+yet run on the device. Read-only from Lexirise. A dev build; the log's `[LXT] Verified <host> (<version>, <cipher>,
+resumed|full) in <ms> ms, free heap <n>` and `[LXLOOK] cache <hit|miss|stale> in <ms> ms (<h> of <n> hits this boot)`
+lines say what each check needs. **`lxctl.py cache-smoke [x1 y1 x2 y2]`** (V7c R3; a dev build, one held session,
+read-only, two words not looked up before) drives the first ones: a card on the first word (a miss, one
+`dictionary/lookup`, the answer written as it closes), past the TLS idle close the same word again (a hit, no lookup),
+then the second word (a miss; some TLS session after the first card resumed, which call isn't said), and prints the
+read, write and handshake times. Never run here.
+
+- **A full and a resumed handshake:** after a boot, open a card (a `full` line: its time and free heap), close it, wait
+  over 30 s (`kTlsIdleCloseMs`: the session closes), open another: a `resumed` line. Record both times and the free
+  heap after each (and the lowest and largest block if the harness gives them); the design's estimate is 1-1.5 s saved
+  of the ~2.5 s full handshake. Then a page prefetch with WiFi up after 30 s idle: `resumed` too.
+- **The kept session's heap:** the free internal heap with WiFi up and no connection open, before the first call of a
+  boot and after a card closed and its session closed (the difference is the kept `WOLFSSL_SESSION`, ~0.4 KB by `nm`);
+  and after leaving the reader (WiFi given back), the same heap as before the first call (R2: dropped then).
+- **The largest free block with a session kept (R3):** the internal heap's largest free block after a card closed and its
+  session closed (the kept `WOLFSSL_SESSION` in place), against `HttpDownloader::MIN_TLS_MAX_ALLOC` (the TLS
+  pre-flight): the next handshake must still pass it.
+- **A resumed call given up right after its handshake (R5):** with WiFi up after 30 s idle, turn the page just as a
+  page prefetch's `Verified ... resumed` line shows (its call given up for input): the next call's `Verified` line
+  says `resumed` or `full`, never a `Handshake ... failed (resuming)` line.
+- **A refused session:** hard to force; if a `Handshake ... failed (resuming)` line ever shows, the next line must be a
+  `full` `Verified` for the same call (the fallback), and the card must not show an error.
+- **A rustls-fronted TLS 1.3 server (R7):** a KOSync or OPDS server behind rustls (32-byte ticket nonces; and one with
+  a long ticket lifetime if one can be found): it connects and syncs or lists after its handshake (before
+  `WOLFSSL_TICKET_NONCE_MALLOC`, the read after the handshake failed).
+- **The flag's other users** (`HAVE_SESSION_TICKET` reaches every wolfSSL user): an OTA check (Settings, check for
+  updates), a KOSync sync (when one is set up) and a font download each still connect and finish as before.
+- **The lemma cache:** tap a word (a `miss` line, then its phase B from the network), close the card after its meaning
+  shows, tap the same word again (on another page or card): a `hit` line, the meaning at once, and no
+  `POST /v1/dictionary/lookup` in the log. Record the miss's read time (what the cache adds to every phase B) and a
+  hit's; and the Flush step's time on an idle card (~~`[LXVOCAB] mirror file read or written in <ms> ms` includes it~~
+  superseded 2026-09-28, V7c R3: timed apart since R2, `[LXLOOK] cache: <n> answers written in <ms> ms`).
+- **A full hit on an analyzed page makes no call:** WiFi down (after `wifi_idle_min`), a page analyzed earlier, a tap
+  on a word cached before: the card completes with no WiFi join and no call.
+- **A close after quick steps (R2):** open a card and step through 8 or more words it hasn't looked up before without
+  pausing 3 s (no idle Flush step), then close it: record the close's `[LXLOOK] cache: <n> answers written in <ms> ms
+  (closing)` and `[LXVOCAB] mirror file read or written in <ms> ms (closing)` (how long the card stays up after the
+  close). No guard until it's measured.
+- **Sleep with a card open after quick steps (R9):** open a card, step through a few words it hasn't looked up
+  without pausing 3 s, then let the reader sleep (or press power) with the card open: the log's `[LXLOOK] cache: <n>
+  answers written in <ms> ms (closing)` (and the mirror's `(closing)` line when it had changes) come before the sleep,
+  and the sleep screen still draws promptly (the flush runs under the exit's render lock).
+- **Stack during a miss's full handshake (R2):** after a boot, a card whose word isn't cached (a full handshake for
+  phase B): the loop task's free stack at its lowest (a dev build's stack low-water, as P1's soak recorded it).
+- **The hit count over a reading session:** the last `[LXLOOK]` line's `<h> of <n>` after an hour's reading with
+  lookups, for C21's measured estimate (16-42% of rare-word taps).
+
 ## v0.2 V7b: still owed on the device
 
 V7b (page analysis: `../v0.2/page-annotations.md` §1.1 "As built (V7b)") is on `lexi/V7`, not yet run on the device.

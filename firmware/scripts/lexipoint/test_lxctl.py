@@ -12,6 +12,7 @@ import re
 import struct
 import sys
 import tempfile
+import time
 import unittest
 import zlib
 
@@ -1263,7 +1264,7 @@ class VocabSmokeRules(unittest.TestCase):
                       card)
         for file in ('"written"', '"write failed"', '"not written"'):
             self.assertIn(file, card)
-        self.assertIn('"mirror file read or written in %lu ms"', card)
+        self.assertIn('"mirror file read or written in %lu ms%s"', card)
         mirror = open(os.path.join(REPO, "src/lexirise/vocab/VocabMirror.cpp"), encoding="utf-8").read()
         self.assertIn('given up: input came"', mirror)
         self.assertIn('kLogTag = "LXVOCAB"', open(os.path.join(REPO, "src/lexirise/vocab/VocabMirror.h"),
@@ -1540,6 +1541,9 @@ class FakeHomeHarness:
         self.stream: list[str] = []
         self.sent: list[str] = []
         self.leaks = leaks  # the dismissing tap reaches the menu: a second sync
+        self.result_read = False
+        self.tapped = False
+        self.waited_s = 0.0  # the longest read asked between the result's line and the popup's tap
 
     def command(self, cmd, expect=None, timeout=0, seen=None):
         self.sent.append(cmd)
@@ -1548,16 +1552,28 @@ class FakeHomeHarness:
         elif cmd == f"TAP {lxctl.HOME_SYNC_ROW[0]} {lxctl.HOME_SYNC_ROW[1]}":
             self.stream += [HOME_GET, HOME_RESULT.format(result="up to date", n=0)]
         elif cmd == f"TAP {lxctl.HOME_SYNC_POPUP[0]} {lxctl.HOME_SYNC_POPUP[1]}":
+            self.tapped = True
             self.stream += [HOME_WIFI]
             if self.leaks:
                 self.stream += [HOME_GET, HOME_RESULT.format(result="up to date", n=0)]
         return "LX:OK"
 
     def read_line(self, deadline):
-        return self.stream.pop(0) if self.stream else None
+        if self.result_read and not self.tapped:
+            self.waited_s = max(self.waited_s, deadline - time.time())
+        line = self.stream.pop(0) if self.stream else None
+        if line and lxctl.HOME_SYNC_LOG.search(line):
+            self.result_read = True
+        return line
 
 
 class HomeSyncSmokeDriver(unittest.TestCase):
+    def test_it_waits_for_the_popup_before_tapping_it(self):
+        h = FakeHomeHarness()
+        lxctl.home_sync_smoke(h, watch_s=0.01)
+        self.assertGreater(h.waited_s, lxctl.HOME_SYNC_TAP_AFTER_S - 0.2)
+        self.assertLess(lxctl.HOME_SYNC_TAP_AFTER_S, 2.0)  # inside kVocabSyncResultMs: the popup is still up
+
     def test_it_goes_home_and_taps_the_row(self):
         h = FakeHomeHarness()
         r = lxctl.home_sync_smoke(h, watch_s=0.01)
@@ -1582,3 +1598,152 @@ class HomeSyncSmokeDriver(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# cache-smoke (v0.2 V7c): three cards' logs, as LexiriseCardActivity, the service and TlsConnection write them.
+CACHE_OPEN = "[{t}] [DBG] [ACT] Entering activity: LexiriseCard"
+CACHE_EXIT = "[{t}] [DBG] [ACT] Exiting activity: LexiriseCard"
+CACHE_READ = "[{t}] [INF] [LXLOOK] cache {outcome} in 12 ms ({h} of {n} hits this boot)"
+CACHE_LOOKUP = "[{t}] [INF] [LXS] POST /v1/dictionary/lookup -> 200 (ok)"
+CACHE_WRITE = "[{t}] [INF] [LXLOOK] cache: 1 answers {how} in 30 ms (closing)"
+CACHE_TLS = "[{t}] [INF] [LXT] Verified api.lexirise.app (TLSv1.3, TLS_AES_256_GCM_SHA384, {kind}) in {ms} ms, " \
+            "free heap 81234"
+
+
+def cache_log(first_read="miss", first_lookups=1, written="written", again_read="hit", again_lookup=False,
+              second_read="miss", resumed=True, write_call=False):
+    log = [CACHE_OPEN.format(t=1000), CACHE_TLS.format(t=3500, kind="full", ms=2500),
+           CACHE_READ.format(t=3600, outcome=first_read, h=0, n=1)]
+    log += [CACHE_LOOKUP.format(t=4000 + i) for i in range(first_lookups)]
+    log += [CACHE_WRITE.format(t=6000, how=written), CACHE_EXIT.format(t=6100)]
+    log += [CACHE_OPEN.format(t=40000), CACHE_READ.format(t=40100, outcome=again_read, h=1, n=2)]
+    if again_lookup:
+        log.append(CACHE_LOOKUP.format(t=40500))
+    log += [CACHE_EXIT.format(t=41000), CACHE_OPEN.format(t=42000)]
+    if resumed:
+        log.append(CACHE_TLS.format(t=43000, kind="resumed", ms=1100))
+    log += [CACHE_READ.format(t=43100, outcome=second_read, h=1, n=3), CACHE_LOOKUP.format(t=43500)]
+    if write_call:
+        log.append("[43600] [INF] [LXS] POST /v1/vocabulary -> 200 (ok)")
+    log.append(CACHE_EXIT.format(t=44000))
+    return log
+
+
+class CacheSmokeRules(unittest.TestCase):
+    def test_a_miss_a_hit_and_a_resumed_session_pass(self):
+        r = lxctl.check_cache_log(cache_log())
+        self.assertEqual((r["miss_ms"], r["hit_ms"], r["write_ms"]), (12, 12, 30))
+        self.assertEqual((r["resumed_ms"], r["full_ms"], r["resumed_heap"]), (1100, 2500, 81234))
+
+    def test_a_first_card_that_hit_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "wasn't a miss"):
+            lxctl.check_cache_log(cache_log(first_read="hit"))
+
+    def test_the_first_card_sends_one_lookup(self):
+        with self.assertRaisesRegex(RuntimeError, "not 1"):
+            lxctl.check_cache_log(cache_log(first_lookups=2))
+
+    def test_an_answer_not_written_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "wasn't written"):
+            lxctl.check_cache_log(cache_log(written="not written"))
+
+    def test_the_second_card_must_hit_without_a_lookup(self):
+        with self.assertRaisesRegex(RuntimeError, "didn't hit"):
+            lxctl.check_cache_log(cache_log(again_read="stale"))
+        with self.assertRaisesRegex(RuntimeError, "still sent dictionary/lookup"):
+            lxctl.check_cache_log(cache_log(again_lookup=True))
+
+    def test_the_second_word_misses(self):
+        with self.assertRaisesRegex(RuntimeError, "second word"):
+            lxctl.check_cache_log(cache_log(second_read="hit"))
+
+    def test_no_resumed_session_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "no resumed TLS session"):
+            lxctl.check_cache_log(cache_log(resumed=False))
+
+    def test_a_write_to_lexirise_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "write to Lexirise"):
+            lxctl.check_cache_log(cache_log(write_call=True))
+
+    def test_a_pending_line_is_no_cache_read(self):
+        # The card's own unwritten answer (R8) logs "cache pending: ...": not a read, never parsed as one.
+        card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
+        self.assertIn('"cache pending: this card\'s answer, not written yet"', card)
+        line = "[5000] [INF] [LXLOOK] cache pending: this card's answer, not written yet"
+        self.assertIsNone(lxctl.CACHE_READ_LOG.search(line))
+        self.assertIsNone(lxctl.CACHE_WRITE_LOG.search(line))
+
+    def test_fewer_than_three_cards_fail(self):
+        with self.assertRaisesRegex(RuntimeError, "not 3"):
+            lxctl.check_cache_log(cache_log()[:6])
+
+    def test_the_constants_and_log_lines_match_the_firmware(self):
+        c = header_constants("src/lexirise/LexiriseConfig.h")
+        self.assertEqual(lxctl.TLS_IDLE_CLOSE_S * 1000, c["kTlsIdleCloseMs"])
+        self.assertGreater(lxctl.CACHE_IDLE_WAIT_S, lxctl.TLS_IDLE_CLOSE_S)
+        card = re.sub(r'"\s+"', "", open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"),
+                                         encoding="utf-8").read())
+        self.assertIn('"cache %s in %lu ms (%u of %u hits this boot)"', card)
+        self.assertIn('"cache: %u answers %s in %lu ms%s"', card)
+        for word in ('"written"', '"not written"', '" (closing)"'):
+            self.assertIn(word, card)
+        cache = open(os.path.join(REPO, "src/lexirise/lookup/LookupCache.cpp"), encoding="utf-8").read()
+        for word in ('"hit"', '"miss"', '"stale"'):
+            self.assertIn(word, cache)
+        self.assertIn('kCacheLogTag = "LXLOOK"', open(os.path.join(REPO, "src/lexirise/lookup/LookupCache.h"),
+                                                      encoding="utf-8").read())
+        tls = re.sub(r'"\s+"', "", open(os.path.join(REPO, "src/lexirise/net/TlsConnection.cpp"),
+                                        encoding="utf-8").read())
+        self.assertIn('"Verified %s (%s, %s, %s) in %lu ms, free heap %u"', tls)
+        self.assertIn('"resumed" : "full"', tls)
+        self.assertIn('kLogTag = "LXT"', tls)
+
+
+class FakeCacheHarness:
+    """The device's side of cache-smoke: each LONG opens a card that reads the cache (a miss for a new word, a hit
+    for one written), a miss looks up; HOME closes it, writing what it looked up."""
+
+    def __init__(self):
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+        self.t = 1000
+        self.cached: set[str] = set()
+        self.pending: str | None = None
+        self.sessions = 0
+
+    def _line(self, fmt, **kw):
+        self.t += 10
+        self.stream.append(fmt.format(t=self.t, **kw))
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LONG "):
+            word = cmd
+            self._line(CACHE_OPEN)
+            if word in self.cached:
+                self._line(CACHE_READ, outcome="hit", h=1, n=2)
+            else:
+                self.sessions += 1
+                self._line(CACHE_TLS, kind="full" if self.sessions == 1 else "resumed", ms=900)
+                self._line(CACHE_READ, outcome="miss", h=0, n=1)
+                self._line(CACHE_LOOKUP)
+                self.pending = word
+        elif cmd == "HOME":
+            if self.pending:
+                self._line(CACHE_WRITE, how="written")
+                self.cached.add(self.pending)
+                self.pending = None
+            self._line(CACHE_EXIT)
+        return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class CacheSmokeDriver(unittest.TestCase):
+    def test_it_drives_three_cards_and_checks_them(self):
+        h = FakeCacheHarness()
+        r = lxctl.cache_smoke(h, (100, 200), (100, 300), idle_s=0.01, watch_s=0.01)
+        self.assertEqual(r["resumed_ms"], 900)
+        self.assertEqual(h.sent[0], "AWAKE 1")
+        self.assertEqual([c for c in h.sent if c.startswith("LONG")], ["LONG 100 200", "LONG 100 200", "LONG 100 300"])

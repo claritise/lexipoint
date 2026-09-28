@@ -122,6 +122,10 @@ void ReaderPages::step(Section& section, const int spine, const Drawn& drawn, co
   Pass pass;
   pass.onScreen = drawn.spine == spine && drawn.page == section.currentPage;
   pass.drawnMs = drawn.ms;
+  pass.reader.usable = usable_;
+  pass.reader.wifiConnected = lexirise.wifiConnected();
+  // PagePass::ready's cheap gates, before the rest of the pass's reads (the hardware, the service's counts).
+  if (!PagePass::cheapGates(pass)) return;
   pass.spine = static_cast<uint32_t>(spine);
   pass.reader.readerBusy = readerBusy;
   // A button still held (release-mode page turns, a long Confirm) queues no edge: read from the hardware, as the
@@ -129,11 +133,9 @@ void ReaderPages::step(Section& section, const int spine, const Drawn& drawn, co
   pass.reader.inputHeld = fingerDown || gpio.rawInputActive();
   pass.reader.layingOut = layingOut;
   pass.reader.rendering = RenderLock::peek();
-  pass.reader.usable = usable_;
   pass.reader.blocked = lexirise.blocked() != api::AccessPolicy::Block::None;
   pass.reader.usedLastHour = lexirise.requestsLastHour();
   pass.reader.rateLimit = lexirise.rateLimit();
-  pass.reader.wifiConnected = lexirise.wifiConnected();
   SectionStart starts(section);
   if (!pass_.ready(pass, millis(), starts)) return;
   const text::BookLanguage book = lookup::bookLanguageFor(bookLanguage, bookPath);

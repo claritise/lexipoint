@@ -4,6 +4,7 @@
 // lemma. Pure: the network is behind api::LexiriseApi (LexiriseService on the device, a fake in tests).
 // Tests: test/lexirise_lookup.
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -64,8 +65,13 @@ uint32_t entryKeyOf(const api::Occurrence& occ);
 LookupCard cardFor(const AnalyzedSentence& sentence, size_t word);
 
 // ③ Phase B: the headword's dictionary entry into `card` (meaning, level, rank, the lemma's reading).
-// A failure still leaves the card, with translationUnavailable set; the error is returned.
-api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string* unreadable = nullptr);
+// A failure still leaves the card, with translationUnavailable set; the error is returned. `answer` (optional): the
+// entry as it came, when it did (the lemma cache keeps it, V7c).
+api::ApiError completeCard(api::LexiriseApi& api, LookupCard& card, std::string* unreadable = nullptr,
+                           std::optional<api::LookupResult>* answer = nullptr);
+// Phase B's entry into `card`, from the call or the lemma cache (V7c): the same fields either way, and nothing of its
+// saved state (that is ①'s, the page's and the mirror's).
+void applyLookup(LookupCard& card, api::LookupResult entry);
 
 // All three at once, blocking (the tests' one-call form; the card runs them one per loop pass).
 LookupReport lookupWithLexirise(api::LexiriseApi& api, const text::TapContext& tap, LookupCard& card);

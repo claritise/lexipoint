@@ -157,9 +157,12 @@ class CardSession {
   }
   // The mirror's file read (once per boot per language) or written: SD I/O, so only on a card idle
   // config::kDeckIdleMs by the deck's rule (after any deck step, before a page: nextIdleStep), or as the card closes
-  // (`load` false: only a write), outside RenderLock.
-  bool shouldFlushMirror(unsigned long nowMs, bool rendering, bool touching,
-                         std::optional<unsigned long> cardDueMs) const;
+  // (`load` false: only a write), outside RenderLock but for a close without end() (sleep, the stack cleared: under the
+  // lock exitActivity holds, V7c R9).
+  // V7c: the lemma cache's answers too (LiveSource::lookupFlushDue), by the same rule: flushLookups(), then
+  // flushMirror().
+  bool shouldFlushFiles(unsigned long nowMs, bool rendering, bool touching,
+                        std::optional<unsigned long> cardDueMs) const;
 
   // V7b (claritise, 2026-09-28): the mirror's probe as the card settles (LiveSource::hasProbeWork): by the same idle
   // rule, after only config::kVocabCardProbeIdleMs (phase B on screen, nothing to fetch, send, draw or handle).
@@ -174,16 +177,42 @@ class CardSession {
   bool mirrorChanged(const std::vector<uint32_t>& changedEntries);
 
   // An idle card's one blocking step now, in priority order: the book deck's (shouldFetchDeck), then the mirror's file
-  // (shouldFlushMirror), then the probe (shouldProbeVocab), then a mirror page (shouldFetchVocab); None: nothing yet.
+  // (shouldFlushFiles), then the probe (shouldProbeVocab), then a mirror page (shouldFetchVocab); None: nothing yet.
   enum class IdleStep : uint8_t { None, Deck, Flush, Probe, Vocab };
   IdleStep nextIdleStep(unsigned long nowMs, bool rendering, bool touching, std::optional<unsigned long> cardDueMs,
                         uint32_t epochS) const;
   // `nowMs`: the idle time starts again after it (a write that failed is tried in the next idle window, not every
   // pass).
-  void flushMirror(const bool load, const unsigned long nowMs) {
-    if (!live_) return;
-    live_->flushMirror(load);
+  // True: the mirror's file was read or written (for the log).
+  bool flushMirror(const bool load, const unsigned long nowMs) {
+    if (!live_) return false;
+    const bool io = live_->flushMirror(load);
     lastActivityMs_ = nowMs;
+    return io;
+  }
+  // The lemma cache's answers (V7c), before the mirror's file on the same idle step or close; `closing`: the close's
+  // try.
+  LiveSource::LookupsFlushed flushLookups(const bool closing) {
+    return live_ ? live_->flushLookups(closing) : LiveSource::LookupsFlushed{};
+  }
+  // The idle Flush step's and the close's file work, in its one order: the lemma cache's answers, then the mirror's
+  // file (read on an idle step, `load = !closing`). `clock` (millis, optional) times each part for the log.
+  struct FilesFlushed {
+    LiveSource::LookupsFlushed lookups;
+    unsigned long lookupsMs = 0;
+    bool mirrorIo = false;  // the mirror's file was read or written
+    unsigned long mirrorMs = 0;
+  };
+  using Clock = unsigned long (*)();
+  FilesFlushed flushFiles(const bool closing, const unsigned long nowMs, const Clock clock = nullptr) {
+    FilesFlushed out;
+    const unsigned long start = clock ? clock() : 0;
+    out.lookups = flushLookups(closing);
+    const unsigned long mid = clock ? clock() : 0;
+    out.lookupsMs = mid - start;
+    out.mirrorIo = flushMirror(/*load=*/!closing, nowMs);
+    out.mirrorMs = (clock ? clock() : 0) - mid;
+    return out;
   }
 
  private:

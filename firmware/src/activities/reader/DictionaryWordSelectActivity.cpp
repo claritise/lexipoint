@@ -547,6 +547,7 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
   source->setBookTitles(lexipoint::bookTagStore());        // "Met before"'s book titles (C14)
   source->setIgnoredWords(lexipoint::ignoredWordStore());  // the reader's ignored words (C17), read before it opens
   source->setVocabMirror(lexipoint::vocab::vocabStore());  // the vocab mirror (C13, V7a), loaded on the first idle card
+  source->setLookupCache(lexipoint::lookup::lookupCache());  // the lemma cache (C21, V7c): phase B's answers on SD
   // The page's analysis, when the reader kept one for this page's very text (C12, V7b): no request ① for its sentences.
   if (spineIndex >= 0) {
     if (auto described = lexipoint::page::describePage(pageModel, *book, settings, bookPath,

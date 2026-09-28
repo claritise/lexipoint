@@ -123,6 +123,20 @@ TEST(Service, LeavingReadingGivesWifiBack) {
   EXPECT_EQ(rig.wifi.releases, 1);
   EXPECT_FALSE(rig.wifi.owned);
   EXPECT_FALSE(rig.conn.isOpen());
+  EXPECT_EQ(rig.conn.forgets, 1);  // the resumption session goes too (V7c)
+}
+
+TEST(Service, TheIdleCloseAndTheRadiosTeardownKeepTheResumptionSession) {
+  Rig rig;
+  rig.conn.reads = {httpOk(kMe)};
+  rig.service.checkKey();
+  FakeClock::nowMs += config::kTlsIdleCloseMs;
+  rig.service.tick();
+  EXPECT_FALSE(rig.conn.isOpen());
+  rig.wifi.owned = true;
+  rig.wifi.expireOnNextTick = true;
+  rig.service.tick();
+  EXPECT_EQ(rig.conn.forgets, 0);  // still reading: the next card resumes
 }
 
 TEST(Service, AnalyzeSendsTheRequest) {

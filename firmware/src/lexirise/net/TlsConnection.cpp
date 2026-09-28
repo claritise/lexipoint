@@ -6,10 +6,17 @@
 #include <Logging.h>
 #include <esp_sntp.h>
 #include <time.h>
+#include <wolfssl/error-ssl.h>
 #include <wolfssl/ssl.h>
+#include <wolfssl/wolfcrypt/error-crypt.h>
+#ifdef HAVE_SESSION_TICKET
+#include <wolfssl/internal.h>  // WOLFSSL_SESSION::ticketLen (V7c)
+#endif
 
+#include <algorithm>
 #include <cstring>
 
+#include "TlsSession.h"
 #include "TrustAnchors.h"
 #include "Wait.h"
 #include "lexirise/LexiriseConfig.h"
@@ -50,6 +57,25 @@ bool loadRoot(WOLFSSL_CTX* ctx, const char* pem, const char* name) {
   return rc == WOLFSSL_SUCCESS;
 }
 
+void releaseSession(void* session) { wolfSSL_SESSION_free(static_cast<WOLFSSL_SESSION*>(session)); }
+
+// The handshake's error rejected the server's certificate (chain, signature, dates, host name): retrying won't help.
+bool certificateRejected(const int err) {
+  switch (err) {
+    case ASN_NO_SIGNER_E:
+    case ASN_BEFORE_DATE_E:
+    case ASN_AFTER_DATE_E:
+    case ASN_SIG_CONFIRM_E:
+    case ASN_SIG_HASH_E:
+    case ASN_SIG_KEY_E:
+    case DOMAIN_NAME_MISMATCH:
+    case VERIFY_CERT_ERROR:
+      return true;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 bool ensureClock(Connection* aborts) {
@@ -76,30 +102,56 @@ OpenError TlsConnection::open(const Endpoint& endpoint) {
     return OpenError::LowMemory;
   }
 
-  if (checkAbort()) return OpenError::Aborted;
-  if (!transport_.connect(endpoint.host.c_str(), endpoint.port, config::kHttpTimeoutMs)) {
+  // One open's budget, as config::kMaxCallMs counts it: a TCP connect and a handshake. The fallback to a full handshake
+  // (V7c) fits inside it or isn't tried.
+  const uint32_t deadline = millis() + config::kTlsOpenBudgetMs;
+  const OpenError error = openResuming(
+      sessions_, endpoint.host, endpoint.port, [&](void* session) { return handshake(endpoint, session, deadline); },
+      [&] { return static_cast<int32_t>(deadline - millis()) >= static_cast<int32_t>(config::kTlsFallbackMinMs); });
+  if (error != OpenError::None) return error;
+  auto* ssl = static_cast<WOLFSSL*>(ssl_);
+  LOG_INF(kLogTag, "Verified %s (%s, %s, %s) in %lu ms, free heap %u", endpoint.host.c_str(), wolfSSL_get_version(ssl),
+          wolfSSL_get_cipher(ssl), wolfSSL_session_reused(ssl) ? "resumed" : "full",
+          (unsigned long)(millis() - started), (unsigned)ESP.getFreeHeap());
+  return OpenError::None;
+}
+
+Attempted TlsConnection::handshake(const Endpoint& endpoint, void* session, const uint32_t openDeadline) {
+  teardown();
+  Attempted out;
+  if (checkAbort()) return {OpenError::Aborted, false, false};
+  // Each step gets its own kHttpTimeoutMs, but never past the open's deadline (the fallback's share is what's left).
+  const auto within = [openDeadline](const uint32_t ms) {
+    const int32_t left = static_cast<int32_t>(openDeadline - millis());
+    return left <= 0 ? 1u : std::min(ms, static_cast<uint32_t>(left));
+  };
+  if (!transport_.connect(endpoint.host.c_str(), endpoint.port, static_cast<int32_t>(within(config::kHttpTimeoutMs)))) {
     LOG_ERR(kLogTag, "TCP connect to %s:%u failed", endpoint.host.c_str(), (unsigned)endpoint.port);
-    return OpenError::ConnectFailed;
+    out.error = OpenError::ConnectFailed;
+    return out;
   }
 
   auto* ctx = wolfSSL_CTX_new(wolfSSLv23_client_method());
   if (!ctx) {
-    close();
-    return OpenError::LowMemory;
+    teardown();
+    out.error = OpenError::LowMemory;
+    return out;
   }
   ctx_ = ctx;
   wolfSSL_CTX_set_verify(ctx, WOLFSSL_VERIFY_PEER, nullptr);
   if (!loadRoot(ctx, kIsrgRootX1, "ISRG Root X1") || !loadRoot(ctx, kIsrgRootX2, "ISRG Root X2")) {
-    close();
-    return OpenError::TlsFailed;
+    teardown();
+    out.error = OpenError::TlsFailed;
+    return out;
   }
   wolfSSL_SetIORecv(ctx, ioRecv);
   wolfSSL_SetIOSend(ctx, ioSend);
 
   auto* ssl = wolfSSL_new(ctx);
   if (!ssl) {
-    close();
-    return OpenError::LowMemory;
+    teardown();
+    out.error = OpenError::LowMemory;
+    return out;
   }
   ssl_ = ssl;
   wolfSSL_SetIOReadCtx(ssl, &transport_);
@@ -107,8 +159,9 @@ OpenError TlsConnection::open(const Endpoint& endpoint) {
   const auto hostLen = static_cast<unsigned short>(endpoint.host.size());
   if (wolfSSL_UseSNI(ssl, WOLFSSL_SNI_HOST_NAME, endpoint.host.c_str(), hostLen) != WOLFSSL_SUCCESS ||
       wolfSSL_check_domain_name(ssl, endpoint.host.c_str()) != WOLFSSL_SUCCESS) {
-    close();
-    return OpenError::TlsFailed;
+    teardown();
+    out.error = OpenError::TlsFailed;
+    return out;
   }
 #if defined(WOLFSSL_TLS13) && defined(HAVE_CURVE25519)
   wolfSSL_UseKeyShare(ssl, WOLFSSL_ECC_X25519);  // see SecureClient.cpp: P-256 keygen OOMs at reading-session heap
@@ -116,33 +169,54 @@ OpenError TlsConnection::open(const Endpoint& endpoint) {
 #ifdef HAVE_MAX_FRAGMENT
   wolfSSL_UseMaxFragment(ssl, WOLFSSL_MFL_2_11);  // 2KB records: no ~17KB receive buffer
 #endif
+#ifdef HAVE_SESSION_TICKET
+  // V7c: the last session with this host (SessionKeeper). wolfSSL refuses one past its ticket's lifetime: a full
+  // handshake then, as it is when the server doesn't take it.
+  if (session) {
+    out.offered = wolfSSL_set_session(ssl, static_cast<WOLFSSL_SESSION*>(session)) == WOLFSSL_SUCCESS;
+    out.refused = !out.offered;
+    if (out.refused) {
+      LOG_INF(kLogTag, "Session with %s not offered (refused by wolfSSL: expired or unusable)", endpoint.host.c_str());
+    }
+  }
+#else
+  (void)session;
+#endif
 
-  const uint32_t deadline = millis() + config::kHttpTimeoutMs;  // the handshake gets its own budget
+  const uint32_t deadline = millis() + within(config::kHttpTimeoutMs);  // the handshake's own budget, inside the open's
   int ret;
   while ((ret = wolfSSL_connect(ssl)) != WOLFSSL_SUCCESS) {
     const int err = wolfSSL_get_error(ssl, ret);
     if (!isWantIo(err)) {
       // e.g. -188 ASN_NO_SIGNER_E (untrusted chain), -322 DOMAIN_NAME_MISMATCH, -150/-151 dates.
-      LOG_ERR(kLogTag, "Handshake with %s failed: %d, free heap %u", endpoint.host.c_str(), err,
-              (unsigned)ESP.getFreeHeap());
-      close();
-      return OpenError::TlsFailed;
+      LOG_ERR(kLogTag, "Handshake with %s failed%s: %d, free heap %u", endpoint.host.c_str(),
+              out.offered ? " (resuming)" : "", err, (unsigned)ESP.getFreeHeap());
+      out.certificateRejected = certificateRejected(err);
+      teardown();
+      out.error = OpenError::TlsFailed;
+      return out;
     }
     if (pastDeadline(deadline)) {
       LOG_ERR(kLogTag, "Handshake with %s timed out", endpoint.host.c_str());
-      close();
-      return OpenError::Timeout;
+      teardown();
+      out.error = OpenError::Timeout;
+      return out;
     }
     if (checkAbort()) {
-      close();
-      return OpenError::Aborted;
+      teardown();
+      out.error = OpenError::Aborted;
+      return out;
     }
     pollWait(config::kIoPollMs);
   }
   connected_ = true;
-  LOG_INF(kLogTag, "Verified %s (%s, %s) in %lu ms, free heap %u", endpoint.host.c_str(), wolfSSL_get_version(ssl),
-          wolfSSL_get_cipher(ssl), (unsigned long)(millis() - started), (unsigned)ESP.getFreeHeap());
-  return OpenError::None;
+  host_ = endpoint.host;
+  port_ = endpoint.port;
+#ifdef HAVE_SESSION_TICKET
+  // When the session's ticket was last seen, as the handshake ends: a NewSessionTicket read later changes it (close()).
+  ticketSeenAtOpen_ = ssl->session ? static_cast<int64_t>(ssl->session->ticketSeen) : 0;
+#endif
+  return out;
 }
 
 bool TlsConnection::isOpen() { return connected_ && transport_.connected(); }
@@ -189,7 +263,25 @@ int TlsConnection::read(char* buffer, const size_t capacity, const uint32_t time
   }
 }
 
+TlsConnection::TlsConnection() : sessions_(releaseSession) {}
+
 void TlsConnection::close() {
+#ifdef HAVE_SESSION_TICKET
+  if (ssl_) {
+    if (connected_) {  // V7c: a completed handshake's session, with a ticket read on it, for the next one
+      auto* ssl = static_cast<WOLFSSL*>(ssl_);
+      // The session's own ticket length (wolfSSL's session struct: no public getter in this build, and
+      // wolfSSL_get_SessionTicket reports 0 for a ticket larger than the buffer it's given).
+      const size_t ticketBytes = ssl->session ? ssl->session->ticketLen : 0;
+      const bool ticketArrived = ssl->session && static_cast<int64_t>(ssl->session->ticketSeen) != ticketSeenAtOpen_;
+      sessions_.keep(host_, port_, keepOnClose(ticketBytes, ticketArrived) ? wolfSSL_get1_session(ssl) : nullptr);
+    }
+  }
+#endif
+  teardown();
+}
+
+void TlsConnection::teardown() {
   if (ssl_) {
     wolfSSL_free(static_cast<WOLFSSL*>(ssl_));
     ssl_ = nullptr;

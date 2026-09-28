@@ -381,11 +381,33 @@ bool LiveSource::mirrorFlushDue() const {
   return vocab_ && ((vocabLanguage_ && !vocab_->loaded(*vocabLanguage_)) || (vocab_->dirty() && !mirrorWriteFailed_));
 }
 
-void LiveSource::flushMirror(const bool load) {
-  if (!vocab_) return;
+bool LiveSource::lookupFlushDue() const {
+  // As the mirror's: a failed write waits for the close.
+  return lookupCache_ && !lookupWrites_.empty() && !lookupWriteFailed_;
+}
+
+LiveSource::LookupsFlushed LiveSource::flushLookups(const bool closing) {
+  LookupsFlushed out;
+  if (!lookupCache_ || lookupWrites_.empty() || (lookupWriteFailed_ && !closing)) return out;
+  out.answers = lookupWrites_.size();
+  out.written = lookupCache_->write(lookupWrites_);
+  if (out.written) {
+    lookupWrites_.clear();
+  } else {
+    lookupWriteFailed_ = true;  // kept for the close's try
+  }
+  return out;
+}
+
+bool LiveSource::flushMirror(const bool load) {
+  if (!vocab_) return false;
   recordMirror();
-  if (load && vocabLanguage_) vocab_->load(*vocabLanguage_);
-  if (!vocab_->flush()) mirrorWriteFailed_ = true;
+  const bool reads = load && vocabLanguage_ && !vocab_->loaded(*vocabLanguage_);
+  if (reads) vocab_->load(*vocabLanguage_);
+  // A write that failed on this card waits for the close (an idle step run for the lemma cache doesn't retry it).
+  const bool writes = vocab_->dirty() && (!load || !mirrorWriteFailed_);
+  if (writes && !vocab_->flush()) mirrorWriteFailed_ = true;
+  return reads || writes;
 }
 
 bool LiveSource::hasVocabWork(const unsigned long nowMs, const uint32_t epochS) const {
@@ -523,8 +545,31 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
     f.kind = Fetched::Kind::Entry;
     f.index = due;
     f.card = cards_[due];
-    f.saveRetry = f.card.complete;                                // it ran before and failed: this is the save's retry
-    f.error = lookup::completeCard(api_, f.card, &f.unreadable);  // a failure still completes it
+    f.saveRetry = f.card.complete;  // it ran before and failed: this is the save's retry
+    // V7c: the card's own answers not written yet first (the same lemma twice on one card), then one bucket read;
+    // either needs no call.
+    const std::string headword = f.card.headword();
+    const auto pending = std::find_if(lookupWrites_.rbegin(), lookupWrites_.rend(), [&](const lookup::CachedLookup& w) {
+      return w.language == f.card.language && w.text == headword;
+    });
+    if (lookupCache_ && pending != lookupWrites_.rend()) {
+      f.cacheRead.outcome = lookup::CacheRead::Outcome::Pending;
+      lookup::applyLookup(f.card, pending->entry);
+      return f;
+    }
+    if (lookupCache_) {
+      lookup::CacheRead read = lookupCache_->read(f.card.language, headword);
+      f.cacheRead = lookup::logOf(read);
+      if (read.entry) {
+        lookup::applyLookup(f.card, std::move(*read.entry));
+        return f;
+      }
+    }
+    std::optional<api::LookupResult> answer;
+    f.error = lookup::completeCard(api_, f.card, &f.unreadable, lookupCache_ ? &answer : nullptr);  // a failure too
+    if (answer && lookup::cacheable(headword, *answer)) {
+      f.toCache = lookup::CachedLookup{f.card.language, headword, std::move(*answer), 0};
+    }
   } else if (loading && !closing) {  // cppcheck-suppress knownConditionTrueFalse ; nullopt when nothing loads
     return analysis(*loading);
   } else if (const int item = itemDue(nowMs, closing); item >= 0) {
@@ -589,6 +634,10 @@ LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs
     case Fetched::Kind::Entry:
       error_ = fetched.error;
       if (fetched.saveRetry) saveRetried_[fetched.index] = true;
+      if (fetched.toCache) {  // for the lemma cache's next write (flushLookups): the newest kLookupPendingMax
+        if (lookupWrites_.size() == config::kLookupPendingMax) lookupWrites_.erase(lookupWrites_.begin());
+        lookupWrites_.push_back(std::move(*fetched.toCache));
+      }
       cards_[fetched.index] = std::move(fetched.card);
       // Its phase is the controller's to compare (Advance::Changed). Phase B keeps the form and the dictionary form
       // (lookup::completeCard doesn't touch them), so the name shown is reused, not worked out again here under

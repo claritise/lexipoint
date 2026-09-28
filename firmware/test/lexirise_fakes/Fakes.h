@@ -30,8 +30,10 @@ class FakeFiles : public SettingsFiles {
   std::string failRenameTo;  // destination whose next rename fails
   bool failReads = false;    // every read reports an I/O error
   int writes = 0;
+  int reads = 0;
 
   ReadStatus read(const char* path, size_t maxBytes, std::string& out) override {
+    reads++;
     const auto it = files.find(path);
     if (it == files.end()) return ReadStatus::Missing;
     if (failReads) return ReadStatus::Error;
@@ -84,6 +86,8 @@ class FakeConnection : public net::Connection {
   bool open_ = false;
   int opens = 0;
   int closes = 0;
+  int forgets = 0;  // forgetSession() calls
+  void forgetSession() override { forgets++; }
   unsigned long msPerRead = 0;
   size_t maxBytesPerRead = SIZE_MAX;
   std::vector<std::string> written;
