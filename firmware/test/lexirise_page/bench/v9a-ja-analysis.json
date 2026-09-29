@@ -1,0 +1,579 @@
+{
+ "_comment": "V9a bench: a synthetic, made-up page analysis (never a raw answer) for test/lexirise_page/PageMarksTest.cpp",
+ "text": "灯台守の祖父は、毎朝五時に起きて海を眺めていた。天気が荒れそうな日には、窓辺に座ったまま、じっと雲の動きを追っていた。",
+ "occurrences": [
+  {
+   "entryId": 101,
+   "word": "灯台守",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 0,
+   "charEnd": 3
+  },
+  {
+   "entryId": 102,
+   "word": "の",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 3,
+   "charEnd": 4
+  },
+  {
+   "entryId": 103,
+   "word": "祖父",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 4,
+   "charEnd": 6
+  },
+  {
+   "entryId": 104,
+   "word": "は",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 6,
+   "charEnd": 7
+  },
+  {
+   "entryId": 0,
+   "word": "、",
+   "isWordLike": false,
+   "transliteration": "",
+   "charStart": 7,
+   "charEnd": 8
+  },
+  {
+   "entryId": 105,
+   "word": "毎朝",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 8,
+   "charEnd": 10
+  },
+  {
+   "entryId": 106,
+   "word": "五",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 10,
+   "charEnd": 11
+  },
+  {
+   "entryId": 107,
+   "word": "時",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 11,
+   "charEnd": 12
+  },
+  {
+   "entryId": 108,
+   "word": "に",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 12,
+   "charEnd": 13
+  },
+  {
+   "entryId": 109,
+   "word": "起きて",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 13,
+   "charEnd": 16,
+   "lemma": "起きる",
+   "lemmaEntryId": 110
+  },
+  {
+   "entryId": 111,
+   "word": "海",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 16,
+   "charEnd": 17
+  },
+  {
+   "entryId": 112,
+   "word": "を",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 17,
+   "charEnd": 18
+  },
+  {
+   "entryId": 113,
+   "word": "眺めて",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 18,
+   "charEnd": 21,
+   "lemma": "眺める",
+   "lemmaEntryId": 114
+  },
+  {
+   "entryId": 115,
+   "word": "いた",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 21,
+   "charEnd": 23,
+   "lemma": "いる",
+   "lemmaEntryId": 116
+  },
+  {
+   "entryId": 0,
+   "word": "。",
+   "isWordLike": false,
+   "transliteration": "",
+   "charStart": 23,
+   "charEnd": 24
+  },
+  {
+   "entryId": 117,
+   "word": "天気",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 24,
+   "charEnd": 26
+  },
+  {
+   "entryId": 118,
+   "word": "が",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 26,
+   "charEnd": 27
+  },
+  {
+   "entryId": 119,
+   "word": "荒れ",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 27,
+   "charEnd": 29,
+   "lemma": "荒れる",
+   "lemmaEntryId": 120
+  },
+  {
+   "entryId": 121,
+   "word": "そう",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 29,
+   "charEnd": 31
+  },
+  {
+   "entryId": 122,
+   "word": "な",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 31,
+   "charEnd": 32,
+   "lemma": "だ",
+   "lemmaEntryId": 123
+  },
+  {
+   "entryId": 124,
+   "word": "日",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 32,
+   "charEnd": 33
+  },
+  {
+   "entryId": 108,
+   "word": "に",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 33,
+   "charEnd": 34
+  },
+  {
+   "entryId": 104,
+   "word": "は",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 34,
+   "charEnd": 35
+  },
+  {
+   "entryId": 0,
+   "word": "、",
+   "isWordLike": false,
+   "transliteration": "",
+   "charStart": 35,
+   "charEnd": 36
+  },
+  {
+   "entryId": 125,
+   "word": "窓辺",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 36,
+   "charEnd": 38
+  },
+  {
+   "entryId": 108,
+   "word": "に",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 38,
+   "charEnd": 39
+  },
+  {
+   "entryId": 126,
+   "word": "座った",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 39,
+   "charEnd": 42,
+   "lemma": "座る",
+   "lemmaEntryId": 127
+  },
+  {
+   "entryId": 128,
+   "word": "まま",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 42,
+   "charEnd": 44
+  },
+  {
+   "entryId": 0,
+   "word": "、",
+   "isWordLike": false,
+   "transliteration": "",
+   "charStart": 44,
+   "charEnd": 45
+  },
+  {
+   "entryId": 129,
+   "word": "じっと",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 45,
+   "charEnd": 48
+  },
+  {
+   "entryId": 130,
+   "word": "雲",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 48,
+   "charEnd": 49
+  },
+  {
+   "entryId": 102,
+   "word": "の",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 49,
+   "charEnd": 50
+  },
+  {
+   "entryId": 131,
+   "word": "動き",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 50,
+   "charEnd": 52
+  },
+  {
+   "entryId": 112,
+   "word": "を",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 52,
+   "charEnd": 53
+  },
+  {
+   "entryId": 132,
+   "word": "追って",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 53,
+   "charEnd": 56,
+   "lemma": "追う",
+   "lemmaEntryId": 133
+  },
+  {
+   "entryId": 115,
+   "word": "いた",
+   "isWordLike": true,
+   "transliteration": "",
+   "charStart": 56,
+   "charEnd": 58,
+   "lemma": "いる",
+   "lemmaEntryId": 116
+  },
+  {
+   "entryId": 0,
+   "word": "。",
+   "isWordLike": false,
+   "transliteration": "",
+   "charStart": 58,
+   "charEnd": 59
+  }
+ ],
+ "entryMetaById": {
+  "101": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1101,
+   "frequencyScore": 0.5
+  },
+  "102": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1102,
+   "frequencyScore": 0.5
+  },
+  "103": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1103,
+   "frequencyScore": 0.5
+  },
+  "104": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1104,
+   "frequencyScore": 0.5
+  },
+  "105": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1105,
+   "frequencyScore": 0.5
+  },
+  "106": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1106,
+   "frequencyScore": 0.5
+  },
+  "107": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1107,
+   "frequencyScore": 0.5
+  },
+  "108": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1108,
+   "frequencyScore": 0.5
+  },
+  "109": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1109,
+   "frequencyScore": 0.5
+  },
+  "111": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1111,
+   "frequencyScore": 0.5
+  },
+  "112": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1112,
+   "frequencyScore": 0.5
+  },
+  "113": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1113,
+   "frequencyScore": 0.5
+  },
+  "115": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1115,
+   "frequencyScore": 0.5
+  },
+  "117": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1117,
+   "frequencyScore": 0.5
+  },
+  "118": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1118,
+   "frequencyScore": 0.5
+  },
+  "119": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1119,
+   "frequencyScore": 0.5
+  },
+  "121": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1121,
+   "frequencyScore": 0.5
+  },
+  "122": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1122,
+   "frequencyScore": 0.5
+  },
+  "124": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1124,
+   "frequencyScore": 0.5
+  },
+  "125": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1125,
+   "frequencyScore": 0.5
+  },
+  "126": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1126,
+   "frequencyScore": 0.5
+  },
+  "128": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1128,
+   "frequencyScore": 0.5
+  },
+  "129": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1129,
+   "frequencyScore": 0.5
+  },
+  "130": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1130,
+   "frequencyScore": 0.5
+  },
+  "131": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1131,
+   "frequencyScore": 0.5
+  },
+  "132": {
+   "transliteration": "",
+   "partOfSpeech": [
+    "x"
+   ],
+   "rank": 1132,
+   "frequencyScore": 0.5
+  }
+ },
+ "stateByEntryId": {
+  "103": {
+   "saved_expression_id": 5103,
+   "proficiency": 2,
+   "seen_count": 1,
+   "images": []
+  },
+  "110": {
+   "saved_expression_id": 5110,
+   "proficiency": 4,
+   "seen_count": 1,
+   "images": []
+  },
+  "120": {
+   "saved_expression_id": 5120,
+   "proficiency": 1,
+   "seen_count": 1,
+   "images": []
+  },
+  "127": {
+   "saved_expression_id": 5127,
+   "proficiency": 4,
+   "seen_count": 1,
+   "images": []
+  },
+  "128": {
+   "saved_expression_id": 5128,
+   "proficiency": 3,
+   "seen_count": 1,
+   "images": []
+  },
+  "129": {
+   "saved_expression_id": 5129,
+   "proficiency": 2,
+   "seen_count": 1,
+   "images": []
+  },
+  "130": {
+   "saved_expression_id": 5130,
+   "proficiency": 4,
+   "seen_count": 1,
+   "images": []
+  },
+  "133": {
+   "saved_expression_id": 5133,
+   "proficiency": 4,
+   "seen_count": 1,
+   "images": []
+  }
+ },
+ "morphoPending": true
+}

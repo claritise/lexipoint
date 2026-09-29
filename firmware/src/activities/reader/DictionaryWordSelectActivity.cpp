@@ -22,6 +22,7 @@
 #include "lexirise/lookup/StarDictCandidates.h"
 #include "lexirise/lookup/StarDictChoice.h"
 #include "lexirise/page/PageSentences.h"
+#include "lexirise/page/ReaderMarks.h"
 #include "lexirise/settings/BookTags.h"
 #include "lexirise/settings/IgnoredWords.h"
 #include "lexirise/vocab/VocabMirror.h"
@@ -486,6 +487,8 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
           lexipoint::page::pageStore(), described->page.key, std::move(described->built), described->page.language);
       sentences->setMirror(&lexipoint::vocab::vocabStore());
       source->setSentenceSource(std::move(sentences));
+      // A3 (V9a): the side buttons step between the marked words, on a page with marks.
+      source->setStepsMarked(lexipoint::page::stepsMarked(lexipoint::page::readerMarks().shown(), settings.stepMarked));
     }
   }
   // The book's deck, filled by its tag (C4): the card makes sure it exists once a save went through.
@@ -493,7 +496,13 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
     source->setBookDeck(std::move(*deck), lexipoint::deck::deckStore());
   }
   // The page stays this activity's: the card draws it under itself while it's open.
-  auto drawPage = [this](GfxRenderer& r) { page->render(r, fontId, marginLeft, marginTop); };
+  // LEXIPOINT (V9a): with its marks, so A3's steps can be followed on it (worked out afresh for this card).
+  lexipoint::page::readerMarks().dropCardMarks();
+  auto drawPage = [this](GfxRenderer& r) {
+    page->render(r, fontId, marginLeft, marginTop);
+    lexipoint::page::readerMarks().draw(r, fontId, *page, lexipoint::page::bookKey(bookPath), spineIndex, pageIndex,
+                                        marginLeft, marginTop, /*cached=*/true);
+  };
   popup = Popup::None;
   snapshotIdx = -1;  // the card draws over the whole screen: the next render here is a full one
   startActivityForResult(

@@ -702,3 +702,163 @@ TEST(CardController, TheBenchGoesOnIntoItsNextSentence) {
   EXPECT_EQ(c.word(), 2 * n - 1);  // then the page ends
   EXPECT_FALSE(c.awaitingNext());
 }
+
+// V9a A3 (claritise 2026-09-29, "Marked words by default"): with the card open on an analyzed page, the side buttons
+// step only between the marked words (not saved or level 0, tracked, learning; never an ignored or suspended word),
+// across the page's sentences; past the last marked word a press stops.
+namespace {
+
+class MarkedSource final : public CardSource {
+ public:
+  // The page's sentences, each a list of (word, level, never marked).
+  struct W {
+    const char* word;
+    Level level;
+    bool never = false;
+  };
+  std::vector<std::vector<W>> sentences;
+  size_t loaded = 1;  // sentences whose words are there
+  bool marks = true;
+  bool loading = false;
+  std::vector<CardWord> cards;
+  std::vector<W> flat;
+  int start = 0;
+
+  void load() {
+    flat.clear();
+    for (size_t s = 0; s < loaded; s++) flat.insert(flat.end(), sentences[s].begin(), sentences[s].end());
+    cards.clear();
+    for (const W& w : flat) {
+      CardWord cw;
+      cw.word = w.word;
+      cards.push_back(cw);
+    }
+  }
+  int wordCount() const override { return static_cast<int>(flat.size()); }
+  int startWord() const override { return start; }
+  const CardWord& word(const int i) const override { return cards[i]; }
+  Level savedLevel(const int i) const override { return flat[i].level; }
+  Phase phase(int) const override { return Phase::Complete; }
+  std::string pendingText() const override { return ""; }
+  int pageNumber() const override { return 0; }
+  void open(unsigned long) override {}
+  void focus(int, unsigned long) override {}
+  bool extend(unsigned long) override {
+    if (loaded >= sentences.size()) return false;
+    loading = true;
+    return true;
+  }
+  bool extending() const override { return loading; }
+  bool tick(unsigned long) override {
+    if (!loading) return false;
+    loading = false;
+    loaded++;
+    load();
+    return true;
+  }
+  std::optional<unsigned long> nextDueMs() const override { return std::nullopt; }
+  PageScene scene(int, bool, const TextMetrics&, int) const override { return {}; }
+  bool stepsMarkedWords() const override { return marks; }
+  bool neverMarked(const int i) const override { return flat[i].never; }
+};
+
+using W = MarkedSource::W;
+
+MarkedSource page() {
+  MarkedSource s;
+  s.sentences = {{{"祖父", Level::Learning},
+                  {"は", Level::Known},
+                  {"毎朝", Level::Fresh},
+                  {"海", Level::None, true},
+                  {"窓辺", Level::None}},
+                 {{"雲", Level::Known}, {"の", Level::Known}},  // nothing marked
+                 {{"動き", Level::Tracked}, {"を", Level::Known}}};
+  s.load();
+  return s;
+}
+
+}  // namespace
+
+TEST(CardControllerA3, SideButtonsStepBetweenMarkedWords) {
+  MarkedSource s = page();
+  CardController c(s, ReadingMode::Kana);
+  c.open(0);
+  EXPECT_EQ(c.word(), 0);  // 祖父
+  EXPECT_TRUE(c.step(+1, 10));
+  EXPECT_EQ(c.word(), 4);  // 窓辺: は, 毎朝 (known) and 海 (ignored) skipped
+  EXPECT_TRUE(c.step(-1, 20));
+  EXPECT_EQ(c.word(), 0);
+  EXPECT_FALSE(c.step(-1, 30));  // the tapped sentence's start
+}
+
+TEST(CardControllerA3, OnIntoTheNextSentencesFirstMarkedWordOverOneWithNone) {
+  MarkedSource s = page();
+  CardController c(s, ReadingMode::Kana);
+  c.open(0);
+  ASSERT_TRUE(c.step(+1, 10));
+  ASSERT_EQ(c.word(), 4);
+  EXPECT_FALSE(c.step(+1, 20));  // the sentence's end: the next one loads
+  EXPECT_TRUE(c.awaitingNext());
+  c.tick(30);  // it came with nothing marked: on into the one after it
+  EXPECT_TRUE(c.awaitingNext());
+  EXPECT_EQ(c.word(), 4);
+  c.tick(40);
+  EXPECT_EQ(c.word(), 7);        // 動き
+  EXPECT_FALSE(c.step(+1, 50));  // the page's last marked word: a press stops
+  EXPECT_FALSE(c.awaitingNext());
+  EXPECT_EQ(c.word(), 7);
+}
+
+TEST(CardControllerA3, ALevelSetOnTheCardDecidesToo) {
+  MarkedSource s = page();
+  CardController c(s, ReadingMode::Kana);
+  c.open(0);
+  ASSERT_TRUE(c.step(+1, 10));  // 窓辺
+  const Hit known = hit(Target::Level, 3);
+  c.tap(&known, 20);            // saved as known on this card: no mark any more
+  ASSERT_TRUE(c.step(-1, 30));  // back to 祖父
+  EXPECT_EQ(c.word(), 0);
+  EXPECT_FALSE(c.step(+1, 40));  // 窓辺 is skipped now: on into the next sentences
+}
+
+TEST(CardControllerA3, EveryWordWithoutMarks) {
+  MarkedSource s = page();
+  s.marks = false;  // "Every word", or a page not analyzed
+  CardController c(s, ReadingMode::Kana);
+  c.open(0);
+  ASSERT_TRUE(c.step(+1, 10));
+  EXPECT_EQ(c.word(), 1);  // は
+}
+
+// A press made while the card jumped on into the next sentence (seen within kStepAfterJumpGraceMs of the jump)
+// goes back as it would have from the word the card waited on: to the previous marked word before it, or to that word
+// itself when there's none.
+TEST(CardControllerA3, ABackPressDuringTheJumpGoesToThePreviousMarkedWord) {
+  MarkedSource s = page();
+  CardController c(s, ReadingMode::Kana);
+  c.open(0);
+  ASSERT_TRUE(c.step(+1, 10));  // 窓辺
+  ASSERT_EQ(c.word(), 4);
+  c.step(+1, 20);  // on into the next sentences
+  c.tick(30);
+  c.tick(40);
+  ASSERT_EQ(c.word(), 7);           // 動き, jumped to at 40
+  EXPECT_TRUE(c.step(-1, 45, 41));  // pressed at 41, during the jump
+  EXPECT_EQ(c.word(), 0);           // 祖父: 海 (ignored), 毎朝 and は (known) skipped, as from 窓辺
+}
+
+TEST(CardControllerA3, ABackPressDuringTheJumpWithNoMarkBeforeStaysOnTheWordItLeft) {
+  MarkedSource s = page();
+  s.sentences[0][0].level = Level::Known;  // nothing marked before 窓辺
+  s.load();
+  s.start = 4;
+  CardController c(s, ReadingMode::Kana);
+  c.open(0);
+  ASSERT_EQ(c.word(), 4);
+  c.step(+1, 20);
+  c.tick(30);
+  c.tick(40);
+  ASSERT_EQ(c.word(), 7);
+  EXPECT_TRUE(c.step(-1, 45, 41));
+  EXPECT_EQ(c.word(), 4);  // 窓辺, the word it waited on
+}

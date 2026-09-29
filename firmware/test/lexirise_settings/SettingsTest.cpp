@@ -28,6 +28,8 @@ TEST(Settings, DefaultsFromEmptyFile) {
   EXPECT_TRUE(s.tagBook);
   EXPECT_TRUE(s.deckPerBook);
   EXPECT_EQ(s.wifiIdleMin, config::kWifiIdleDefaultMin);
+  EXPECT_TRUE(s.markWords);   // V9a: on by default (claritise 2026-09-29)
+  EXPECT_TRUE(s.stepMarked);  // "Marked words by default"
   EXPECT_EQ(s.baseUrl, config::kDefaultBaseUrl);
   EXPECT_FALSE(r.migratedLegacyKeys);
   EXPECT_TRUE(r.warnings.empty());
@@ -38,6 +40,7 @@ TEST(Settings, ParsesSections) {
       "[account]\nenabled=0\napi_key=" + kKey +
       "\n[ja]\nenabled=1\nreading=romaji\nstardict=jmdict\n[zh]\nenabled=off\nstardict=cedict\n"
       "[general]\ndefault_language=zh\ntags=xteink, book:test\ntag_book=0\ndeck_per_book=0\nwifi_idle_min=10\n"
+      "[page]\nmark_words=0\nstep_marked=0\n"
       "[advanced]\nbase_url=https://example.test/\n");
   const Settings& s = r.settings;
   EXPECT_FALSE(s.enabled);
@@ -51,6 +54,8 @@ TEST(Settings, ParsesSections) {
   EXPECT_FALSE(s.tagBook);
   EXPECT_FALSE(s.deckPerBook);
   EXPECT_EQ(s.wifiIdleMin, 10);
+  EXPECT_FALSE(s.markWords);
+  EXPECT_FALSE(s.stepMarked);
   EXPECT_EQ(s.baseUrl, "https://example.test");  // trailing slash dropped
   EXPECT_TRUE(r.warnings.empty());
   EXPECT_EQ(s.enabledLanguageCount(), 1);
@@ -64,8 +69,10 @@ TEST(Settings, RoundTripIsStable) {
   s.tags = "a,b";
   s.tagBook = false;
   s.deckPerBook = false;
+  s.stepMarked = false;
   const std::string text = serializeSettings(s);
   EXPECT_NE(text.find("tags=a,b\ntag_book=0\ndeck_per_book=0\n"), std::string::npos);
+  EXPECT_NE(text.find("[page]\nmark_words=1\nstep_marked=0\n"), std::string::npos);
   const ParseResult r = parseSettings(text);
   EXPECT_EQ(serializeSettings(r.settings), text);
   EXPECT_TRUE(r.warnings.empty());

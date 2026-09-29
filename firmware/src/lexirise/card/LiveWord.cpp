@@ -85,8 +85,6 @@ Level levelOf(const std::optional<api::EntryState>& saved) {
   return static_cast<Level>(saved->proficiency - 1);
 }
 
-int proficiencyOf(const Level level) { return level == Level::None ? 0 : static_cast<int>(level) + 1; }
-
 NoMeaning noMeaningFor(const api::ApiError error) {
   if (error == api::ApiError::Unauthorized) return NoMeaning::KeyRejected;
   if (error == api::ApiError::RateLimited) return NoMeaning::RateLimited;

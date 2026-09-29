@@ -56,6 +56,11 @@ Examples:
                                       # as it closes); past the TLS idle close, the first again (a hit, no lookup);
                                       # then the second (a miss); a TLS session after the first card resumed
                                       # (which call isn't said) (V7c). Read-only; one held session
+  lxctl.py marks-smoke [fast]         # a dev build, a Japanese or Chinese book open at a page whose next pages
+                                      # were analyzed before, marks on: turns forward and back; checks from the
+                                      # log each page marked again on the way back and no write; reports the draw
+                                      # and read times and the lowest heap (V9a); fast: 10 turns back to back,
+                                      # the pages read as drawn and the renders' time. Read-only; one held session
   lxctl.py page-smoke [x y]           # a dev build, a Japanese or Chinese book open at running text (upright
                                       # portrait), WiFi saved: a card on the word at x y brings WiFi up; then the
                                       # page and the next are analyzed, a turn, fast turns, and a card on the page
@@ -93,6 +98,12 @@ ACTIVITY_WAIT_S = 10.0  # screen transitions (log line "Entering activity: <Name
 LEXI_CALL_TIMEOUT_S = 50.0
 LEXI_CALL_MARGIN_MS = 5000
 LEXI_SOAK_MAX = 50  # DevConfig kLexiSoakMax
+# A BTN is held for DevConfig kButtonDefaultMs (150 ms) and until the loop has sampled it kButtonMinUpdates times; the
+# device answers "LX:ERR button busy" to another BTN until then. press() waits this long after each press, and once
+# more on a busy (a loop slowed by a page render samples late). test_lxctl checks the margin against the header.
+BUTTON_HOLD_MARGIN_MS = 150
+BUTTON_HOLD_S = 0.3
+BUTTON_BUSY = "button busy"
 LEAK_BYTES_PER_CALL = 64  # a free-heap trend steeper than this, per call, fails the soak
 LEAK_MIN_SAMPLES = 5
 # card-smoke: the bench's phases end by config::kBenchPhaseBMs (900 ms); wait for them before tapping.
@@ -319,6 +330,20 @@ def smoke(h: Harness, outdir: str) -> None:
     h.command("HOME")
     save_shot(h, os.path.join(outdir, "06-home-again.png"))
     print(f"smoke OK, screenshots in {outdir}")
+
+
+def press(h: Harness, cmd: str, seen: list[str] | None = None, sleep=time.sleep) -> str:
+    """A side-button press (a BTN command) that the next one can follow: waits BUTTON_HOLD_S after it, so the press
+    has been released; a press refused as busy is sent once more after another BUTTON_HOLD_S. Returns the reply."""
+    try:
+        reply = h.command(cmd, seen=seen)
+    except RuntimeError as e:
+        if BUTTON_BUSY not in str(e):
+            raise
+        sleep(BUTTON_HOLD_S)
+        reply = h.command(cmd, seen=seen)
+    sleep(BUTTON_HOLD_S)
+    return reply
 
 
 def card_state_commands(state: dict, lang: str, low: bool) -> list[str]:
@@ -793,6 +818,27 @@ def ignore_events(log: list[str]) -> list[tuple[str, str, str]]:
     return [(m.group(1), m.group(2), m.group(3)) for line in log if (m := IGNORE_LOG.search(line))]
 
 
+def card_marks_change(log: list[str], tapped: int) -> tuple[int, int] | None:
+    """V9a: the page's marks under the card before and after the Ignore ("[LXPAGE] marks: <n> words" lines, drawn
+    again only when the ignore list or the mirror changed: page::CardMarks); None when the card's page has no marks
+    (marks off, or a page not analyzed). `tapped`: where in `log` the Ignore was tapped. Paired by the tap, not the
+    "ignore <key> on written" line: the list's revision moves as it's written, before that line is logged, so the
+    render task can draw the new marks before it. Before: the last drawing before the tap; after: the first after it,
+    before the Undo's change (a vocab mirror page applied in between would be counted instead: rare, on an idle card).
+    The words marked go down by the word's occurrences on the page when it was marked (an unsaved or learning word),
+    and stay when it wasn't."""
+    if not any((m := IGNORE_LOG.search(line)) and m.group(2) == "on" for line in log[tapped:]):
+        return None
+    undo = next((i for i, line in enumerate(log) if i >= tapped and (m := IGNORE_LOG.search(line)) and
+                 m.group(2) == "off"), len(log))
+    words = [(i, int(m.group(1))) for i, line in enumerate(log) if (m := MARKS_DRAW_LOG.search(line))]
+    before = [n for i, n in words if i < tapped]
+    after = [n for i, n in words if tapped <= i < undo]
+    if not before or not after:
+        return None
+    return before[-1], after[0]
+
+
 def check_ignore_log(log: list[str]) -> str:
     """V5's Ignore on the device, from the card's log: one change "on written", then its Undo "off written" for the
     same key, nothing else to the list; and no write to Lexirise (no POST, PATCH or DELETE on /v1/vocabulary; a
@@ -877,7 +923,9 @@ def ignore_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT, watch_s: floa
     h.command("HOME", seen=log)
     log += collect_until(h, ("Exiting activity: LexiriseCard",), CARD_CLOSE_WAIT_S + LEXI_CALL_TIMEOUT_S)
     key = check_ignore_log(log)
-    print(f"ignore-smoke OK: {key} on, then off")
+    marks = card_marks_change(log, since)
+    after_marks = f"; the page's marks under the card: {marks[0]} words, then {marks[1]}" if marks else ""
+    print(f"ignore-smoke OK: {key} on, then off{after_marks}")
     return key
 
 
@@ -1088,7 +1136,7 @@ def check_page_log(log: list[str]) -> list[dict[str, int | str]]:
 
 
 def page_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT,
-               watch_s: float = PAGE_WATCH_S) -> list[dict[str, int | str]]:
+               watch_s: float = PAGE_WATCH_S, sleep=time.sleep) -> list[dict[str, int | str]]:
     """V7b's page analysis on the device, read-only. A dev build, one held serial session (dev-harness.md §3), a
     Japanese or Chinese book open in the reader at a page of running text, upright portrait, Lexirise on, WiFi saved;
     `at`: a word there. A card on the word brings WiFi up (the page analysis never does) and is closed; the page and
@@ -1119,10 +1167,10 @@ def page_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT,
 
     card()  # WiFi up
     next_steps(2)  # this page, the next
-    h.command(PAGE_TURN, seen=log)
+    press(h, PAGE_TURN, log, sleep)
     next_steps(2)
     for _ in range(PAGE_FAST_TURNS):
-        h.command(PAGE_TURN, seen=log)
+        press(h, PAGE_TURN, log, sleep)  # as fast as the device takes them: each released before the next
     next_steps(2)
     card()  # on the page reached: from its analysis
     steps = check_page_log(log)
@@ -1322,10 +1370,112 @@ def cache_smoke(h: Harness, first: tuple[int, int] = READER_ON_TEXT, second: tup
     return r
 
 
+# marks-smoke (v0.2 V9a): the page marks, read-only, from the log (dev builds: LOG_DBG). A page drawn with its marks
+# logs "[LXPAGE] marks: <n> words, <n> fills in <ms> ms; heap <free> free" before its "[ERS] Rendered page"
+# (page::ReaderMarks::draw); the loop's read of a kept page "[LXPAGE] marks: <this|next|previous> page <s>-<start>
+# <kept|not analyzed> in <ms> ms"; a page read as it's drawn "[LXPAGE] marks: page <s>-<start> read as drawn: <kept|not
+# analyzed> in <ms> ms".
+MARKS_DRAW_LOG = re.compile(r"\[LXPAGE\] marks: (\d+) words, (\d+) fills in (\d+) ms; heap (\d+) free")
+MARKS_READ_LOG = re.compile(r"\[LXPAGE\] marks: (this|next|previous) page (\d+)-(\d+) (kept|not analyzed) in (\d+) ms")
+MARKS_PEEK_LOG = re.compile(r"\[LXPAGE\] marks: page (\d+)-(\d+) read as drawn: (kept|not analyzed) in (\d+) ms")
+MARKS_TURNS = 3           # forward, then as many back: each page drawn again from memory
+MARKS_SETTLE_S = 4.0      # after a turn: the loop reads the pages around it (a file each)
+PAGE_BACK = "BTN LEFT"    # the other side button: back (by the side-button layout)
+
+
+def check_marks_log(log: list[str], turns: int = MARKS_TURNS) -> dict[str, int]:
+    """V9a's marks on the device, from the log of `turns` turns forward then as many back over pages analyzed
+    before. AWAKE draws nothing, so the drawings are the turns' own (the lines up to each READER_PAGE_DRAWN): forward
+    pages 1..N, then back N-1..0. The first page turned to is marked; each page drawn on both ways (1..N-1) that was
+    marked going forward is marked on the way back (the page just left is kept, the one before read ahead); nothing
+    written to Lexirise. Returns the counts, the slowest draw and read, and the lowest heap; raises RuntimeError on the
+    first broken rule."""
+    drawings: list[list[str]] = [[]]
+    for line in log:
+        drawings[-1].append(line)
+        if READER_PAGE_DRAWN in line:
+            drawings.append([])
+    drawings = [d for d in drawings if any(READER_PAGE_DRAWN in line for line in d)]
+    if len(drawings) < 2 * turns:
+        raise RuntimeError(f"{len(drawings)} pages drawn, expected {2 * turns} ({turns} turns each way)")
+    marked = [any(MARKS_DRAW_LOG.search(line) for line in d) for d in drawings]
+    if not marked[0]:
+        raise RuntimeError("the first page turned to wasn't marked (analyzed before? Lexirise on, Mark words on the "
+                           "page and the book's Page marks on? a dev build?)")
+    # Page i (1..N-1) is drawing i-1 going forward and drawing 2N-1-i coming back.
+    for i in range(1, turns):
+        if marked[i - 1] and not marked[2 * turns - 1 - i]:
+            raise RuntimeError(f"page {i} was marked going forward but not on the way back")
+    writes = [line for line in log if "[LXS] " in line and any(w in line for w in PAGE_WRITES)]
+    if writes:
+        raise RuntimeError(f"a write to Lexirise during a read-only smoke: {writes[0]}")
+    draws = [m for line in log if (m := MARKS_DRAW_LOG.search(line))]
+    reads = [int(m.group(5)) for line in log if (m := MARKS_READ_LOG.search(line))]
+    peeks = [int(m.group(4)) for line in log if (m := MARKS_PEEK_LOG.search(line))]
+    return {"drawn": len(drawings), "marked": sum(marked), "draw_ms": max(int(m.group(3)) for m in draws),
+            "read_ms": max(reads, default=0), "reads": len(reads), "peek_ms": max(peeks, default=0),
+            "heap": min(int(m.group(4)) for m in draws)}
+
+
+def marks_smoke(h: Harness, turns: int = MARKS_TURNS, settle_s: float = MARKS_SETTLE_S,
+                sleep=time.sleep) -> dict[str, int]:
+    """V9a's page marks on the device, read-only. A dev build, one held serial session (dev-harness.md §3), a
+    Japanese or Chinese book open at a page whose next `turns` pages were analyzed before (page-smoke, or reading with
+    WiFi up after a card), Lexirise on, Mark words on the page and the book's Page marks on; WiFi off, or the pages
+    around already analyzed (a page analysis in progress holds the loop, so a press can stay unreleased past
+    press()'s one retry). Turns forward and back, waiting `settle_s` after each; checked by check_marks_log."""
+    h.command("AWAKE 1")
+    log: list[str] = list(read_for(h, settle_s))
+    for cmd in [PAGE_TURN] * turns + [PAGE_BACK] * turns:
+        press(h, cmd, log, sleep)
+        log.extend(read_for(h, settle_s))
+    r = check_marks_log(log, turns)
+    print(f"marks-smoke OK: {r['marked']} of {r['drawn']} pages marked; drawn in {r['draw_ms']} ms at most, "
+          f"{r['reads']} page reads ({r['read_ms']} ms at most), read as drawn in {r['peek_ms']} ms at most; heap "
+          f"{r['heap']} free at the lowest")
+    return r
+
+# marks-smoke fast (V9a): turns faster than the loop reads the pages around (auto page turn, a held button), so
+# pages are read as they're drawn, on the render task: how many, how long, and what the page renders took then.
+MARKS_FAST_TURNS = 10
+# EpubReaderActivity's "Page render: ", "Page render (tiled): " and "Page render (tiled async): " lines.
+PAGE_RENDER_LOG = re.compile(r"\[ERS\] Page render(?: \([^)]*\))?: .*total=(\d+)ms")
+
+
+def check_marks_fast_log(log: list[str], turns: int = MARKS_FAST_TURNS) -> dict[str, int]:
+    """V9a's fast turns, from the log: the pages drawn, those read as drawn and their slowest read, the page renders'
+    total and slowest time; nothing written to Lexirise. Raises RuntimeError when fewer pages than `turns` were drawn
+    or a write happened."""
+    drawn = sum(READER_PAGE_DRAWN in line for line in log)
+    if drawn < turns:
+        raise RuntimeError(f"{drawn} pages drawn for {turns} fast turns")
+    writes = [line for line in log if "[LXS] " in line and any(w in line for w in PAGE_WRITES)]
+    if writes:
+        raise RuntimeError(f"a write to Lexirise during a read-only smoke: {writes[0]}")
+    peeks = [int(m.group(4)) for line in log if (m := MARKS_PEEK_LOG.search(line))]
+    renders = [int(m.group(1)) for line in log if (m := PAGE_RENDER_LOG.search(line))]
+    return {"drawn": drawn, "peeks": len(peeks), "peek_ms": max(peeks, default=0), "render_ms": sum(renders),
+            "render_max_ms": max(renders, default=0)}
+
+
+def marks_fast_smoke(h: Harness, turns: int = MARKS_FAST_TURNS, settle_s: float = MARKS_SETTLE_S,
+                     sleep=time.sleep) -> dict[str, int]:
+    """As marks_smoke, but `turns` turns back to back (no settle between them, only each press's BUTTON_HOLD_S): the
+    pages the loop hadn't read yet are read as drawn. Reports how many and how long, and the page renders' time; checked by check_marks_fast_log."""
+    h.command("AWAKE 1")
+    log: list[str] = list(read_for(h, settle_s))
+    for _ in range(turns):
+        press(h, PAGE_TURN, log, sleep)  # as fast as the device takes them: each released before the next
+    log.extend(read_for(h, settle_s))
+    r = check_marks_fast_log(log, turns)
+    print(f"marks-smoke fast OK: {r['drawn']} pages drawn, {r['peeks']} read as drawn ({r['peek_ms']} ms at most); "
+          f"page renders {r['render_ms']} ms in all, {r['render_max_ms']} ms at most")
+    return r
+
 SETTINGS_ROWS_LOG = re.compile(r"\[LXSET\] rows (\d+)")  # LexiriseSettingsActivity, dev builds
 # settings_screen::visibleRows: Lexirise off (the Account group, the two offline dictionaries and the default
 # language) .. every row
-SETTINGS_ROWS_MIN, SETTINGS_ROWS_MAX = 7, 14
+SETTINGS_ROWS_MIN, SETTINGS_ROWS_MAX = 7, 16
 
 
 def settings_smoke(h: Harness, outdir: str, shot=None) -> int:
@@ -1518,6 +1668,14 @@ def main() -> None:
                             tuple(nums[2:4]) if len(nums) >= 4 else CACHE_SECOND_WORD)
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"cache-smoke FAILED: {e}")
+        elif c == "marks-smoke":
+            try:
+                if "fast" in a.args:
+                    marks_fast_smoke(h)
+                else:
+                    marks_smoke(h)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"marks-smoke FAILED: {e}")
         elif c == "page-smoke":
             nums = [x for x in a.args if x.lstrip("-").isdigit()]
             try:

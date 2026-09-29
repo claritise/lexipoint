@@ -151,6 +151,64 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## v0.2 V9a: still owed on the device
+
+V9a (the page marks and A3: `../v0.2/page-annotations.md` §2 "V9a decisions" and "As built (V9a)") is on `lexi/V9`,
+not yet run on the device. A Japanese and a Chinese book, a key, a vocabulary with a few saved words at each level.
+
+- **Marks on an analyzed page:** open a card (WiFi up), close it, read on at a normal pace: the next page turns with its
+  marks (no second refresh); solid under every unsaved word (particles too), dotted under tracked and learning words,
+  none under fresh and known ones; they don't touch the glyphs or the next line. Compare with
+  `reference/v9a-annotations.html`. Record `[LXPAGE] marks:` lines (the read's time, the draw's time).
+- **Offline:** WiFi off, pages analyzed before: still marked. A page never analyzed: plain, no extra refresh later.
+- **A save shows:** save a new word at L on a card, close it: its mark turns dotted; set it to K: gone. Ignore a word
+  (⋯): its marks go on the page. A word suspended in Lexirise, after a sync: no mark.
+- **A3:** on an analyzed page, a side button with the card open skips the known words to the next marked one, over a
+  sentence with none, and stops at the page's last marked word; with Settings → Side buttons on a card → Every word,
+  it steps every word; on a page not analyzed, every word.
+- **Settings:** the On the page rows on the device and the web page, each toggled and kept after a reboot
+  (`config.ini`'s `[page]`); `lxctl.py settings-smoke` (16 rows at most).
+- **Page marks per book:** the reader menu's row and the toolbar's More panel's: Off hides the marks on the page drawn
+  after the menu and A3 steps every word; On again brings them back on the page drawn right after the menu (R3);
+  `marks-off.ini` after a reboot.
+- **Heap and time:** the free internal heap with a marked page on screen and after 50 page turns (no drop); the page
+  turn's time with marks against without (`[ERS] Page render` lines).
+- **Image pages** on the UC8279 panel (absolute grayscale): whether the marks survive the gray pass.
+- **(R8) Text anti-aliasing On** (the overlay gray pass, and the combined base on Paper Mono): the marks stay after the
+  gray pass.
+- **(R1) Back turns and jumps:** turn forward three pages and back: each page marked again (`lxctl.py marks-smoke`,
+  read-only, reports the draw and read times and the lowest heap); open the book again at an analyzed page, and jump
+  (TOC, go to %) to one: marked on its first drawing; record the `read as drawn` time.
+- **(R1) After a restart:** a word saved before it shows its mark as saved on the first page (R3: the mirror loaded as
+  the book opens, `ReaderMarks::open`: record `the ja mirror loaded in <ms> ms`, a pause before the first page).
+- **(R3) A save or an ignore under a card:** save a new word on a card (or ⋯ Ignore it): the marks on the page under the
+  card change on the card's next frame; tap another word on the page (a new card): the page under it shows the change;
+  `lxctl.py ignore-smoke` reports the marks under the card before and after its Ignore. Record the A3 step's time with
+  marks on against off.
+- **(R1) The underline's place** at 18 pt with Tight line spacing: clear of the next line's glyphs and ruby.
+- **(R7) An idle sync page under a card:** leave a card open until the vocab mirror syncs a page (`lxctl.py
+  vocab-smoke`), with marks on: the card's step and frame time while it's applied; a page with nothing new doesn't
+  redraw the marks under the card (no `[LXPAGE] marks:` line after it).
+- **(R2) Fast turns:** `lxctl.py marks-smoke fast` (10 turns back to back, no settle; R6: each press released before
+  the next, `BUTTON_HOLD_S`, as the harness refuses a press while one is held): record the pages read as drawn,
+  their slowest read, and the page renders' total and slowest time (R6: the tiled renders counted too); (R8) and a turn into a new chapter (its
+  first page always read as drawn: the loop reads ahead only within a section): its `read as drawn` time; then the same with Mark words on the page off,
+  for the difference. And a card's step with marks on against off (A3's step latency: the page under the card is marked
+  once per card page).
+- **(R4) A Lookup language change on the same page:** a book whose metadata doesn't say, with its fallback language
+  switched off (no marks); set its Lookup language to Japanese in the reader menu: the page drawn after the menu is
+  marked, and stays marked through the next loop passes (no page turn); a card opened right then has the marks under
+  it and A3 steps marked words.
+- **(R5) Memory:** the free internal heap (and PSRAM) with a marked book open after the three pages are kept, against
+  the same with Mark words on the page off; move the kept analyses to PSRAM only if it's measured to matter.
+- **(R5) Rotate screen from the reader menu** on an analyzed page (a reflow; the page index may stay): the page drawn
+  after is marked when its new text was analyzed, and the next page is read ahead (`[LXPAGE] marks:` lines).
+- **(R4) Word select's own screen:** whether word select's screen (a StarDict answer, a "not found" or notice popup) is
+  ever shown over a marked page, and whether the marks show under it (it draws the page through its own path, not the
+  marks'): note what's seen.
+- **(R2) Lookup language:** change a book's Lookup language in the reader menu: the page's marks go until its analysis
+  in the new language is kept (the prefetcher analyzes it again over WiFi).
+
 ## v0.2 V8: still owed on the device
 
 V8 (the slimming: `../v0.2/slimming.md` §8 "As built (V8)") is on `lexi/V8`, not yet run on the device. Flash the

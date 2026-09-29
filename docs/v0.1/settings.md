@@ -47,6 +47,8 @@ v0.2 V8, `../v0.2/slimming.md` §8; the pattern Lexirise copied stays.)
 | | Tag with book title | On / Off | On | ✓ | ✓ | (V2, `../v0.2/00-overview.md` C2) Each saved word also gets `book:<slug>`, the book title's ASCII slug (a Japanese or Chinese title: a short hash). One tag name per book, kept on the account for good (tags can't be deleted). Shown with Tags, while Lexirise is on |
 | | Deck per book | On / Off | On | ✓ | ✓ | (V3, `../v0.2/00-overview.md` C4) Each book gets a Lexirise deck, `Lexipoint: <title>`, filled by its book tag: made (or found) after the book's first save, once a card in the book sits idle a few seconds. Shown while Tag with book title is on |
 | | Keep WiFi on after a lookup | Off (connect each time) / 1 / 2 / **5** / 10 min | 5 min | ✓ | ✓ | D10 |
+| **On the page** | Mark words on the page | On / Off | On | ✓ | ✓ | (v0.2 V9a, `../v0.2/page-annotations.md` §2 A1) Marks under the words of an analyzed page: solid, not saved; dotted, tracked or learning. A book can turn them off in the reader menu (**Page marks**, below; that row shows only while this is on and Lexirise is usable for the book). Shown while Lexirise is on |
+| | Side buttons on a card | **Marked words** / Every word | Marked words | ✓ | ✓ | (V9a, A3) With a card open on a page with marks, the side buttons step between the marked words only. Shown while Mark words on the page is on |
 | **Advanced** | Server | URL | `https://api.lexirise.app` | — | ✓ | Web only, so it can't be mistyped on the device. For a local proxy |
 
 **Grouping rule (claritise, 2026-09-24):** anything that belongs to one language goes in **that
@@ -269,6 +271,11 @@ base_url=https://api.lexirise.app
   the first time a card opens in a book while this is on (`settings/BookTags`).
 - **`deck_per_book`** (V3): `1` gives each tagged book a Lexirise deck. The decks' ids are kept apart, in
   `/.lexirise/decks.ini` (`<ja|zh>:<slug>=<deck id>` lines, newest last, 100 at most; `deck/BookDeck`).
+- **`[page]`** (v0.2 V9a): `mark_words` and `step_marked`, `1` or `0` (both `1` by default: a file from before V9a has
+  no section and gets them on its next save). Each book's **Page marks** row in the reader menu (and its toolbar's More
+  panel) is kept apart: `/.lexirise/marks-off.ini`, the paths of the books turned off, one per line, newest last
+  (`config::kBookMarksOffMax` books at most, the oldest forgotten, its marks back on; `settings/BookMarks`), written
+  crash-safely (`SafeFile`) on each tap.
 - **Ignored words** (v0.2 V5, C17; no setting): the words the reader ignored from the card's ⋯ tab ("stop marking this
   word on the page"; never sent to Lexirise), in `/.lexirise/ignored.ini`, one key per line, the ids first and then the forms, each part newest last:
   `<ja|zh>:<entry key>` (`lookup::entryKeyOf`: the lemma's entry id, else the word's own), or

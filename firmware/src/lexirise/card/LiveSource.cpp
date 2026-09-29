@@ -241,6 +241,17 @@ bool LiveSource::ignored(const int index) const {
   return ignoredStore_ && ignoredStore_->contains(*key);
 }
 
+bool LiveSource::neverMarked(const int index) const {
+  if (ignored(index)) return true;
+  if (!vocab_ || !pageSentences_ || index < 0 || index >= wordCount()) return false;
+  const lookup::LookupCard& card = cards_[index];
+  if (card.savedEntryId == 0) return false;
+  // Suspended in Lexirise, as the page's marks decide it: the mirror's word when it outranks the page (MirrorView).
+  const page::MirrorSays says =
+      page::MirrorView(card.language, pageSentences_->analyzedMs(), *vocab_).says(card.savedEntryId);
+  return says.verdict == page::MirrorSays::Verdict::Saved && says.suspended;
+}
+
 bool LiveSource::setIgnored(const int index, const bool ignored) {
   std::optional<IgnoredKey> key = ignoreKey(index);
   if (!key || !ignoredStore_) return false;  // no list to keep it in, or no key

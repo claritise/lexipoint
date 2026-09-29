@@ -1437,11 +1437,36 @@ class PageSmokeRules(unittest.TestCase):
         self.assertIn('"analyzed: no analyze/text for its sentences"', sentences)
 
 
-class FakePageHarness:
+class HeldButton:
+    """The device's side of a BTN (DevHarness pressButton -> ButtonPress::start): the press is held for
+    kButtonDefaultMs, and another BTN before then is refused with "LX:ERR button busy". Time is a clock the fake
+    sleep advances; `slow_s` holds one press that much longer (a loop slowed by a page render samples it late)."""
+
+    HOLD_S = header_constants("src/lexirise/dev/DevConfig.h")["kButtonDefaultMs"] / 1000
+
+    def __init__(self, slow_s: float = 0.0):
+        self.clock = 0.0
+        self.held_until = -1.0
+        self.slow_s = slow_s
+        self.busy = 0  # presses refused
+
+    def sleep(self, seconds):
+        self.clock += seconds
+
+    def btn(self, cmd):
+        if self.clock < self.held_until:
+            self.busy += 1
+            raise RuntimeError(f"{cmd}: LX:ERR button busy")
+        self.held_until = self.clock + self.HOLD_S + self.slow_s
+        self.slow_s = 0.0
+
+
+class FakePageHarness(HeldButton):
     """The device's side of page-smoke: LONG opens a card, HOME closes it, each turn draws a page and, after the
     dwell, logs this page's and the next page's steps; the second card finds the page analyzed."""
 
     def __init__(self):
+        super().__init__()
         self.stream: list[str] = []
         self.sent: list[str] = []
         self.t = 1000
@@ -1475,6 +1500,7 @@ class FakePageHarness:
                 self.t += 300
                 self.stream.append(PAGE_DRAWN.format(t=self.t))
         elif cmd == lxctl.PAGE_TURN:
+            self.btn(cmd)
             self._page()
         return "LX:OK"
 
@@ -1485,8 +1511,9 @@ class FakePageHarness:
 class PageSmokeDriver(unittest.TestCase):
     def test_it_brings_wifi_up_with_a_card_then_turns_and_opens_a_card_on_the_page(self):
         h = FakePageHarness()
-        steps = lxctl.page_smoke(h, (240, 400), watch_s=0.01)
+        steps = lxctl.page_smoke(h, (240, 400), watch_s=0.01, sleep=h.sleep)
         self.assertGreaterEqual(len(steps), 4)
+        self.assertEqual(h.busy, 0)
         self.assertEqual(h.sent[:2], ["AWAKE 1", "LONG 240 400"])
         self.assertEqual(h.sent.count(lxctl.PAGE_TURN), 1 + lxctl.PAGE_FAST_TURNS)
         self.assertEqual(h.sent[-3:], ["LONG 240 400", "SYNC", "HOME"])
@@ -1496,6 +1523,249 @@ class PageSmokeDriver(unittest.TestCase):
         for cmd in ("LONG 240 400", "SYNC", "HOME", lxctl.PAGE_TURN):
             self.assertRegex(cmd, usages[cmd.split()[0]])
 
+
+
+# --- marks-smoke (v0.2 V9a) ---
+
+MARKS_DRAW = "[{t}] [DBG] [LXPAGE] marks: 180 words, 190 fills in {ms} ms; heap {heap} free"
+MARKS_READ = "[{t}] [DBG] [LXPAGE] marks: {which} page 2-{start} kept in {ms} ms"
+MARKS_PEEK = "[{t}] [DBG] [LXPAGE] marks: page 2-0 read as drawn: kept in 35 ms"
+
+
+def marks_log(turns=3, unmarked_back=None, write=False):
+    """`turns` forward and back, from a page never drawn in the log (AWAKE draws nothing): each drawing marked (its
+    draw line before its Rendered page), the pages around read after it; `unmarked_back`: the back drawing (0-based
+    among the back turns) left unmarked."""
+    log, t = [], 1000
+    for i in range(2 * turns):
+        t += 100
+        log.append(MARKS_READ.format(t=t, which="next", start=1200 * (i + 1), ms=30))
+        t += 900
+        if i < turns or unmarked_back != i - turns:
+            log.append(MARKS_DRAW.format(t=t - 50, ms=45 + i, heap=90000 - i))
+        log.append(PAGE_DRAWN.format(t=t))
+    if write:
+        log.append("[9200] [INF] [LXS] POST /v1/vocabulary -> 200 (ok)")
+    return log
+
+
+class MarksSmokeRules(unittest.TestCase):
+    def test_every_page_marked_forward_and_back_passes(self):
+        r = lxctl.check_marks_log(marks_log())
+        self.assertEqual(r, {"drawn": 6, "marked": 6, "draw_ms": 50, "read_ms": 30, "reads": 6, "peek_ms": 0,
+                             "heap": 89995})
+
+    def test_a_page_plain_on_the_way_back_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "not on the way back"):
+            lxctl.check_marks_log(marks_log(unmarked_back=1))
+
+    def test_an_unmarked_first_page_or_too_few_pages_fail(self):
+        log = [line for line in marks_log() if "marks:" not in line]
+        with self.assertRaisesRegex(RuntimeError, "first page turned to wasn't marked"):
+            lxctl.check_marks_log(log)
+        with self.assertRaisesRegex(RuntimeError, "pages drawn"):
+            lxctl.check_marks_log(marks_log()[:8])
+
+    def test_a_write_fails(self):
+        with self.assertRaisesRegex(RuntimeError, "write to Lexirise"):
+            lxctl.check_marks_log(marks_log(write=True))
+
+    def test_the_log_lines_match_the_firmware(self):
+        marks = "".join(open(os.path.join(REPO, f"src/lexirise/page/{name}"), encoding="utf-8").read()
+                        for name in ("ReaderMarks.cpp", "MarkKeeper.cpp", "MarkGate.h"))
+        self.assertIn('"marks: %u words, %u fills in %lu ms; heap %u free"', marks)
+        self.assertIn('"marks: %s page %u-%u %s in %lu ms"', marks)
+        self.assertIn('"marks: page %u-%u read as drawn: %s in %lu ms"', marks)
+        for word in ('"this"', '"next"', '"previous"', '"kept"', '"not analyzed"'):
+            self.assertIn(word, marks)
+
+
+class FakeMarksHarness(HeldButton):
+    """The device's side of marks-smoke: each turn draws a marked page, then the loop reads the pages around it; a
+    turn while the last is still held is refused (HeldButton)."""
+
+    def __init__(self, slow_s: float = 0.0):
+        super().__init__(slow_s)
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+        self.t = 1000
+
+    def _page(self):
+        self.t += 500
+        self.stream.append(MARKS_DRAW.format(t=self.t - 10, ms=42, heap=90500))
+        self.stream.append(PAGE_DRAWN.format(t=self.t))
+        self.stream.append(MARKS_READ.format(t=self.t + 50, which="previous", start=0, ms=0))
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd in (lxctl.PAGE_TURN, lxctl.PAGE_BACK):  # AWAKE draws nothing (DevHarness: it only holds the reader awake)
+            self.btn(cmd)
+            self._page()
+        return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class MarksSmokeDriver(unittest.TestCase):
+    def test_it_turns_forward_then_back(self):
+        h = FakeMarksHarness()
+        r = lxctl.marks_smoke(h, settle_s=0.01, sleep=h.sleep)
+        self.assertEqual(h.busy, 0)
+        self.assertEqual(h.sent, ["AWAKE 1"] + [lxctl.PAGE_TURN] * lxctl.MARKS_TURNS +
+                         [lxctl.PAGE_BACK] * lxctl.MARKS_TURNS)
+        self.assertEqual(r["marked"], 2 * lxctl.MARKS_TURNS)
+
+    def test_awake_draws_nothing(self):
+        h = FakeMarksHarness()
+        h.command("AWAKE 1")
+        self.assertEqual(h.stream, [])
+        src = open(os.path.join(REPO, "src/lexirise/dev/DevHarness.cpp"), encoding="utf-8").read()
+        awake = src[src.index("case Verb::Awake:"):src.index("case Verb::Reboot:")]
+        self.assertNotIn("requestUpdate", awake)  # it only keeps the reader awake: nothing is drawn
+
+    def test_its_commands_are_the_devices(self):
+        usages = device_usages()
+        for cmd in (lxctl.PAGE_TURN, lxctl.PAGE_BACK):
+            self.assertRegex(cmd, usages[cmd.split()[0]])
+
+
+RENDER = "[{t}] [DBG] [ERS] Page render: prewarm=5ms bw_render=80ms display=300ms total={ms}ms"
+
+
+class MarksFastSmoke(unittest.TestCase):
+    def fast_log(self, pages=10):
+        log = []
+        for i in range(pages):
+            log += [MARKS_PEEK.format(t=1000 + i), RENDER.format(t=1000 + i, ms=400 + i), PAGE_DRAWN.format(t=1001 + i)]
+        return log
+
+    def test_it_reports_the_reads_as_drawn_and_the_renders(self):
+        r = lxctl.check_marks_fast_log(self.fast_log())
+        self.assertEqual(r, {"drawn": 10, "peeks": 10, "peek_ms": 35, "render_ms": sum(400 + i for i in range(10)),
+                             "render_max_ms": 409})
+
+    def test_too_few_pages_or_a_write_fail(self):
+        with self.assertRaisesRegex(RuntimeError, "pages drawn"):
+            lxctl.check_marks_fast_log(self.fast_log(4))
+        with self.assertRaisesRegex(RuntimeError, "write to Lexirise"):
+            lxctl.check_marks_fast_log(self.fast_log() + ["[1] [INF] [LXS] PATCH /v1/vocabulary/1 -> 200 (ok)"])
+
+    def test_the_render_lines_match_the_firmware(self):
+        src = open(os.path.join(REPO, "src/activities/reader/EpubReaderActivity.cpp"), encoding="utf-8").read()
+        joined = re.sub(r'"\s+"', "", src)  # adjacent string literals, as the compiler joins them
+        formats = re.findall(r'"(Page render[^"]*total=%lums[^"]*)"', joined)
+        # The plain render and the tiled ones (sync and async), each counted by PAGE_RENDER_LOG.
+        self.assertIn("Page render: prewarm=%lums bw_render=%lums display=%lums total=%lums", formats)
+        self.assertTrue(any(f.startswith("Page render (tiled): ") for f in formats), formats)
+        self.assertTrue(any(f.startswith("Page render (tiled async): ") for f in formats), formats)
+        for f in formats:
+            line = "[1] [DBG] [ERS] " + re.sub(r"%lu", "7", f)
+            m = lxctl.PAGE_RENDER_LOG.search(line)
+            self.assertIsNotNone(m, f)
+            self.assertEqual(m.group(1), "7", f)
+
+    def test_tiled_renders_are_counted(self):
+        log = self.fast_log(10)
+        log.append(RENDER.format(t=2000, ms=500).replace("Page render:", "Page render (tiled):"))
+        log.append(RENDER.format(t=2001, ms=600).replace("Page render:", "Page render (tiled async):"))
+        r = lxctl.check_marks_fast_log(log)
+        self.assertEqual(r["render_ms"], sum(400 + i for i in range(10)) + 1100)
+        self.assertEqual(r["render_max_ms"], 600)
+
+    def test_the_driver_turns_back_to_back(self):
+        h = FakeMarksHarness()
+        r = lxctl.marks_fast_smoke(h, turns=3, settle_s=0.01, sleep=h.sleep)
+        self.assertEqual(h.sent, ["AWAKE 1"] + [lxctl.PAGE_TURN] * 3)
+        self.assertEqual(r["drawn"], 3)
+        self.assertEqual(h.busy, 0)
+
+
+class ButtonHold(unittest.TestCase):
+    """V9a: a BTN is refused while the last press is held, so every smoke that presses one after another spaces
+    them by BUTTON_HOLD_S (press), and tries a refused press once more."""
+
+    def test_the_hold_outlasts_the_devices(self):
+        c = header_constants("src/lexirise/dev/DevConfig.h")
+        self.assertGreaterEqual(lxctl.BUTTON_HOLD_S * 1000 - c["kButtonDefaultMs"], lxctl.BUTTON_HOLD_MARGIN_MS)
+        src = open(os.path.join(REPO, "src/lexirise/dev/DevHarness.cpp"), encoding="utf-8").read()
+        self.assertIn(f'err("{lxctl.BUTTON_BUSY}")', src)
+
+    def test_the_fake_refuses_a_press_until_the_hold_has_passed(self):
+        h = FakeMarksHarness()
+        h.command(lxctl.PAGE_TURN)
+        h.sleep(HeldButton.HOLD_S / 2)
+        with self.assertRaisesRegex(RuntimeError, "button busy"):
+            h.command(lxctl.PAGE_TURN)
+        h.sleep(HeldButton.HOLD_S / 2)
+        h.command(lxctl.PAGE_TURN)
+        self.assertEqual(h.busy, 1)
+
+    def test_back_to_back_presses_without_the_wait_are_refused(self):
+        h = FakeMarksHarness()
+        with self.assertRaisesRegex(RuntimeError, "button busy"):
+            lxctl.marks_fast_smoke(h, turns=3, settle_s=0.01, sleep=lambda _s: None)
+
+    def test_a_press_waits_the_hold_after_it(self):
+        h = FakeMarksHarness()
+        lxctl.press(h, lxctl.PAGE_TURN, sleep=h.sleep)
+        self.assertEqual(h.clock, lxctl.BUTTON_HOLD_S)
+
+    def test_a_busy_press_is_tried_once_more(self):
+        h = FakeMarksHarness(slow_s=lxctl.BUTTON_HOLD_S)  # the first press is sampled late
+        r = lxctl.marks_fast_smoke(h, turns=3, settle_s=0.01, sleep=h.sleep)
+        self.assertEqual(h.busy, 1)
+        self.assertEqual(h.sent, ["AWAKE 1"] + [lxctl.PAGE_TURN] * 4)
+        self.assertEqual(r["drawn"], 3)
+
+    def test_busy_twice_or_another_error_fails(self):
+        h = FakeMarksHarness(slow_s=3 * lxctl.BUTTON_HOLD_S)
+        lxctl.press(h, lxctl.PAGE_TURN, sleep=h.sleep)
+        with self.assertRaisesRegex(RuntimeError, "button busy"):
+            lxctl.press(h, lxctl.PAGE_TURN, sleep=h.sleep)
+
+        class Refuses:
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                raise RuntimeError(f"{cmd}: LX:ERR no reader")
+
+        with self.assertRaisesRegex(RuntimeError, "no reader"):
+            lxctl.press(Refuses(), lxctl.PAGE_TURN, sleep=lambda _s: self.fail("slept after another error"))
+
+    def test_every_smoke_spaces_its_presses(self):
+        # No BTN is sent straight after another: each goes through press, or is followed by a SYNC or a shot.
+        src = open(os.path.join(REPO, "scripts/lexipoint/lxctl.py"), encoding="utf-8").read()
+        for name in ("page_smoke", "marks_smoke", "marks_fast_smoke"):
+            body = src[src.index(f"def {name}("):]
+            body = body[:body.index("\ndef ", 1)]
+            self.assertNotIn("h.command(PAGE_TURN", body, name)
+            self.assertNotIn("h.command(PAGE_BACK", body, name)
+            self.assertNotIn("h.command(cmd, seen=log)", body, name)
+
+
+class CardMarksChange(unittest.TestCase):
+    """V9a: the page's marks under the card are drawn again after an Ignore (ignore-smoke reports it)."""
+
+    @staticmethod
+    def drawn(t, words):
+        return MARKS_DRAW.format(t=t, ms=40, heap=90000).replace("180 words", f"{words} words")
+
+    def test_the_marks_before_and_after_the_ignore(self):
+        log = [self.drawn(1, 12), "[2] [INF] [LXCARD] ignore ja:6 on written", self.drawn(3, 10)]
+        self.assertEqual(lxctl.card_marks_change(log, 1), (12, 10))
+
+    def test_paired_by_the_tap_not_the_written_line(self):
+        # The revision moves as the list is written, so the new marks can be drawn before "on written" is logged;
+        # the Undo's change draws the old ones again, after it.
+        log = [self.drawn(1, 12), "[2] [INF] [LXCARD] target undo 0 1 2 3 4", self.drawn(3, 10),
+               "[4] [INF] [LXCARD] ignore ja:6 on written", "[5] [INF] [LXCARD] ignore ja:6 off written",
+               self.drawn(6, 12)]
+        self.assertEqual(lxctl.card_marks_change(log, 1), (12, 10))
+        # Nothing drawn between the tap and the Undo: nothing to say.
+        self.assertIsNone(lxctl.card_marks_change(log[:2] + log[3:], 1))
+
+    def test_no_marks_or_no_ignore_says_nothing(self):
+        self.assertIsNone(lxctl.card_marks_change(["[2] [INF] [LXCARD] ignore ja:6 on written"], 0))
+        self.assertIsNone(lxctl.card_marks_change([self.drawn(1, 12)], 1))
 
 
 # --- home-sync-smoke (v0.2 V7b) ---

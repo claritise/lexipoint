@@ -65,4 +65,13 @@ PageModel buildPageModel(const Page& page, const MeasureText& measure, const int
   return model;
 }
 
+PageModel textOnlyModel(const Page& page) {
+  // The paragraph heuristic's em and ascender are placeholders: the text's pieces and their joins don't need them.
+  constexpr int kTextOnlyEm = 1;
+  constexpr int kTextOnlyAscender = 0;
+  return buildPageModel(page, [](const char*, EpdFontFamily::Style) { return 0; }, kTextOnlyEm, kTextOnlyAscender);
+}
+
+std::optional<BuiltSentence> pageTextOf(const Page& page) { return pageTextOf(textOnlyModel(page)); }
+
 }  // namespace lexipoint::text

@@ -35,6 +35,10 @@ class SentenceSource {
   virtual ~SentenceSource() = default;
   // The sentence's analysis as ① would give it; nullopt: ask ①.
   virtual std::optional<api::AnalyzeResult> analysisOf(const text::TapContext& tap) = 0;
+  // The page was analyzed (known after the first sentence asked): its words carry V9a's marks; and when (ms since the
+  // epoch; 0: unknown), for the saved-state rule.
+  virtual bool analyzed() const { return false; }
+  virtual uint64_t analyzedMs() const { return 0; }
 };
 
 // The page word select shows: its key, its text as the card's sentences are cut from it, and the language it would be
@@ -46,6 +50,8 @@ class PageSentences final : public SentenceSource {
   void setMirror(vocab::VocabStore* mirror) { mirror_ = mirror; }
   std::optional<api::AnalyzeResult> analysisOf(const text::TapContext& tap) override;
   bool found() const { return page_.has_value(); }  // after the first sentence: the page was cached
+  bool analyzed() const override { return found(); }
+  uint64_t analyzedMs() const override { return page_ ? page_->analyzedMs : 0; }
 
  private:
   PageStore& store_;
@@ -55,6 +61,28 @@ class PageSentences final : public SentenceSource {
   vocab::VocabStore* mirror_ = nullptr;
   bool read_ = false;
   std::optional<PageAnalysis> page_;
+};
+
+// What the vocab mirror says of one entry of a page analyzed at `analyzedMs` (ms since the epoch; 0: unknown), by the
+// saved-state rule (below): the mirror's state (Saved or Unsaved) when it outranks the page's snapshot, else
+// Snapshot (the page's own state for the entry stands). One rule for the card's sentences (applyMirrorStates) and V9's
+// page marks (PageMarks.h).
+struct MirrorSays {
+  enum class Verdict : uint8_t { Snapshot, Saved, Unsaved } verdict = Verdict::Snapshot;
+  api::EntryState state;   // Saved: the entry's state (its saved id and level)
+  bool suspended = false;  // Saved, from a mirror entry: suspended in Lexirise (V9: no mark)
+};
+class MirrorView {
+ public:
+  MirrorView(Language language, uint64_t analyzedMs, vocab::VocabStore& mirror);
+  MirrorSays says(uint32_t entryId) const;
+
+ private:
+  Language language_;
+  uint64_t analyzedMs_;
+  vocab::VocabStore& mirror_;
+  bool loaded_ = false;
+  bool complete_ = false;  // complete as of a time after the page: an entry it doesn't hold is unsaved
 };
 
 // The saved states of a sentence cut from a page analyzed at `analyzedMs` (ms since the epoch; 0: unknown): each

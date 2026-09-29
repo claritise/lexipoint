@@ -140,6 +140,11 @@ class LiveSource final : public CardSource {
   // The page's analysis (C12, V7b): a sentence it holds is taken from it and request ① isn't sent (its states from
   // the mirror, page::PageSentences); none, or a sentence it can't give, asks ① as before.
   void setSentenceSource(std::unique_ptr<page::SentenceSource> source) { pageSentences_ = std::move(source); }
+  // A3 (V9a): the book shows marks and the reader chose "Marked words" (page::stepsMarked); it applies once the page
+  // is known analyzed (the sentence source found its file).
+  void setStepsMarked(const bool on) { stepsMarked_ = on; }
+  bool stepsMarkedWords() const override { return stepsMarked_ && pageSentences_ && pageSentences_->analyzed(); }
+  bool neverMarked(int index) const override;  // ignored, or suspended in Lexirise (the mirror)
   // A page of the mirror's sync is due (CardSession::shouldFetchVocab says when the card is idle enough): the card
   // reached Lexirise (its words came, and its last call didn't fail), no write is queued, it has fetched fewer than
   // config::kVocabPagesPerCard, and the store has a page due within its budget. `epochS`: the wall clock (time()).
@@ -289,6 +294,7 @@ class LiveSource final : public CardSource {
   // sentence asked), so it's asked from the const fetch() and changes behind the pointer: the source's own state only,
   // nothing apply() or the render task reads.
   std::unique_ptr<page::SentenceSource> pageSentences_;
+  bool stepsMarked_ = false;
   lookup::LookupCache* lookupCache_ = nullptr;      // the lemma cache (none: phase B always calls)
   std::vector<lookup::CachedLookup> lookupWrites_;  // answers for it, newest last, until flushLookups()
   bool lookupWriteFailed_ = false;                  // not tried again on this card's idle windows (the close does)

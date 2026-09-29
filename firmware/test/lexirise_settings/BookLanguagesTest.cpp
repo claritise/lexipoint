@@ -162,3 +162,20 @@ TEST(BookLanguageStore, AnInterruptedSaveIsRecoveredAndAnUnreadableFileSetAside)
   EXPECT_TRUE(store.set("/a.epub", Language::Chinese));
   EXPECT_EQ(big.files[config::kBookLanguagesPath], "zh=/a.epub\n");
 }
+
+// V9a: the reader works a page's languages out again when the book's language changes (ReaderPages, by the
+// revision): it moves at a saved change, and not at a read or a failed save.
+TEST(BookLanguageStore, ItsRevisionMovesAtEverySavedChange) {
+  lexipoint::fakes::FakeFiles files;
+  BookLanguageStore store(files);
+  EXPECT_EQ(store.get("/Books/a.epub"), std::nullopt);
+  const uint32_t before = store.revision();
+  EXPECT_TRUE(store.set("/Books/a.epub", Language::Japanese));
+  const uint32_t saved = store.revision();
+  EXPECT_GT(saved, before);
+  files.failWriteOf = config::kBookLanguagesTmpPath;
+  EXPECT_FALSE(store.set("/Books/a.epub", Language::Chinese));
+  EXPECT_EQ(store.revision(), saved);
+  EXPECT_EQ(store.get("/Books/a.epub"), Language::Japanese);
+  EXPECT_EQ(store.revision(), saved);
+}

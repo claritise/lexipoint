@@ -21,6 +21,7 @@
 // sync's progress, a CRC-32 over everything), then config::kVocabRecordBytes records sorted by entry id. Pure parts
 // plus the store; tests: test/lexirise_vocab.
 
+#include <atomic>
 #include <cstdint>
 #include <iterator>
 #include <mutex>
@@ -289,6 +290,9 @@ class VocabStore {
   std::optional<api::EntryState> savedState(Language language, uint32_t entryId);
   SyncState syncState(Language language);
   size_t size(Language language);
+  // Counts every load, page applied and live answer recorded (V9a: the marks under a card are worked out again when it
+  // moves, not on every frame).
+  uint32_t revision() const { return revision_.load(); }
 
  private:
   struct Slot {
@@ -305,6 +309,7 @@ class VocabStore {
   SettingsFiles& files_;
   EpochClock clock_ = nullptr;
   std::mutex mutex_;
+  std::atomic<uint32_t> revision_{0};
   Slot slots_[std::size(kLanguages)];
   bool cardProbeDueLocked(Language language, unsigned long nowMs);
   std::vector<unsigned long> pageTimes_;          // pages fetched in the last hour

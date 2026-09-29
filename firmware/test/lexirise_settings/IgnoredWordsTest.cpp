@@ -264,3 +264,29 @@ TEST(IgnoredWordStore, ARestoreNeverPutsAPartPastItsCap) {
   EXPECT_FALSE(store.contains(jaText("other")));  // no room: not put back
   EXPECT_EQ(store.list().size(), config::kIgnoredTextsMax);
 }
+
+// V9a: the reader's marks under a card follow the list by its revision (CardMarks): it moves at the first load and
+// at every write, so a mark drawn from the list before is drawn again.
+TEST(IgnoredWordStore, ItsRevisionMovesAtTheLoadAndAtEveryWrite) {
+  lexipoint::fakes::FakeFiles files;
+  files.files[config::kIgnoredPath] = "ja:123\n";
+  IgnoredWordStore store(files);
+  const uint32_t before = store.revision();
+  store.load();
+  const uint32_t loaded = store.revision();
+  EXPECT_GT(loaded, before);
+  store.load();  // loaded already: nothing read, nothing changed
+  EXPECT_EQ(store.revision(), loaded);
+  EXPECT_EQ(Write::Written, store.write(ja(5), true));
+  const uint32_t written = store.revision();
+  EXPECT_GT(written, loaded);
+  EXPECT_EQ(Write::Written, store.write(ja(5), false));
+  const uint32_t removed = store.revision();
+  EXPECT_GT(removed, written);
+  // Only a real change: an unchanged or a failed write leaves the list, and the marks drawn from it, as they were.
+  EXPECT_EQ(Write::Unchanged, store.write(ja(123), true));
+  EXPECT_EQ(store.revision(), removed);
+  files.failWriteOf = config::kIgnoredTmpPath;
+  EXPECT_EQ(Write::Failed, store.write(ja(6), true));
+  EXPECT_EQ(store.revision(), removed);
+}

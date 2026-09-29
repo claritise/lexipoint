@@ -84,7 +84,6 @@ NoMeaning noMeaningFor(api::ApiError error);
 std::string badgeFor(std::string_view level);
 
 // Lexirise's proficiency (1-4 saved; 0 unknown) as T L F K, and back.
-Level levelOf(const std::optional<api::EntryState>& saved);
-int proficiencyOf(Level level);
+Level levelOf(const std::optional<api::EntryState>& saved);  // proficiencyOf, back: CardModel.h
 
 }  // namespace lexipoint::card

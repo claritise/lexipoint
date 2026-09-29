@@ -25,6 +25,9 @@ Group groupOf(const Row row) {
     case Row::DeckPerBook:
     case Row::WifiIdle:
       break;
+    case Row::MarkWords:
+    case Row::StepMarked:
+      return Group::OnThePage;
   }
   return Group::General;
 }
@@ -48,6 +51,8 @@ Edit editFor(const Row row) {
     case Row::TagBook:
     case Row::DeckPerBook:
     case Row::WifiIdle:
+    case Row::MarkWords:
+    case Row::StepMarked:
       break;
   }
   return Edit::Patch;
@@ -76,6 +81,8 @@ Rows visibleRows(const Settings& settings) {
     add(Row::TagBook);
     if (settings.tagBook) add(Row::DeckPerBook);
     add(Row::WifiIdle);
+    add(Row::MarkWords);
+    if (settings.markWords) add(Row::StepMarked);  // it steps between the marks: shown while they are
   }
   return out;
 }
@@ -182,6 +189,12 @@ std::optional<SettingsPatch> tapPatch(const Row row, const Settings& settings,
       break;
     case Row::WifiIdle:
       patch.wifiIdleMin = nextWifiIdle(settings.wifiIdleMin);
+      break;
+    case Row::MarkWords:
+      patch.markWords = !settings.markWords;
+      break;
+    case Row::StepMarked:
+      patch.stepMarked = !settings.stepMarked;
       break;
     case Row::ApiKey:
     case Row::Account:

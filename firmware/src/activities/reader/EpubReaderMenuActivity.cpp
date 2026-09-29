@@ -8,6 +8,7 @@
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
 #include "components/UITheme.h"
+#include "lexirise/page/ReaderMarks.h"
 #include "lexirise/settings/LanguageNames.h"
 
 namespace fui = freeink::ui;
@@ -22,7 +23,7 @@ EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInpu
       currentPage(currentPage),
       totalPages(totalPages),
       bookProgressPercent(bookProgressPercent) {
-  buildMenuItems(menuItems, hasFootnotes, hasBookmarks);
+  buildMenuItems(menuItems, hasFootnotes, hasBookmarks, lexipoint::page::readerMarks().settingsShow());
   buildMenuRowItems();
 }
 
@@ -38,7 +39,8 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
   }
 }
 
-void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool hasFootnotes, bool hasBookmarks) {
+void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool hasFootnotes, bool hasBookmarks,
+                                            const bool pageMarks) {
   items.clear();
   items.reserve(MAX_MENU_ITEMS);
   items.push_back({MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER});
@@ -57,6 +59,7 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   // LEXIPOINT: no Look Up (word select's lookup mode): a long-press on a word looks it up. Its place holds the
   // book's lookup language.
   items.push_back({MenuAction::LOOKUP_LANGUAGE, StrId::STR_LEXI_BOOK_LANGUAGE});
+  if (pageMarks) items.push_back({MenuAction::PAGE_MARKS, StrId::STR_LEXI_PAGE_MARKS});  // LEXIPOINT (V9a)
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
@@ -137,6 +140,11 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     return;
   }
 
+  if (selectedAction == MenuAction::PAGE_MARKS) {  // LEXIPOINT (V9a)
+    if (bookMarks.toggle()) requestUpdate();
+    return;
+  }
+
   setResult(MenuResult{static_cast<int>(selectedAction), pendingOrientation, selectedPageTurnOption});
   finish();
 }
@@ -194,6 +202,8 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       menuRowItems[i].value = I18N.get(Frontlight.isOn() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     } else if (action == MenuAction::LOOKUP_LANGUAGE) {
       menuRowItems[i].value = I18N.get(bookLanguageLabel(bookLanguage.language()));
+    } else if (action == MenuAction::PAGE_MARKS) {  // LEXIPOINT (V9a)
+      menuRowItems[i].value = I18N.get(bookMarks.on() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     }
   }
 

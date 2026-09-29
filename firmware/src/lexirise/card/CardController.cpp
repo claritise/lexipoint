@@ -4,6 +4,7 @@
 #include <iterator>
 
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/page/MarkRule.h"
 #include "lexirise/util/Timing.h"
 
 namespace lexipoint::card {
@@ -45,12 +46,17 @@ bool CardController::syncWord(const unsigned long nowMs) {
   const CardState before = state_;
   const int wordBefore = word_;
   if (pendingStep_ >= 0 && !source_.extending()) {  // the next sentence came, or didn't
-    const int to = pendingStep_;
+    const int first = pendingStep_;
     pendingStep_ = -1;
+    const int to = nextMarked(first, 1);  // A3: its first marked word
     if (to < source_.wordCount()) {
       jumpedFrom_ = word_;
       moveTo(to, nowMs);
       jumpedAtMs_ = nowMs;
+    } else if (first < source_.wordCount()) {
+      // A3: the sentence came with no marked word: on into the next one. At the page's end the press stops there,
+      // silently: the card stays on its word (no toast, as a step past the page's last word does today).
+      if (source_.extend(nowMs)) pendingStep_ = source_.wordCount();
     } else {
       nextSentenceFailed(nowMs);
     }
@@ -100,7 +106,8 @@ bool CardController::step(const int direction, const unsigned long nowMs,
     if (direction > 0) return false;  // held through the analysis: its job (off the last word) the jump did
     pendingStep_ = -1;                // a step back cancels any wait, as below
     // Back, as it would have been before the jump: from the word the card waited on.
-    const int to = std::max(jumpedFrom_ - 1, 0);
+    const int back = nextMarked(jumpedFrom_ - 1, -1);
+    const int to = back >= 0 ? back : jumpedFrom_;
     jumpedFrom_ = to;               // a second such press goes on back from there
     if (to == word_) return false;  // already there (the sentence's first word): nothing to redraw
     moveTo(to, nowMs);
@@ -112,7 +119,7 @@ bool CardController::step(const int direction, const unsigned long nowMs,
   } else if (pendingStep_ >= 0) {
     return false;  // already on its way there
   }
-  const int next = word_ + (direction > 0 ? 1 : -1);
+  const int next = nextMarked(word_ + (direction > 0 ? 1 : -1), direction > 0 ? 1 : -1);
   if (next < 0) return false;  // the tapped sentence's start: the card doesn't go back before it
   if (next >= source_.wordCount()) {
     // The sentence's end: on into the page's next one once it's analyzed (syncWord moves the card); at the
@@ -125,6 +132,19 @@ bool CardController::step(const int direction, const unsigned long nowMs,
   moveTo(next, nowMs);
   syncWord(nowMs);
   return true;
+}
+
+bool CardController::marked(const int index) const {
+  if (source_.neverMarked(index)) return false;
+  const Level level = index < static_cast<int>(levels_.size()) ? levels_[index] : source_.savedLevel(index);
+  // The page's own rule (page::markForLevel): Level::None is not saved (or level 0); T L F K are levels 1-4.
+  return page::markForLevel(level != Level::None, proficiencyOf(level)) != page::Mark::None;
+}
+
+int CardController::nextMarked(int from, const int direction) const {
+  if (!source_.stepsMarkedWords()) return from;
+  while (from >= 0 && from < source_.wordCount() && !marked(from)) from += direction;
+  return from;
 }
 
 bool CardController::pressedBeforeJump(const std::optional<unsigned long> pressedAtMs) const {

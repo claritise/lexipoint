@@ -4301,3 +4301,67 @@ TEST(LiveLookupCache, AClosingFlushWritesBothAndReadsNoMirror) {
   EXPECT_EQ(files.reads, reads);  // a mirror not loaded isn't read as the card closes
   EXPECT_FALSE(unloaded.loaded(Language::Japanese));
 }
+
+// --- V9a A3 on a live card (page-annotations.md §2 "V9a decisions") ---
+
+namespace {
+
+// Mirrored, with 読む (6) suspended in Lexirise.
+struct MirroredSuspended {
+  lexipoint::fakes::FakeFiles files;
+  VocabStore store{files};
+  lexipoint::fakes::FakeVocabAccount lexirise;
+  MirroredSuspended() {
+    store.load(Language::Japanese);
+    lexirise.items = {{77, 3, 1, false, lexipoint::fakes::kSept2026Ms, "word", std::nullopt},
+                      {55, 6, 2, true, lexipoint::fakes::kSept2026Ms, "word", std::nullopt}};
+    FakeApi api;
+    lexirise.serve(api);
+    while (const auto plan = store.next(Language::Japanese, 0, Mirrored::kEpochS)) {
+      store.apply(lexipoint::vocab::sendPage(api, *plan), 0, Mirrored::kEpochS);
+    }
+  }
+};
+
+}  // namespace
+
+TEST(LiveA3, OnAnAnalyzedPageTheButtonsSkipASuspendedWordAndStopAtTheLastMark) {
+  MirroredSuspended m;
+  Rig rig;
+  AnalyzedPage analyzed(rig.model, lexipoint::fakes::kSept2026Ms - 1000);
+  rig.api.lookupReplies = {apiOk(kLookupYomu), apiOk(kLookupYomu), apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tap(0, 2), rig.page);  // 本
+  source.setVocabMirror(m.store);
+  source.setSentenceSource(analyzed.sentences(&m.store));
+  source.setStepsMarked(true);
+  EXPECT_FALSE(source.stepsMarkedWords());  // the page isn't known analyzed before its first sentence
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  c.sourceChanged(0);
+  EXPECT_TRUE(source.stepsMarkedWords());
+  EXPECT_FALSE(source.neverMarked(2));  // 本: tracked in the mirror
+  EXPECT_TRUE(source.neverMarked(4));   // 読んだ: 読む suspended
+  ASSERT_TRUE(c.step(+1, 10));
+  EXPECT_EQ(c.word(), 3);        // を
+  EXPECT_FALSE(c.step(+1, 20));  // 読んだ skipped: the page's end
+  EXPECT_EQ(c.word(), 3);
+  EXPECT_TRUE(rig.api.analyzed.empty());
+}
+
+TEST(LiveA3, EveryWordWithoutAPageOrWithoutTheSetting) {
+  Rig rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  LiveSource source(rig.api, rig.tap(0, 2), rig.page);
+  source.setStepsMarked(true);  // no page analysis: nothing to step between
+  EXPECT_FALSE(source.stepsMarkedWords());
+  Rig other;
+  AnalyzedPage analyzed(other.model);
+  LiveSource off(other.api, other.tap(0, 2), other.page);
+  off.setSentenceSource(analyzed.sentences());
+  CardController c(off, ReadingMode::Kana);
+  c.open(0);
+  off.advance();
+  EXPECT_FALSE(off.stepsMarkedWords());  // "Every word"
+  EXPECT_FALSE(off.neverMarked(4));      // no mirror, not ignored
+}

@@ -585,18 +585,157 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
 
 ## 2. The annotations
 
-Each one is a separate on/off setting (`/.lexirise/config.ini`), set per book from the reader menu.
+~~Each one is a separate on/off setting (`/.lexirise/config.ini`), set per book from the reader menu.~~ (Superseded 2026-09-29 for V9a: two global rows in Settings → Lexirise → On the page and one per-book **Page marks** row in the reader menu, "V9a decisions" below.)
 
 | # | Annotation | What it shows | Default |
 |---|---|---|---|
-| A1 | **Proficiency marks** | New (not saved or level 0): **solid underline**. Tracked or learning (1–2): **dotted underline**. Fresh or known (3–4): no mark. Suspended/ignored: no mark (ignored: the reader's own list, `/.lexirise/ignored.ini`, keyed by the entry key (`lookup::entryKeyOf`), or its form, `00-overview.md` C17 "As built (V5, local)"; suspended: in Lexirise, from the mirror) | On |
-| A2 | **Page stats** | Status bar: `6 new · 2 learning · 89% known` (running-token coverage, as in C5) | On |
-| A3 | **Skip to unknown** | With the card open, the side buttons step between A1-marked (unknown or learning) words only, instead of every word (D16); an ignored or suspended word has no mark, so it's skipped. A setting switches back to every word | On |
-| A4 | **Seen-again marker** | A small dot after a word you're *learning* when it reappears. Tells you "you saved this, here it is again" | On |
+| A1 | **Proficiency marks** | New (not saved or level 0): **solid underline**. Tracked or learning (1–2): **dotted underline**. Fresh or known (3–4): no mark. Suspended/ignored: no mark (ignored: the reader's own list, `/.lexirise/ignored.ini`, keyed by the entry key (`lookup::entryKeyOf`), or its form, `00-overview.md` C17 "As built (V5, local)"; suspended: in Lexirise, from the mirror) (2026-09-29, claritise: "Every unsaved word": as written, particles included; V9a) | On |
+| A2 | **Page stats** | ~~Status bar: `6 new · 2 learning · 89% known` (running-token coverage, as in C5)~~ (Superseded 2026-09-29, claritise: "Keep the chapter title": nothing in the status bar; the page's numbers are left for C5 / V12) | ~~On~~ — |
+| A3 | **Skip to unknown** | With the card open, the side buttons step between A1-marked (unknown or learning) words only, instead of every word (D16); an ignored or suspended word has no mark, so it's skipped. A setting switches back to every word. (2026-09-29, claritise: "Marked words by default"; past the page's last marked word a press stops) | On |
+| ~~A4~~ | ~~**Seen-again marker**~~ | ~~A small dot after a word you're *learning* when it reappears. Tells you "you saved this, here it is again"~~ (Dropped 2026-09-29, claritise: "Drop it": the dotted underline already says learning) | ~~On~~ — |
 | A5 | **Above-level only** | Restrict A1 to words above a target (`target_level=N2` / `HSK-4`), using `system_tags` from the mirror's embedded `dictionary_entry` | Off |
 | A6 | **Adaptive furigana / pinyin** | Readings as ruby **only above words that aren't known** (level < 3). As you learn, the furigana fades on its own | Off |
 | A7 | **Hide publisher ruby over known words** | The opposite of A6, for books that print ruby everywhere: suppress the EPUB's own ruby over known words | Off |
 | A8 | **Page glossary** | New words on the page get superscript numbers, and a strip at the bottom lists `n word reading · meaning`, capped at 5 lines | Off |
+
+**V9a decisions (2026-09-29).** claritise, on the mockups (`reference/v9a-annotations.html`): new words **"Every
+unsaved word"** (A1 as written: every word not saved or at level 0 gets the solid underline, particles included;
+tracked and learning dotted; fresh, known, ignored and suspended none); A4 **"Drop it"**; the status bar **"Keep the
+chapter title"** (A2 draws nothing); A3 **"Marked words by default"**. The coordinator's, on the rest (the recommended
+defaults, 2026-09-29): the radio stays "only if already on" (§1.1, claritise's earlier answer); the solid underline
+2 px at baseline + 6 and + 7, dotted 2×2 squares every 4 px, each end pulled in 2 px; a page not analyzed yet stays
+plain until the next turn (no extra refresh), the status bar as today; after the page's last marked word a press
+stops. **Settings:** ~~each one a separate on/off setting, set per book from the reader menu~~ (superseded the same
+day): two global rows in Settings → Lexirise, group "On the page": **Mark words on the page** (On) and **Side
+buttons on a card** (Marked words / Every word; Marked words), and one per-book row in the reader menu, **Page marks**
+(On / Off; On), which turns A1 and A3 off for that book.
+
+**As built (V9a, 2026-09-29, on `lexi/V9`):**
+
+- **The marks** (`page/PageMarks`, pure): each word-like occurrence of an analyzed page gets `markFor` of its state,
+  the lemma's entry first, then the word's own (as the card reads a word's saved state, `lookup::cardFor`); each entry
+  as the vocab mirror says by the saved-state rule (`page::MirrorView`, the same rule the card's sentences use:
+  `applyMirrorStates` now goes through it), else the page's snapshot; an ignored word (the reader's list, by
+  `ignoredKeyFor` of its entry key or lemma) or one suspended in Lexirise gets none. Not saved or level 0: solid; 1-2:
+  dotted; 3-4, ignored, suspended, punctuation: none (`config::kMarkNewMaxLevel`, `kMarkLearningMaxLevel`). Placed by
+  the card highlight's own span → glyph walk (`card::pieceBoxes`, split out of `readerScene` unchanged: the page text's
+  characters from `text::pageTextOf` to their `(line, token)` and codepoints, measured in the token's style), ~~one
+  run per piece~~ (R1: each CJK character is a token of its own on the device, so a word's pieces on one line merge
+  into one run, from its first character's x to its last character's advance end, the justification's gaps included:
+  the signed-off mockup's one segment per word per line; a word across a line end is marked on both lines), drawn as
+  `markFills`: 2 px, or 2×2 squares every 4 px, each end pulled in 2 px (`config::kMark*`), ~~at baseline + 6~~ (R1)
+  `page::markBelowBaseline` of the page font's CJK em under the baseline (6 px at the default 14 pt, 7 at 18 pt). The
+  level rule is one (`page::markForLevel`, `page/MarkRule.h`), shared with A3.
+- **When they're drawn** (`page/ReaderMarks`, device glue; its policy pure and host-tested: `page/MarkGate.h`,
+  `page/MarkSlots`): on the loop, once per page on screen ~~(not on a redraw of the same page)~~ (struck 2026-09-29, R7: since R5 a
+  redraw looks at the page on screen again, below), the page on screen, the
+  next and (R1) the previous are looked at in turn (`MarkGate`), each one's text through the section's layout as V7b's
+  prefetch reads it, and its analysis file read only when it isn't kept already (`PageStore::read`; offline too: no
+  WiFi needed, a page analyzed any time before). ~~into three slots in memory~~ (R2) `MarkSlots` keeps three pages'
+  analyses (~~~10 KB each, PSRAM~~ R5: a few hundred bytes each plus its arrays: the occurrences and the pool, past malloc's 4 KB threshold, in PSRAM; the entries and saved states, smaller, in internal RAM, as V7b's R2 says; a device check measures the internal heap with marks on and off) by page and language, and a new one takes the place of the kept page farthest from the
+  page on screen that this page hasn't asked for (R6: first, one at the very place of the page being kept with
+  another key: an old layout's page, left by a reflow; ~~never that one~~, R2's exclusion, which kept a stale page over
+  a useful one), so a turn either way reads one analysis file (the page just left stays
+  kept; ~~"no SD read"~~ the section's layout is still read for each page looked at: `Section::loadPage`, under the
+  render lock). A page known not analyzed isn't read again until the prefetcher writes it (`reload`); a change of the
+  book's Lookup language drops what's kept (~~`languageChanged`~~ R3/R4: `ReaderMarks::open` with the new decision, from the reader menu and its toolbar's More panel; and the reader's own view of the book, `ReaderPages`, is worked out again on the next pass, `page::usableStale` with `BookLanguageStore::revision`). The render
+  task draws a page's marks as it draws the page, after `page->render` on the black-and-white pass
+  (`EpubReaderActivity::renderContents`), when a page is kept for its very text (key, length and hash): no second
+  refresh. (R1) A page drawn before the loop kept it (a book's first page, a jump, and R2: a fast turn; R8: a chapter's first page, never read ahead) is read as it's
+  drawn (`PageStore::peek`: one bounded file read, never removing a file, any language), (R2) once per page until a
+  kept page is drawn or another page is (so a page left and come back to is read again), so an analyzed page is always
+  drawn marked and only a page not analyzed yet stays plain. (R8) A page the loop (or an earlier drawing) already knows
+  is not analyzed, for this very text, isn't read as it's drawn (`MarkSlots::knownNotAnalyzed`): offline with nothing
+  analyzed, or after a Lookup language change with the pages analyzed in the other language, a turn reads no file on
+  the render task (tested; a write of the page, `reload`, drops what's known). The states are resolved as the page is drawn (the mirror
+  and the ignore list from memory). (R2) **As a book opens** (`ReaderMarks::open`, from `EpubReaderActivity::loadBook`,
+  on the loop before its first page is drawn): whether it shows marks, nothing kept from another book, and the ignore
+  list and the vocab mirror for its language (`page::marksLanguages`: its own when it says, else each one switched on)
+  loaded, so the first page's marks read them from memory; ~~each page looked at loads its language's mirror first too~~ (R7: loaded as the book shows marks, below).
+  A save or level change on a card shows when the card closes and the page is drawn again. Word select's page under the
+  card draws them too, (R2) once per card page: the fills are kept and drawn again on the card's later frames (it draws
+  the page twice a frame) ~~until the reader draws a page again~~ (R3, `page::CardMarks`) while the page object, the
+  vocab mirror's and the ignore list's revisions (`VocabStore::revision`, `IgnoredWordStore::revision`) are the same:
+  a save or an ignore on the card shows on its next frame, and each card starts afresh (`dropCardMarks`, as word
+  select opens it). (R3) The prefetcher names the page it wrote (`PagePrefetcher::Step::key`), reloaded wherever it's
+  kept; a Lookup language change reopens the marks with the new decision (`ReaderMarks::open`), and a page read as drawn
+  counts only in one of the book's languages (`page::marksLanguages`); a page read as drawn and found not analyzed is
+  known so in any language (`MarkSlots::have`). When pages read as drawn fill every slot, a new one takes the place of
+  the kept page farthest from it (`MarkSlots`). (R4) The book's row turned on loads what its marks read at once, on
+  the main task (`ReaderMarks::setBookOn`, `loadBookSources`); the card's page under word select can be read as it's
+  drawn too (word select is given the page's index). The rules are pure headers: `page/MarkGate.h` (the pages looked
+  at, `slotOfKey`), `page/MarkVisibility.h` (`settingsShowMarks`, `bookShowsMarks`, `stepsMarked`, `MarkVisibility`),
+  `page/CardMarks.h`, `page/MarkSlots`; a property test drives them through random navigation (fixed seeds) and pins
+  that an analyzed page is always drawn marked~~, but for one drawing between the prefetcher rewriting the page on screen
+  and the loop's next look at it~~ (R6: that window closed: a reload forgets that the page was read as drawn,
+  `MarkSlots::reload`, so its next drawing reads it again). (R5) All of it but the drawing is `page/MarkKeeper` (host-compiled over `PageTexts`
+  and a `PageStore`), `ReaderMarks` only the device's sources and the drawing; the property test drives the real keeper
+  over a fake book and a store on fake files (forward, back, fast, jump, redraw, a prefetch write, a reflow on the same
+  index, a Lookup language change), and a steady turn reads at most one analysis file. (R6) Tests pin that each revision moves where it should
+  (`VocabStore` at a load, a page applied and a live answer; `IgnoredWordStore` at the load and each write;
+  `BookLanguageStore` at a saved change only) and the page each prefetch step names; turning the book's row off and on
+  reads the pages around afresh, and its sources load as a book opens showing marks or its row is turned on, never
+  otherwise. (R7) The normal online path is tested end to end: the next page kept as not analyzed, the prefetcher
+  writes it and names it, the loop reads it again ahead of the turn (`MarkGate::reload`), and the turn draws it from
+  memory, not read as drawn; a steady turn reads nothing as drawn after the book's first page. A page's language
+  mirror is no longer loaded on each look (the book's languages are loaded as it opens, its row is turned on, or R7:
+  Mark words on the page is turned on with it open, on the loop's next pass, before the render task follows it);
+  `MarkSlots::have` no longer moves a kept page's place (the same key and text at another place only changes which
+  kept page goes first, once); a new page on screen forgets what the last drawing asked for, so this drawing's pages
+  stay when a page left by a jump is as far away (tested). The vocab mirror's and the ignore list's revisions move
+  only on a real change (a page that changed the mirror; a list written), so a page given up, failed or with nothing
+  new, and an unchanged or failed ignore, don't make the card work its page's marks out again, (R8) and a live answer moves the mirror's revision only when it
+  changed the entry (its state or the time it was known) or waits for its language's load: the card records one after
+  every sentence. (R8) The keeper tells the kept pages which page is on screen (`MarkSlots::onScreen`): a keeper test
+  after jumps pins that the next turn draws from memory. **A reflow on the same index**
+  (Rotate screen from the reader menu): the gate looks at the page on screen again on each new drawing of the same
+  page (one text read, no file read when kept) and, when its text changed, at the pages around it too
+  (`MarkGate::rearm`); a page is read as drawn once per page *and text* (`MarkSlots::peekDue`). The reader menu's
+  **Page marks** row (and its toolbar's More panel's) shows only while the book can show marks (Lexirise usable and
+  Mark words on the page on), and the web page's On the page card goes when none of its rows shows.
+- **Which books:** Lexirise usable for the book, Settings → Lexirise → On the page → **Mark words on the page**
+  (`mark_words`), and the book's **Page marks** row (the reader menu's list and its toolbar's More panel,
+  `settings/BookMarks`, `/.lexirise/marks-off.ini`); the row's change applies to the page drawn right after the menu
+  (R3: whichever task runs first: the render task reads the settings' flag and the row's itself, and a page turned on
+  again is read as it's drawn; the loop's own view, `MarkVisibility`, only decides when what's kept goes),
+  and a book with it Off reads no analyses. "Side buttons on a card" shows only while "Mark words on the page" is on
+  (R1), on the device and the web page (a Marked words / Every word choice on both). `BookMarks` stays apart from
+  `BookLanguages` (R1 nit 6: membership against a value per book; a shared store would be a template, not simpler).
+- **A3** (`CardController::nextMarked`): with the card open on an analyzed page (`SentenceSource::analyzed`), the book
+  showing marks and **Side buttons on a card** on **Marked words** (`step_marked`, `page::stepsMarked`), a side button
+  goes to the next (or previous) word marked at its level on the card now (a level set on this card counts:
+  `CardController::marked`, `markFor`'s rule), never an ignored or suspended one (`LiveSource::neverMarked`, the
+  mirror by the page's saved-state rule, R1: `page::MirrorView`); past the sentence's last, on into the page's next
+  sentence's first marked word, over sentences with none; past the page's last marked word a press stops. Back: to the
+  previous marked word, never before the tapped sentence. On a page not analyzed, or with "Every word", every word as
+  before. **Its cost:** a sentence of the page whose slice has no word (a token across its cut edge, V7b R7) asks ① as
+  a card always did, so stepping over many such sentences can cost ① calls, bounded by the page's end.
+- **The bench** (`test/lexirise_page/PageMarksTest.cpp`): a static page (the signed-off mockup's first paragraph) and a
+  recorded, synthetic analysis (`bench/v9a-ja-analysis.json`, made up), through the same walk into the marks'
+  rectangles, pinned in `bench/v9a-ja-marks.golden`; then each rule. The card's goldens are unchanged. (R1) The golden
+  is checked against the signed-off mockup's own rule (`tools/mockups/check_v9a_golden.py`: its segments per word per
+  line over the bench's geometry, equal fill for fill). `lxctl.py marks-smoke` (read-only, dev builds) turns forward
+  and back over analyzed pages and checks each is marked again on the way back, with the draw and read times and the
+  heap. (R6) Its turns, `marks-smoke fast`'s and page-smoke's are spaced by the press's hold (`lxctl.press`,
+  `BUTTON_HOLD_S`): the harness refuses a press while the last is held, so back to back they couldn't run on a device.
+- **Known limits:** on a page with images under the UC8279's absolute grayscale mode, the gray pass redraws the page
+  and may not keep the marks (a device check); the marks' measuring builds the page model and its token boxes on the
+  render task (small, freed after the page is drawn; the device check logs its time and the heap, `[LXPAGE] marks: <n>
+  words, <n> fills in <ms> ms; heap <free> free`, dev builds), and a page drawn before the loop kept it adds one file
+  read to its drawing (`read as drawn`, timed by the device check), (R8) always so for a chapter's first page: the
+  loop reads ahead only within the section on screen; the mirror's first load (once per boot, per
+  language) happens ~~on the loop when a book's first page is kept~~ (R3) as the book opens (`ReaderMarks::open`, before
+  its first page is drawn: it delays that page; timed: `the <ja|zh> mirror loaded in <ms> ms`); ~~a book's Page marks
+  turned on shows from the next page drawn with its analysis read~~ (R3: the page drawn right after the menu follows
+  the row, "Which books"); the underline's place is from
+  the font's em, not its line spacing: at Tight spacing and 18 pt a device check looks for it touching the next line;
+  (R2) a page reached faster than the loop reads the pages around (auto page turn, a held button, a turn past the next
+  page before the loop's pass) is read as it's drawn, on the render task with the render lock held: one analysis file
+  (up to `config::kPageFileMaxBytes`, 13-15 KB measured) and its parse added to that page's drawing (`lxctl.py
+  marks-smoke fast` measures it); (R5) the book's languages (`marksLanguages`) are worked out as it opens: were Mark
+  words on the page turned on while a book is open (not reachable now: Settings can't be opened from the reader), its
+  sources would load ~~only as its pages are looked at~~ (R7) on the loop's next pass, as the keeper sees the setting;
+  a language switched on while a book is open (not reachable either) counts from the book's next open.
 
 Chapter-level extras (same data, no inline drawing):
 
@@ -609,7 +748,8 @@ Chapter-level extras (same data, no inline drawing):
 ## 3. Drawing (the renderer constraints)
 
 - **Overlay, don't reflow.** A1, A4 and A8's superscripts are drawn **after** the page renders, from
-  our code, using word boxes (the same `WordBox` geometry as word select). Nothing inside
+  our code, using word boxes (~~the same `WordBox` geometry as word select~~ V9a: `card::pieceBoxes`, the card
+  highlight's own span → glyph walk, one run per word per line: "As built (V9a)"). Nothing inside
   `ParsedText` or the layout changes. That keeps the edits to base files small, as in v0.1.
 - **Map spans to glyphs:** each occurrence's `[charStart, charEnd)` (UTF-16) is mapped back to page
   `(line, token)` ranges. It's the inverse of `SentenceBuilder`, shares its unit conversion, and gets
@@ -624,10 +764,12 @@ Chapter-level extras (same data, no inline drawing):
 - **A8 takes space at the bottom** (up to 5 lines). The page reserves it only when A8 is on, which
   again means a one-time re-layout.
 - **Mono only:** solid, dotted and double underlines, a small filled dot, superscript digits. No grey
-  (grey needs grayscale refresh, which is slow and ghosts). Underline sits **below the descender
-  line**, so it doesn't touch ruby from the line below.
-- **Refresh:** annotations arrive with the page (prefetch) and cost nothing extra. The late-arrival
-  case is one partial refresh of the text area. Count it in the reader's ghost-cleanup cadence.
+  (grey needs grayscale refresh, which is slow and ghosts). Underline sits ~~**below the descender
+  line**~~ (V9a: just under the CJK ink, `page::markBelowBaseline` of the font's em, 6 px at 14 pt: the descender line
+  would put it on the next line's top), so it doesn't touch ruby from the line below.
+- **Refresh:** annotations arrive with the page (prefetch) and cost nothing extra. ~~The late-arrival
+  case is one partial refresh of the text area. Count it in the reader's ghost-cleanup cadence.~~ (Superseded
+  2026-09-29, V9a decisions: no extra refresh; a page not analyzed yet stays plain until the next turn.)
 
 ## 4. Dependencies and blockers
 
@@ -654,3 +796,8 @@ Chapter-level extras (same data, no inline drawing):
 
 Each step gets a bench phase (a static page plus recorded analysis) before it touches the network,
 the same pattern as the v0.1 card.
+
+**V9 (2026-09-29):** steps 3–9 are built as V9a–V9d, in this order (`01-build-order.md` V9). ~~V9a's design (A1, A2, A3,
+A4), with the changes to §2 it proposes (what counts as new, A4's meaning, where the settings live), awaits claritise's
+sign-off: `reference/v9a-annotations.html`. §2 changes only once they've signed off.~~ (Signed off 2026-09-29: §2
+"V9a decisions"; V9a is A1 and A3.)

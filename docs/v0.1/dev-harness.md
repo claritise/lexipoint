@@ -94,7 +94,15 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
   tapping it, so the tap is a press on the popup shown; read-only) and `cache-smoke` (v0.2 V7c: three cards, a lemma
   cache miss written as the card closes, a hit on the same word past the TLS idle close, a second word, and a TLS session
   after the first card resumed (which call isn't said), checked from the `[LXLOOK]`, `[LXT] Verified` and `[LXS]`
-  lines; read-only). Each is host-tested on synthetic logs in `test_lxctl.py`.
+  lines; read-only) and `marks-smoke` (v0.2 V9a: turns forward and back over analyzed pages, each page marked again on
+  the way back; WiFi off, or the pages around already analyzed: a page analysis in progress holds the loop, and a press
+  can stay held past `press`'s one retry; `marks-smoke fast`: fast turns with no settle, the pages read as drawn and the page renders' time (plain and
+  tiled); checked from the `[LXPAGE] marks:` and `[ERS]` lines; read-only). Each is host-tested on synthetic logs in
+  `test_lxctl.py`. (V9a R6) A smoke that presses a side button after another sends each through `press`: it waits
+  `BUTTON_HOLD_S` (the press's `kButtonDefaultMs` plus `BUTTON_HOLD_MARGIN_MS`, checked against `DevConfig.h`) so the
+  press is released (the harness answers `LX:ERR button busy` to a BTN while one is held), and sends a busy press once
+  more; card-smoke and card-sentence wait for a `SYNC` after each instead. The test fakes refuse a BTN while one is
+  held, as the device does.
 - **Never open the port in a loop** (a "wait until it answers" poll): each open resets the reader, and a poll that
   opened it every second or two kept it restarting until the poll was stopped (2026-09-27).
 - **Never open it from two processes at once:** the second read fails ("device reports readiness to read but

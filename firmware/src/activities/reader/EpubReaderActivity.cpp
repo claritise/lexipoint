@@ -44,6 +44,8 @@
 #include "lexirise/lookup/LongPress.h"
 #include "lexirise/lookup/PageTap.h"
 #include "lexirise/lookup/StarDictChoice.h"
+#include "lexirise/page/ReaderMarks.h"
+#include "lexirise/settings/BookMarks.h"
 #include "lexirise/settings/SettingsStore.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
@@ -231,6 +233,8 @@ bool EpubReaderActivity::loadBook() {
   }
 
   loadCachedBookmarks();
+  // LEXIPOINT (V9a): the marks' book, and what they read as the first page is drawn, loaded now.
+  lexipoint::page::readerMarks().open(epub->getPath(), epub->getLanguage());
   return true;
 }
 
@@ -275,8 +279,15 @@ void EpubReaderActivity::openReaderMenu() {
                                                        position.totalPages, bookProgressPercent, SETTINGS.orientation,
                                                        !currentPageFootnotes.empty(), !cachedBookmarks.empty());
   menu->setBookPath(epub->getPath());
+  lookupLanguageAtMenu = lexipoint::bookLanguageStore().get(epub->getPath());  // LEXIPOINT (V9a)
   startActivityForResult(std::move(menu), [this](const ActivityResult& result) {
     const auto& menu = std::get<MenuResult>(result.data);
+    // LEXIPOINT (V9a): the book's Page marks row may have changed (the page redrawn next follows it), and its Lookup
+    // language (the kept analyses were of the old one).
+    lexipoint::page::readerMarks().setBookOn(lexipoint::bookMarksStore().on(epub->getPath()));
+    if (lexipoint::bookLanguageStore().get(epub->getPath()) != lookupLanguageAtMenu) {
+      lexipoint::page::readerMarks().open(epub->getPath(), epub->getLanguage());  // the new decision
+    }
 
     if (SETTINGS.orientation != menu.orientation) {
       applyOrientation(menu.orientation);
@@ -356,6 +367,7 @@ void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int to
                       epub->getPath());
   if (touchX >= 0) wordSelect->setInitialTouch(touchX, touchY);
   wordSelect->setSpine(currentSpineIndex);  // LEXIPOINT: where the page's analysis is kept (C12, V7b)
+  wordSelect->setPageIndex(section ? section->currentPage : -1);  // LEXIPOINT (V9a): the marks under the card
   startActivityForResult(std::move(wordSelect), [this](const ActivityResult&) { requestUpdate(); });
 }
 
@@ -925,6 +937,7 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       break;
     }
     case EpubReaderMenuActivity::MenuAction::LOOKUP_LANGUAGE:
+    case EpubReaderMenuActivity::MenuAction::PAGE_MARKS:
       // LEXIPOINT: handled in place by the menu (and the More panel), like Night mode.
       break;
     case EpubReaderMenuActivity::MenuAction::DISPLAY_QR: {
@@ -1560,6 +1573,9 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   }
 
   page->render(renderer, fontId, orientedMarginLeft, orientedMarginTop);
+  // LEXIPOINT (V9a): the page's marks over the black-and-white page (the gray passes add only glyph edges).
+  lexipoint::page::readerMarks().draw(renderer, fontId, *page, lexipoint::page::bookKey(epub->getPath()),
+                                      currentSpineIndex, section->currentPage, orientedMarginLeft, orientedMarginTop);
   renderStatusBar();
   const auto tBwRender = millis();
 
@@ -2333,13 +2349,15 @@ void EpubReaderActivity::applyReaderTextSettings() {
 // two entries that have their own tool (chapters -> Contents, text -> Text).
 void EpubReaderActivity::buildMoreActions() {
   using MA = EpubReaderMenuActivity::MenuAction;
-  EpubReaderMenuActivity::buildMenuItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty());
+  EpubReaderMenuActivity::buildMenuItems(moreItems, !currentPageFootnotes.empty(), !cachedBookmarks.empty(),
+                                         lexipoint::page::readerMarks().settingsShow());
   moreItems.erase(std::remove_if(moreItems.begin(), moreItems.end(),
                                  [](const auto& item) {
                                    return item.action == MA::SELECT_CHAPTER || item.action == MA::TEXT_SETTINGS;
                                  }),
                   moreItems.end());
   if (epub) moreBookLanguage.open(epub->getPath());
+  if (epub) moreBookMarks.open(epub->getPath());  // LEXIPOINT (V9a)
 }
 
 std::string EpubReaderActivity::moreRowName(int row) const {
@@ -2365,6 +2383,8 @@ std::string EpubReaderActivity::moreRowValue(int row) const {
       return Frontlight.isOn() ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case MA::LOOKUP_LANGUAGE:
       return I18N.get(EpubReaderMenuActivity::bookLanguageLabel(moreBookLanguage.language()));
+    case MA::PAGE_MARKS:  // LEXIPOINT (V9a)
+      return I18N.get(moreBookMarks.on() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     default:
       return "";
   }
@@ -2423,6 +2443,16 @@ void EpubReaderActivity::activateMoreRow(int row) {
     }
     case MA::LOOKUP_LANGUAGE:  // LEXIPOINT: only the row's value changes, as with the frontlight
       if (moreBookLanguage.cycle()) {
+        // V9a: the new language's decision; the kept analyses (of the old one) go.
+        lexipoint::page::readerMarks().open(epub->getPath(), epub->getLanguage());
+        RenderLock lock;
+        renderOverlay();
+        renderer.displayBuffer(HalDisplay::FAST_REFRESH);
+      }
+      return;
+    case MA::PAGE_MARKS:  // LEXIPOINT (V9a): as Lookup language
+      if (moreBookMarks.toggle()) {
+        lexipoint::page::readerMarks().setBookOn(moreBookMarks.on());
         RenderLock lock;
         renderOverlay();
         renderer.displayBuffer(HalDisplay::FAST_REFRESH);

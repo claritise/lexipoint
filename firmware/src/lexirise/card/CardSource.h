@@ -53,6 +53,11 @@ class CardSource {
   // RenderLock). setIgnored is false where the source keeps no list, or the word has no key (IgnoredWords.h).
   virtual bool ignored(const int /*index*/) const { return false; }
   virtual bool setIgnored(const int /*index*/, const bool /*ignored*/) { return false; }
+  // A3 (V9a, page-annotations.md §2 "V9a decisions"): the side buttons step only between the words marked on the page
+  // (page/PageMarks.h: not saved, level 0, tracked or learning), not every word: while the card's page carries marks
+  // and the reader chose "Marked words". A word ignored on the reader or suspended in Lexirise is never marked.
+  virtual bool stepsMarkedWords() const { return false; }
+  virtual bool neverMarked(const int index) const { return ignored(index); }
   // The words that are one Lexirise entry with `index` (the same lemma twice in a sentence), itself
   // included: a level set on one is the level of all of them.
   virtual std::vector<int> sameWord(const int index) const { return {index}; }

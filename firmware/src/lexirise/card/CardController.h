@@ -123,9 +123,14 @@ class CardController {
   // ⋯ Ignore this word: on the reader's list at once, "Ignored: won't be marked again · Undo"; a word already on it
   // only says "Ignored: won't be marked again" (the approved card draws nothing else). Nothing goes to Lexirise.
   Outcome ignore(unsigned long nowMs);
-  Outcome retry(unsigned long nowMs);            // the failed change again (the toast's Retry)
-  bool syncWord(unsigned long nowMs);            // true: something shown changed
-  void moveTo(int index, unsigned long nowMs);   // a step: the word, its lookup, a new frame's targets
+  Outcome retry(unsigned long nowMs);           // the failed change again (the toast's Retry)
+  bool syncWord(unsigned long nowMs);           // true: something shown changed
+  void moveTo(int index, unsigned long nowMs);  // a step: the word, its lookup, a new frame's targets
+  // A3 (V9a): whether word `index` carries a mark at its level on the card now (page::markFor's rule), and the first
+  // word from `from` on in `direction` that does (from itself when the card steps every word); past either end: out
+  // of [0, wordCount()).
+  bool marked(int index) const;
+  int nextMarked(int from, int direction) const;
   void nextSentenceFailed(unsigned long nowMs);  // the toast saying why the card couldn't go on
   bool hasWord() const { return word_ < source_.wordCount(); }
 

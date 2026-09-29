@@ -49,12 +49,14 @@ class BookLanguageStore {
   std::optional<Language> get(std::string_view path);
   // Saved, then current; false leaves both memory and card as they were.
   bool set(std::string_view path, std::optional<Language> language);
+  uint32_t revision() const { return revision_.load(); }  // counts every change set (V9a: the reader works out again)
 
  private:
   void loadLocked();  // requires mutex_
 
   SettingsFiles& files_;
   std::mutex mutex_;
+  std::atomic<uint32_t> revision_{0};
   bool loaded_ = false;
   BookLanguageList list_;
 };

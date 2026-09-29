@@ -25,6 +25,11 @@ using MeasureText = std::function<int(const char* text, EpdFontFamily::Style sty
 // furigana height): both feed the paragraph heuristic.
 PageModel buildPageModel(const Page& page, const MeasureText& measure, int em, int ascender);
 
+// The page model for its text alone (no font is measured: the tokens are all pageTextOf reads), and the page's text
+// through it, as V7b's prefetch and V9a's marks take it from the reader's laid-out page.
+PageModel textOnlyModel(const Page& page);
+std::optional<BuiltSentence> pageTextOf(const Page& page);
+
 // The page's text lines in order: every ::PageLine with a valid block, the one filter the page model,
 // card::readerPageFor and DictionaryWordSelectActivity::extractWords() count lines with (a sentence's
 // line indexes find all three).

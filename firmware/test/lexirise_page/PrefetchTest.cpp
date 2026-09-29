@@ -129,9 +129,11 @@ TEST(Prefetch, ThePageOnScreenThenTheNextAreAnalyzedOnceEachAndKept) {
   EXPECT_EQ(first.which, 0);
   EXPECT_TRUE(first.written);
   EXPECT_FALSE(first.refined);
+  EXPECT_EQ(first.key, (PageKey{1, 2, 0}));  // V9a: the reader reads this page's kept analysis again
   const auto second = r.step();
   EXPECT_EQ(second.kind, PagePrefetcher::Step::Kind::Analyzed);
   EXPECT_EQ(second.which, 1);
+  EXPECT_EQ(second.key, (PageKey{1, 2, 100}));
   EXPECT_FALSE(r.prefetch.due(kDue, ok()));  // both done
   ASSERT_EQ(r.api.pageRequests.size(), 2u);
   EXPECT_NE(r.api.pageRequests[0].body.find("\"text\":\"猫\""), std::string::npos);

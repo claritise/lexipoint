@@ -70,6 +70,8 @@ PatchResult applyPatch(Settings& settings, const SettingsPatch& patch) {
   if (patch.tagBook) settings.tagBook = *patch.tagBook;
   if (patch.deckPerBook) settings.deckPerBook = *patch.deckPerBook;
   if (patch.wifiIdleMin) settings.wifiIdleMin = *patch.wifiIdleMin;
+  if (patch.markWords) settings.markWords = *patch.markWords;
+  if (patch.stepMarked) settings.stepMarked = *patch.stepMarked;
   if (baseUrl) settings.baseUrl = *baseUrl;
   return result;
 }

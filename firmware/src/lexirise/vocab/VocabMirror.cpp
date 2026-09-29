@@ -716,6 +716,7 @@ void VocabStore::loadLocked(const Language language) {
   Slot& s = slot(language);
   if (s.loaded) return;
   s.loaded = true;
+  ++revision_;
   std::string bytes;
   const SafeFilePaths& paths = mirrorFile(language);
   switch (readSafely(files_, paths, bytes)) {
@@ -853,6 +854,7 @@ PageApplied VocabStore::apply(const PageCall& call, const unsigned long nowMs, c
             static_cast<unsigned>(call.plan.offset), api::apiErrorName(call.error));
   }
   const bool changed = applyPage(s.mirror, s.run, call, nowMs, epochS, &out.changedEntries);
+  if (changed) ++revision_;  // a real change only: a page given up, failed or with nothing new leaves it
   // A page given up for input writes nothing, even a slot left dirty by a failed write: the reader has input to
   // handle, and that write waits for a later page, idle window or close.
   if (call.cancelled || (!changed && !s.dirty)) return out;
@@ -867,9 +869,12 @@ void VocabStore::record(const std::vector<LiveState>& given) {
     if (state.asOfS == 0) state.asOfS = now;  // known now (0 still with no clock)
     Slot& s = slot(state.language);
     if (s.loaded) {
-      if (applyLive(s.mirror, state) == LiveApplied::Changed) s.dirty = true;
+      const LiveApplied applied = applyLive(s.mirror, state);
+      if (applied == LiveApplied::Changed) s.dirty = true;
+      if (applied != LiveApplied::None) ++revision_;  // a time moved on can change what the saved-state rule says
       continue;
     }
+    ++revision_;  // read before the load (pendingState)
     if (pending_.size() >= config::kVocabPendingMax) pending_.erase(pending_.begin());  // the oldest
     if (pending_.empty()) pending_.reserve(config::kVocabPendingMax);
     pending_.push_back(state);

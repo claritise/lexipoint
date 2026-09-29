@@ -496,4 +496,6 @@ std::optional<BuiltSentence> buildSentence(const PageModel& page, const TokenRef
   return builder.build(static_cast<size_t>(piece));
 }
 
+std::optional<BuiltSentence> pageTextOf(const PageModel& page) { return buildPageText(page, Script::Japanese); }
+
 }  // namespace lexipoint::text

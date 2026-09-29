@@ -7,6 +7,7 @@
 // form>` for a word Lexirise gave no entry id. Pure parts plus
 // the store; tests: test/lexirise_settings/IgnoredWordsTest.cpp. Where it's documented: docs/v0.1/settings.md §3.
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <optional>
@@ -85,12 +86,15 @@ class IgnoredWordStore {
   enum class Write : uint8_t { Written, Unchanged, Failed };  // Failed: not saved (memory unchanged), or not a key
   Write write(const IgnoredKey& key, bool ignored, std::optional<IgnoredKey>* evicted = nullptr,
               const std::optional<IgnoredKey>& restore = std::nullopt);
+  // Counts every load and write (V9a: the marks under a card are worked out again when the list changes).
+  uint32_t revision() const { return revision_.load(); }
 
  private:
   void loadLocked();  // requires mutex_
 
   SettingsFiles& files_;
   std::mutex mutex_;
+  std::atomic<uint32_t> revision_{0};
   bool loaded_ = false;
   IgnoredWords list_;
 };

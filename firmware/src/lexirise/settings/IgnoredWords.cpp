@@ -201,6 +201,7 @@ std::string ignoredKeyText(const IgnoredKey& key) {
 void IgnoredWordStore::loadLocked() {
   if (loaded_) return;
   loaded_ = true;
+  ++revision_;
   std::string text;
   switch (readSafely(files_, config::kIgnoredFile, text)) {
     case SafeRead::Ok:
@@ -250,6 +251,7 @@ IgnoredWordStore::Write IgnoredWordStore::write(const IgnoredKey& key, const boo
   const bool restoring = !ignored && restore && !list_.contains(*restore) && list_.hasRoomFor(*restore);
   if (restoring) list_.putBack(*restore, 0);
   if (replaceSafely(files_, config::kIgnoredFile, serializeIgnored(list_))) {
+    ++revision_;  // a real change only: an unchanged or failed write leaves the list as it was
     if (evicted) *evicted = std::move(pushedOut);
     return Write::Written;
   }

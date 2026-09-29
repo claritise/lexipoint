@@ -87,7 +87,11 @@ built (2026-09-26):
 | V7b | Page analysis, the next page prefetched, its cache | C12 | V7a |
 | V7c | Caches, where measured to pay | C21 | V7b |
 | V8 | Slimming | C23, C22 | S1 for its font step only |
-| V9 | Page annotations | C6 (`page-annotations.md`) | V7 |
+| ~~V9~~ | ~~Page annotations~~ (Superseded 2026-09-29: split in four, below) | C6 (`page-annotations.md`) | V7 |
+| V9a | Page marks and stepping (A1, A3; ~~A2, A4~~ dropped 2026-09-29) | C6 | V7; signed off 2026-09-29 (`reference/v9a-annotations.html`) |
+| V9b | Above-level marks, the chapter recap, look up later (A5, A10, A11) | C6 | V9a; a measurement (A5); sign-off |
+| V9c | Adaptive furigana and pinyin, the page glossary (A6, A8) | C6 | V9a; sign-off |
+| V9d | The chapter primer, hiding the publisher's ruby (A9, A7) | C6 | V9c; sign-off |
 | V10 | The sense and reading from the sentence | C10 (`analyze/context`) | V1; placement sign-off |
 | V11 | Grammar on the card | C19 | V1; placement sign-off |
 | V12 | Difficulty preview | C5 | V7 |
@@ -209,7 +213,31 @@ review loop and ledger row; each lands into `main` once its loop is clean, the n
 
 ## V9: Page annotations
 
-`page-annotations.md` §5 steps not done in V7, each with its bench phase before it touches the network.
+~~`page-annotations.md` §5 steps not done in V7, each with its bench phase before it touches the network.~~
+(Superseded 2026-09-29: the same steps, in four parts built in order on the one branch `lexi/V9`, each with its own
+mockups and claritise's sign-off first (everything they add is visible), its bench phase (a static page and a recorded,
+synthetic analysis, host goldens of what's drawn, as the card's) before anything touches the network, its gate,
+review loop and ledger row; each lands into `main` once its loop is clean, the next going on from there, as V7 did.)
+
+- ~~**V9a, page marks** (§5 steps 3–5: A2 page stats, A1 marks with A4 seen-again, A3 skip to unknown).~~
+  (Superseded 2026-09-29 by claritise's answers, `page-annotations.md` §2 "V9a decisions": A4 dropped, A2 draws
+  nothing, A1 marks every unsaved word.) **V9a, page marks: A1 and A3.** One part
+  because they share one data path (the page's cached analysis, V7b, gives each occurrence's entry; the vocab
+  mirror, V7a, its saved state by the saved-state rule) and one drawing path (span → glyph, `page-annotations.md` §3).
+  No new Lexirise call: it reads what V7 caches. The hooks: the reader's page render (the marks drawn over the page
+  after it renders), word select's page under the card (the same marks), the card's stepping (A3). ~~The status
+  bar's centre (A2).~~ The signed-off mockups: `reference/v9a-annotations.html`. The radio stays "only if already
+  on" (V7b). A bench phase first (a static page and a recorded, synthetic analysis; host goldens of the marks).
+- **V9b, lists and levels** (steps 6–7: A5 above-level, A10 recap, A11 look up later). **Measure first** for A5: a
+  word's JLPT/HSK level comes only from `dictionary/lookup`'s `system_tags` today (`../v0.1/popup-ui.md` §1: not in
+  `analyze/text`), and the mirror doesn't keep it (§1.2 "As built (V7a)"), so whether the page analysis or the
+  vocabulary list carries a level decides whether A5 is cheap, needs a per-entry level cache, or is dropped. A11's
+  "long-press flags the word" conflicts with the long-press that opens the card (`../v0.1/popup-ui.md` §3.2, P10):
+  its touch design (the ⋯ tab's "Look up later" row offline) is part of its sign-off. A10 is a list screen.
+- **V9c, readings and the glossary** (step 8: A6, then A8). Together because both reserve layout space (ruby space on
+  every line; a strip at the bottom), a one-time re-layout like a font change: one layout hook.
+- **V9d, the chapter** (step 9: A9, then A7). A9 analyzes a chapter (a budget and radio question of its own); A7 is
+  the one hook at parse time (`ChapterHtmlSlimParser`), the most invasive, so last, as §5 says.
 
 ## V10: The sense and reading from the sentence
 
@@ -240,7 +268,8 @@ C5, on V7's page analysis and mirror.
 | V7b | **done (host); device check owed** (landed 2026-09-28 after 12 review rounds, the last two clean; claritise's decisions the same day: WiFi "only if already on", a sync button "on the home screen", signed off with its strings; the device check owed: `../v0.1/device-checks.md`, "v0.2 V7b") | merged into `main` (wip on `lexi/V7b-wip-archive`, local) | 1333 host (`ctest --test-dir build/test`), 185 Python; goldens unchanged (25 match) | What and how: `page-annotations.md` §1.1 "As built (V7b)" and "The saved-state rule (R5)"; the home screen's Sync Vocabulary: `reference/v7b-home-sync.html`. Review rounds: the landing commit's message. |
 | V7c | **done (host); device check owed** (landed 2026-09-29 after 11 review rounds, the last two clean; the device check owed: `../v0.1/device-checks.md`, "v0.2 V7c") | merged into `main` (wip on `lexi/V7c-wip-archive`, local) | 1386 host (`ctest --test-dir build/test`), 198 Python; goldens unchanged (25 match) | What and how: `00-overview.md` C21 "As built (V7c)". Review rounds: the landing commit's message. |
 | V8 | **done (host), step 6 (the font) still waits for S1; device check owed** (landed 2026-09-29 after 12 review rounds, the last two clean; `../v0.1/device-checks.md` "v0.2 V8"; steps 1–5 and 7 done; step 5c after claritise's S4 answer, "Keep Lyra"; V7c's carried nits done) | merged into `main` (wip on `lexi/V8-wip-archive`, local) | 1386 → 1372 host, 198 → 198 Python (removed features' tests removed, the reviews' added), goldens 25 match | Measured at the start: `slimming.md` §1; each step's size, what it removed and why: `slimming.md` §8 "As built (V8)" and `../v0.1/firmware-base.md` §4; the device checks owed: `../v0.1/device-checks.md` "v0.2 V8". ~~Review loop not run yet.~~ Review loop (2026-09-29): R1, R2, R3+R4, R5, R6+R7, R8, R9 and R10 done (R3 and R6 clean but nits; R4's and R7's shoulds, R5's must fixed), `slimming.md` §8. |
-| V9 | not started | — | — | — |
+| V9 | split into V9a–V9d (2026-09-29, this doc's V9); ~~**V9a design awaiting claritise's sign-off**~~ V9a design signed off 2026-09-29 (`page-annotations.md` §2 "V9a decisions"; mockups: `reference/v9a-annotations.html`, drawn by `../../tools/mockups/v9a_annotations.py`); V9a landed, V9b next | `lexi/V9` (wip) | docs only | — |
+| V9a | **done (host); device check owed** (landed 2026-09-29 after 10 review rounds, the last two clean; claritise's decisions and sign-off 2026-09-29, `page-annotations.md` §2 "V9a decisions"; device checks: `../v0.1/device-checks.md` "v0.2 V9a") | merged into `main` (wip on `lexi/V9a-wip-archive`, local) | 1436 host (`ctest --test-dir build/test`), 221 Python; card goldens unchanged (25 match); bench golden 68/68 vs the mockup | What and how: `page-annotations.md` "As built (V9a)"; mockups `reference/v9a-annotations.html`. Review rounds: the landing commit's message. |
 | V10 | not started | — | — | — |
 | V11 | not started | — | — | — |
 | V12 | not started | — | — | — |

@@ -32,6 +32,18 @@ struct ReaderPage {
   int pageNumber = 0;  // 0: unknown
 };
 
+// Where a built text's units [start, end) stand on the page: one box per piece (a word can span tokens and lines), the
+// text's own x and advance width (no highlight padding), the line's y (as drawText takes it) and the page's line
+// height. The card's highlight (readerScene) and V9's page marks (page/PageMarks.h) both place themselves by it.
+struct PieceBox {
+  text::TokenRef token;
+  uint32_t first = 0;  // the piece's codepoints [first, last] in its token
+  uint32_t last = 0;
+  Rect box;
+};
+std::vector<PieceBox> pieceBoxes(const ReaderPage& page, const text::BuiltSentence& sentence, uint32_t start,
+                                 uint32_t end, const TextMetrics& metrics);
+
 // The scene with the sentence's units [start, end) active (a word's charStart..charEnd; in phase 0 the
 // tapped character's). highlight: invert them on the page (card view).
 PageScene readerScene(const ReaderPage& page, const text::BuiltSentence& sentence, uint32_t start, uint32_t end,

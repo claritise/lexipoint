@@ -110,6 +110,7 @@ bool BookLanguageStore::set(const std::string_view path, const std::optional<Lan
   if (!setBookLanguageIn(next, path, language)) return false;
   if (!replaceSafely(files_, config::kBookLanguagesFile, serializeBookLanguages(next))) return false;
   list_ = std::move(next);
+  ++revision_;
   LOG_INF(kLogTag, "Book language %s: %s", language ? languageCode(*language) : "auto", std::string(path).c_str());
   return true;
 }

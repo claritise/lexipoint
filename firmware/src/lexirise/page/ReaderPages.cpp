@@ -9,10 +9,12 @@
 #include <ctime>
 
 #include "PageSentences.h"
+#include "ReaderMarks.h"
 #include "activities/RenderLock.h"
 #include "lexirise/LexiriseService.h"
 #include "lexirise/input/InputAbort.h"
 #include "lexirise/lookup/PageTap.h"
+#include "lexirise/settings/BookLanguages.h"
 #include "lexirise/settings/SettingsStore.h"
 #include "lexirise/text/PageModelAdapter.h"
 #include "lexirise/util/Epoch.h"
@@ -20,12 +22,6 @@
 
 namespace lexipoint::page {
 namespace {
-
-// The page model for its text only (text::buildPageText): no font is measured, so the line ends, the em and the
-// furigana height the paragraph heuristic uses are placeholders (the text's pieces and their joins don't need them).
-constexpr int kTextOnlyEm = 1;
-constexpr int kTextOnlyAscender = 0;
-int measureNothing(const char*, EpdFontFamily::Style) { return 0; }
 
 const char* kindName(const PagePrefetcher::Step::Kind kind) {
   switch (kind) {
@@ -47,8 +43,9 @@ const char* kindName(const PagePrefetcher::Step::Kind kind) {
   }
 }
 
-// The section's pages' text: the page on screen (0) or the next (1), laid out already (the reader keeps a few pages
-// ahead built). The next section's first page isn't read: it's analyzed once it's on screen.
+// The section's pages' text: the page on screen (0), the next (1) or, for the marks, the one before (-1), from the
+// section's laid-out pages. Another section's pages aren't read: the next one's first page is analyzed, and its marks
+// read, once it's on screen.
 class SectionTexts final : public PageTexts {
  public:
   SectionTexts(Section& section, const int spine, const text::BookLanguage& book, const Settings& settings,
@@ -64,14 +61,14 @@ class SectionTexts final : public PageTexts {
       const std::unique_ptr<Page> page = section_.loadPage(index);
       if (!page) return std::nullopt;
       start = page->visibleTextOffset;
-      // Only the tokens matter for the text (text::buildPageText): no font is measured.
-      model = text::buildPageModel(*page, measureNothing, kTextOnlyEm, kTextOnlyAscender);
+      model = text::textOnlyModel(*page);
     }
     std::optional<DescribedPage> described =
         describePage(model, book_, settings_, bookPath_, static_cast<uint32_t>(spine_), start);
     if (!described) return std::nullopt;
     return std::move(described->page);
   }
+  int pageIndex() const override { return section_.currentPage; }
 
  private:
   Section& section_;
@@ -101,7 +98,10 @@ ReaderPages::ReaderPages() : prefetch_(service(), pageStore(), millis, timing::e
   prefetch_.setMirror(&vocab::vocabStore());
 }
 
-ReaderPages::~ReaderPages() { pageStore().flush(); }
+ReaderPages::~ReaderPages() {
+  pageStore().flush();
+  readerMarks().clear();  // V9a
+}
 
 void ReaderPages::step(Section& section, const int spine, const Drawn& drawn, const bool fingerDown,
                        const bool readerBusy, const bool layingOut, const std::string& bookPath,
@@ -110,11 +110,26 @@ void ReaderPages::step(Section& section, const int spine, const Drawn& drawn, co
   // Worked out again per page (the book's Lookup language may have changed from the reader menu) and when the settings
   // change: never on every pass.
   const bool newPage = spine != usableSpine_ || section.currentPage != usablePage_;
-  if (settingsWatch_.changed(settingsStore()) || usableFor_ != bookPath || newPage) {
+  // The book's Lookup language counts too (V9a: the reader menu changes it without a new page).
+  const uint32_t languages = bookLanguageStore().revision();
+  if (usableStale(settingsWatch_.changed(settingsStore()), usableFor_ != bookPath, newPage,
+                  languages != languagesSeen_)) {
+    languagesSeen_ = languages;
     usableFor_ = bookPath;
     usableSpine_ = spine;
     usablePage_ = section.currentPage;
     usable_ = lookup::lexiriseConfigured(lookup::bookLanguageFor(bookLanguage, bookPath));
+    marksShown_ = settingsShowMarks(usable_, settingsStore().snapshot().markWords);  // the book's row: ReaderMarks
+    bookKey_ = bookKey(bookPath);
+  }
+  // V9a: the marks of the page on screen and the next, kept from their files (offline too: no WiFi needed).
+  if (drawn.spine == spine && drawn.page == section.currentPage && drawn.ms != 0 && !RenderLock::peek() &&
+      readerMarks().due(bookKey_, spine, section.currentPage, drawn.ms, marksShown_) && !readerBusy && !layingOut &&
+      !fingerDown && !gpio.rawInputActive()) {
+    const text::BookLanguage book = lookup::bookLanguageFor(bookLanguage, bookPath);
+    const Settings settings = settingsStore().snapshot();
+    SectionTexts texts(section, spine, book, settings, bookPath);
+    readerMarks().read(texts);
   }
   LexiriseService& lexirise = service();
   Pass pass;
@@ -142,6 +157,7 @@ void ReaderPages::step(Section& section, const int spine, const Drawn& drawn, co
   const unsigned long start = millis();
   const PagePrefetcher::Step s = prefetch_.step(texts, input::inputCame);
   if (s.kind == PagePrefetcher::Step::Kind::None) return;
+  if (s.kind == PagePrefetcher::Step::Kind::Analyzed && s.written) readerMarks().reload(s.key);  // V9a
   const HalMemory::HeapStats heap = HalMemory::getInternalHeap();
   LOG_INF(kLogTag,
           "%s page (%d of section %d): %s in %lu ms (%s), %u occurrences%s, %u calls in %lu ms, written in %lu ms%s; "

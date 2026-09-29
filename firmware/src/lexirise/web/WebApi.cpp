@@ -31,6 +31,8 @@ constexpr PageRow kPageRows[] = {
     {"tagBook", settings_screen::Row::TagBook},
     {"deckPerBook", settings_screen::Row::DeckPerBook},
     {"wifiIdle", settings_screen::Row::WifiIdle},
+    {"markWords", settings_screen::Row::MarkWords},
+    {"stepMarked", settings_screen::Row::StepMarked},
 };
 
 // Which of them show: the device screen's own (settings_screen::visibleRows), so the page has no rule of its
@@ -75,9 +77,11 @@ class PatchVisitor final : public json::Visitor {
   // never errors.
   void fail(const Path& path) {
     if (error || path.depth() == 0 || path.isIndex(0)) return;
-    static constexpr const char* kFields[] = {
-        "enabled", "key", "clearKey", "defaultLanguage", "tags",       "tagBook",     "deckPerBook", "wifiIdleMin",
-        "baseUrl", "ja",  "zh",       "ja.enabled",      "ja.reading", "ja.stardict", "zh.enabled",  "zh.stardict"};
+    static constexpr const char* kFields[] = {"enabled",    "key",         "clearKey",    "defaultLanguage",
+                                              "tags",       "tagBook",     "deckPerBook", "wifiIdleMin",
+                                              "baseUrl",    "ja",          "zh",          "ja.enabled",
+                                              "ja.reading", "ja.stardict", "zh.enabled",  "zh.stardict",
+                                              "markWords",  "stepMarked"};
     std::string name = path.at(0).key;
     if (path.depth() >= 2 && !path.isIndex(1)) name += "." + path.at(1).key;
     const auto field =
@@ -129,6 +133,10 @@ class PatchVisitor final : public json::Visitor {
       readBool(path, type, text, out_.tagBook);
     } else if (key == "deckPerBook") {
       readBool(path, type, text, out_.deckPerBook);
+    } else if (key == "markWords") {
+      readBool(path, type, text, out_.markWords);
+    } else if (key == "stepMarked") {
+      readBool(path, type, text, out_.stepMarked);
     } else if (key == "wifiIdleMin") {
       // A small whole number; range is SettingsPatch's job.
       int value = 0;
@@ -213,6 +221,8 @@ std::string stateJson(const Settings& s, const api::KeyStatus& status, const std
       .add("tagBook", s.tagBook)
       .add("deckPerBook", s.deckPerBook)
       .add("wifiIdleMin", s.wifiIdleMin)
+      .add("markWords", s.markWords)
+      .add("stepMarked", s.stepMarked)
       .add("baseUrl", s.baseUrl)
       .add("defaultBaseUrl", config::kDefaultBaseUrl)
       .add("choices", net::JsonObject().add("wifiIdleMin", idleChoices).add("dictionaries", dictionaries))

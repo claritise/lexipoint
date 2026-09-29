@@ -68,6 +68,9 @@ inline constexpr SafeFilePaths kSettingsFile{kSettingsDir,        kSettingsPath,
 inline constexpr SafeFilePaths kBookLanguagesFile{kSettingsDir,          kBookLanguagesPath,
                                                   kBookLanguagesTmpPath, kBookLanguagesBackupPath,
                                                   kBookLanguagesBadPath, kBookLanguagesMaxBytes};
+inline constexpr SafeFilePaths kBookMarksOffFile{kSettingsDir,         kBookMarksOffPath,
+                                                 kBookMarksOffTmpPath, kBookMarksOffBackupPath,
+                                                 kBookMarksOffBadPath, kBookMarksOffMaxBytes};
 inline constexpr SafeFilePaths kDecksFile{kSettingsDir,     kDecksPath,    kDecksTmpPath,
                                           kDecksBackupPath, kDecksBadPath, kDecksMaxBytes};
 inline constexpr SafeFilePaths kBookTagsFile{kSettingsDir,        kBookTagsPath,    kBookTagsTmpPath,

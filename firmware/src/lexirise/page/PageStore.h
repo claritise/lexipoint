@@ -38,6 +38,10 @@ class PageStore {
   // The page's analysis when the file holds this very text (its language, length and hash); nullopt otherwise. A
   // file that doesn't check out is removed.
   std::optional<PageAnalysis> read(const PageKey& key, Language language, uint32_t textUnits, uint32_t textHash);
+  // As read(), for any language and without removing a file that doesn't check out (it may be being written): safe from
+  // the render task (V9a's marks for a page drawn before the loop kept it), since it touches only the SD card, through
+  // HalStorage, never the index.
+  std::optional<PageAnalysis> peek(const PageKey& key, uint32_t textUnits, uint32_t textHash) const;
   // Writes it and records it in the index (dropping the oldest past config::kPageCacheFiles). False: not written.
   bool write(const PageKey& key, const PageAnalysis& page);
   size_t kept();  // pages in the index

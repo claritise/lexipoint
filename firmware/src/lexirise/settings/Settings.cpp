@@ -66,6 +66,7 @@ class Applier {
     if (e.section == "ja") return language(e, s_.japanese, true);
     if (e.section == "zh") return language(e, s_.chinese, false);
     if (e.section == "general") return general(e);
+    if (e.section == "page") return page(e);
     if (e.section == "advanced") return advanced(e);
     keep(e);
   }
@@ -162,6 +163,12 @@ class Applier {
     keep(e);
   }
 
+  void page(const Entry& e) {
+    if (e.key == "mark_words") return setBool(e, s_.markWords);
+    if (e.key == "step_marked") return setBool(e, s_.stepMarked);
+    keep(e);
+  }
+
   void advanced(const Entry& e) {
     if (e.key == "base_url") return setBaseUrl(e);
     keep(e);
@@ -210,7 +217,7 @@ void appendExtras(std::string& out, const Settings& s, std::string_view section)
 }
 
 bool isKnownSection(std::string_view s) {
-  return s == "account" || s == "ja" || s == "zh" || s == "general" || s == "advanced";
+  return s == "account" || s == "ja" || s == "zh" || s == "general" || s == "page" || s == "advanced";
 }
 
 }  // namespace
@@ -317,6 +324,11 @@ std::string serializeSettings(const Settings& s) {
   appendLine(out, "deck_per_book", s.deckPerBook ? "1" : "0");
   appendLine(out, "wifi_idle_min", std::to_string(s.wifiIdleMin));
   appendExtras(out, s, "general");
+
+  out.append("\n[page]\n");
+  appendLine(out, "mark_words", s.markWords ? "1" : "0");
+  appendLine(out, "step_marked", s.stepMarked ? "1" : "0");
+  appendExtras(out, s, "page");
 
   out.append("\n[advanced]\n");
   appendLine(out, "base_url", s.baseUrl);

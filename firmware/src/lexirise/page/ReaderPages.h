@@ -57,6 +57,9 @@ class ReaderPages {
   int usableSpine_ = -1;
   int usablePage_ = -1;
   bool usable_ = false;
+  bool marksShown_ = false;     // V9a: settingsShowMarks, worked out with usable_
+  uint32_t languagesSeen_ = 0;  // BookLanguageStore::revision() when usable_ was worked out
+  uint32_t bookKey_ = 0;        // bookKey(bookPath)
   SettingsWatch settingsWatch_;
 };
 

@@ -163,6 +163,18 @@
     </div>
   </div>
 
+  <div class="card" data-hide-empty>
+    <h2>On the page</h2>
+    <div class="setting-row" data-when="markWords">
+      <span class="setting-name">Mark words on the page</span>
+      <span class="setting-control" data-toggle="markWords"></span>
+    </div>
+    <div class="setting-row" data-when="stepMarked">
+      <span class="setting-name">Side buttons on a card</span>
+      <span class="setting-control"><select data-field="stepMarked" data-bool><option value="true">Marked words</option><option value="false">Every word</option></select></span>
+    </div>
+  </div>
+
   <div class="card">
     <details>
       <summary>Advanced</summary>
@@ -243,12 +255,17 @@
       fillSelect(idle, s.choices.wifiIdleMin.map(m => [m, m === 0 ? 'Off' : m + ' min']), s.wifiIdleMin);
       document.querySelectorAll('[data-field]').forEach(el => {
         if (el.tagName === 'INPUT') el.value = get(s, el.dataset.field) || '';
+        else if (el.hasAttribute('data-bool')) el.value = String(!!get(s, el.dataset.field));
         else if (!el.hasAttribute('data-dictionaries') && el.dataset.field !== 'wifiIdleMin') el.value = get(s, el.dataset.field);
       });
       // The device says which rows show (settings_screen::visibleRows, sent as `shows`): the offline
       // dictionaries and the language names have no data-when, so they always do.
       document.querySelectorAll('[data-when]').forEach(row => {
         row.classList.toggle('hidden', !s.shows[row.dataset.when]);
+      });
+      // A card of only such rows goes when none of them shows (its heading alone would say nothing).
+      document.querySelectorAll('[data-hide-empty]').forEach(card => {
+        card.classList.toggle('hidden', !Array.from(card.querySelectorAll('[data-when]')).some(r => s.shows[r.dataset.when]));
       });
     }
 
@@ -302,7 +319,8 @@
     function wireFields() {
       document.querySelectorAll('[data-field]').forEach(el => {
         el.addEventListener('change', () => {
-          const value = el.hasAttribute('data-number') ? Number(el.value) : el.value;
+          const value = el.hasAttribute('data-number') ? Number(el.value)
+            : el.hasAttribute('data-bool') ? el.value === 'true' : el.value;
           if (el.dataset.field === 'baseUrl') {
             // A new server needs the key pasted alongside it (settings.md §2).
             const key = document.getElementById('key').value.trim();

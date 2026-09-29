@@ -38,6 +38,8 @@ StrId headingFor(const Group group) {
       return StrId::STR_LEXI_SET_JAPANESE;
     case Group::Chinese:
       return StrId::STR_LEXI_SET_CHINESE;
+    case Group::OnThePage:
+      return StrId::STR_LEXI_SET_ON_THE_PAGE;
     case Group::General:
       break;
   }
@@ -70,6 +72,10 @@ StrId labelFor(const Row row) {
       return StrId::STR_LEXI_SET_TAG_BOOK;
     case Row::DeckPerBook:
       return StrId::STR_LEXI_SET_DECK_PER_BOOK;
+    case Row::MarkWords:
+      return StrId::STR_LEXI_SET_MARK_WORDS;
+    case Row::StepMarked:
+      return StrId::STR_LEXI_SET_STEP_MARKED;
     case Row::WifiIdle:
       break;
   }
@@ -286,6 +292,10 @@ std::string LexiriseSettingsActivity::valueFor(const Row row, const Settings& se
       return onOff(settings.tagBook);
     case Row::DeckPerBook:
       return onOff(settings.deckPerBook);
+    case Row::MarkWords:
+      return onOff(settings.markWords);
+    case Row::StepMarked:
+      return settings.stepMarked ? tr(STR_LEXI_SET_MARKED_WORDS) : tr(STR_LEXI_SET_EVERY_WORD);
     case Row::WifiIdle:
       break;
   }

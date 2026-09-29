@@ -43,14 +43,16 @@ TEST(WebApiState, SaysWhichRowsShowByTheDeviceScreensRule) {
   // The page hides its data-when rows by these (test_lexirise_page.py pins the keys); the rule is
   // settings_screen::visibleRows (SettingsScreenTest).
   Settings s;
-  EXPECT_NE(stateJson(s, KeyStatus(), {})
-                .find(R"("shows":{"jaLookups":true,"jaReading":true,"zhLookups":true,"defaultLanguage":true,)"
-                      R"("tags":true,"tagBook":true,"deckPerBook":true,"wifiIdle":true})"),
-            std::string::npos);
+  EXPECT_NE(
+      stateJson(s, KeyStatus(), {})
+          .find(R"("shows":{"jaLookups":true,"jaReading":true,"zhLookups":true,"defaultLanguage":true,)"
+                R"("tags":true,"tagBook":true,"deckPerBook":true,"wifiIdle":true,"markWords":true,"stepMarked":true})"),
+      std::string::npos);
   s.enabled = false;  // P13: the offline dictionaries answer; the default language picks for Han-only text
   EXPECT_NE(stateJson(s, KeyStatus(), {})
                 .find(R"("shows":{"jaLookups":false,"jaReading":false,"zhLookups":false,"defaultLanguage":true,)"
-                      R"("tags":false,"tagBook":false,"deckPerBook":false,"wifiIdle":false})"),
+                      R"("tags":false,"tagBook":false,"deckPerBook":false,"wifiIdle":false,"markWords":false,)"
+                      R"("stepMarked":false})"),
             std::string::npos);
   s.enabled = true;
   s.chinese.enabled = false;  // one language on: it is the answer
@@ -96,6 +98,7 @@ TEST(WebApiPatch, ReadsEveryField) {
       parsePatch(R"({"enabled":false,"key":"lx_x","clearKey":true,"ja":{"enabled":true,"reading":"romaji",)"
                  R"("stardict":"jmdict"},"zh":{"enabled":false,"stardict":""},"defaultLanguage":"zh",)"
                  R"("tags":"a,b","tagBook":false,"deckPerBook":false,"wifiIdleMin":10,"baseUrl":"https://x.example",)"
+                 R"("markWords":false,"stepMarked":false,)"
                  R"("unknown":{"deep":[1]}})",
                  p),
       nullptr);
@@ -112,6 +115,8 @@ TEST(WebApiPatch, ReadsEveryField) {
   EXPECT_EQ(p.tagBook, false);
   EXPECT_EQ(p.deckPerBook, false);
   EXPECT_EQ(p.wifiIdleMin, 10);
+  EXPECT_EQ(p.markWords, false);
+  EXPECT_EQ(p.stepMarked, false);
   EXPECT_EQ(p.baseUrl, "https://x.example");
 }
 
@@ -143,6 +148,8 @@ TEST(WebApiPatch, WrongTypesNameTheField) {
       {R"({"tags":["a"]})", "tags"},
       {R"({"tagBook":1})", "tagBook"},
       {R"({"deckPerBook":"on"})", "deckPerBook"},
+      {R"({"markWords":1})", "markWords"},
+      {R"({"stepMarked":"marked"})", "stepMarked"},
       {R"({"baseUrl":{"x":1}})", "baseUrl"},
   };
   for (const auto& [body, field] : cases) {

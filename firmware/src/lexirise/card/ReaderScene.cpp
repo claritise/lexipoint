@@ -48,28 +48,40 @@ size_t byteAt(const std::string& text, const uint32_t units) {
 
 }  // namespace
 
+std::vector<PieceBox> pieceBoxes(const ReaderPage& page, const text::BuiltSentence& sentence, const uint32_t start,
+                                 const uint32_t end, const TextMetrics& metrics) {
+  std::vector<PieceBox> out;
+  const int lh = metrics.lineHeight(Font::Page);
+  for (const Piece& piece : piecesOf(sentence, start, end)) {
+    if (piece.token.line >= page.lines.size()) continue;
+    const ReaderLine& line = page.lines[piece.token.line];
+    if (piece.token.token >= line.tokens.size()) continue;
+    const PageToken& token = line.tokens[piece.token.token];
+    // Measured in the word's own style (a bold heading stays bold, and its box fits).
+    const std::string part = text::utf8Codepoints(token.text, piece.first, piece.last + 1);
+    const int x = token.x + metrics.pageWidth(text::utf8Codepoints(token.text, 0, piece.first), token.style);
+    out.push_back({piece.token, piece.first, piece.last, Rect{x, line.y, metrics.pageWidth(part, token.style), lh}});
+  }
+  return out;
+}
+
 PageScene readerScene(const ReaderPage& page, const text::BuiltSentence& sentence, const uint32_t start,
                       const uint32_t end, const bool highlight, const TextMetrics& metrics) {
   PageScene scene;
   const size_t markStart = byteAt(sentence.text, start);
   scene.sentence = {sentence.text, markStart, byteAt(sentence.text, end) - markStart};
 
-  const int lh = metrics.lineHeight(Font::Page);
   bool first = true;
-  for (const Piece& piece : piecesOf(sentence, start, end)) {
-    if (piece.token.line >= page.lines.size()) continue;
+  for (const PieceBox& piece : pieceBoxes(page, sentence, start, end, metrics)) {
     const ReaderLine& line = page.lines[piece.token.line];
-    if (piece.token.token >= line.tokens.size()) continue;
     const PageToken& token = line.tokens[piece.token.token];
-    // Measured and drawn in the word's own style (a bold heading stays bold, and its box fits).
-    const std::string part = text::utf8Codepoints(token.text, piece.first, piece.last + 1);
-    const int x = token.x + metrics.pageWidth(text::utf8Codepoints(token.text, 0, piece.first), token.style);
-    const Rect box{x - metrics::kHighlightPadH, line.y,
-                   metrics.pageWidth(part, token.style) + 2 * metrics::kHighlightPadH, lh};
+    const Rect box{piece.box.x - metrics::kHighlightPadH, piece.box.y, piece.box.w + 2 * metrics::kHighlightPadH,
+                   piece.box.h};
     scene.wordPieces.push_back(box);
     if (highlight) {
       scene.page.fill(box);
-      scene.page.text(Font::Page, x, line.y, part, false, token.style);
+      scene.page.text(Font::Page, piece.box.x, line.y, text::utf8Codepoints(token.text, piece.first, piece.last + 1),
+                      false, token.style);
     }
     if (first) {
       scene.wordOnPage = box;

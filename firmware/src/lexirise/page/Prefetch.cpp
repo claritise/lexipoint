@@ -144,6 +144,7 @@ PagePrefetcher::Step PagePrefetcher::step(PageTexts& texts, const net::Abort abo
   out.occurrences = page.occurrences.size();
   out.refined = page.refined;
   out.written = store_.write(text->key, page);
+  out.key = text->key;
   out.writeMs = clock_() - callEnd;
   if (!out.written) LOG_ERR(kLogTag, "page %u-%u not written", unsigned(text->key.spine), unsigned(text->key.start));
   done_[which] = true;

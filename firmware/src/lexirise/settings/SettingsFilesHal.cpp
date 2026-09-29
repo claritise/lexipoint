@@ -4,6 +4,7 @@
 #include <Logging.h>
 
 #include "BookLanguages.h"
+#include "BookMarks.h"
 #include "BookTags.h"
 #include "IgnoredWords.h"
 #include "SettingsStore.h"
@@ -68,6 +69,11 @@ SettingsStore& settingsStore() {
 
 BookLanguageStore& bookLanguageStore() {
   static BookLanguageStore store(halFiles());
+  return store;
+}
+
+BookMarksStore& bookMarksStore() {
+  static BookMarksStore store(halFiles());
   return store;
 }
 

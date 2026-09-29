@@ -149,6 +149,18 @@ std::optional<PageAnalysis> PageStore::read(const PageKey& key, const Language l
   return page;
 }
 
+std::optional<PageAnalysis> PageStore::peek(const PageKey& key, const uint32_t textUnits,
+                                            const uint32_t textHash) const {
+  const std::string path = pagePath(key);
+  std::string bytes;
+  if (files_.read(path.c_str(), config::kPageFileMaxBytes, bytes) != SettingsFiles::ReadStatus::Ok) {
+    return std::nullopt;
+  }
+  PageAnalysis page;
+  if (!parsePageFile(bytes, page) || page.textUnits != textUnits || page.textHash != textHash) return std::nullopt;
+  return page;
+}
+
 bool PageStore::write(const PageKey& key, const PageAnalysis& page) {
   if (!fitsFile(page)) {
     LOG_ERR(kLogTag, "page %u-%u over a cap: not written", unsigned(key.spine), unsigned(key.start));

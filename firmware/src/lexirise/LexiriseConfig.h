@@ -26,6 +26,13 @@ constexpr const char* kBookLanguagesBackupPath = "/.lexirise/books.ini.bak";
 constexpr const char* kBookLanguagesBadPath = "/.lexirise/books.ini.bad";
 constexpr size_t kBookLanguagesMax = 100;         // books remembered; setting one more forgets the oldest
 constexpr size_t kBookLanguagesMaxBytes = 32768;  // ~100 typical paths; long ones forget the oldest sooner
+// The books whose page marks the reader turned off in the reader menu (V9a, settings/BookMarks.h), newest last.
+constexpr const char* kBookMarksOffPath = "/.lexirise/marks-off.ini";
+constexpr const char* kBookMarksOffTmpPath = "/.lexirise/marks-off.ini.tmp";
+constexpr const char* kBookMarksOffBackupPath = "/.lexirise/marks-off.ini.bak";
+constexpr const char* kBookMarksOffBadPath = "/.lexirise/marks-off.ini.bad";
+constexpr size_t kBookMarksOffMax = 100;  // books remembered; one more forgets the oldest (marks on again)
+constexpr size_t kBookMarksOffMaxBytes = 32768;
 // Each book tag's title (V2): `<slug>=<title>` lines, newest last, so a saved word's `book:<slug>` can name its book.
 constexpr const char* kBookTagsPath = "/.lexirise/book-tags.ini";
 constexpr const char* kBookTagsTmpPath = "/.lexirise/book-tags.ini.tmp";
@@ -110,6 +117,22 @@ constexpr unsigned long kRateWindowMs = 60UL * timing::kMsPerMinute;
 constexpr size_t kRateWindowBuckets = 60;  // one a minute
 // A failed page analysis waits this long before any page is tried again (a 429 waits its own time).
 constexpr unsigned long kPageFailureWaitMs = 2UL * timing::kMsPerMinute;
+// V9a's page marks (page/PageMarks.h; page-annotations.md §2 "V9a decisions", signed off 2026-09-29): which levels
+// draw which mark (Lexirise's 0-4: not saved or 0, a solid underline; 1-2, dotted; 3-4, none), and the geometry in
+// device pixels: the underline's top under the baseline (from the font's CJK em: page::markBelowBaseline; 6 px at the
+// reader's default 14 pt, where the ink ends ~4 px under it and the next line's starts ~16 px under it), its thickness,
+// the dotted mark's squares and their pitch, and each end pulled in.
+constexpr int kMarkNewMaxLevel = 0;
+constexpr int kMarkLearningMaxLevel = 2;
+constexpr int kMarkInkBelowBaselinePercent = 13;  // of the page font's CJK em (page::markBelowBaseline)
+constexpr int kMarkGapBelowInk = 2;
+constexpr int kMarkThickness = 2;
+constexpr int kMarkDot = 2;
+constexpr int kMarkDotPitch = 4;
+constexpr int kMarkInset = 2;
+// The analyzed pages whose marks the reader keeps in memory (the page on screen, the next and the one before:
+// page/ReaderMarks.h).
+constexpr size_t kMarkPages = 3;
 // The lemma cache (C21, V7c; docs/v0.2/00-overview.md C21 "V7c design"): phase B's answers on SD, by language and the
 // text looked up, in kLookupBuckets files per language (the bucket from the text's FNV-1a 32). A record is what the
 // card keeps of an answer (39-140 bytes of text measured); one over kLookupRecordMaxBytes isn't kept. A bucket holds at

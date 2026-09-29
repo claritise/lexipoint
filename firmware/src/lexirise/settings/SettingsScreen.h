@@ -40,10 +40,13 @@ enum class Row : uint8_t {
   TagBook,
   DeckPerBook,  // shown while TagBook is on: the deck is filled by the book tag
   WifiIdle,
+  // On the page (V9a)
+  MarkWords,
+  StepMarked,
 };
-constexpr size_t kRowCount = static_cast<size_t>(Row::WifiIdle) + 1;
+constexpr size_t kRowCount = static_cast<size_t>(Row::StepMarked) + 1;
 
-enum class Group : uint8_t { Account, Japanese, Chinese, General };
+enum class Group : uint8_t { Account, Japanese, Chinese, General, OnThePage };
 Group groupOf(Row row);
 
 // What a tap on a row does.

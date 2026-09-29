@@ -8,6 +8,7 @@
 #include "activities/UiListActivity.h"
 #include "components/OptionPopup.h"
 #include "lexirise/settings/BookLanguages.h"
+#include "lexirise/settings/BookMarks.h"
 
 class EpubReaderMenuActivity final : public UiListActivity {
  public:
@@ -28,6 +29,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
     GO_HOME,
     DELETE_CACHE,
     LOOKUP_LANGUAGE,  // LEXIPOINT: the book's lookup language, cycled in place (languages.md §1, step 3)
+    PAGE_MARKS,       // LEXIPOINT: the book's page marks (V9a), On / Off in place
   };
 
   struct MenuItem {
@@ -35,7 +37,9 @@ class EpubReaderMenuActivity final : public UiListActivity {
     StrId labelId;
   };
 
-  static void buildMenuItems(std::vector<MenuItem>& items, bool hasFootnotes, bool hasBookmarks);
+  // LEXIPOINT (V9a): `pageMarks`: the book can show marks (Lexirise usable and "Mark words on the page"), so the
+  // "Page marks" row shows.
+  static void buildMenuItems(std::vector<MenuItem>& items, bool hasFootnotes, bool hasBookmarks, bool pageMarks);
 
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
@@ -45,7 +49,10 @@ class EpubReaderMenuActivity final : public UiListActivity {
   bool handleHomeGesture() override;
 
   // LEXIPOINT: the open book, for its Lookup language row.
-  void setBookPath(std::string path) { bookLanguage.open(std::move(path)); }
+  void setBookPath(std::string path) {
+    bookMarks.open(path);
+    bookLanguage.open(std::move(path));
+  }
   // LEXIPOINT: a Lookup language row's value (the list menu's and the toolbar's More panel).
   static StrId bookLanguageLabel(std::optional<lexipoint::Language> language);  // nullopt: Auto
 
@@ -55,7 +62,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
   // are set once in the constructor (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
   // LEXIPOINT: sized by the actions (each row is a different one), so a new row can't outgrow it.
-  static constexpr size_t MAX_MENU_ITEMS = static_cast<size_t>(MenuAction::LOOKUP_LANGUAGE) + 1;
+  static constexpr size_t MAX_MENU_ITEMS = static_cast<size_t>(MenuAction::PAGE_MARKS) + 1;
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
@@ -79,6 +86,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
 
   OptionPopup optionPopup;
   lexipoint::BookLanguageRow bookLanguage{lexipoint::bookLanguageStore()};
+  lexipoint::BookMarksRow bookMarks{lexipoint::bookMarksStore()};  // LEXIPOINT (V9a)
   std::string title = "Reader Menu";
   uint8_t pendingOrientation = 0;
   uint8_t selectedPageTurnOption = 0;

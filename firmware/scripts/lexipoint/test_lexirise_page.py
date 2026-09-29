@@ -86,6 +86,8 @@ class VisibilityRules(unittest.TestCase):
                 "tagBook": "tagBook",
                 "deckPerBook": "deckPerBook",
                 "wifiIdleMin": "wifiIdle",
+                "markWords": "markWords",
+                "stepMarked": "stepMarked",
                 "baseUrl": None,  # under Advanced, as before
             },
         )

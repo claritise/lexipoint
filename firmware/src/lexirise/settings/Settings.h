@@ -54,6 +54,9 @@ struct Settings {
   bool tagBook = true;                      // each save also carries its book's tag (BookTags.h)
   bool deckPerBook = true;                  // each tagged book gets a Lexirise deck on its tag (deck/BookDeck.h)
   int wifiIdleMin = config::kWifiIdleDefaultMin;
+  // [page] (V9a, page-annotations.md §2 "V9a decisions"; a book can turn them off: settings/BookMarks.h)
+  bool markWords = true;   // A1: marks under the words of an analyzed page (page/PageMarks.h)
+  bool stepMarked = true;  // A3: on a card, the side buttons step between marked words only ("Marked words")
   // [advanced]
   std::string baseUrl = config::kDefaultBaseUrl;
 

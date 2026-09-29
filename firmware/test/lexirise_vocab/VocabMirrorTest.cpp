@@ -1449,3 +1449,56 @@ TEST(VocabRemoval, TheReadersOwnRemovalOfUnknownTimeStaysUntilAFullPassEnds) {
   EXPECT_EQ(m.dropOwnUnknownRemovals(), 1u);  // the full pass's end
   EXPECT_FALSE(m.find(5));
 }
+
+// V9a: the reader's marks follow the mirror by its revision (CardMarks, MarkKeeper): it moves at a language's
+// first load, at every page applied and at every live answer recorded.
+TEST_F(Fixture, ItsRevisionMovesAtTheLoadAPageAndALiveAnswer) {
+  lexirise.items = account(3);
+  VocabStore store(files);
+  const uint32_t before = store.revision();
+  store.load(Language::Japanese);
+  const uint32_t loaded = store.revision();
+  EXPECT_GT(loaded, before);
+  store.load(Language::Japanese);  // loaded already
+  EXPECT_EQ(store.revision(), loaded);
+  const auto plan = store.next(Language::Japanese, kStartMs, kEpochS);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(store.revision(), loaded);  // a plan changes nothing
+  // Only a page that changed the mirror moves it: one given up for input, or failed, leaves it.
+  PageCall given;
+  given.plan = *plan;
+  given.cancelled = true;
+  store.apply(given, kStartMs, kEpochS);
+  EXPECT_EQ(store.revision(), loaded);
+  PageCall failed;
+  failed.plan = *plan;
+  failed.sent = true;
+  failed.error = ApiError::Network;
+  store.apply(failed, kStartMs, kEpochS);
+  EXPECT_EQ(store.revision(), loaded);
+  const auto again = store.next(Language::Japanese, kStartMs + config::kVocabFailureWaitMs, kEpochS);
+  ASSERT_TRUE(again);
+  store.apply(sendPage(api, *again), kStartMs + config::kVocabFailureWaitMs, kEpochS);
+  const uint32_t applied = store.revision();
+  EXPECT_GT(applied, loaded);
+  sync(store, api, kStartMs + config::kVocabFailureWaitMs);
+  const uint32_t synced = store.revision();
+  const auto nothingNew = store.next(Language::Japanese, kStartMs + 2 * config::kVocabSyncIntervalMs, kEpochS);
+  ASSERT_TRUE(nothingNew);
+  store.apply(sendPage(api, *nothingNew), kStartMs + 2 * config::kVocabSyncIntervalMs, kEpochS);
+  EXPECT_EQ(store.revision(), synced);  // the account as the mirror has it: nothing new
+  store.record({LiveState{Language::Japanese, 500001, true, 100001, 4, kEpochS + 10}});
+  const uint32_t recorded = store.revision();
+  EXPECT_GT(recorded, synced);
+  // The card records every sentence's answer: the same state again, known no later, changes nothing.
+  store.record({LiveState{Language::Japanese, 500001, true, 100001, 4, kEpochS + 10}});
+  EXPECT_EQ(store.revision(), recorded);
+  store.record(
+      {LiveState{Language::Japanese, 500001, true, 100001, 4, kEpochS + 20}});  // known later: its time moves on
+  EXPECT_GT(store.revision(), recorded);
+  // Before its language's load, an answer waits (read then): that's a change.
+  VocabStore fresh(files);
+  const uint32_t unloaded = fresh.revision();
+  fresh.record({LiveState{Language::Chinese, 9, true, 90, 2}});
+  EXPECT_GT(fresh.revision(), unloaded);
+}

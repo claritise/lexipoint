@@ -28,10 +28,10 @@ void tap(Settings& s, const Row row, const std::vector<std::string>& dictionarie
 }  // namespace
 
 TEST(SettingsScreen, AllRowsShowWithDefaults) {
-  EXPECT_EQ(rowsOf(Settings()),
-            (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
-                              Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary,
-                              Row::DefaultLanguage, Row::Tags, Row::TagBook, Row::DeckPerBook, Row::WifiIdle}));
+  EXPECT_EQ(rowsOf(Settings()), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection,
+                                                  Row::JaLookups, Row::JaReading, Row::JaDictionary, Row::ZhLookups,
+                                                  Row::ZhDictionary, Row::DefaultLanguage, Row::Tags, Row::TagBook,
+                                                  Row::DeckPerBook, Row::WifiIdle, Row::MarkWords, Row::StepMarked}));
 }
 
 TEST(SettingsScreen, LexiriseOffLeavesTheAccountGroupAndWhatTheOfflineDictionariesUse) {
@@ -49,21 +49,23 @@ TEST(SettingsScreen, LexiriseOffLeavesTheAccountGroupAndWhatTheOfflineDictionari
 TEST(SettingsScreen, ALanguageOffCollapsesToItsToggleAndDictionaryAndHidesTheDefaultLanguage) {
   Settings s;
   s.chinese.enabled = false;
-  EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
-                                         Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary,
-                                         Row::Tags, Row::TagBook, Row::DeckPerBook, Row::WifiIdle}));
+  EXPECT_EQ(rowsOf(s),
+            (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
+                              Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::Tags,
+                              Row::TagBook, Row::DeckPerBook, Row::WifiIdle, Row::MarkWords, Row::StepMarked}));
   s.chinese.enabled = true;
   s.japanese.enabled = false;
   EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
                                          Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::Tags, Row::TagBook,
-                                         Row::DeckPerBook, Row::WifiIdle}));
+                                         Row::DeckPerBook, Row::WifiIdle, Row::MarkWords, Row::StepMarked}));
   s.chinese.enabled = false;  // none on: StarDict answers Han-only text by the default language, so it shows
-  EXPECT_EQ(rowsOf(s), (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
-                                         Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::DefaultLanguage,
-                                         Row::Tags, Row::TagBook, Row::DeckPerBook, Row::WifiIdle}));
+  EXPECT_EQ(rowsOf(s),
+            (std::vector<Row>{Row::Lookups, Row::ApiKey, Row::Account, Row::TestConnection, Row::JaLookups,
+                              Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary, Row::DefaultLanguage, Row::Tags,
+                              Row::TagBook, Row::DeckPerBook, Row::WifiIdle, Row::MarkWords, Row::StepMarked}));
 }
 
-TEST(SettingsScreen, EverySwitchCombinationShowsSevenToFourteenRows) {
+TEST(SettingsScreen, EverySwitchCombinationShowsSevenToSixteenRows) {
   // lxctl's SETTINGS_ROWS_MIN / MAX (settings-smoke) are these bounds; test_lxctl pins them to the Row list.
   size_t fewest = screen::kRowCount, most = 0;
   for (int bits = 0; bits < 8; bits++) {
@@ -105,7 +107,8 @@ TEST(SettingsScreen, GroupsStartWhereTheGroupChanges) {
   for (size_t i = 0; i < rows.count; i++) {
     if (screen::startsGroup(rows, i)) starts.push_back(screen::groupOf(rows[i]));
   }
-  EXPECT_EQ(starts, (std::vector<Group>{Group::Account, Group::Japanese, Group::Chinese, Group::General}));
+  EXPECT_EQ(starts,
+            (std::vector<Group>{Group::Account, Group::Japanese, Group::Chinese, Group::General, Group::OnThePage}));
   EXPECT_FALSE(screen::startsGroup(rows, rows.count));
 }
 
@@ -114,8 +117,9 @@ TEST(SettingsScreen, EditsByRow) {
   EXPECT_EQ(screen::editFor(Row::Tags), screen::Edit::Keyboard);
   EXPECT_EQ(screen::editFor(Row::TestConnection), screen::Edit::Test);
   EXPECT_EQ(screen::editFor(Row::Account), screen::Edit::None);
-  for (const Row row : {Row::Lookups, Row::JaLookups, Row::JaReading, Row::JaDictionary, Row::ZhLookups,
-                        Row::ZhDictionary, Row::DefaultLanguage, Row::TagBook, Row::DeckPerBook, Row::WifiIdle}) {
+  for (const Row row :
+       {Row::Lookups, Row::JaLookups, Row::JaReading, Row::JaDictionary, Row::ZhLookups, Row::ZhDictionary,
+        Row::DefaultLanguage, Row::TagBook, Row::DeckPerBook, Row::WifiIdle, Row::MarkWords, Row::StepMarked}) {
     EXPECT_EQ(screen::editFor(row), screen::Edit::Patch);
     EXPECT_TRUE(screen::tapPatch(row, Settings(), {}).has_value());
   }
@@ -269,4 +273,24 @@ TEST(SettingsScreen, ARenderAlreadyRunningDoesNotOpenTheGateForTheNextFrame) {
   gate.building();
   gate.frameShown();
   EXPECT_TRUE(gate.accepts());
+}
+
+TEST(SettingsScreen, TheMarksRowsToggleInTheirOwnGroup) {
+  // V9a (claritise 2026-09-29): "Mark words on the page" (On) and "Side buttons on a card" (Marked words / Every word).
+  Settings s;
+  ASSERT_TRUE(s.markWords);
+  ASSERT_TRUE(s.stepMarked);
+  tap(s, Row::MarkWords);
+  EXPECT_FALSE(s.markWords);
+  EXPECT_FALSE(screen::shows(screen::visibleRows(s), Row::StepMarked));  // it steps between marks: shown with them
+  tap(s, Row::StepMarked);
+  EXPECT_FALSE(s.stepMarked);
+  tap(s, Row::StepMarked);
+  EXPECT_TRUE(s.stepMarked);
+  EXPECT_EQ(screen::groupOf(Row::MarkWords), Group::OnThePage);
+  EXPECT_EQ(screen::groupOf(Row::StepMarked), Group::OnThePage);
+  s.enabled = false;  // Lexirise's rows: hidden with it, values kept
+  EXPECT_FALSE(screen::shows(screen::visibleRows(s), Row::MarkWords));
+  EXPECT_FALSE(screen::shows(screen::visibleRows(s), Row::StepMarked));
+  EXPECT_FALSE(s.markWords);
 }

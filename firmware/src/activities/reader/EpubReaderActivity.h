@@ -85,6 +85,8 @@ class EpubReaderActivity final : public ReaderActivity {
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
   lexipoint::BookLanguageRow moreBookLanguage{lexipoint::bookLanguageStore()};  // LEXIPOINT: the More panel's row
+  std::optional<lexipoint::Language> lookupLanguageAtMenu;  // LEXIPOINT (V9a): the book's, as the list menu opened
+  lexipoint::BookMarksRow moreBookMarks{lexipoint::bookMarksStore()};  // LEXIPOINT (V9a): the More panel's
   lexipoint::page::ReaderPages lexiPages;  // LEXIPOINT: page analysis (C12, V7b): this page and the next, ahead
   std::atomic<uint64_t> lexiDrawn{0};      // LEXIPOINT: the page renderBook drew last, and when (page::packDrawn)
 

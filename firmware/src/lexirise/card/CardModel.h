@@ -18,6 +18,8 @@ namespace lexipoint::card {
 
 // T L F K, as Lexirise's proficiency levels (tracked … known); None: not saved.
 enum class Level : int8_t { None = -1, Tracked = 0, Learning = 1, Fresh = 2, Known = 3 };
+// Lexirise's proficiency (1-4 saved; 0 unknown) for a level (LiveWord.h levelOf: back).
+constexpr int proficiencyOf(const Level level) { return level == Level::None ? 0 : static_cast<int>(level) + 1; }
 
 struct CharInfo {
   std::string character;

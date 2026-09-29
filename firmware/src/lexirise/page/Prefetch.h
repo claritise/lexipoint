@@ -37,6 +37,7 @@ class PageTexts {
  public:
   virtual ~PageTexts() = default;
   virtual std::optional<PageText> textOf(int which) = 0;
+  virtual int pageIndex() const { return 0; }  // the page on screen's index in its section (V9a's kept pages)
 };
 
 // What the reader says about now.
@@ -73,6 +74,14 @@ inline Conditions readerConditions(const ReaderInputs& in) {
   return c;
 }
 
+// Whether a pass works out again whether Lexirise is usable for the book (and V9a's marks shown): once per page shown,
+// and at once when the settings, the book, or the book's Lookup language (the reader menu) changed. Never on every pass
+// (it reads the settings and the book's language choice).
+inline bool usableStale(const bool settingsChanged, const bool otherBook, const bool newPage,
+                        const bool lookupLanguageChanged) {
+  return settingsChanged || otherBook || newPage || lookupLanguageChanged;
+}
+
 // Whether the reader's own requests leave room for a page analysis: below config::kPageBudgetPercent of the limit.
 inline bool budgetLeft(const unsigned used, const uint32_t limit) {
   return api::belowPercent(used, limit, config::kPageBudgetPercent);
@@ -105,6 +114,7 @@ class PagePrefetcher {
     size_t occurrences = 0;
     bool refined = false;
     bool written = false;
+    PageKey key;                // the page analyzed (V9a: its kept analysis is read again once written)
     unsigned calls = 0;         // requests answered with an HTTP status (the log's count too)
     unsigned long callMs = 0;   // the calls' time
     unsigned long writeMs = 0;  // the file's write time

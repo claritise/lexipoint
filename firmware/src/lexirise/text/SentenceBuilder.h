@@ -71,6 +71,10 @@ std::optional<BuiltSentence> buildSentenceFrom(const PageModel& page, const Sent
 // rules: base text only, spaces only between Latin words), with no cap and no tap. Each sentence built from this page
 // is this text's slice from its first character's place (pageOffsetOf). nullopt: no text on the page.
 std::optional<BuiltSentence> buildPageText(const PageModel& page, Script script);
+// The page's text as a page analysis sends it and its cache checks it (one script for every caller: the text doesn't
+// depend on it, only a sentence's cuts do, and the CJK superset's pieces join the same): V7b's prefetch, the card's
+// page sentences and V9a's marks, so their hashes can't drift apart.
+std::optional<BuiltSentence> pageTextOf(const PageModel& page);
 // Where a sentence's first character sits in the page's text (UTF-16 units): nullopt when it isn't on this page.
 std::optional<uint32_t> pageOffsetOf(const BuiltSentence& pageText, const BuiltSentence& sentence);
 
