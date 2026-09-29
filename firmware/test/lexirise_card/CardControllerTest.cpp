@@ -2,6 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <cstring>
+#include <limits>
+#include <string>
+#include <utility>
+
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardController.h"
@@ -302,6 +307,117 @@ TEST(CardInput, ATapOnTheOldCardDuringAStepIsDropped) {
   EXPECT_EQ(c.word(), a + 1);
   EXPECT_EQ(c.state().level, benchJapanese().saved[a + 1]);  // B: unchanged
   EXPECT_TRUE(c.state().toast.empty());
+}
+
+// The dev harness's target sets (lxctl's CARD_TARGET_LOG and CARD_LEVEL_LOG): the targets a smoke taps, the reading
+// line and ✕ among them; not the card's body or the page's word.
+TEST(CardInput, TheTargetsASmokeTapsAreListed) {
+  char line[kTargetLineSize];
+  ASSERT_TRUE(formatTargetLine(at(Target::Level, {1, 2, 3, 4}, 2), true, line, sizeof(line)));
+  EXPECT_STREQ(line, "level 2 1 2 3 4 1");
+  ASSERT_TRUE(formatTargetLine(at(Target::Level, {1, 2, 3, 4}, 0), false, line, sizeof(line)));
+  EXPECT_STREQ(line, "level 0 1 2 3 4 0");
+  const std::pair<Target, const char*> listed[] = {{Target::RankRow, "rank"},        {Target::Tab, "tab"},
+                                                   {Target::Action, "action"},       {Target::ToastUndo, "undo"},
+                                                   {Target::ReadingLine, "reading"}, {Target::Close, "close"}};
+  for (const auto& [target, name] : listed) {
+    ASSERT_TRUE(formatTargetLine(at(target, {10, 20, 30, 40}, 3), false, line, sizeof(line))) << name;
+    EXPECT_EQ(std::string(line), std::string("target ") + name + " 3 10 20 30 40");
+  }
+  EXPECT_FALSE(formatTargetLine(at(Target::Card, {0, 0, 1, 1}), false, line, sizeof(line)));
+  EXPECT_FALSE(formatTargetLine(at(Target::OwnWord, {0, 0, 1, 1}), false, line, sizeof(line)));
+}
+
+// kTargetLineSize holds the longest target line: the longest target name with every number at its widest.
+TEST(CardInput, TheLongestTargetLineFits) {
+  const int m = std::numeric_limits<int>::min();
+  char line[kTargetLineSize];
+  ASSERT_TRUE(formatTargetLine(Hit{Target::ReadingLine, m, {m, m, m, m}}, true, line, sizeof(line)));
+  EXPECT_STREQ(line, "target reading -2147483648 -2147483648 -2147483648 -2147483648 -2147483648");
+  EXPECT_EQ(std::strlen(line), kTargetLineSize - 1);
+  ASSERT_TRUE(formatTargetLine(Hit{Target::Level, m, {m, m, m, m}}, true, line, sizeof(line)));
+  EXPECT_LT(std::strlen(line), kTargetLineSize - 1);  // a level line: "saved" is one digit
+}
+
+// kTapLineSize holds the longest tap line: the longest target name with every number at its widest.
+TEST(CardInput, TheLongestTapLineFits) {
+  const int m = std::numeric_limits<int>::min();
+  char line[kTapLineSize];
+  formatTapSeen(TapSeen{m, m, false, Hit{Target::ReadingLine, m, {}}}, line, sizeof(line));
+  EXPECT_STREQ(line, "tap -2147483648 -2147483648 reading -2147483648");
+  EXPECT_EQ(std::strlen(line), kTapLineSize - 1);
+}
+
+// The dev harness's tap lines ("[LXCARD] tap …", lxctl's CARD_TAP_LOG): what each tap met, a dropped one too.
+TEST(CardInput, EachTapIsReportedWithWhatItMet) {
+  BenchSource cSource(benchJapanese(), false);
+  CardController c(cSource, ReadingMode::Kana);
+  c.open(0);
+  ShownTargets shown;
+  shown.drawing({at(Target::ReadingLine, {0, 0, 50, 50}), at(Target::Tab, {100, 0, 50, 50}, 2)}, c.steps(),
+                c.state().view);
+  shown.shown(10);
+  PendingInput in;
+  in.tap(10, 10, 20);        // the reading line
+  in.tap(120, 10, 25);       // the tab, index 2
+  in.step(+1, 30);           // not a tap: not reported (and the next word's card isn't on screen yet)
+  in.tap(120, 10, 40);       // the old card's tab: dropped
+  ASSERT_EQ(in.size(), 4u);  // all queued (config::kCardPendingInputMax)
+  TapsSeen seen;
+  seen.count = 3;  // whatever was there before is replaced
+  handleInput(c, shown, in, 60, &seen);
+  ASSERT_EQ(seen.count, 3u);
+  char line[kTapLineSize];
+  formatTapSeen(seen.taps[0], line, sizeof(line));
+  EXPECT_STREQ(line, "tap 10 10 reading 0");
+  formatTapSeen(seen.taps[1], line, sizeof(line));
+  EXPECT_STREQ(line, "tap 120 10 tab 2");
+  formatTapSeen(seen.taps[2], line, sizeof(line));
+  EXPECT_STREQ(line, "tap 120 10 dropped");
+
+  shown.drawing({at(Target::Close, {0, 0, 50, 50})}, c.steps(), c.state().view);  // the next word's card
+  shown.shown(70);
+  PendingInput off;
+  off.tap(300, 310, 80);  // off the card: it closes
+  handleInput(c, shown, off, 90, &seen);
+  ASSERT_EQ(seen.count, 1u);
+  formatTapSeen(seen.taps[0], line, sizeof(line));
+  EXPECT_STREQ(line, "tap 300 310 none");
+  PendingInput close;
+  close.tap(5, 7, 100);
+  handleInput(c, shown, close, 110, &seen);
+  formatTapSeen(seen.taps[0], line, sizeof(line));
+  EXPECT_STREQ(line, "tap 5 7 close 0");
+
+  shown.drawing({at(Target::Card, {0, 0, 480, 800})}, c.steps(), c.state().view);  // taps the card swallows
+  shown.shown(115);
+  constexpr int kFull = config::kCardPendingInputMax;
+  PendingInput full;  // a full queue of taps: each reported
+  for (int i = 0; i < kFull; i++) full.tap(200 + i, 300, 120);
+  ASSERT_EQ(full.size(), static_cast<size_t>(kFull));
+  handleInput(c, shown, full, 125, &seen);
+  ASSERT_EQ(seen.count, static_cast<size_t>(kFull));
+  formatTapSeen(seen.taps[kFull - 1], line, sizeof(line));
+  EXPECT_EQ(std::string(line), "tap " + std::to_string(200 + kFull - 1) + " 300 card 0");
+
+  PendingInput other;  // not taps: not reported
+  other.swipe(Swipe::Up, 10, 10, 120);
+  other.longPress(10, 10, 130);
+  ASSERT_EQ(other.size(), 2u);
+  handleInput(c, shown, other, 140, &seen);
+  EXPECT_EQ(seen.count, 0u);
+}
+
+TEST(CardInput, EveryTargetHasALogName) {
+  EXPECT_STREQ(targetName(Target::Level), "level");
+  EXPECT_STREQ(targetName(Target::RankRow), "rank");
+  EXPECT_STREQ(targetName(Target::Close), "close");
+  EXPECT_STREQ(targetName(Target::ReadingLine), "reading");
+  EXPECT_STREQ(targetName(Target::Tab), "tab");
+  EXPECT_STREQ(targetName(Target::Action), "action");
+  EXPECT_STREQ(targetName(Target::ToastUndo), "undo");
+  EXPECT_STREQ(targetName(Target::Card), "card");
+  EXPECT_STREQ(targetName(Target::OwnWord), "word");
 }
 
 TEST(CardInput, HomeIsNeverDroppedFromAFullQueue) {

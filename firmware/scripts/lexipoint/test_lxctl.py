@@ -973,7 +973,9 @@ class DeckSmokeRules(unittest.TestCase):
         for kind in ("check", "list", "create"):
             self.assertIn(f'return "{kind}";', deck)
         card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
-        self.assertIn('"level %d %d %d %d %d %d"', card)
+        lines = open(os.path.join(REPO, "src/lexirise/card/CardInput.cpp"), encoding="utf-8").read()
+        self.assertIn('"level %d %d %d %d %d %d"', lines)  # formatTargetLine
+        self.assertIn("formatTargetLine(", card)
         self.assertRegex(card, r"#if LEXIPOINT_DEV_HARNESS\s+logTapTargets")  # dev builds only
 
     def test_it_refuses_to_run_without_the_flag(self):
@@ -1099,6 +1101,23 @@ class IgnoreSmokeRules(unittest.TestCase):
         self.assertEqual(len(lxctl.target_sets(log)), 2)
         self.assertEqual(lxctl.tap_targets(["[1] [INF] [LXCARD] target rank 0 1 2 3 4"]), {})  # no header: no set
 
+    def test_the_reading_line_and_close_are_in_the_set(self):
+        log = ["[1] [INF] [LXCARD] targets 3", "[1] [INF] [LXCARD] target close 0 425 555 38 38",
+               "[1] [INF] [LXCARD] target reading 0 23 561 120 34", "[1] [INF] [LXCARD] target rank 0 17 690 446 50"]
+        self.assertEqual(lxctl.tap_targets(log), {("close", 0): (425, 555, 38, 38), ("reading", 0): (23, 561, 120, 34),
+                                                  ("rank", 0): (17, 690, 446, 50)})
+
+    def test_each_tap_and_what_it_met(self):
+        # The lines as LexiriseCardActivity::logTaps writes them
+        # (formatTapSeen; CardInput.EachTapIsReportedWithWhatItMet).
+        log = ["[7] [INF] [LXCARD] tap 10 10 reading 0", "[8] [INF] [LXCARD] tap 120 10 dropped",
+               "[9] [INF] [LXCARD] tap 300 300 none", "[9] [INF] [LXCARD] tap 5 5 close 0",
+               "[9] [INF] [LXCARD] tap 6 6 ? 1",  # targetName's fallback
+               "[9] [INF] [LXCARD] targets 1", "[9] [INF] [LXCARD] target tab 2 1 2 3 4"]
+        self.assertEqual(lxctl.card_taps(log), [(10, 10, "reading", 0), (120, 10, "dropped", 0), (300, 300, "none", 0),
+                                                (5, 5, "close", 0), (6, 6, "?", 1)])
+        self.assertEqual(lxctl.target_sets(log), [{("tab", 2): (1, 2, 3, 4)}])  # a tap line isn't part of a set
+
     def test_a_form_key_with_spaces_is_read_whole(self):
         log = ["[5] [INF] [LXCARD] ignore ja:~a b on written", "[6] [INF] [LXCARD] ignore ja:~a b off written"]
         self.assertEqual(lxctl.check_ignore_log(log), "ja:~a b")
@@ -1109,14 +1128,22 @@ class IgnoreSmokeRules(unittest.TestCase):
         self.assertEqual([n.strip() for n in ids.split(",")].index(
             [n.strip() for n in ids.split(",") if n.strip().startswith("Ignore")][0]), lxctl.IGNORE_ACTION)
         card = open(os.path.join(REPO, "src/lexirise/card/LexiriseCardActivity.cpp"), encoding="utf-8").read()
-        self.assertIn('"target %s %d %d %d %d %d"', card)
+        self.assertIn('"target %s %d %d %d %d %d"', open(os.path.join(REPO, "src/lexirise/card/CardInput.cpp"),
+                                                         encoding="utf-8").read())  # formatTargetLine
         self.assertIn('"targets %d"', card)
         # Logged once the frame is on screen (after ShownTargets::shown): a tap sent then lands on it.
         self.assertRegex(card, r"targets_\.shown\(millis\(\)\);\s+#if LEXIPOINT_DEV_HARNESS\s+logTapTargets")
         c = header_constants("src/lexirise/LexiriseConfig.h")
         self.assertEqual(lxctl.IGNORE_TOAST_MS, c["kIgnoreToastMs"])
-        for kind in ("rank", "tab", "action", "undo"):
-            self.assertIn(f'"{kind}"', card)
+        names = open(os.path.join(REPO, "src/lexirise/card/DisplayList.h"), encoding="utf-8").read()  # targetName
+        for kind in ("rank", "tab", "action", "undo", "reading", "close"):
+            self.assertIn(f'return "{kind}";', names)
+        # The taps: one line each, as CardInput's formatTapSeen writes them, after handleInput.
+        taps = open(os.path.join(REPO, "src/lexirise/card/CardInput.cpp"), encoding="utf-8").read()
+        for form in ('"tap %d %d dropped"', '"tap %d %d none"', '"tap %d %d %s %d"'):
+            self.assertIn(form, taps)
+        self.assertRegex(card, r"session_\.handleInput\(nowMs, seen\);\s+#if LEXIPOINT_DEV_HARNESS\s+logTaps\(taps\);[^}]*\}")
+        self.assertIn("formatTapSeen(", card)  # the set's targets: CardInput.TheTargetsASmokeTapsAreListed
         session = open(os.path.join(REPO, "src/lexirise/card/CardSession.cpp"), encoding="utf-8").read()
         self.assertIn('"ignore %s %s %s"', session)
         for word in ("written", "unchanged", "failed"):
@@ -1191,6 +1218,188 @@ class IgnoreSmokeDriver(unittest.TestCase):
     def test_its_commands_are_the_devices(self):
         usages = device_usages()
         for cmd in ("LONG 240 400", "TAP 240 725", "SYNC", "HOME"):
+            self.assertRegex(cmd, usages[cmd.split()[0]])
+
+
+def reading_log(*lines):
+    return [f"[5] [INF] [LXCARD] {line}" for line in lines]
+
+
+class ReadingSmokeRules(unittest.TestCase):
+    def test_a_switch_and_back_passes(self):
+        log = reading_log("reading line きょうしつ", "tap 60 150 reading 0", "reading line kyoushitsu",
+                          "tap 70 150 reading 0", "reading line きょうしつ")
+        self.assertEqual(lxctl.check_reading_log(log), ("きょうしつ", "kyoushitsu"))
+
+    def test_a_redraw_before_the_first_tap_counts_as_the_line_then(self):
+        log = reading_log("reading line kyoushitsu", "reading line きょうしつ",  # the lookup's answer redrew it
+                          "tap 60 150 reading 0", "reading line kyoushitsu", "tap 70 150 reading 0",
+                          "reading line きょうしつ")
+        self.assertEqual(lxctl.check_reading_log(log), ("きょうしつ", "kyoushitsu"))
+
+    def test_a_redraw_after_a_tap_counts_as_the_line_then(self):
+        log = reading_log("reading line きょうしつ", "tap 60 150 reading 0", "reading line kyoushitsu",
+                          "reading line kyōshitsu", "tap 70 150 reading 0", "reading line kyoushitsu",
+                          "reading line きょうしつ")  # each tap's line redrawn by the lookup's answer
+        self.assertEqual(lxctl.check_reading_log(log), ("きょうしつ", "kyōshitsu"))
+
+    def test_other_taps_between_dont_count_and_a_reading_may_hold_spaces(self):
+        log = reading_log("reading line ic hi", "tap 60 150 reading 0", "reading line いち", "tap 5 5 dropped",
+                          "tap 440 20 close 0", "tap 70 150 reading 0", "reading line ic hi")
+        self.assertEqual(lxctl.check_reading_log(log), ("ic hi", "いち"))
+
+    def test_a_missed_tap_or_an_unchanged_line_fails(self):
+        for log, message in (
+                (reading_log("reading line きょうしつ", "tap 60 150 none", "tap 70 150 reading 0",
+                             "reading line kyoushitsu"), "two taps"),
+                (reading_log("reading line きょうしつ", "tap 60 150 reading 0", "reading line kyoushitsu",
+                             "tap 70 150 reading 0", "reading line きょうしつ", "tap 80 150 reading 0"),
+                 "two taps"),
+                (reading_log("tap 60 150 reading 0", "reading line kyoushitsu", "tap 70 150 reading 0"),
+                 "before the first tap"),
+                (reading_log("reading line きょうしつ", "tap 60 150 reading 0", "tap 70 150 reading 0"),
+                 "didn't switch the reading line"),  # the measured bug: the toast changed, the line didn't
+                (reading_log("reading line きょうしつ", "tap 60 150 reading 0", "reading line kyoushitsu",
+                             "tap 70 150 reading 0"), "back"),
+                (reading_log("reading line きょうしつ", "tap 60 150 reading 0", "reading line kyoushitsu",
+                             "tap 70 150 reading 0", "reading line kyōshitsu"), "back")):
+            with self.subTest(message), self.assertRaisesRegex(RuntimeError, message):
+                lxctl.check_reading_log(log)
+
+    def test_the_line_is_what_the_activity_logs(self):
+        with open(os.path.join(HERE, "..", "..", "src", "lexirise", "card", "LexiriseCardActivity.cpp"),
+                  encoding="utf-8") as f:
+            card = f.read()
+        self.assertIn('"reading line %s"', card)
+        # Each frame, once on screen (in render, with the targets), dev builds only.
+        self.assertRegex(card, r"#if LEXIPOINT_DEV_HARNESS\s+logTapTargets\(frame\.card\.hits\);[^\n]*\n\s+logReadingLine\(\);")
+
+
+class FakeReadingHarness:
+    """The device's side of reading-smoke: a LONG opens a card and draws its kana, each SYNC logs the targets the card
+    now shows (the reading line's width follows its text), a TAP on the line switches it."""
+
+    def __init__(self, switches=True, target=True, stardict=False, second_lands=True, first_lands=True, redraw=False,
+                 missed="none"):
+        self.switches, self.target = switches, target  # target=False: a card with no reading line (Chinese)
+        self.stardict = stardict
+        self.second_lands, self.first_lands = second_lands, first_lands  # False: that tap misses the line
+        self.missed = missed  # what a missed tap met: none (off the card) or dropped (another frame on screen)
+        self.redraw = redraw  # True: the lookup's answer redraws the line as the card opens (romaji, then kana)
+        self.taps = 0
+        self.stream: list[str] = []
+        self.sent: list[str] = []
+        self.romaji = False
+
+    def command(self, cmd, expect=None, timeout=0, seen=None):
+        self.sent.append(cmd)
+        if cmd.startswith("LONG "):
+            self.stream += (["[1] [DBG] [ACT] Entering activity: DictionaryDefinition"] if self.stardict else
+                            ["[1] [DBG] [ACT] Entering activity: LexiriseCard"]
+                            + reading_log(*(["reading line kyoushitsu"] if self.redraw else []), "reading line きょうしつ"))
+        elif cmd == "SYNC" and seen is not None:
+            seen += (reading_log("targets 1", f"target reading 0 17 140 {160 if self.romaji else 120} 20")
+                     if self.target else reading_log("targets 1", "target close 0 440 10 30 30"))
+        elif cmd.startswith("TAP "):
+            x, y = cmd.split()[1:]
+            self.taps += 1
+            if (self.taps == 1 and not self.first_lands) or (self.taps == 2 and not self.second_lands):
+                self.stream += reading_log(f"tap {x} {y} {self.missed}")
+                return "LX:OK"
+            self.stream += reading_log(f"tap {x} {y} reading 0")
+            if self.switches:
+                self.romaji = not self.romaji
+                self.stream += reading_log("reading line " + ("kyoushitsu" if self.romaji else "きょうしつ"))
+        elif cmd == "HOME":
+            self.stream.append("[9] [DBG] [ACT] Exiting activity: LexiriseCard")
+        return "LX:OK"
+
+    def read_line(self, deadline):
+        return self.stream.pop(0) if self.stream else None
+
+
+class ReadingSmokeDriver(unittest.TestCase):
+    def test_it_taps_the_line_where_each_frame_drew_it(self):
+        h = FakeReadingHarness()
+        self.assertEqual(lxctl.reading_smoke(h, (240, 400)), ("きょうしつ", "kyoushitsu"))
+        self.assertEqual([c for c in h.sent if c.startswith("TAP")], ["TAP 77 150", "TAP 97 150"])
+        self.assertEqual((h.sent[0], h.sent[-1]), ("LONG 240 400", "HOME"))
+
+    def test_a_line_that_doesnt_switch_fails(self):
+        with self.assertRaises(RuntimeError) as unswitched:  # both taps landed: the setting is as it was
+            lxctl.reading_smoke(FakeReadingHarness(switches=False), (240, 400))
+        self.assertIn("didn't switch", str(unswitched.exception))
+        self.assertNotIn("left switched", str(unswitched.exception))
+        self.assertNotIn("card may still be open", str(unswitched.exception))  # it closed before the check
+        with self.assertRaisesRegex(RuntimeError, "StarDict"):
+            lxctl.reading_smoke(FakeReadingHarness(stardict=True), (240, 400))
+        with self.assertRaisesRegex(RuntimeError, r"two taps.*the reading setting is left switched: tap the line again, "
+                                                  r"or set Settings → Lexirise → Japanese readings"):
+            lxctl.reading_smoke(FakeReadingHarness(second_lands=False), (240, 400))
+        with self.assertRaises(RuntimeError) as both_missed:  # neither tap reached the line: nothing switched
+            lxctl.reading_smoke(FakeReadingHarness(second_lands=False, first_lands=False, redraw=True), (240, 400))
+        self.assertNotIn("left switched", str(both_missed.exception))
+        with self.assertRaisesRegex(RuntimeError, r"two taps.*the reading setting is left switched"):  # a redraw before the first tap
+            lxctl.reading_smoke(FakeReadingHarness(second_lands=False, redraw=True), (240, 400))
+        with self.assertRaisesRegex(RuntimeError, r"two taps.*the reading setting is left switched"):  # a dropped tap
+            lxctl.reading_smoke(FakeReadingHarness(second_lands=False, missed="dropped"), (240, 400))
+
+    def test_a_failure_after_the_first_tap_says_what_its_left(self):
+        class SyncFails(FakeReadingHarness):  # the second SYNC times out, the first tap's line already read
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                if cmd == "SYNC" and self.taps == 1:
+                    seen += self.stream  # as Harness.command: the lines before the error are in the log
+                    self.stream.clear()
+                    raise RuntimeError("SYNC: LX:ERR SYNC timeout")
+                return super().command(cmd, expect, timeout, seen)
+        h = SyncFails()
+        with self.assertRaisesRegex(RuntimeError, r"SYNC timeout; the reading setting is left switched.*; the "
+                                                  r"card may still be open"):
+            lxctl.reading_smoke(h, (240, 400))
+        self.assertNotIn("HOME", h.sent)
+
+    def test_a_tap_whose_line_hasnt_come_makes_the_setting_uncertain(self):
+        class LateLines(FakeReadingHarness):  # lines come in with each command's reply; the final SYNC times out
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                if cmd == "SYNC" and self.taps == 2:
+                    raise TimeoutError("no reply to SYNC")
+                reply = super().command(cmd, expect, timeout, seen)
+                if seen is not None and cmd == "SYNC":
+                    seen += self.stream  # the first tap's lines, read while waiting for this SYNC
+                    self.stream.clear()
+                return reply
+        with self.assertRaises(TimeoutError) as failed:  # tap 1's line in, tap 2's not: sent 2, landed 1
+            lxctl.reading_smoke(LateLines(), (240, 400))
+        self.assertIn("may be left switched", str(failed.exception))
+        self.assertNotIn("is left switched", str(failed.exception))  # the outstanding tap may have switched it back
+
+    def test_a_tap_whose_reply_is_lost_may_have_switched_it(self):
+        class ReplyLost(FakeReadingHarness):  # the device takes the TAP, its reply never comes
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                reply = super().command(cmd, expect, timeout, seen)
+                if cmd.startswith("TAP "):
+                    raise TimeoutError(f"no reply to '{cmd}'")
+                return reply
+        with self.assertRaises(TimeoutError) as failed:
+            lxctl.reading_smoke(ReplyLost(), (240, 400))
+        self.assertIn("may be left switched", str(failed.exception))
+
+    def test_a_failure_before_any_tap_says_the_card_is_open_and_the_setting_untouched(self):
+        class FirstSyncFails(FakeReadingHarness):
+            def command(self, cmd, expect=None, timeout=0, seen=None):
+                if cmd == "SYNC":
+                    raise RuntimeError("SYNC: LX:ERR SYNC timeout")
+                return super().command(cmd, expect, timeout, seen)
+        with self.assertRaises(RuntimeError) as failed:
+            lxctl.reading_smoke(FirstSyncFails(), (240, 400))
+        self.assertIn("card may still be open", str(failed.exception))
+        self.assertNotIn("left switched", str(failed.exception))
+        with self.assertRaisesRegex(RuntimeError, "no reading line.*card may still be open"):
+            lxctl.reading_smoke(FakeReadingHarness(target=False), (240, 400))
+
+    def test_its_commands_are_the_devices(self):
+        usages = device_usages()
+        for cmd in ("LONG 240 400", "TAP 77 150", "SYNC", "HOME"):
             self.assertRegex(cmd, usages[cmd.split()[0]])
 
 

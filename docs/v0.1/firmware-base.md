@@ -119,7 +119,7 @@ src/lexirise/
   lookup/LexiriseLookup, LookupCard, Match, LongPress, StarDictCandidates  the lookup (P3, split in P5), pure
   lookup/Fallback.h                   whether Lexirise is asked, what's said when it isn't (P6), pure
   api/AccessPolicy.h                  401 off until a new key, 429 back-off (P6), pure
-  text/Kana, Utf8Prefix, Utf8Units    romaji → kana; UTF-8 / UTF-16 helpers, pure
+  text/Kana, Utf8Prefix, Utf8Units    romaji ⇄ kana; UTF-8 / UTF-16 helpers, pure
   card/                               the card (P4-P6): CardMetrics, CardModel, DisplayList, CardLayout, TextRuns,
                                       ShapeGeometry, CardController, CardInput, ShownTargets, CardSession, WordSelectFlow,
                                       CardSource (BenchSource, LiveSource), LiveWord, ReaderScene, CardFrame (pure);

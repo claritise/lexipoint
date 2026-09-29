@@ -69,7 +69,10 @@ class LexiriseCardActivity final : public Activity {
   // mirror's file read or write (Flush), else a mirror page, with the settings and the finger read now.
   void idleStep();
 #if LEXIPOINT_DEV_HARNESS
-  void logTapTargets(const std::vector<Hit>& hits);  // render task: lxctl deck-smoke's and ignore-smoke's targets
+  void logTapTargets(const std::vector<Hit>& hits);  // render task: lxctl deck-, ignore- and reading-smoke's targets
+  static void logTaps(const TapsSeen& taps);         // loop(): "[LXCARD] tap …", one line per tap
+  void logReadingLine();                             // render task: "[LXCARD] reading line <text>" when it changes
+  std::string loggedReading_;
   std::string loggedTargets_;
 #endif
 

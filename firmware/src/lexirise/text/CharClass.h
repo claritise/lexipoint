@@ -77,6 +77,8 @@ inline bool isKana(const uint32_t cp) {
 // Hiragana letters and its iteration marks (ゝゞ).
 inline bool isHiragana(const uint32_t cp) { return (cp >= 0x3041 && cp <= 0x3096) || (cp >= 0x309D && cp <= 0x309F); }
 
+constexpr size_t kKanaBytes = 3;  // one kana (or ー) in UTF-8
+
 // The small katakana ヵ and ヶ: kana by Unicode, but mostly counters (一ヶ月: 箇, 個) rather than a sound.
 constexpr uint32_t kSmallKatakanaKa = 0x30F5;  // ヵ
 constexpr uint32_t kSmallKatakanaKe = 0x30F6;  // ヶ

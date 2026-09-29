@@ -483,6 +483,9 @@ TEST(CardLayout, Phases) {
   EXPECT_TRUE(hits(list, Target::Level).empty());
   EXPECT_TRUE(hits(list, Target::RankRow).empty());
   EXPECT_EQ(hits(list, Target::Close).size(), 1u);  // closing always works
+  EXPECT_EQ(readingLineText(w, s), "");             // no reading before the word arrives
+  EXPECT_EQ(textCommand(list, w.reading), nullptr);
+  EXPECT_TRUE(hits(list, Target::ReadingLine).empty());
   s.phase = Phase::Analyzed;
   list = layoutCard(w, s, kMetrics);
   EXPECT_EQ(hits(list, Target::Level).size(), 4u);
@@ -491,6 +494,17 @@ TEST(CardLayout, Phases) {
   s.phase = Phase::TranslationPending;
   list = layoutCard(w, s, kMetrics);
   EXPECT_NE(textCommand(list, "translation pending"), nullptr);
+}
+
+// The Japanese readings setting doesn't reach a Chinese card: its pinyin stays, and its line isn't a toggle.
+TEST(CardLayout, ChineseIgnoresTheRomajiSetting) {
+  const CardWord w = benchChinese().words[5];  // 选择
+  CardState s;
+  s.reading = ReadingMode::Romaji;
+  EXPECT_EQ(readingLineText(w, s), "xuǎn zé");
+  const auto list = layoutCard(w, s, kMetrics);
+  EXPECT_NE(textCommand(list, "xuǎn zé"), nullptr);
+  EXPECT_TRUE(hits(list, Target::ReadingLine).empty());
 }
 
 TEST(CardLayout, Toast) {

@@ -151,6 +151,28 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## Fixes after the 2026-09-29 session: still owed on the device
+
+The fix-dzu fixes (`languages.md` §3a, superseded 2026-09-29: kana answers read back as romaji, and `dzu`) are on
+`lexi/fix-dzu`, not yet run on the device. A Japanese book, a dev build (`x4pro`, for the tap lines).
+
+- **Every word switches** (the 2026-09-29 finding: kana in both modes, on any word): on an analyzed page, a card on
+  教室 shows きょうしつ; tap the reading line: the toast says romaji and the line shows `kyoushitsu`; tap again: the
+  toast says kana and the line is きょうしつ. The same on は (`ha`), after a side-button step, and on a word answered
+  from the lemma cache. Record the `[LXCARD] tap … reading 0` line for each tap (a missing line or `dropped` is a
+  missed tap, not the reading).
+- **What form the account's answers take** (`lxctl.py lexi analyze ja`, one read-only call with the device's key):
+  **done 2026-09-29** (the harness, `main` @ `2f6b9b07`, claritise's account): **kana** (彼 かれ, 東京 とうきょう,
+  行った いった, は は); recorded in `../reference/lexirise-api-notes.md`, "Japanese reading".
+- **A word with づ switches:** open a card on 気づく or 気づいた: the reading line shows きづく; tap it: the toast
+  says romaji and the line shows `kidzuku`; tap again: back to kana. (On 続ける: つづける, then `tsudzukeru`.)
+- **`lxctl.py reading-smoke [x y]`** (a dev build, a Japanese book open upright, one held session): long-presses
+  the word at x y (one with a kanji), taps its reading line twice where the card logged it, and checks from the log
+  two `tap … reading 0` lines and the line drawn in one form, the other, then the first again (kana, romaji, kana with the default setting) (`[LXCARD] reading line <text>`).
+  It covers "Every word switches" above on one word, except the toast and how the romaji looks.
+- **Seen, not changed:** the toast ("Readings: romaji") is drawn at the top of the screen, over the page above a
+  collapsed card (y≈105): where the approved card puts it (`popup-ui.md` §1.1's toast row, top 85), not a bug.
+
 ## v0.2 V9a: still owed on the device
 
 V9a (the page marks and A3: `../v0.2/page-annotations.md` §2 "V9a decisions" and "As built (V9a)") is on `lexi/V9`,

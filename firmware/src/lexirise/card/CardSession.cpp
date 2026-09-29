@@ -11,9 +11,9 @@
 
 namespace lexipoint::card {
 
-Outcome CardSession::handleInput(const unsigned long nowMs) {
+Outcome CardSession::handleInput(const unsigned long nowMs, TapsSeen* seen) {
   if (!input_.empty()) lastActivityMs_ = nowMs;
-  Outcome outcome = card::handleInput(controller_, targets_, input_, nowMs);
+  Outcome outcome = card::handleInput(controller_, targets_, input_, nowMs, seen);
   input_.clear();
   if (live_) {
     for (const LevelChange& change : outcome.changes) live_->queue(change);  // the bench has nothing to send

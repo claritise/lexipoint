@@ -134,7 +134,9 @@ can't render an exact size, use the nearest size and **log it in the P4 ledger n
   device). Nothing moved.
 - **Reading on top, small; lemma large.** Same order as furigana. Show the reading as **kana**. If
   `transliteration` comes back in romaji (the brief's example has `"neko"`), convert it or show it
-  as is. P0 checks what `ja` actually returns.
+  as is. ~~P0 checks what `ja` actually returns.~~ **Superseded 2026-09-29:** it
+  comes back in romaji or in kana (`../reference/lexirise-api-notes.md`, "Japanese
+  reading"); the card takes either (`languages.md` §3a).
 - **Proficiency** is the level row (§3): the saved word's level is filled in. A new word has
   nothing filled, and tapping a level saves it. The state (`learning`, `not saved`) is also shown
   top right as text.
@@ -150,9 +152,11 @@ can't render an exact size, use the nearest size and **log it in the P4 ledger n
   readings and the "also" readings. The existing toast confirms it (`Readings: romaji` /
   `Readings: kana`), and nothing else is drawn. **The choice is remembered** as the
   `reading` setting in `/.lexirise/config.ini` (`settings.md`), the same value as **Settings → Lexirise →
-  Japanese readings**. Changing it in either place changes both. The default is `kana`. Romaji comes
+  Japanese readings**. Changing it in either place changes both. The default is `kana`. ~~Romaji comes
   straight from the API. **Kana is converted on the device** (`languages.md` §3a), exactly and
-  without guessing, and it falls back to romaji for any word it can't fully convert. Chinese pinyin
+  without guessing, and it falls back to romaji for any word it can't fully convert.~~ **Superseded
+  2026-09-29:** the API gives romaji or kana (`../reference/lexirise-api-notes.md`); the device converts whichever it got into
+  the other, and shows the reading as given when it can't (how: `languages.md` §3a, converter step 0). Chinese pinyin
   doesn't toggle, and a tap there does nothing.
 - In the detail view's Kanji tab, each character also gets its own level (JLPT kanji level, HSK
   character level) where the data has it.

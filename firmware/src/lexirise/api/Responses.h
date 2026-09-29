@@ -28,7 +28,7 @@ ParseStatus parseMe(std::string_view body, MeInfo& out);
 struct Occurrence {
   std::string word;
   std::string lemma;    // falls back to word when the server omits it (it does when they're equal)
-  std::string reading;  // "transliteration": romaji or pinyin; empty for punctuation
+  std::string reading;  // "transliteration": romaji or kana (languages.md §3a) or pinyin; empty for punctuation
   uint32_t entryId = 0;
   uint32_t lemmaEntryId = 0;
   uint32_t charStart = 0;
@@ -38,7 +38,7 @@ struct Occurrence {
 
 // entryMetaById[id]: the dictionary facts about one entry (the surface form's; not the lemma's).
 struct EntryMeta {
-  std::string reading;       // transliteration
+  std::string reading;       // transliteration: romaji or kana (languages.md §3a) or pinyin
   std::string partOfSpeech;  // the first one
   uint32_t rank = 0;         // 0: unknown
   float frequency = 0;       // frequencyScore, 0-1 (the card's bars); 0: unknown
@@ -74,7 +74,7 @@ struct Sense {
 
 struct LookupResult {
   std::string word;
-  std::string reading;        // transliteration
+  std::string reading;        // transliteration: romaji or kana (languages.md §3a) or pinyin
   std::vector<Sense> senses;  // the first config::kMaxTranslations
   std::string level;          // "JLPT-N5" / "HSK-1" … / "HSK-7+" from system_tags; empty when on no list
   uint32_t rank = 0;

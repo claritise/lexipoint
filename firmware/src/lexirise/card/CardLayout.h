@@ -31,4 +31,8 @@ std::string meaningText(const std::vector<std::string>& senses, const TextMetric
 // "#29,774"
 std::string formatRank(uint32_t rank);
 
+// The reading line's text: kana, or romaji in the romaji mode (the tap or the setting; Japanese); pinyin (Chinese);
+// empty before the word arrives.
+std::string readingLineText(const CardWord& word, const CardState& state);
+
 }  // namespace lexipoint::card

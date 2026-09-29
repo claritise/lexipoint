@@ -862,7 +862,7 @@ only if claritise asks, with a fresh design and sign-off. This is the list's one
 |---|---|---|
 | Page analysis (§1.1) | Everything | ~~Not built. v0.1 analyzes per sentence; V7b designed (§1.1 "V7b design", 2026-09-28)~~ V7b built on the host (2026-09-28; device checks owed) |
 | Vocab mirror (§1.2) | Offline marks, A4, A5, immediate updates after a save | ~~Not built~~ ~~V7a (in progress, 2026-09-28)~~ V7a done on the host (landed 2026-09-28; device check owed) |
-| **Kana readings** | A6 for Japanese, A8 readings | **Solved:** converted on the device (`../v0.1/languages.md` §3a). Chinese pinyin works as is |
+| **Kana readings** | A6 for Japanese, A8 readings | ~~**Solved:** converted on the device~~ **Superseded 2026-09-29:** solved, kana either way: Lexirise's kana is kept, its romaji converted on the device (`../v0.1/languages.md` §3a). Chinese pinyin works as is |
 | `analyze/text` maximum text length | Page analysis in one request, and A9 | **No limit hit up to 20k chars** (tested). ~~~70 bytes of response per character, so ~20 KB per page~~ (Superseded 2026-09-28: ~200–310 B per UTF-16 unit, 76–93 KB a page, `../reference/lexirise-api-notes.md` "Page analysis (V7b), measured") |
 | Whether analyze bumps `seen_count` | Whether prefetching inflates your stats | **Tested: it doesn't.** Prefetching is safe |
 | Tokenizer quality | A1 accuracy (一日中雨 came back as one token) | Report issues to Lexirise |

@@ -50,7 +50,7 @@ number. Filters take either the number or the label.
 | **JLPT / HSK level (H9)** | **Yes, in `dictionary/lookup` → `system_tags`.** Values seen: `JLPT-N5` (猫), `JLPT-N3` (勉強), `JLPT-N1` (煩わしい), `HSK-1` (学习), `HSK-2` (猫), `HSK-4` (选择), `HSK-7+` (引擎). No tag when the word isn't on a list (兄貴 → `[]`). Other tags sit beside it (`kanji`, `char`), so match the pattern, not index 0. **`HSK-7+` means HSK 3.0** (levels 1–6, then 7–9 banded as one) |
 | Is the level in `analyze/text`? | **No.** `entryMetaById` has no `system_tags`, so the badge arrives with phase B |
 | **H5: the `charStart` unit** | **UTF-16 code units.** 𠮟 (U+20B9F) spans `0–2`, and the next token starts at 2 |
-| **Japanese reading** | **Romaji, not kana.** Native words use **spelled-out long vowels** (`toukyou`, `ookii`, `kyou`) and `'` after ん (`kin'youbi`), which converts losslessly to hiragana. Katakana words use **macrons** (`kōhī`, `bīru`). Bad readings seen: 一緒 → `ichiitoguchi`. Other examples: `aniki`, `neko`, `nonda`. The device converts these to kana (`../v0.1/languages.md` §3a). `multipleReadings` gives `{primary, alternatives[]}` in romaji too (猫: `neko`, alternatives `nekoma`, `byou`) |
+| **Japanese reading** | ~~**Romaji, not kana.**~~ **Superseded 2026-09-29, measured on the device:** on claritise's account `analyze/text`'s `transliteration` comes back **in kana** (彼 `かれ`, 東京 `とうきょう`, 行った `いった`, は `は`; one read-only analyze through the dev harness, `lxctl.py lexi analyze ja`); on the dev key's account it was romaji the same day (V9b's probe, 2026-09-29: "Levels for A5 (V9b)", raw in `research/v9b/`). Whether that's per account, per account setting or a server change isn't known; the card takes either form (`../v0.1/languages.md` §3a). With the dev key: **romaji, not kana.** Native words use **spelled-out long vowels** (`toukyou`, `ookii`, `kyou`) and `'` after ん (`kin'youbi`), which converts losslessly to hiragana. Katakana words use **macrons** (`kōhī`, `bīru`). Bad readings seen: 一緒 → `ichiitoguchi`. Other examples: `aniki`, `neko`, `nonda`. The device converts these to kana (`../v0.1/languages.md` §3a). `multipleReadings` gives `{primary, alternatives[]}` in romaji too (猫: `neko`, alternatives `nekoma`, `byou`) |
 | **H7: Chinese reading** | **Pinyin with tone marks, space-separated**: `xué xí`. There's also a `tones` array (`[2, 2]`) |
 | **Rank in `analyze/text`** | **Yes.** `entryMetaById[id]` has `rank` and `frequencyScore` (camelCase there, snake_case in `dictionary/lookup`). The brief was right, and `00-overview.md`'s "correction" on this was wrong |
 | `lemma` on occurrences | **Only present when it differs** from the surface form (飲んだ → `lemma: 飲む`). Otherwise it's missing. Fall back to `word` |
@@ -534,7 +534,8 @@ Dev key, from the Mac; raw in `research/v6/` (gitignored).
   `frequencies[]` (one per alternative) and `primaryFrequency`. **Chinese polyphones have it, in pinyin with tone
   marks:** 长 cháng, alternatives zhǎng; 行 xíng, háng; 得 dé, de and děi. **Japanese alternatives are romaji only**
   (一日: primary tsuitachi; alternatives ichinichi, ichijitsu, tsukitachi, hitohi, ippi), so a card showing kana has
-  to convert them (V6's "also" reading).
+  to convert them (V6's "also" reading). (2026-09-29: `analyze/text` came back in kana on claritise's account, "Japanese reading" above, so alternatives may too: take either with
+  `text::japaneseReading`, `../v0.1/languages.md` §3a.)
 - **`GET /v1/vocabulary?language=…&limit=1`** answers `languageCount`, `totalCount`, `nextOffset`, `availableTags`
   (and the items). A `unit_type` query parameter is ignored (the same counts, the same item). ~~Whether
   `languageCount` counts sentence cards is still open: the dev account has none to compare (V6's C7 check).~~

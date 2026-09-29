@@ -244,30 +244,6 @@ void write(std::ofstream& f, const DisplayList& list, const DeviceMetrics& metri
   }
 }
 
-const char* targetName(const Target t) {
-  switch (t) {
-    case Target::Level:
-      return "level";
-    case Target::RankRow:
-      return "rank";
-    case Target::Close:
-      return "close";
-    case Target::ReadingLine:
-      return "reading";
-    case Target::Tab:
-      return "tab";
-    case Target::Action:
-      return "action";
-    case Target::ToastUndo:
-      return "undo";
-    case Target::Card:
-      return "card";
-    case Target::OwnWord:
-      return "word";
-  }
-  return "?";
-}
-
 // The touch targets, front-most first (scripts/lexipoint/lxctl.py card-smoke taps their centres).
 void writeHits(std::ofstream& f, const DisplayList& list) {
   for (size_t i = 0; i < list.hits.size(); i++) {

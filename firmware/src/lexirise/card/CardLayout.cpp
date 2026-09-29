@@ -249,10 +249,7 @@ class Layout {
     return s_.phase == Phase::Complete || s_.phase == Phase::TranslationPending || s_.phase == Phase::Unanswered;
   }
   Font readingFont() const { return ja_ && s_.reading == ReadingMode::Kana ? Font::ReaderSmall : Font::UiSmall; }
-  std::string readingText() const {
-    if (pending()) return {};
-    return ja_ && s_.reading == ReadingMode::Romaji ? w_.romaji : w_.reading;
-  }
+  std::string readingText() const { return readingLineText(w_, s_); }
 
   // ---- header ----
 
@@ -840,6 +837,12 @@ class Layout {
 };
 
 }  // namespace
+
+std::string readingLineText(const CardWord& word, const CardState& state) {
+  if (state.phase == Phase::Pending) return {};
+  const bool romaji = word.language == Language::Japanese && state.reading == ReadingMode::Romaji;
+  return romaji ? word.romaji : word.reading;
+}
 
 DisplayList layoutCard(const CardWord& word, const CardState& state, const TextMetrics& metrics,
                        const CardStrings& strings) {

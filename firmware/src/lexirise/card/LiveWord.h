@@ -1,6 +1,6 @@
 #pragma once
 
-// A lookup's answer as the card shows it (popup-ui.md §1, languages.md §3): the reading in kana, the
+// A lookup's answer as the card shows it (popup-ui.md §1, languages.md §3a): the reading in kana, the
 // level as a badge, T L F K from Lexirise's proficiency. Pure; tests: test/lexirise_card.
 
 #include <optional>

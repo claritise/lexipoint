@@ -38,6 +38,9 @@ Examples:
                                       # not ignored yet), ⋯ → Ignore this word, then the toast's Undo; checks
                                       # from the log it was written to ignored.ini and taken off again, with no
                                       # write to Lexirise (V5). Writes only the reader's SD card
+  lxctl.py reading-smoke [x y]        # a dev build, a Japanese book open (upright portrait): long-press the word at
+                                      # x y, tap its reading line twice; checks from the log it switched (kana ⇄
+                                      # romaji) and back. Writes only the reader's own reading setting, left as it was
   lxctl.py vocab-smoke [x y] [press]  # a dev build, a book open (upright portrait), WiFi saved: long-press the word
                                       # at x y and leave its card idle; checks from the log that the vocab mirror
                                       # synced a page (V7a) or, on a synced mirror, ran the card's probe (V7b:
@@ -617,7 +620,7 @@ def card_gestures(h: Harness, sleep=time.sleep) -> None:
 # (LexiriseService::send, ids masked, logged once answered), the deck steps' "[LXDECK] step <kind> <key>" (logged as
 # each starts, deck::sendDeckStep) and the store's "[LXDECK] Deck <lang>:<slug>: recorded". Each line starts
 # "[<millis>]" (lib/Logging). The card's level buttons come from its "[LXCARD] level <i> <x> <y> <w> <h> <saved>"
-# lines (LexiriseCardActivity, dev builds), part of the target sets ignore-smoke reads too: a "[LXCARD] targets <n>"
+# lines (LexiriseCardActivity, dev builds), part of the target sets ignore-smoke and reading-smoke read too: a "[LXCARD] targets <n>"
 # header, then n lines, "level …" and "target …", logged again as a whole once the frame is on screen whenever any
 # target changes (target_sets).
 DECK_CALL_LOG = re.compile(r"^\[(\d+)\] \[\w+\] \[LXS\] (GET|POST|PATCH|DELETE) (\S+) -> (-?\d+)")
@@ -771,11 +774,15 @@ def deck_smoke(h: Harness, words=DECK_WORDS, watch_s: float = DECK_WATCH_S) -> l
 
 # ignore-smoke (v0.2 V5, C17): the reader's own ignore list. The card logs its tap targets as a whole set when they
 # change (dev builds, LexiriseCardActivity: "[LXCARD] targets <n>", then n lines: "level …" and "[LXCARD] target
-# <rank|tab|action|undo> <i> <x> <y> <w> <h>") and each change written to ignored.ini (CardSession::persistIgnores:
-# "[LXCARD] ignore <key> <on|off> <written|unchanged|failed>"; a form key can hold spaces).
+# <rank|tab|action|undo|reading|close> <i> <x> <y> <w> <h>") and each change written to ignored.ini
+# (CardSession::persistIgnores: "[LXCARD] ignore <key> <on|off> <written|unchanged|failed>"; a form key can hold
+# spaces). Each tap the card handled is logged too (logTaps: "[LXCARD] tap <x> <y> <target> <index>", "… none" off the
+# card, "… dropped" when the frame on screen was another word's or view's, or none yet): a missed tap against a no-op one.
 CARD_TARGETS_HEADER = re.compile(r"\[LXCARD\] targets (\d+)$")
 CARD_SET_LINE = re.compile(r"\[LXCARD\] (level|target) ")
-CARD_TARGET_LOG = re.compile(r"\[LXCARD\] target (rank|tab|action|undo) (\d+) (-?\d+) (-?\d+) (\d+) (\d+)")
+CARD_TARGET_LOG = re.compile(
+    r"\[LXCARD\] target (rank|tab|action|undo|reading|close) (\d+) (-?\d+) (-?\d+) (\d+) (\d+)")
+CARD_TAP_LOG = re.compile(r"\[LXCARD\] tap (-?\d+) (-?\d+) (dropped|none|(\S+) (\d+))$")
 IGNORE_LOG = re.compile(r"\[LXCARD\] ignore (.+) (on|off) (written|unchanged|failed)$")
 IGNORE_ACTION = 2  # ActionId::Ignore (CardModel.h; test_lxctl checks it)
 IGNORE_WATCH_S = 10.0  # the SD write after a tap: well under a second
@@ -811,6 +818,13 @@ def tap_targets(log: list[str]) -> dict[tuple[str, int], tuple[int, int, int, in
     """The card's tap targets now: the last complete set logged (none: empty)."""
     sets = target_sets(log)
     return sets[-1] if sets else {}
+
+
+def card_taps(log: list[str]) -> list[tuple[int, int, str, int]]:
+    """Every tap the card handled in `log`, in order: (x, y, the target's name or "none" or "dropped", its index; 0
+    for none and dropped)."""
+    return [(int(m.group(1)), int(m.group(2)), m.group(4) or m.group(3), int(m.group(5) or 0)) for line in log
+            if (m := CARD_TAP_LOG.search(line))]
 
 
 def ignore_events(log: list[str]) -> list[tuple[str, str, str]]:
@@ -927,6 +941,82 @@ def ignore_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT, watch_s: floa
     after_marks = f"; the page's marks under the card: {marks[0]} words, then {marks[1]}" if marks else ""
     print(f"ignore-smoke OK: {key} on, then off{after_marks}")
     return key
+
+
+# reading-smoke (fix-dzu, 2026-09-29): the Japanese reading line's tap. Dev builds log the line's text whenever it
+# changes (LexiriseCardActivity::logReadingLine: "[LXCARD] reading line <text>"): one form, the other after a tap, then
+# the first again (kana, romaji, kana with the default setting). Writes only the reader's own `reading` setting, which
+# two taps leave as it was.
+READING_LINE_LOG = re.compile(r"\[LXCARD\] reading line (.+)$")
+
+
+def reading_lines(log: list[str]) -> list[str]:
+    """Every reading-line text logged in `log`, in order."""
+    return [m.group(1) for line in log if (m := READING_LINE_LOG.search(line))]
+
+
+def check_reading_log(log: list[str]) -> tuple[str, str]:
+    """The reading switch on the device, from the card's log: two taps on the reading line, and the line as drawn
+    before the first (its last drawing: the lookup's answer can redraw it), after the first and after the second:
+    one form, another, then the first again. Returns (before, switched); raises RuntimeError on the first broken
+    rule."""
+    taps = [i for i, line in enumerate(log) if (m := CARD_TAP_LOG.search(line)) and m.group(4) == "reading"]
+    if len(taps) != 2:
+        raise RuntimeError(f"expected two taps on the reading line, got {card_taps(log)}")
+    drawn = [reading_lines(part) for part in (log[:taps[0]], log[taps[0]:taps[1]], log[taps[1]:])]
+    if not drawn[0]:
+        raise RuntimeError("no reading line drawn before the first tap (a dev build? a Japanese word?)")
+    before = drawn[0][-1]
+    switched = drawn[1][-1] if drawn[1] else before
+    if switched == before:
+        raise RuntimeError(f"the first tap didn't switch the reading line: still {before}")
+    back = drawn[2][-1] if drawn[2] else switched
+    if back != before:
+        raise RuntimeError(f"the second tap didn't switch it back: {before}, {switched}, then {back}")
+    return before, switched
+
+
+def reading_smoke(h: Harness, at: tuple[int, int] = READER_ON_TEXT) -> tuple[str, str]:
+    """The reading switch on the device. A dev build, a Japanese book open in the reader, upright portrait, Lexirise
+    on; `at`: a word with a kanji. Opens its card, taps the reading line twice (SYNC between: the line's width changes,
+    so its target moves) and closes the card. Checked from the log by check_reading_log."""
+    log: list[str] = []
+    h.command(f"LONG {at[0]} {at[1]}", seen=log)
+    log += collect_until(h, (CARD_OPENED, DEFINITION_OPENED), LEXI_CALL_TIMEOUT_S)
+    if DEFINITION_OPENED in log[-1]:
+        raise RuntimeError(f"StarDict answered the word at {at}, not Lexirise")
+    sent = 0
+    closed = False
+    try:
+        for _ in range(2):
+            h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+            targets = tap_targets(log)
+            if ("reading", 0) not in targets:
+                raise RuntimeError("the card logged no reading line (a dev build, env:x4pro? a Japanese word?)")
+            sent += 1  # counted as sent: a TAP whose reply is lost may still have landed
+            tap_centre(h, targets[("reading", 0)], log)
+        h.command("SYNC", timeout=SYNC_TIMEOUT_S, seen=log)
+        h.command("HOME", seen=log)
+        log += collect_until(h, ("Exiting activity: LexiriseCard",), CARD_CLOSE_WAIT_S + LEXI_CALL_TIMEOUT_S)
+        closed = True
+        before, switched = check_reading_log(log)
+    except (RuntimeError, TimeoutError) as e:
+        taps = card_taps(log)
+        landed = sum(t[2] == "reading" for t in taps)  # each tap on the line switches the setting
+        notes = []
+        if len(taps) < sent:  # a tap sent whose line hasn't come yet: it may still switch it
+            notes.append("the reading setting may be left switched")
+        elif landed % 2:
+            notes.append("the reading setting is left switched")
+        if notes:
+            notes[-1] += ": tap the line again, or set Settings → Lexirise → Japanese readings"
+        if not closed:
+            notes.append("the card may still be open")
+        if notes:
+            raise type(e)(f"{e}; " + "; ".join(notes)) from None
+        raise
+    print(f"reading-smoke OK: {before} -> {switched} -> {before}")
+    return before, switched
 
 
 # vocab-smoke (v0.2 V7a, C13): the vocab mirror's sync on an idle card, from the log. Each page logs
@@ -1648,6 +1738,11 @@ def main() -> None:
                 ignore_smoke(h, tuple(map(int, a.args[:2])) if len(a.args) >= 2 else READER_ON_TEXT)
             except (RuntimeError, TimeoutError) as e:
                 sys.exit(f"ignore-smoke FAILED: {e}")
+        elif c == "reading-smoke":
+            try:
+                reading_smoke(h, tuple(map(int, a.args[:2])) if len(a.args) >= 2 else READER_ON_TEXT)
+            except (RuntimeError, TimeoutError) as e:
+                sys.exit(f"reading-smoke FAILED: {e}")
         elif c == "vocab-smoke":
             nums = [x for x in a.args if x.lstrip("-").isdigit()]
             try:

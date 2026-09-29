@@ -109,12 +109,33 @@ class PendingInput {
   size_t count_ = 0;
 };
 
+// Each tap as handleInput met it, for the dev harness's log (LexiriseCardActivity: "[LXCARD] tap <x> <y> …"), so
+// a device session can tell a tap the card never saw from one that did nothing: the target under it (none: off the
+// card), or dropped (nothing on screen yet, or it showed another word or the other view). Fixed size, no heap.
+struct TapSeen {
+  int x = 0;
+  int y = 0;
+  bool dropped = false;
+  std::optional<Hit> hit;
+};
+struct TapsSeen {
+  std::array<TapSeen, config::kCardPendingInputMax> taps{};
+  size_t count = 0;
+};
+// "tap <x> <y> dropped", "tap <x> <y> none" or "tap <x> <y> <target> <index>" (targetName) into `out`.
+void formatTapSeen(const TapSeen& tap, char* out, size_t size);
+constexpr size_t kTapLineSize = 48;  // the longest: "tap <int> <int> reading <int>", 47 characters, and the terminator
+// One target of a card's logged target set: "level <i> <x> <y> <w> <h> <saved>" or "target <rank|tab|action|undo|
+// reading|close> <i> <x> <y> <w> <h>" (lxctl's CARD_LEVEL_LOG and CARD_TARGET_LOG); false for a target not listed.
+bool formatTargetLine(const Hit& hit, bool saved, char* out, size_t size);
+constexpr size_t kTargetLineSize = 75;  // the longest: "target reading <int> <int> <int> <int> <int>", 74 characters
+
 // Feeds the events to the controller in order (Home too: it queues like the rest, so it never overtakes a
 // tap made before it), each at its own time and each tap, swipe and long-press against the frame on screen
 // then (dropped when nothing was shown yet, or it showed another word or the other view; a swipe that didn't
 // start on the card is dropped too), stopping at a close; then the phases due by `nowMs`.
-// Redraw when anything changed; readingChanged when the reading ends up different.
+// Redraw when anything changed; readingChanged when the reading ends up different. `seen`: each tap, when given.
 Outcome handleInput(CardController& controller, const ShownTargets& targets, const PendingInput& input,
-                    unsigned long nowMs);
+                    unsigned long nowMs, TapsSeen* seen = nullptr);
 
 }  // namespace lexipoint::card

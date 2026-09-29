@@ -54,8 +54,9 @@ class CardSession {
       : controller_(controller), targets_(targets), input_(input), live_(live) {}
 
   // The queued input, handled and cleared (under RenderLock on the device). Its level changes are queued
-  // for Lexirise, all of them, in order: a close in the same batch doesn't lose the save before it.
-  Outcome handleInput(unsigned long nowMs);
+  // for Lexirise, all of them, in order: a close in the same batch doesn't lose the save before it. `seen`: each tap
+  // as it was met (card::handleInput), for the dev harness's log.
+  Outcome handleInput(unsigned long nowMs, TapsSeen* seen = nullptr);
 
   // Whether loop() makes its network call now: there's work, and nothing is waiting to be drawn or being
   // drawn. A call blocks the loop (no input is read), so the screen must not change under it: a redraw

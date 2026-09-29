@@ -17,8 +17,8 @@
 namespace lexipoint::text {
 namespace {
 
-constexpr size_t kKanaBytes = 3;  // one kana in UTF-8
-constexpr int kMaxSteps = 5;      // 食べさせられませんでした: causative, passive, polite, negative, past
+using chars::kKanaBytes;
+constexpr int kMaxSteps = 5;  // 食べさせられませんでした: causative, passive, polite, negative, past
 // The longer-form check reaches the stems' other forms only if they're built: the deepest it needs is causative,
 // passive, -tai, past (食べさせられた + か: 食べさせられたかった).
 static_assert(kMaxSteps >= 4);

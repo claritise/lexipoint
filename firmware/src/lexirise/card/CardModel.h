@@ -54,8 +54,8 @@ enum class NoMeaning : uint8_t {
 
 struct CardWord {
   Language language = Language::Japanese;
-  std::string reading;  // kana (ja; romaji when it couldn't be converted) or pinyin (zh)
-  std::string romaji;   // ja: the API's reading
+  std::string reading;  // kana (ja: converted, or as the API gave it; romaji when it can't be) or pinyin (zh)
+  std::string romaji;   // ja: the API's, or read back from its kana (Kana.h japaneseReading)
   std::string word;     // the lemma
   std::string badge;    // "N1" / "HSK 4"; empty: none
   std::string surface;  // ja: the form in the sentence, when it isn't the lemma

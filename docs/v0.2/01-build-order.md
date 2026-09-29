@@ -287,6 +287,7 @@ C5, on V7's page analysis and mirror.
 | V9b | ~~**design awaiting claritise's sign-off**~~ **parked, not signed off** (2026-09-29, claritise: A5 "Drop it", the rest "i think features are getting to complex"; `page-annotations.md` §2 "Maybe later") (2026-09-29: A5 measured read-only, `../reference/lexirise-api-notes.md` "Levels for A5 (V9b)"; the plan `page-annotations.md` §2 "V9b design"; mockups `reference/v9b-annotations.html`, drawn by `../../tools/mockups/v9b_annotations.py`) | `lexi/V9` (wip) | docs only | — |
 | V9c | **parked** (2026-09-29, claritise, with V9b; no design) | — | — | — |
 | V9d | **parked** (2026-09-29, claritise, with V9b; no design) | — | — | — |
+| fix-dzu | **done (host); device check owed** (landed 2026-09-30 after 68 review rounds, the last two clean; from claritise's 2026-09-29 device session: the reading line's tap drew the same text both ways; device checks: `../v0.1/device-checks.md` "Fixes after the 2026-09-29 session") | merged into `main` (wip on `lexi/fix-dzu-wip-archive`, local) | 1455 host (`ctest --test-dir build/test`), 236 Python; card goldens unchanged (25 match); cppcheck clean; `x4pro`, `x4pro-gh_release` build | What and how: `../v0.1/languages.md` §3a (superseded 2026-09-29: kana answers read back as romaji, `dzu` → づ); the dev build's tap lines and `lxctl reading-smoke`: `../v0.1/dev-harness.md` §3. Review rounds: the landing commit's message. |
 | V10 | not started | — | — | — |
 | V11 | not started | — | — | — |
 | V12 | not started | — | — | — |

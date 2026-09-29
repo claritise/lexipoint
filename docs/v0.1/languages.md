@@ -114,10 +114,15 @@ when the book language is `zh`, so English text keeps its current behavior.
   (mostly 1–3 characters), so the large line has room.
 - The "surface form ≠ lemma" line never shows for `zh`.
 
-## 3a. Japanese readings: romaji → kana on the device (H10)
+## 3a. Japanese readings: ~~romaji → kana~~ kana and romaji on the device (H10)
 
-The API gives Japanese readings **only in romaji**. Tested 2026-09-24 on 16 tricky words, its
-romanization is consistent:
+~~The API gives Japanese readings **only in romaji**.~~ **Superseded 2026-09-29** (fix-dzu): the dev key's
+answers were romaji (every Japanese transliteration kept in `research/`, the last from V9b's probe on 2026-09-29), but on claritise's device the card's
+reading line drew the same kana in both modes on every word (教室 きょうしつ, は), and the romaji mode's layout (its
+other font) showed the tap was taken: the transliteration reached the card **in kana** (it comes in
+romaji or in kana: `../reference/lexirise-api-notes.md`, "Japanese reading"). The
+card now takes either form: kana is kept and read back as romaji for the tap (converter step 0). Tested 2026-09-24 on
+16 tricky words, ~~its romanization~~ Lexirise's romaji (the dev key's) is consistent:
 
 | Case | Lexirise gives | Kana |
 |---|---|---|
@@ -126,10 +131,20 @@ romanization is consistent:
 | Doubled consonant → っ | `kakkoii`, `chotto`, `kekkon` | かっこいい, ちょっと, けっこん |
 | Katakana words: macrons | `kōhī`, `bīru` | the word's own surface form (コーヒー, ビール) |
 
-**Converter** (`src/lexirise/text/Kana.{h,cpp}`, pure function, host-tested):
+**Converter** (`src/lexirise/text/Kana.{h,cpp}`, pure function, host-tested; `japaneseReading` gives both):
+0. (2026-09-29) If the transliteration is **all kana**, it is the kana reading (a katakana word's own surface form
+   first, as in step 1), and `kanaToRomaji` gives the romaji in Lexirise's style: Hepburn, long vowels spelled out
+   (`toukyou`), ー as a macron (`kōhī`), `n'` before a vowel or y, っ doubling the next consonant (`tch`), づ →
+   `dzu`, ぢ → `ji` (unmeasured, see below). Katakana combinations too (デュ `dyu`, クァ `kwa`, ツェ `tse`, フュ
+   `fyu`, ウィ `wi`), and the old ゐ ゑ (`wi`, `we`); **a final っ isn't written** (あっ → `a`: Hepburn has no letter for the cut-off,
+   and a `'` would read as `n'`); a small vowel after a syllable is drawn out (ねぇ → `nee`); ゝ ゞ repeat the kana
+   before (こゝろ `kokoro`, いすゞ `isuzu`). Over the kana words in `research/` (read-only, 2026-09-29) all read but
+   fragments cut mid-word (a leading small kana, ー or っ, a doubled っ or ー). Anything it can't read shows as
+   given in both modes (a katakana word still shows its own form as the kana). With **no** transliteration, a katakana word's romaji is read from the word itself
+   (コーヒー → `kōhī`), or it shows as written.
 1. If the word's surface form is **all katakana** (plus ー), the reading is the surface form. Done.
 2. Otherwise, convert **romaji → hiragana** with a longest-match table (Hepburn plus wāpuro
-   spellings: `shi`, `chi`, `tsu`, `fu`, `ji`, `kya`…, `n'` → ん, a doubled consonant → っ, a final or
+   spellings: `shi`, `chi`, `tsu`, `fu`, `ji`, `kya`…, and Lexirise's `dzu` → づ, `n'` → ん, a doubled consonant → っ, a final or
    pre-consonant `n` → ん, and macron vowels → the vowel doubled with う/い per Hepburn usage, for
    the rare mixed words).
 3. If any input is left unconverted, **fall back to showing romaji** for that word. Never show
@@ -137,11 +152,26 @@ romanization is consistent:
 
 **Known limit:** the converter can only be as right as Lexirise's reading. Seen live: 一緒 →
 `ichiitoguchi` (should be いっしょ), and 一日 in 四月一日 → `ichinichi` (context, see v0.2 C10).
-Report these to Lexirise. Don't patch them on the device. Hepburn itself can't tell ず from づ or じ
-from ぢ (`tsuzuku` → つずく, not つづく): the converter writes ず / じ, so a word with づ / ぢ reads one kana off. Nor can it tell the particle は (read *wa*) from わ: こんにちは
-comes out こんにちわ.
+Report these to Lexirise. Don't patch them on the device. ~~Hepburn itself can't tell ず from づ or じ
+from ぢ (`tsuzuku` → つずく, not つづく): the converter writes ず / じ, so a word with づ / ぢ reads one kana off.~~
+**Superseded 2026-09-29** (fix-dzu): Lexirise doesn't spell づ as Hepburn's `zu`: it writes **`dzu`** (気づく
+`kidzuku`, 続ける `tsudzukeru`, 小遣い `kodzukai`, 日付 `hidzuke`), and the converter turns `dzu` into づ exactly.
+Before the fix `dzu` was missing from the table, so when the transliteration came in romaji, such a word's kana
+reading failed and the card showed the romaji in both modes (found in `research/`'s transliterations, 2026-09-29). Measured over the
+(word, transliteration) pairs kept in `research/` (every Japanese transliteration with a word, and the spike's
+readings): every all-romaji transliteration converts; `dz` only ever comes as `dzu`, and never as `dj…`, `dy…`, `di`
+or `du`; every `zu` is ず and every `ji` is じ where the word's kana shows it; no word with ぢ came up, so Lexirise's
+spelling of ぢ is unmeasured: `di` → ぢ is the table's wāpuro entry, and kana → romaji writes ぢ as `ji` (step 0, a
+guess): if Lexirise spells ぢ `ji`, such a word's kana reads じ, one kana off. ~~Nor can it tell the particle は (read *wa*) from わ: こんにちは comes out こんにちわ.~~ **Superseded
+2026-09-29, in part:** the particle は comes as its own word, and Lexirise writes it `ha`
+(`../reference/lexirise-api-notes.md`, "Tokenizer notes"), so it converts to は. Inside a word the limit stands: `wa`
+is わ, so a word Lexirise spells with `wa` for は comes out with わ (こんにちは, if it answers `konnichiwa`: unmeasured).
 
-**Tests** (`test/lexirise_kana/`): every row above, the six mock words (まいあさ, まんいんでんしゃ,
+**Tests** (`test/lexirise_kana/`): every row above, `dzu` → づ and synthetic (word, transliteration) pairs
+shaped like the measured ones (`Kana.DzuIsDu`, `Kana.LexirisesZuDzuAndJiPairs`), kana read back as romaji, and romaji
+read to kana and back unchanged for the listed words (`Kana.KanaReadsBackAsLexirisesRomaji`, `Kana.KanaAndRomajiRoundTrip`); the card's line in
+both modes, with answers in romaji and in kana, on a live lookup, a lemma cache hit, an analyzed page and a step
+(`LiveReadingToggle.*` in `test/lexirise_card/`), the six mock words (まいあさ, まんいんでんしゃ,
 わずらわしい, かれ, かいしゃ, やめる), `n` edge cases (`kin'en` きんえん vs `kinen` きねん,
 `shinbun` しんぶん), and unconvertible input → romaji fallback.
 

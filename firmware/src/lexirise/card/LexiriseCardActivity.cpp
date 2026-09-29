@@ -15,6 +15,7 @@
 #include "lexirise/LexiriseService.h"
 #include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardFrame.h"
+#include "lexirise/card/CardLayout.h"
 #include "lexirise/card/CardOrientation.h"
 #include "lexirise/card/CardPainter.h"
 #include "lexirise/card/CardStringsI18n.h"
@@ -209,9 +210,18 @@ void LexiriseCardActivity::handleQueuedInput(const unsigned long nowMs) {
   const bool hadInput = !input_.empty();
   Outcome outcome;
   SmokeState shown;
+#if LEXIPOINT_DEV_HARNESS
+  TapsSeen taps;
+  TapsSeen* const seen = &taps;
+#else
+  TapsSeen* const seen = nullptr;
+#endif
   {
     RenderLock lock;
-    outcome = session_.handleInput(nowMs);
+    outcome = session_.handleInput(nowMs, seen);
+#if LEXIPOINT_DEV_HARNESS
+    logTaps(taps);  // under the lock: before any render of what the taps changed (reading-smoke splits the log here)
+#endif
     nextDueMs_ = controller_.nextDueMs();
     shown = smokeState();
   }
@@ -381,27 +391,15 @@ void LexiriseCardActivity::logTapTargets(const std::vector<Hit>& hits) {
   // lxctl's smokes tap where the card drew its targets, logged as a whole set when they change, once the frame is on
   // screen (after ShownTargets::shown: a tap stamped before it would land on the previous frame), after a "targets <n>"
   // header (n: the lines that follow; the level lines are logged again whenever any target changes): deck-smoke L,
-  // "level <i> <x> <y> <w> <h> <saved 0|1>"; ignore-smoke the rank row, the tabs, the ⋯ rows and the toast's Undo,
-  // "target <rank|tab|action|undo> <i> <x> <y> <w> <h>".
-  const int saved = controller_.state().level == Level::None ? 0 : 1;
+  // "level <i> <x> <y> <w> <h> <saved 0|1>"; ignore-smoke the rank row, the tabs, the ⋯ rows and the toast's Undo;
+  // reading-smoke the reading line; and, for reading a device session's taps (logTaps), ✕ too,
+  // "target <rank|tab|action|undo|reading|close> <i> <x> <y> <w> <h>".
+  const bool saved = controller_.state().level != Level::None;
   std::string lines;
   int count = 0;
   for (const Hit& hit : hits) {
-    char line[64];
-    const char* kind = hit.target == Target::RankRow     ? "rank"
-                       : hit.target == Target::Tab       ? "tab"
-                       : hit.target == Target::Action    ? "action"
-                       : hit.target == Target::ToastUndo ? "undo"
-                                                         : nullptr;
-    if (hit.target == Target::Level) {
-      std::snprintf(line, sizeof(line), "level %d %d %d %d %d %d", hit.index, hit.rect.x, hit.rect.y, hit.rect.w,
-                    hit.rect.h, saved);
-    } else if (kind) {
-      std::snprintf(line, sizeof(line), "target %s %d %d %d %d %d", kind, hit.index, hit.rect.x, hit.rect.y, hit.rect.w,
-                    hit.rect.h);
-    } else {
-      continue;
-    }
+    char line[kTargetLineSize];
+    if (!formatTargetLine(hit, saved, line, sizeof(line))) continue;
     lines += line;
     lines += '\n';
     count++;
@@ -414,6 +412,27 @@ void LexiriseCardActivity::logTapTargets(const std::vector<Hit>& hits) {
     const size_t lineEnd = lines.find('\n', start);
     LOG_INF("LXCARD", "%s", lines.substr(start, lineEnd - start).c_str());
     start = lineEnd + 1;
+  }
+}
+
+void LexiriseCardActivity::logReadingLine() {
+  // lxctl reading-smoke: the Japanese reading line's text (kana, or romaji in the romaji mode: the tap or the setting;
+  // before fitting), when it changes.
+  if (controller_.currentWord().language != Language::Japanese) return;
+  const std::string text = readingLineText(controller_.currentWord(), controller_.state());
+  if (text.empty() || text == loggedReading_) return;
+  loggedReading_ = text;
+  LOG_INF("LXCARD", "reading line %s", text.c_str());
+}
+
+void LexiriseCardActivity::logTaps(const TapsSeen& taps) {
+  // One line per tap handled, "tap <x> <y> <target> <index>" (none: off the card; dropped: the frame on screen was
+  // another word's or view's, or none yet: CardInput's handleInput), so a device session can tell a tap the card
+  // never took from one it took that changed nothing.
+  for (size_t i = 0; i < taps.count; i++) {
+    char line[kTapLineSize];
+    formatTapSeen(taps.taps[i], line, sizeof(line));
+    LOG_INF("LXCARD", "%s", line);
   }
 }
 #endif
@@ -439,6 +458,7 @@ void LexiriseCardActivity::render(RenderLock&&) {
   targets_.shown(millis());
 #if LEXIPOINT_DEV_HARNESS
   logTapTargets(frame.card.hits);  // once on screen: a tap the smoke sends now lands on this frame (ShownTargets::at)
+  logReadingLine();
 #endif
   session_.frameShown();
 }

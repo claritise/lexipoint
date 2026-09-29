@@ -192,7 +192,7 @@ need a second deck made and kept, for no gain yet.
   it. Every build logs each deck step as it starts (`[LXDECK] step <kind> <key>`, one to three lines per book per
   boot); only dev builds log the card's level buttons (`[LXCARD] level …`), for `lxctl deck-smoke`; since V5 they are part of
   the card's target sets (`[LXCARD] targets <n>`, then n lines, `level …` and `target …`, the latter for
-  `lxctl ignore-smoke`), logged again as a whole, once the frame is on screen, whenever any target changes. See
+  `lxctl ignore-smoke` and, since fix-dzu (2026-09-29), `reading-smoke` and a device session's taps, `../v0.1/dev-harness.md` §3), logged again as a whole, once the frame is on screen, whenever any target changes. See
   `../reference/lexirise-api-notes.md`, "Decks".
 
 ## C5. Difficulty preview

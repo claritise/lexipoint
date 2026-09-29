@@ -17,6 +17,7 @@
 #include "lexirise/card/BenchSource.h"
 #include "lexirise/card/CardController.h"
 #include "lexirise/card/CardFrame.h"
+#include "lexirise/card/CardLayout.h"
 #include "lexirise/card/CardSession.h"
 #include "lexirise/card/LiveSource.h"
 #include "lexirise/card/WordSelectFlow.h"
@@ -43,7 +44,7 @@ const FakeMetrics kMetrics;
 constexpr const char* kAnalyze =
     R"({"occurrences":[)"
     R"({"word":"彼","isWordLike":true,"transliteration":"kare","charStart":0,"charEnd":1,"entryId":1},)"
-    R"({"word":"は","isWordLike":true,"transliteration":"wa","charStart":1,"charEnd":2,"entryId":2},)"
+    R"({"word":"は","isWordLike":true,"transliteration":"ha","charStart":1,"charEnd":2,"entryId":2},)"
     R"({"word":"本","isWordLike":true,"transliteration":"hon","charStart":2,"charEnd":3,"entryId":3},)"
     R"({"word":"を","isWordLike":true,"transliteration":"wo","charStart":3,"charEnd":4,"entryId":4},)"
     R"({"word":"読んだ","lemma":"読む","isWordLike":true,"transliteration":"yonda","charStart":4,"charEnd":7,)"
@@ -3705,10 +3706,10 @@ struct AnalyzedPage {
   lexipoint::page::PageStore store{files};
   lexipoint::page::PageKey key{7, 3, 120};
   lexipoint::text::BuiltSentence text;
-  explicit AnalyzedPage(const PageModel& model, const uint64_t analyzedMs = 0) {
+  explicit AnalyzedPage(const PageModel& model, const uint64_t analyzedMs = 0, const char* analysis = kAnalyze) {
     text = *lexipoint::text::buildPageText(model, Script::Japanese);
     lexipoint::page::PageAnalysis page;
-    EXPECT_EQ(lexipoint::page::parsePage(kAnalyze, Language::Japanese, page), lexipoint::api::ParseStatus::Ok);
+    EXPECT_EQ(lexipoint::page::parsePage(analysis, Language::Japanese, page), lexipoint::api::ParseStatus::Ok);
     page.textUnits = lexipoint::text::utf16Length(text.text);
     page.textHash = lexipoint::page::textHash(text.text);
     page.analyzedMs = analyzedMs;
@@ -4364,4 +4365,188 @@ TEST(LiveA3, EveryWordWithoutAPageOrWithoutTheSetting) {
   off.advance();
   EXPECT_FALSE(off.stepsMarkedWords());  // "Every word"
   EXPECT_FALSE(off.neverMarked(4));      // no mirror, not ignored
+}
+
+// The reading line's kana ⇄ romaji tap (popup-ui.md §1) on each path a card can take: a live lookup, a lemma cache
+// hit, an analyzed page answered from the cache, and a step to another word; with Lexirise's transliterations in
+// romaji (the dev key's) and in kana (claritise's account, the device 2026-09-29: the tap drew the same kana both
+// ways). Real-shaped answers (the fields and nesting of analyze/text and dictionary/lookup), synthetic words.
+namespace {
+
+// kAnalyze and kLookupYomu with the transliterations in kana (as on claritise's account, 2026-09-29).
+constexpr const char* kAnalyzeKana =
+    R"({"occurrences":[)"
+    R"({"word":"彼","isWordLike":true,"transliteration":"かれ","charStart":0,"charEnd":1,"entryId":1},)"
+    R"({"word":"は","isWordLike":true,"transliteration":"は","charStart":1,"charEnd":2,"entryId":2},)"
+    R"({"word":"本","isWordLike":true,"transliteration":"ほん","charStart":2,"charEnd":3,"entryId":3},)"
+    R"({"word":"を","isWordLike":true,"transliteration":"を","charStart":3,"charEnd":4,"entryId":4},)"
+    R"({"word":"読んだ","lemma":"読む","isWordLike":true,"transliteration":"よんだ","charStart":4,"charEnd":7,)"
+    R"("entryId":5,"lemmaEntryId":6},)"
+    R"({"word":"。","isWordLike":false,"charStart":7,"charEnd":8}],)"
+    R"("entryMetaById":{"6":{"transliteration":"よむ","rank":400}},)"
+    R"("stateByEntryId":{"3":{"saved_expression_id":77,"proficiency":3}}})";
+
+constexpr const char* kLookupYomuKana =
+    R"({"word":"読む","transliteration":"よむ","rank":350,"frequency_score":0.8,"system_tags":["JLPT-N5"],)"
+    R"("translation_status":"ready","translations":[{"translation":"to read","part_of_speech":["verb"]}]})";
+
+struct Transliterations {
+  const char* analyze;
+  const char* lookup;
+};
+constexpr Transliterations kInRomaji{kAnalyze, kLookupYomu};
+constexpr Transliterations kInKana{kAnalyzeKana, kLookupYomuKana};
+
+// A live card on 読んだ, driven as the activity drives it (frames shown, taps through the input queue).
+struct Toggling {
+  Rig rig;
+  LiveSource source;
+  CardController c;
+  ShownTargets targets;
+  PendingInput input;
+  CardSession session;
+  unsigned long now = 0;
+  explicit Toggling(const Transliterations& answers, LookupCache* cache = nullptr, AnalyzedPage* page = nullptr)
+      : source(rig.api, rig.tap(1, 0), rig.page), c(source, ReadingMode::Kana), session(c, targets, input, &source) {
+    rig.api.analyzeReplies = {apiOk(answers.analyze)};
+    rig.api.lookupReplies = {apiOk(answers.lookup), apiOk(answers.lookup)};
+    if (cache) source.setLookupCache(*cache);
+    if (page) source.setSentenceSource(page->sentences());
+    c.open(now);
+    for (int i = 0; i < 2; i++) {  // A, then B
+      auto fetched = session.fetch(now);
+      session.apply(std::move(fetched), ++now);
+    }
+  }
+  void show() {
+    targets.drawing(composeFrame(c, kMetrics).card.hits, c.steps(), c.state().view);
+    targets.shown(++now);
+  }
+  // The reading line's text as drawn now.
+  std::string readingLine() {
+    const DisplayList card = composeFrame(c, kMetrics).card;
+    for (const Hit& h : card.hits) {
+      if (h.target != Target::ReadingLine) continue;
+      for (const Command& cmd : card.commands) {
+        if (cmd.kind == Command::Kind::Text && h.rect.contains(cmd.rect.x, cmd.rect.y)) return cmd.text;
+      }
+    }
+    return "<no reading line>";
+  }
+  // A tap on the reading line, as the activity takes it (its text, as the dev build logs it: readingLineText).
+  Outcome tapReading() {
+    show();
+    for (const Hit& h : targets.at(now)->hits) {
+      if (h.target != Target::ReadingLine) continue;
+      const int x = h.rect.x + h.rect.w / 2;
+      const int y = h.rect.y + h.rect.h / 2;
+      input.tap(x, y, ++now);
+      TapsSeen seen;
+      const Outcome o = session.handleInput(now, &seen);  // the dev build's tap line, as the activity logs it
+      EXPECT_EQ(seen.count, 1u);
+      char line[kTapLineSize];
+      formatTapSeen(seen.taps[0], line, sizeof(line));
+      EXPECT_EQ(std::string(line), "tap " + std::to_string(x) + " " + std::to_string(y) + " reading 0");
+      return o;
+    }
+    ADD_FAILURE() << "no reading line on screen";
+    return {};
+  }
+  // Kana, then romaji after a tap (and its toast), then kana again.
+  void togglesBetween(const std::string& kana, const std::string& romaji) {
+    EXPECT_EQ(readingLine(), kana);
+    Outcome o = tapReading();
+    EXPECT_TRUE(o.readingChanged);
+    EXPECT_EQ(o.effect, Effect::Redraw);
+    EXPECT_EQ(c.state().toast, "Readings: romaji");
+    EXPECT_EQ(readingLine(), romaji);
+    EXPECT_EQ(readingLineText(c.currentWord(), c.state()), romaji);  // the dev build's "[LXCARD] reading line"
+    o = tapReading();
+    EXPECT_TRUE(o.readingChanged);
+    EXPECT_EQ(c.state().toast, "Readings: kana");
+    EXPECT_EQ(readingLine(), kana);
+  }
+};
+
+}  // namespace
+
+TEST(LiveReadingToggle, AfterALiveLookup) {
+  for (const Transliterations& answers : {kInRomaji, kInKana}) {
+    Toggling t(answers);
+    EXPECT_EQ(t.rig.api.looked, std::vector<std::string>{"読む"});
+    EXPECT_EQ(t.c.state().phase, Phase::Complete);
+    t.togglesBetween("よむ", "yomu");
+  }
+}
+
+TEST(LiveReadingToggle, AfterALemmaCacheHit) {
+  for (const Transliterations& answers : {kInRomaji, kInKana}) {
+    Cached k;
+    {
+      Toggling first(answers, &k.cache);
+      first.session.flushLookups(/*closing=*/true);
+    }
+    Toggling again(answers, &k.cache);
+    EXPECT_TRUE(again.rig.api.looked.empty());  // the lemma cache's answer
+    again.togglesBetween("よむ", "yomu");
+  }
+}
+
+TEST(LiveReadingToggle, OnAnAnalyzedPageAnsweredFromTheCache) {
+  for (const Transliterations& answers : {kInRomaji, kInKana}) {
+    Cached k;
+    {
+      Toggling first(answers, &k.cache);
+      first.session.flushLookups(/*closing=*/true);
+    }
+    Rig rig;
+    AnalyzedPage analyzed(rig.model, 0, answers.analyze);
+    Toggling t(answers, &k.cache, &analyzed);
+    EXPECT_TRUE(t.rig.api.analyzed.empty());  // the page's analysis
+    EXPECT_TRUE(t.rig.api.looked.empty());    // the cache's answer
+    EXPECT_EQ(t.c.state().phase, Phase::Complete);
+    t.togglesBetween("よむ", "yomu");
+  }
+}
+
+TEST(LiveReadingToggle, AfterAStepToAnotherWord) {
+  for (const Transliterations& answers : {kInRomaji, kInKana}) {
+    Toggling t(answers);
+    t.rig.api.lookupReplies = {apiOk(R"({"word":"を"})")};  // no transliteration: the analysis's stays
+    ASSERT_TRUE(t.c.step(-1, ++t.now));                     // を
+    t.session.apply(t.session.fetch(t.now), ++t.now);
+    EXPECT_EQ(t.rig.api.looked, (std::vector<std::string>{"読む", "を"}));
+    EXPECT_EQ(t.c.currentWord().word, "を");
+    t.togglesBetween("を", "wo");
+  }
+}
+
+// Lexirise spells づ "dzu" (languages.md §3a): such a word draws kana in the kana mode and its romaji in the romaji
+// mode.
+TEST(LiveReadingToggle, AWordSpelledWithDzuDrawsKanaThenRomaji) {
+  for (const auto& [word, romaji, reading] : std::vector<std::tuple<std::string, std::string, std::string>>{
+           {"読む", "yomu", "よむ"}, {"気づく", "kidzuku", "きづく"}, {"続ける", "tsudzukeru", "つづける"}}) {
+    lexipoint::lookup::LookupCard card;
+    card.language = Language::Japanese;
+    card.surface = word;
+    card.reading = romaji;
+    const CardWord w = cardWord(card);
+    CardState st;
+    st.phase = Phase::Complete;
+    const auto readingLine = [&](const ReadingMode mode) {
+      st.reading = mode;
+      const DisplayList list = layoutCard(w, st, kMetrics, CardStrings{});
+      for (const Hit& h : list.hits) {
+        if (h.target != Target::ReadingLine) continue;
+        for (const Command& cmd : list.commands) {
+          if (cmd.kind == Command::Kind::Text && cmd.rect.y >= h.rect.y && cmd.rect.y < h.rect.y + h.rect.h &&
+              cmd.rect.x >= h.rect.x && cmd.rect.x < h.rect.x + h.rect.w)
+            return cmd.text;
+        }
+      }
+      return std::string("<no reading target>");
+    };
+    EXPECT_EQ(readingLine(ReadingMode::Kana), reading) << word;
+    EXPECT_EQ(readingLine(ReadingMode::Romaji), romaji) << word;
+  }
 }

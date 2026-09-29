@@ -74,7 +74,7 @@ Furigana is left out of the text, which is what we want (the card shows the read
   tilted handwriting works (a first version used the upright bounding box and failed on it).
 - Each word-like occurrence (`isWordLike`) maps back through its UTF-16 `[charStart, charEnd)` to its
   characters, and gets **one box per OCR line it touches** (a word wrapping to the next column gets two).
-- Kept per word: `word`, `lemma` (falls back to `word`), `reading` (`transliteration`, romaji),
+- Kept per word: `word`, `lemma` (falls back to `word`), `reading` (`transliteration`, ~~romaji~~ **superseded 2026-09-29:** as Lexirise gives it: romaji with the dev key, the spike's; it can come in kana, `../reference/lexirise-api-notes.md`, "Japanese reading"),
   `entryId` (`lemmaEntryId` first), `sentence` (the word's whole block: its bubble) and `offset` (the
   word's UTF-16 start in the sentence), plus the boxes in source-image pixels.
 - Responses are cached per page (`--cache`), so reruns cost no calls. **The cache is account data:**

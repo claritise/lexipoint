@@ -71,6 +71,32 @@ struct Hit {
   Rect rect;
 };
 
+// A target's name in the dev harness's log lines (LexiriseCardActivity: the target sets and the taps lxctl reads)
+// and the host tool's hits (LexiriseCardRender: card-smoke's targets).
+inline const char* targetName(const Target target) {
+  switch (target) {
+    case Target::Level:
+      return "level";
+    case Target::RankRow:
+      return "rank";
+    case Target::Close:
+      return "close";
+    case Target::ReadingLine:
+      return "reading";
+    case Target::Tab:
+      return "tab";
+    case Target::Action:
+      return "action";
+    case Target::ToastUndo:
+      return "undo";
+    case Target::Card:
+      return "card";
+    case Target::OwnWord:
+      return "word";
+  }
+  return "?";
+}
+
 // The first hit containing the point (hits are front-most first), or nullptr.
 inline const Hit* hitAt(const std::vector<Hit>& hits, const int x, const int y) {
   const auto it = std::find_if(hits.begin(), hits.end(), [x, y](const Hit& h) { return h.rect.contains(x, y); });

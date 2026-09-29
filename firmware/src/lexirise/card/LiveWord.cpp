@@ -149,9 +149,10 @@ CardWord cardWord(const lookup::LookupCard& card, const PageSentence& sentence, 
   w.language = card.language;
   w.word = card.headword();
   if (card.language == Language::Japanese) {
-    w.romaji = card.reading;
-    // Kana when the romaji converts cleanly (a katakana word is its own reading), else the romaji.
-    w.reading = text::kanaReading(w.word, card.reading).value_or(card.reading);
+    // Both readings, whichever Lexirise gave (languages.md §3a): kana, and romaji for the reading line's tap.
+    text::JapaneseReading reading = text::japaneseReading(w.word, card.reading);
+    w.reading = std::move(reading.kana);
+    w.romaji = std::move(reading.romaji);
     if (card.surface != w.word) {
       w.surface = card.surface;
       const bool same = named && named->surface == w.surface && named->word == w.word;

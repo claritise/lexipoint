@@ -85,7 +85,9 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
 - **Multi-step smokes that hold one session:** `card-smoke`, `card-gestures`, `card-sentence`, `settings-smoke`,
   `reader-longpress`, `deck-smoke` (creates a real deck: only with claritise's OK) and `ignore-smoke` (v0.2 V5: ⋯
   Ignore then its Undo on a word at x y, checked from the card's `[LXCARD] target …` and `[LXCARD] ignore …` lines;
-  writes only the reader's `ignored.ini`) and `vocab-smoke` (v0.2 V7a: leaves a card idle until the vocab mirror
+  writes only the reader's `ignored.ini`) and `reading-smoke` (fix-dzu: taps a Japanese card's reading line twice,
+  checked from its `[LXCARD] tap …` and `[LXCARD] reading line <text>` lines: switched, then back; writes only the
+  reader's own `reading` setting, left as it was; a failure says when it's left switched or the card left open) and `vocab-smoke` (v0.2 V7a: leaves a card idle until the vocab mirror
   syncs a page, checked from its `[LXVOCAB]` and `[LXS]` lines; read-only; `press` needs a real side-button press
   while the page streams) and `page-smoke` (v0.2 V7b: a card brings WiFi up, then the page analysis over page turns
   at reading pace and fast, and a card on the page reached, checked from its `[LXPAGE]`, `[ERS] Rendered page` and
@@ -103,6 +105,11 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
   press is released (the harness answers `LX:ERR button busy` to a BTN while one is held), and sends a busy press once
   more; card-smoke and card-sentence wait for a `SYNC` after each instead. The test fakes refuse a BTN while one is
   held, as the device does.
+- **Card taps** (fix-dzu, 2026-09-29): dev builds log each tap the card handled, `[LXCARD] tap <x> <y> <target>
+  <index>` (`none`: off the card; `dropped`: the frame on screen was another word's or view's, or none yet), so a
+  missed tap can be told from one that changed nothing; the card's target sets also list the reading line and ✕
+  (`[LXCARD] target reading|close …`), so a set is logged again on each reading switch (the line's width changes).
+  `lxctl.card_taps` and `tap_targets` read them (`test_lxctl.py`).
 - **Never open the port in a loop** (a "wait until it answers" poll): each open resets the reader, and a poll that
   opened it every second or two kept it restarting until the poll was stopped (2026-09-27).
 - **Never open it from two processes at once:** the second read fails ("device reports readiness to read but
