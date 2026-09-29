@@ -546,6 +546,32 @@ Dev key, from the Mac; raw in `research/v6/` (gitignored).
   proficiency overwritten). So a sentence save must check first, as a word's does. **A sentence card's `DELETE`**
   answers `deleted: true` and the item is gone (404), unlike a dictionary word's.
 
+## Levels for A5 (V9b), measured (2026-09-29, read-only)
+
+`tools/lexirise/probe_v9b.py` (dev key, from the Mac; raw in `research/v9b/`, gitignored; 237 calls), for
+`../v0.2/page-annotations.md` "V9b design" (A5, marking only words above a JLPT / HSK target).
+
+- **`analyze/text` still carries no level:** `entryMetaById` has `entryId`, `rank`, `frequencyScore`,
+  `partOfSpeech`, `transliteration`, `status`, `subTokenCount`, `lang`; occurrences nothing level-like either. The level
+  is only in `dictionary/lookup`'s `system_tags`, one word per call (the reference has no batch lookup).
+- **Vocabulary items carry the level at their top level:** `dictionary_entry_system_tags` (equal to the embedded
+  `dictionary_entry.system_tags` on every item read), so the vocab mirror could keep a saved word's level from a field
+  its visitor already sees. (The reference's text says items don't show system tags; they do.) Only saved words, though.
+- **Coverage** (every word-like entry of V7b's two probe pages, looked up by its lemma): Japanese 68 of 105 entries have a
+  JLPT tag; the 37 without are particles and endings (の, を, に, ながら, く) and compounds (港町, 坂道). Chinese 101 of 129 have
+  an HSK tag; the 28 without are mostly compounds (老街, 店铺, 屋檐, 陆陆续续). Every lookup's entry was the page's lemma
+  entry (105 of 105; 127 of 129), so a level could be kept by entry id.
+- **Rank as a stand-in for the level:** JLPT tags follow rank loosely (N5 words' ranks 32-18,050, median 1,627; N3's
+  median 141; N2's 3,875): the best rank cut agrees with "above N3" for 74% of the tagged entries (3,000: 17 above marked,
+  9 below marked, 9 above missed). HSK follows it better: 91% for "above HSK 3" (cut 3,000), 92% for HSK 4 (5,000) and 5
+  (12,000).
+- **What a lookup per word would cost:** a page's distinct words are 105 (the Japanese probe page) and 129 (the Chinese);
+  the manga volume's pages 43 on average (`research/spike`, 177 pages), and its 2,233 lemmas over 177 pages are ~12.6 new
+  lemmas a page. At 60 pages an hour that's ~750 lookups an hour for the manga alone, and several times more for prose,
+  beside the page analysis, against the key's 1200: not affordable.
+- **What a rank cut would leave marked** (distinct entries rarer than the cut, per page): at 3,000, 39 of 105 (Japanese
+  page), 42 of 129 (Chinese page), 10 of 43 (manga pages).
+
 ## Suspended (Ignore), measured 2026-09-27 (v0.2 V5)
 
 `tools/lexirise/probe_suspend.py` (writes to the dev key's account, with claritise's OK: "ok"; raw in `research/v5/`,

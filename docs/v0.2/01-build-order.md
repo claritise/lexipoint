@@ -89,9 +89,9 @@ built (2026-09-26):
 | V8 | Slimming | C23, C22 | S1 for its font step only |
 | ~~V9~~ | ~~Page annotations~~ (Superseded 2026-09-29: split in four, below) | C6 (`page-annotations.md`) | V7 |
 | V9a | Page marks and stepping (A1, A3; ~~A2, A4~~ dropped 2026-09-29) | C6 | V7; signed off 2026-09-29 (`reference/v9a-annotations.html`) |
-| V9b | Above-level marks, the chapter recap, look up later (A5, A10, A11) | C6 | V9a; a measurement (A5); sign-off |
-| V9c | Adaptive furigana and pinyin, the page glossary (A6, A8) | C6 | V9a; sign-off |
-| V9d | The chapter primer, hiding the publisher's ruby (A9, A7) | C6 | V9c; sign-off |
+| ~~V9b~~ | ~~Above-level marks, the chapter recap, look up later (A5, A10, A11)~~ (A5 dropped, the rest parked 2026-09-29 by claritise ("i think features are getting to complex"; `page-annotations.md` §2 "Maybe later")) | C6 | — |
+| ~~V9c~~ | ~~Adaptive furigana and pinyin, the page glossary (A6, A8)~~ (parked 2026-09-29 by claritise ("i think features are getting to complex"; `page-annotations.md` §2 "Maybe later")) | C6 | — |
+| ~~V9d~~ | ~~The chapter primer, hiding the publisher's ruby (A9, A7)~~ (parked 2026-09-29 by claritise ("i think features are getting to complex"; `page-annotations.md` §2 "Maybe later")) | C6 | — |
 | V10 | The sense and reading from the sentence | C10 (`analyze/context`) | V1; placement sign-off |
 | V11 | Grammar on the card | C19 | V1; placement sign-off |
 | V12 | Difficulty preview | C5 | V7 |
@@ -234,10 +234,24 @@ review loop and ledger row; each lands into `main` once its loop is clean, the n
   vocabulary list carries a level decides whether A5 is cheap, needs a per-entry level cache, or is dropped. A11's
   "long-press flags the word" conflicts with the long-press that opens the card (`../v0.1/popup-ui.md` §3.2, P10):
   its touch design (the ⋯ tab's "Look up later" row offline) is part of its sign-off. A10 is a list screen.
-- **V9c, readings and the glossary** (step 8: A6, then A8). Together because both reserve layout space (ruby space on
-  every line; a strip at the bottom), a one-time re-layout like a font change: one layout hook.
-- **V9d, the chapter** (step 9: A9, then A7). A9 analyzes a chapter (a budget and radio question of its own); A7 is
-  the one hook at parse time (`ChapterHtmlSlimParser`), the most invasive, so last, as §5 says.
+  **Measured and designed 2026-09-29, awaiting claritise's sign-off** (`page-annotations.md` §2 "V9b design", mockups
+  `reference/v9b-annotations.html`; the measurement: `../reference/lexirise-api-notes.md` "Levels for A5 (V9b)"):
+  A5 recommended dropped (no cheap level for unsaved words; rank a poor stand-in for JLPT); A10 and A11 one
+  "Looked-up words" list from the reader menu (tapped words and waiting ones, per chapter, "Save N" at tracked after a
+  confirm, joining WiFi as the reader's request); A11 with no gesture (a lookup Lexirise couldn't answer is kept as
+  waiting and looked up while WiFi is already on, or from the list's row), and the ⋯ tab's "Look up later" row removed.
+  Built, once signed off, as the other parts: a bench phase (a made-up book's file, the list model pinned), then the
+  hooks; the gate, the review loop and the ledger row.
+  **Parked 2026-09-29, not signed off:** claritise, on the mockups: A5 "Drop it"; Save all "i dont think we need
+  features this deep yet, lets add it tot a maybe list of features"; look up later "where is this list? i think
+  features are getting to complex.........."; then V9b-V9d all parked (the card keeps its "Look up later" row as
+  built). The list: `page-annotations.md` §2 "Maybe later"; the design and mockups stay as the record.
+- ~~**V9c, readings and the glossary** (step 8: A6, then A8). Together because both reserve layout space (ruby space on
+  every line; a strip at the bottom), a one-time re-layout like a font change: one layout hook.~~ (Parked 2026-09-29, with V9b.)
+- ~~**V9d, the chapter** (step 9: A9, then A7). A9 analyzes a chapter (a budget and radio question of its own); A7 is
+  the one hook at parse time (`ChapterHtmlSlimParser`), the most invasive, so last, as §5 says.~~ (Parked 2026-09-29, with V9b.)
+
+**V9 is done with V9a** (2026-09-29): A1 and A3 built; A2, A4 and A5 dropped; A6-A11 parked.
 
 ## V10: The sense and reading from the sentence
 
@@ -268,8 +282,11 @@ C5, on V7's page analysis and mirror.
 | V7b | **done (host); device check owed** (landed 2026-09-28 after 12 review rounds, the last two clean; claritise's decisions the same day: WiFi "only if already on", a sync button "on the home screen", signed off with its strings; the device check owed: `../v0.1/device-checks.md`, "v0.2 V7b") | merged into `main` (wip on `lexi/V7b-wip-archive`, local) | 1333 host (`ctest --test-dir build/test`), 185 Python; goldens unchanged (25 match) | What and how: `page-annotations.md` §1.1 "As built (V7b)" and "The saved-state rule (R5)"; the home screen's Sync Vocabulary: `reference/v7b-home-sync.html`. Review rounds: the landing commit's message. |
 | V7c | **done (host); device check owed** (landed 2026-09-29 after 11 review rounds, the last two clean; the device check owed: `../v0.1/device-checks.md`, "v0.2 V7c") | merged into `main` (wip on `lexi/V7c-wip-archive`, local) | 1386 host (`ctest --test-dir build/test`), 198 Python; goldens unchanged (25 match) | What and how: `00-overview.md` C21 "As built (V7c)". Review rounds: the landing commit's message. |
 | V8 | **done (host), step 6 (the font) still waits for S1; device check owed** (landed 2026-09-29 after 12 review rounds, the last two clean; `../v0.1/device-checks.md` "v0.2 V8"; steps 1–5 and 7 done; step 5c after claritise's S4 answer, "Keep Lyra"; V7c's carried nits done) | merged into `main` (wip on `lexi/V8-wip-archive`, local) | 1386 → 1372 host, 198 → 198 Python (removed features' tests removed, the reviews' added), goldens 25 match | Measured at the start: `slimming.md` §1; each step's size, what it removed and why: `slimming.md` §8 "As built (V8)" and `../v0.1/firmware-base.md` §4; the device checks owed: `../v0.1/device-checks.md` "v0.2 V8". ~~Review loop not run yet.~~ Review loop (2026-09-29): R1, R2, R3+R4, R5, R6+R7, R8, R9 and R10 done (R3 and R6 clean but nits; R4's and R7's shoulds, R5's must fixed), `slimming.md` §8. |
-| V9 | split into V9a–V9d (2026-09-29, this doc's V9); ~~**V9a design awaiting claritise's sign-off**~~ V9a design signed off 2026-09-29 (`page-annotations.md` §2 "V9a decisions"; mockups: `reference/v9a-annotations.html`, drawn by `../../tools/mockups/v9a_annotations.py`); V9a landed, V9b next | `lexi/V9` (wip) | docs only | — |
+| V9 | split into V9a–V9d (2026-09-29, this doc's V9); ~~**V9a design awaiting claritise's sign-off**~~ V9a design signed off 2026-09-29 (`page-annotations.md` §2 "V9a decisions"; mockups: `reference/v9a-annotations.html`, drawn by `../../tools/mockups/v9a_annotations.py`); ~~V9a landed, V9b next~~ **done with V9a** (2026-09-29: V9b-V9d parked by claritise, `page-annotations.md` §2 "Maybe later") | `lexi/V9` (wip) | docs only | — |
 | V9a | **done (host); device check owed** (landed 2026-09-29 after 10 review rounds, the last two clean; claritise's decisions and sign-off 2026-09-29, `page-annotations.md` §2 "V9a decisions"; device checks: `../v0.1/device-checks.md` "v0.2 V9a") | merged into `main` (wip on `lexi/V9a-wip-archive`, local) | 1436 host (`ctest --test-dir build/test`), 221 Python; card goldens unchanged (25 match); bench golden 68/68 vs the mockup | What and how: `page-annotations.md` "As built (V9a)"; mockups `reference/v9a-annotations.html`. Review rounds: the landing commit's message. |
+| V9b | ~~**design awaiting claritise's sign-off**~~ **parked, not signed off** (2026-09-29, claritise: A5 "Drop it", the rest "i think features are getting to complex"; `page-annotations.md` §2 "Maybe later") (2026-09-29: A5 measured read-only, `../reference/lexirise-api-notes.md` "Levels for A5 (V9b)"; the plan `page-annotations.md` §2 "V9b design"; mockups `reference/v9b-annotations.html`, drawn by `../../tools/mockups/v9b_annotations.py`) | `lexi/V9` (wip) | docs only | — |
+| V9c | **parked** (2026-09-29, claritise, with V9b; no design) | — | — | — |
+| V9d | **parked** (2026-09-29, claritise, with V9b; no design) | — | — | — |
 | V10 | not started | — | — | — |
 | V11 | not started | — | — | — |
 | V12 | not started | — | — | — |

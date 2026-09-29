@@ -593,10 +593,10 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
 | A2 | **Page stats** | ~~Status bar: `6 new · 2 learning · 89% known` (running-token coverage, as in C5)~~ (Superseded 2026-09-29, claritise: "Keep the chapter title": nothing in the status bar; the page's numbers are left for C5 / V12) | ~~On~~ — |
 | A3 | **Skip to unknown** | With the card open, the side buttons step between A1-marked (unknown or learning) words only, instead of every word (D16); an ignored or suspended word has no mark, so it's skipped. A setting switches back to every word. (2026-09-29, claritise: "Marked words by default"; past the page's last marked word a press stops) | On |
 | ~~A4~~ | ~~**Seen-again marker**~~ | ~~A small dot after a word you're *learning* when it reappears. Tells you "you saved this, here it is again"~~ (Dropped 2026-09-29, claritise: "Drop it": the dotted underline already says learning) | ~~On~~ — |
-| A5 | **Above-level only** | Restrict A1 to words above a target (`target_level=N2` / `HSK-4`), using `system_tags` from the mirror's embedded `dictionary_entry` | Off |
-| A6 | **Adaptive furigana / pinyin** | Readings as ruby **only above words that aren't known** (level < 3). As you learn, the furigana fades on its own | Off |
-| A7 | **Hide publisher ruby over known words** | The opposite of A6, for books that print ruby everywhere: suppress the EPUB's own ruby over known words | Off |
-| A8 | **Page glossary** | New words on the page get superscript numbers, and a strip at the bottom lists `n word reading · meaning`, capped at 5 lines | Off |
+| ~~A5~~ | ~~**Above-level only**~~ | ~~Restrict A1 to words above a target (`target_level=N2` / `HSK-4`), using `system_tags` from the mirror's embedded `dictionary_entry`~~ (Dropped 2026-09-29, claritise: "Drop it", after the measurement: no cheap level for unsaved words, `../reference/lexirise-api-notes.md` "Levels for A5 (V9b)"; "V9b design" below) | ~~Off~~ — |
+| A6 | **Adaptive furigana / pinyin** | Readings as ruby **only above words that aren't known** (level < 3). As you learn, the furigana fades on its own (**parked**: claritise, 2026-09-29: "i dont think we need features this deep yet", "i think features are getting to complex", parked in "Maybe later" below) | Off |
+| A7 | **Hide publisher ruby over known words** | The opposite of A6, for books that print ruby everywhere: suppress the EPUB's own ruby over known words (**parked**: claritise, 2026-09-29: "i dont think we need features this deep yet", "i think features are getting to complex", parked in "Maybe later" below) | Off |
+| A8 | **Page glossary** | New words on the page get superscript numbers, and a strip at the bottom lists `n word reading · meaning`, capped at 5 lines (**parked**: claritise, 2026-09-29: "i dont think we need features this deep yet", "i think features are getting to complex", parked in "Maybe later" below) | Off |
 
 **V9a decisions (2026-09-29).** claritise, on the mockups (`reference/v9a-annotations.html`): new words **"Every
 unsaved word"** (A1 as written: every word not saved or at level 0 gets the solid underline, particles included;
@@ -737,13 +737,98 @@ buttons on a card** (Marked words / Every word; Marked words), and one per-book 
   sources would load ~~only as its pages are looked at~~ (R7) on the loop's next pass, as the keeper sees the setting;
   a language switched on while a book is open (not reachable either) counts from the book's next open.
 
+**V9b design (proposed 2026-09-29, on `lexi/V9`; ~~awaiting claritise's sign-off before any firmware~~ parked, not signed off, 2026-09-29: A5 dropped, A10 and A11 parked, "Maybe later" below; kept as the record).** Mockups:
+`reference/v9b-annotations.html` (drawn by `../../tools/mockups/v9b_annotations.py`). §2's rows change only once
+claritise has signed off.
+
+- **A5, measured first** (`../reference/lexirise-api-notes.md` "Levels for A5 (V9b), measured"): the page analysis
+  carries no level, only `dictionary/lookup` does, one word per call, and a lookup per new word would cost several
+  hundred calls an hour beside the page analysis, against the key's 1200; the mirror could keep a saved word's level for
+  free (`dictionary_entry_system_tags`, a top-level field of each item), but A5 is about unsaved words; many words have
+  no level (35% of the Japanese probe page's, particles and compounds; 22% of the Chinese page's); the V7c lemma cache
+  holds a level only for words already looked up on a card (by lemma text). The rank the page analysis carries is a
+  poor stand-in for JLPT (74% agreement with "above N3") and a fair one for HSK (91-92%). **Recommended: drop A5.** The
+  alternative that's free and works offline, a frequency cut ("New words to mark: Every one / Less common only",
+  unsaved words among the language's ~3,000 most common unmarked), is a different feature and undoes V9a's "Every
+  unsaved word"; it's in the mockups for comparison only.
+- **A10 and A11 share one list: "Looked-up words".** A reader-menu row after Page marks (shown while Lexirise is usable
+  for the book; its value "N waiting" when words wait to be looked up) opens a list of the book's looked-up words, the
+  chapter on screen first, then the others, newest first; a chapter is a spine section, headed by its TOC title. Listed:
+  every word the reader **tapped** to open a card (not the words stepped to with the side buttons), once per chapter by
+  its lemma entry, and every **waiting** word (below); an ignored word isn't listed. A row: the word (its dictionary
+  form), reading, first meaning, and its state now (the vocab mirror by the saved-state rule, as the marks read it:
+  `page::MirrorView`); a waiting word says "Not looked up yet (you were offline)". Rows are read-only in V9b (opening a
+  card from a row is left for later). Nothing pops up between chapters (A10's "end-of-chapter" is the list, on demand).
+- **Save all:** a chapter's heading carries "Save N" (its unsaved words, waiting ones included; none: no button). A
+  confirm dialog first ("Save N words as tracked?", the chapter as its caption, Cancel selected); then each word is saved
+  as a card save is (D9: the lemma, the first meaning, the sentence as the note, the configured tags and the book's tag,
+  `mode: word`) at **tracked** (1), one after another behind the home screen's popup and progress bar ("Saving
+  words..."), a waiting word looked up first. The reader's own request, so it **may join WiFi** (as Sync Vocabulary,
+  `LexiriseService::joinForUser`); any button stops it between words. Each save goes into the mirror as the card's do and
+  marks the book's deck wanted (V3: made or found on the next idle card). No Undo for the batch (two calls a word); a
+  word's level can be changed on its card. Results: "Saved N words" / "Saved 1 word", "Saved N of M · Save failed",
+  "Save failed · No Wi-Fi", "Save stopped", and the card's "Lexirise key rejected" and "Lexirise: rate limited". A
+  cap per press (`config::kSaveAllMax`) keeps one press inside the hour's budget.
+- **A11, look up later, with no gesture:** "long-press flags the word" can't coexist with the long-press that opens the
+  card (`../v0.1/popup-ui.md` §3.2), and offline the long-press already runs a lookup. So **a lookup Lexirise couldn't
+  answer is kept as waiting**: the card left at phase A without its meaning (offline, a timeout, a 429, a 5xx:
+  `../v0.1/offline-and-errors.md` §1's "Card stays at phase A"), or word select falling back to StarDict for any of those reasons
+  (`lookup::Fallback`, the notice kinds that mean "couldn't reach"; not "No Lexirise key", "Not in dictionary" or Lexirise
+  off). Kept with its sentence (≤ `kMaxSentenceUnits`, as a save's note) and the tap's offset. Nothing new is drawn at the
+  time. **When they're looked up:** only while WiFi is already on (claritise's V7b decision), from the reader's loop after
+  the page prefetch's step and under its conditions (the dwell, nothing rendering, input gives it up, `kPageBudgetPercent`
+  of the key's hour, no 429 or rejected key), one word per pass, at most `config::kLaterPerHour`; or at once from the
+  list's top row, "Look up N waiting words", the reader's own request, which may join WiFi (popup "Looking up words...";
+  "Looked up N words", "Lookup failed · No Wi-Fi", "Lookup stopped"). A waiting word costs its sentence's `analyze/text`
+  (none when its page is analyzed: `page::sliceSentence`) and one `dictionary/lookup`; the answer fills the record and the
+  lemma cache. A word that no longer resolves (no word at the offset) is dropped.
+- **The ⋯ tab's "Look up later" row:** with the above it has nothing left to do (a word whose card shows is already
+  listed), so the proposal **removes it** (a change to the approved card, asked: the card's goldens
+  `ja-expanded-actions*.json` / `zh-expanded-actions.json` change only for that row).
+- **What's kept:** `/.lexirise/looked-up/<book>.bin` (`<book>` the FNV-1a 32 of the book's path, as the page files),
+  binary through `SafeFile` (it's the reader's own data, not regenerable): a header, a CRC, and records (spine, flags
+  tapped / waiting, lemma entry, time, tap offset, then the lemma, reading and first meaning, each capped, and the
+  sentence). At most `config::kLookedUpPerBook` records a book (the oldest looked-up first out, never a waiting one
+  before a looked-up one) and `kLookedUpBooks` books (`/.lexirise/looked-up/index.bin`, oldest book first out). Written
+  with the card's other files (`CardSession::shouldFlushFiles`, and as it closes), and by word select as it finishes after
+  a fallback. Read when the list opens (no resident memory while reading).
+- **Hooks:** the reader menu (`EpubReaderMenuActivity::MenuAction::LOOKED_UP_WORDS`, and the toolbar's More panel as
+  Page marks has it); a new list activity (`UiListActivity`, the list above); the card's tapped word and phase B's
+  outcome (`LiveSource`, `CardController`); word select's `fallBack()`; the reader's loop (`page/ReaderPages`, after the
+  prefetch step). Pure parts host-tested: the store (round trip, CRC, caps, eviction order, dedupe per chapter), the
+  list model (grouping, order, states from a `MirrorView`, ignored left out, the Save N count), Save all's run and the
+  look-up run (as `vocab::HomeSyncFlow`: fake API; saves, a failure mid-run, cancel, a waiting word looked up then saved,
+  a 429, a rejected key, the cap), the background policy (WiFi up only, budget, input, the hourly cap). A bench first: a
+  made-up book's file and a recorded, synthetic lookup set, the list model's rows pinned.
+- **Device checks owed with the build:** the list opening with a full book file (time, heap); Save all's time per word
+  (a save closes the session first: a handshake each, resumed since V7c); a waiting word written after an offline
+  StarDict lookup and after an offline card, and looked up once WiFi is on; a page turn during a background lookup.
+
 Chapter-level extras (same data, no inline drawing):
 
 | # | Feature | Notes |
 |---|---|---|
-| A9 | **Chapter primer** | On opening a chapter, the 10 most frequent unknown words in it, with meanings. `⏎` saves all of them. Requires analyzing the chapter (sampled, or all of it if the text limit allows) |
-| A10 | **End-of-chapter recap** | Words looked up in this chapter, with `Save all` for the unsaved ones |
-| A11 | **Look up later** | Offline: long-press flags the word (stored with its sentence). On the next WiFi-up, the flags are looked up, and a "Flagged words" list appears in the reader menu |
+| A9 | **Chapter primer** | On opening a chapter, the 10 most frequent unknown words in it, with meanings. `⏎` saves all of them. Requires analyzing the chapter (sampled, or all of it if the text limit allows) (**parked**: claritise, 2026-09-29: "i dont think we need features this deep yet", "i think features are getting to complex", parked in "Maybe later" below) |
+| A10 | **End-of-chapter recap** | Words looked up in this chapter, with `Save all` for the unsaved ones (**parked**: claritise, 2026-09-29: "i dont think we need features this deep yet", "i think features are getting to complex", parked in "Maybe later" below; its V9b proposal, not signed off: "V9b design" above) |
+| A11 | **Look up later** | Offline: long-press flags the word (stored with its sentence). On the next WiFi-up, the flags are looked up, and a "Flagged words" list appears in the reader menu (**parked**: claritise, 2026-09-29: "i dont think we need features this deep yet", "i think features are getting to complex", parked in "Maybe later" below; the card keeps its "Look up later" row unchanged; the V9b proposal, not signed off: "V9b design" above) |
+
+### Maybe later (parked 2026-09-29)
+
+claritise, 2026-09-29, on V9b's mockups: A5 "Drop it"; on Save all, "i dont think we need features this deep yet, lets
+add it tot a maybe list of features"; on look up later, "where is this list? i think features are getting to
+complex.........."; then all of V9b-V9d parked. Page annotations end with V9a (A1, A3). Not planned; each comes back
+only if claritise asks, with a fresh design and sign-off. This is the list's one home (`00-overview.md` C6 and
+`01-build-order.md` V9 point here).
+
+- **A10, the chapter recap** (words looked up, per chapter): designed as the "Looked-up words" list, "V9b design" above,
+  `reference/v9b-annotations.html` (parked, not signed off).
+- **Save all** (A10's): the same design and mockups (parked, not signed off).
+- **A11, look up later:** the same design and mockups (parked, not signed off); the card's ⋯ "Look up later" row stays as
+  built ("Not in this version yet").
+- **A6, adaptive furigana / pinyin:** §2's row and §3 (ruby space on every line); no design.
+- **A8, the page glossary:** §2's row and §3 (a strip at the bottom); no design.
+- **A9, the chapter primer:** the table above; no design (a chapter's analysis is its own budget question).
+- **A7, hiding the publisher's ruby over known words:** §2's row and §3 (the parse-time hook); no design.
 
 ## 3. Drawing (the renderer constraints)
 
@@ -800,4 +885,6 @@ the same pattern as the v0.1 card.
 **V9 (2026-09-29):** steps 3–9 are built as V9a–V9d, in this order (`01-build-order.md` V9). ~~V9a's design (A1, A2, A3,
 A4), with the changes to §2 it proposes (what counts as new, A4's meaning, where the settings live), awaits claritise's
 sign-off: `reference/v9a-annotations.html`. §2 changes only once they've signed off.~~ (Signed off 2026-09-29: §2
-"V9a decisions"; V9a is A1 and A3.)
+"V9a decisions"; V9a is A1 and A3.) ~~V9b's design (A5 measured, A10 and A11 as one list) awaits claritise's sign-off: §2 "V9b
+design", `reference/v9b-annotations.html`.~~ (Superseded 2026-09-29: A5 dropped, steps 6-9 (V9b-V9d) parked by
+claritise, §2 "Maybe later"; V9 is done with V9a.)

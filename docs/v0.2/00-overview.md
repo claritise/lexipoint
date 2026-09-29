@@ -28,7 +28,7 @@
 | C3 | Sentence save | **Yes** | v0.1.x | Small | D5 sentence already built |
 | C4 | Deck per book | **Yes, as a dynamic tag deck** | v0.1.x | Tiny: 1 request per book, 0 per save | C2 tags |
 | C5 | Difficulty preview ("you know 73%") | **Yes** | v0.2 | Medium | Client, parser, match logic |
-| C6 | Proficiency highlighting in the text | **Yes: now specced as `page-annotations.md`** (A1–A11) | v0.2 | Large | Page analysis, vocab mirror |
+| C6 | Proficiency highlighting in the text | **Yes: now specced as `page-annotations.md`** (A1–A11; built: A1, A3 in V9a; the rest dropped or parked 2026-09-29, its §2 "Maybe later") | v0.2 | Large | Page analysis, vocab mirror |
 | C7 | Total vocab counter | **Yes** (`languageCount` is on the list response) | v0.1.x | Tiny: 1 request | Client |
 | C8 | Upload the book to Lexirise | **Park** | — | Medium | — |
 | C9 | Set a saved word's level from the card | **Yes** | v0.1.x | Small | `saved_expression_id`, the card |
