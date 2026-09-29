@@ -151,6 +151,29 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## 2026-09-29, `main` @ `2f6b9b07` (v0.2 V9a), flashed by claritise
+
+Run by the harness (one held `lxctl` session), claritise at the device. A Japanese novel (EPUB), portrait; the SD
+card's section cache was from before V8. Writes: none to Lexirise (one read-only `analyze/text` from the device, below).
+
+| Check | Result |
+|---|---|
+| Home screen's Sync Vocabulary row (V7b) | **pass**: the row is there, above Settings |
+| The section cache from before V8 (V8 R1) | **pass**: rejected (`Unknown version 46`) and laid out again |
+| A card's connection (V7c) | **pass**: WiFi up in 4.4 s; TLS full handshake 2.5 s |
+| Page analysis (V7b) | **pass**: this page and the next analyzed in 1.8–3.2 s; kept pages reused |
+| A card on an analyzed page (V7b) | **pass**: sends only `dictionary/lookup` (no `analyze/text`) |
+| Page marks (V9a) | **pass**: drawn in 27–42 ms inside a ~0.8–1.0 s page render; solid and dotted as designed; one underline per word per line. An analyzed page is marked on its next drawing (as designed) |
+| A3 stepping (V9a) | **pass**: the side button steps marked words 裏庭 → に → ゴミ, the marks under the card |
+| Lemma cache (V7c) | **pass**: writes 19–31 ms |
+| First vocab sync page (V7a) | **pass**: 50 items in 6.4 s; internal heap min 56 KB, largest block 31.7 KB |
+| Touch line (V7b) | the line learned "idles high" |
+| A harness tap to close a card during the 6.4 s vocab page | **no reply** until the page ended: harness taps don't reach the touch chip, so they can't stop a page; the real-finger check is still owed (V7a, "A quick tap or Home press during a page") |
+| USB | the session dropped once (`Device not configured`); likely sleep or the cable |
+| **The reading line's tap: fail** | the toast said "Readings: romaji" and the line stayed kana, on every word. Measured (one read-only `analyze/text`): claritise's account gets `transliteration` in **kana**; the dev key's gave romaji the same day (V9b's probe; `../reference/lexirise-api-notes.md`, "Japanese reading"). Fix: fix-dzu (below) |
+
+Still owed with a real finger (claritise): a tap during a download; how page turns feel with marks on.
+
 ## Fixes after the 2026-09-29 session: still owed on the device
 
 The fix-dzu fixes (`languages.md` §3a, superseded 2026-09-29: kana answers read back as romaji, and `dzu`) are on
