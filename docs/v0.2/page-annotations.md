@@ -327,7 +327,7 @@ refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined 
   page (the mirror's pages now take the call's abort too, `LexiriseApi::vocabularyPage`); a probe given up is spent
   (the next in 5 min).
 - **Sync Vocabulary on the home screen** (claritise's (b2), signed off 2026-09-28; `vocab/ManualSync` pure,
-  `vocab/HomeSync` the device side, hooks in `HomeActivity` and `HomeMenuItem::VOCAB_SYNC`, all inside `#if LEXIRISE`):
+  `vocab/HomeSync` the device side, hooks in `HomeActivity` and `HomeMenuItem::VOCAB_SYNC`, all inside `#if LEXIRISE` until v0.2 V8 removed the gate):
   a row just above Settings with the Wi-Fi icon, shown when Lexirise is on, a key is set and a language is switched on
   (`vocab::syncRowShown`, read as the home screen opens). Pressed: the home screen's popup "Syncing vocabulary..." with
   its progress bar; the reader's own request, so it joins WiFi once, first (`LexiriseService::joinForUser`, the saved
@@ -370,7 +370,7 @@ refines a page ~1.5–2.5 min after it first sees it, and `fast` on the refined 
   `lxctl.py home-sync-smoke` checks it, and taps the result: no second sync (read-only, never run here).
 - **R5 also:** a press of Sync Vocabulary with the hour's pages spent says "Lexirise: rate limited" at once, without
   joining WiFi; the home screen keeps the reader awake while a sync runs (`preventAutoSleep`); the home menu's index
-  is `home/HomeMenuIndex.h` (pure, every OPDS × Sync Vocabulary combination tested); a page step counts only calls
+  is `home/HomeMenuIndex.h` (pure, every ~~OPDS ×~~ Sync Vocabulary combination tested; OPDS removed in V8, `slimming.md` §8); a page step counts only calls
   answered (one given up isn't, in the step or the log's count).
 - **R7:** the binary files' helpers have one home (`util/ByteOrder.h`, `util/Crc32.h` with `bytes::Fnv1a`), the
   files byte for byte as before (the pinned tests unchanged); a tap on an analyzed page whose slice has no word (a

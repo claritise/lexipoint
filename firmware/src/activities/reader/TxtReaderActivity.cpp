@@ -1,6 +1,5 @@
 #include "TxtReaderActivity.h"
 
-#include <BidiUtils.h>
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
@@ -20,7 +19,8 @@ namespace {
 constexpr size_t CHUNK_SIZE = 8 * 1024;  // 8KB chunk for reading
 // Cache file magic and version
 constexpr uint32_t CACHE_MAGIC = 0x54585449;  // "TXTI"
-constexpr uint8_t CACHE_VERSION = 3;          // Increment when cache format changes
+// Increment when cache format changes. 4 (LEXIPOINT, v0.2 V8): line breaks were measured on shaped (bidi) widths.
+constexpr uint8_t CACHE_VERSION = 4;
 }  // namespace
 
 bool TxtReaderActivity::loadBook() {
@@ -280,12 +280,7 @@ void TxtReaderActivity::renderPage(GfxRenderer& renderer) {
     for (const auto& line : currentPageLines) {
       if (!line.empty()) {
         int x = cachedOrientedMarginLeft;
-        const bool lineIsRtl = BidiUtils::startsWithRtl(line.c_str(), BidiUtils::RTL_PARAGRAPH_PROBE_DEPTH);
-        uint8_t effectiveAlignment = cachedParagraphAlignment;
-        if (lineIsRtl && (effectiveAlignment == CrossPointSettings::LEFT_ALIGN ||
-                          effectiveAlignment == CrossPointSettings::JUSTIFIED)) {
-          effectiveAlignment = CrossPointSettings::RIGHT_ALIGN;
-        }
+        const uint8_t effectiveAlignment = cachedParagraphAlignment;
         const int textWidth = renderer.getTextAdvanceX(cachedFontId, line.c_str(), EpdFontFamily::REGULAR);
 
         // Apply text alignment

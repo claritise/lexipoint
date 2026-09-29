@@ -62,8 +62,8 @@ class UiListActivity : public Activity, protected UiAppHost {
   // with headerTitle(); override either for custom chrome.
   virtual const char* headerTitle() const { return nullptr; }
   virtual void drawChrome();
-  // Button hints, drawn after the app renders. Default: Back/Select/Up/Down.
-  virtual void drawFooter();
+  // Drawn after the app renders (a readout, a popup). Default: nothing.
+  virtual void drawFooter() {}
 
   // --- helpers ---------------------------------------------------------------
   // Measure visibleRows for the screen band, apply follow-on-build, clamp the

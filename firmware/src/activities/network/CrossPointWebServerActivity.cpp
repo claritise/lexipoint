@@ -13,29 +13,18 @@
 #include "NetworkModeSelectionActivity.h"
 #include "SilentRestart.h"
 #include "WifiSelectionActivity.h"
-#include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "lexirise/LexiriseConfig.h"
 #include "util/QrUtils.h"
 #include "util/TaskWatchdog.h"
-#if LEXIRISE
-#include "lexirise/LexiriseConfig.h"  // LEXIPOINT
-#endif
 
 namespace {
 // AP Mode configuration
-#if LEXIRISE
 // LEXIPOINT: the product's name on the network (D22).
 constexpr const char* AP_SSID = lexipoint::config::kHotspotSsid;
-#else
-constexpr const char* AP_SSID = "CrossPoint-Reader";
-#endif
 constexpr const char* AP_PASSWORD = nullptr;  // Open network for ease of use
-#if LEXIRISE
-constexpr const char* AP_HOSTNAME = lexipoint::config::kMdnsHostname;  // LEXIPOINT
-#else
-constexpr const char* AP_HOSTNAME = "crosspoint";
-#endif
+constexpr const char* AP_HOSTNAME = lexipoint::config::kMdnsHostname;
 constexpr uint8_t AP_CHANNEL = 1;
 constexpr uint8_t AP_MAX_CONNECTIONS = 4;
 constexpr int QR_CODE_WIDTH = 198;
@@ -82,7 +71,7 @@ void CrossPointWebServerActivity::onEnter() {
   // what's left of the ~380KB parts. SD-font caches retained for the CJK UI
   // fallback (mini glyph/kern arenas, kern class tables) are rebuildable on
   // demand — release them up front instead of aborting in startWebServer()
-  // when the heap comes up short (observed on X3 with a Korean SD font).
+  // when the heap comes up short (observed by CrossPoint on an X3 with a Korean SD font).
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->releaseSdFontCaches();
     LOG_DBG("WEBACT", "Free heap after SD font cache release: %d bytes", ESP.getFreeHeap());
@@ -134,43 +123,20 @@ void CrossPointWebServerActivity::onExit() {
 
 void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) {
   const char* modeName = "Join Network";
-  if (mode == NetworkMode::CONNECT_CALIBRE) {
-    modeName = "Connect to Calibre";
-  } else if (mode == NetworkMode::CREATE_HOTSPOT) {
+  if (mode == NetworkMode::CREATE_HOTSPOT) {
     modeName = "Create Hotspot";
-#if FREEINK_CAP_USB_MSC
   } else if (mode == NetworkMode::USB_DRIVE) {
     modeName = "USB Drive";
-#endif
   }
   LOG_DBG("WEBACT", "Network mode selected: %s", modeName);
 
-#if FREEINK_CAP_USB_MSC
   if (mode == NetworkMode::USB_DRIVE) {
     activityManager.goToUsbDrive();
     return;
   }
-#endif
 
   networkMode = mode;
   isApMode = (mode == NetworkMode::CREATE_HOTSPOT);
-
-  if (mode == NetworkMode::CONNECT_CALIBRE) {
-    startActivityForResult(
-        std::make_unique<CalibreConnectActivity>(renderer, mappedInput), [this](const ActivityResult& result) {
-          state = WebServerActivityState::MODE_SELECTION;
-
-          startActivityForResult(std::make_unique<NetworkModeSelectionActivity>(renderer, mappedInput),
-                                 [this](const ActivityResult& result) {
-                                   if (result.isCancelled) {
-                                     onGoHome();
-                                   } else {
-                                     onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
-                                   }
-                                 });
-        });
-    return;
-  }
 
   if (mode == NetworkMode::JOIN_NETWORK) {
     // STA mode - launch WiFi selection
@@ -504,9 +470,6 @@ void CrossPointWebServerActivity::renderServerRunning() const {
     std::string hostnameUrl = std::string(tr(STR_OR_HTTP_PREFIX)) + AP_HOSTNAME + ".local/";
     renderer.drawCenteredText(SMALL_FONT_ID, startY, hostnameUrl.c_str(), true);
   }
-
-  const auto labels = mappedInput.mapLabels(tr(STR_EXIT), "", "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
 void CrossPointWebServerActivity::renderWifiIndicator(int subHeaderTop) const {

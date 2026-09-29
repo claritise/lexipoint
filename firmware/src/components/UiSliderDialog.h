@@ -7,8 +7,8 @@
 #include "components/UiAppHost.h"
 
 // Shared slider-dialog screen: a centered value readout above a drag slider
-// with -/+ fine-step tap zones at the row ends, a Cancel/OK pair on touch
-// boards, and two step-hint lines on button boards. Used by the interval and
+// with -/+ fine-step tap zones at the row ends, a Cancel/OK pair with touch,
+// and two step-hint lines without it. Used by the interval and
 // percent selection dialogs, which differ only in how they format the readout
 // and hints and what the actions do.
 struct UiSliderDialogSpec {
@@ -29,7 +29,7 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, const GfxRender
   namespace fui = freeink::ui;
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto& theme = screen.theme();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   // Content: the safe area minus the title band render() paints, dropped down
   // to where the legacy fixed layout placed the readout.
   screen.setContentMarginFromScreen(fui::Insets{
@@ -70,8 +70,8 @@ inline void buildSliderDialogScreen(UiAppHost::UiScreen& screen, const GfxRender
   fui::slider(screen.frame(), row.inset(fui::Insets{0, sideGap, 0, sideGap}), props);
 
   if (mappedInput.hasTouch()) {
-    // Touch devices drive the slider directly and confirm/cancel on screen; the
-    // physical-button step hints are hidden there — same rule as GUI.drawButtonHints.
+    // With touch the slider is driven directly and confirmed/cancelled on screen; the
+    // physical-button step hints below are for a touch controller that failed to start.
     addDialogCancelOk(screen, spec.cancelAction, spec.okAction);
     return;
   }

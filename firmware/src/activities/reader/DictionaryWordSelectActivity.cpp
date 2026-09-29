@@ -14,19 +14,17 @@
 #include "DictionaryDefinitionActivity.h"
 #include "WordBoxes.h"  // LEXIPOINT: one word-box rule, shared with the reader's long-press check (not gated)
 #include "components/UITheme.h"
-#if LEXIRISE
-#include "lexirise/LexiriseService.h"            // LEXIPOINT
-#include "lexirise/card/LexiriseCardActivity.h"  // LEXIPOINT
-#include "lexirise/card/ReaderPageFor.h"         // LEXIPOINT
-#include "lexirise/deck/BookDeck.h"              // LEXIPOINT
-#include "lexirise/lookup/PageTap.h"             // LEXIPOINT
-#include "lexirise/lookup/StarDictCandidates.h"  // LEXIPOINT
-#include "lexirise/lookup/StarDictChoice.h"      // LEXIPOINT
-#include "lexirise/page/PageSentences.h"         // LEXIPOINT
-#include "lexirise/settings/BookTags.h"          // LEXIPOINT
-#include "lexirise/settings/IgnoredWords.h"      // LEXIPOINT
-#include "lexirise/vocab/VocabMirror.h"          // LEXIPOINT
-#endif
+#include "lexirise/LexiriseService.h"
+#include "lexirise/card/LexiriseCardActivity.h"
+#include "lexirise/card/ReaderPageFor.h"
+#include "lexirise/deck/BookDeck.h"
+#include "lexirise/lookup/PageTap.h"
+#include "lexirise/lookup/StarDictCandidates.h"
+#include "lexirise/lookup/StarDictChoice.h"
+#include "lexirise/page/PageSentences.h"
+#include "lexirise/settings/BookTags.h"
+#include "lexirise/settings/IgnoredWords.h"
+#include "lexirise/vocab/VocabMirror.h"
 
 namespace {
 
@@ -53,7 +51,6 @@ void DictionaryWordSelectActivity::onEnter() {
     const int initial = closestInRow(rowCount / 2, renderer.getScreenWidth() / 2);
     if (initial >= 0) selected = initial;
   }
-#if LEXIRISE
   // LEXIPOINT: a long-press opened this: that word, looked up on the first loop (after this render).
   if (initialTouchX >= 0) {
     const int touched = wordAt(initialTouchX, initialTouchY);
@@ -63,7 +60,6 @@ void DictionaryWordSelectActivity::onEnter() {
       touchEntry = true;  // popup-ui.md §3: its card's Back returns to the reader
     }
   }
-#endif
   requestUpdate();
 }
 
@@ -81,9 +77,7 @@ void DictionaryWordSelectActivity::extractWords() {
   pageText.reserve(2048);
   uint8_t styleMask = 0;
 
-#if LEXIRISE
   uint16_t textLine = 0;  // LEXIPOINT: counts lines as lexipoint::text::forEachTextLine() does
-#endif
   for (const auto& element : page->elements) {
     if (element->getTag() != TAG_PageLine) continue;
     const auto* line = static_cast<const PageLine*>(element.get());
@@ -96,25 +90,21 @@ void DictionaryWordSelectActivity::extractWords() {
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
       if (!word_boxes::isSelectableToken(text)) {  // LEXIPOINT: WordBoxes.h
-#if LEXIRISE
-        pageText.append(text);  // LEXIPOINT: the page model measures every line's last token
+        pageText.append(text);                     // LEXIPOINT: the page model measures every line's last token
         pageText.push_back(' ');
         styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(block->wordStyle(i)) & 0x03));
-#endif
         continue;
       }
 
       WordBox box;
-      box.x = static_cast<int16_t>(word_boxes::wordLeft(*line, *block, i, marginLeft));  // LEXIPOINT
+      box.x = static_cast<int16_t>(word_boxes::wordLeft(*line, *block, i, marginLeft));
       box.y = static_cast<int16_t>(top);
       box.style = block->wordStyle(i);
       box.width = 0;  // measured below, once the advance table is ready
       box.row = rowCount;
       box.text = text;
-#if LEXIRISE
-      box.line = textLine;  // LEXIPOINT
+      box.line = textLine;
       box.token = i;
-#endif
       words.push_back(box);
       rowHasWords = true;
 
@@ -123,28 +113,22 @@ void DictionaryWordSelectActivity::extractWords() {
       styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(box.style) & 0x03));
     }
     if (rowHasWords) rowCount++;
-#if LEXIRISE
-    textLine++;  // LEXIPOINT
-#endif
+    textLine++;
   }
 
-  if (styleMask == 0) styleMask = 0x01;  // REGULAR
-#if LEXIRISE
+  if (styleMask == 0) styleMask = 0x01;          // REGULAR
   pageText.append(lexipoint::lookup::kEmProbe);  // LEXIPOINT: measured in REGULAR
   styleMask |= 0x01;
-#endif
   renderer.ensureSdCardFontReady(fontId, pageText.c_str(), styleMask);
   for (auto& word : words) {
     word.width = static_cast<int16_t>(renderer.getTextAdvanceX(fontId, word.text, word.style));
   }
-#if LEXIRISE
   // LEXIPOINT: measured here, with the glyphs ready and before the render task draws this activity.
   pageModel = lexipoint::lookup::pageModelFor(renderer, fontId, *page);
   // The card's page snapshot, only where a card can open (Lexirise usable for this book).
   if (book && lexipoint::lookup::lexiriseConfigured(*book)) {
     readerPage = lexipoint::card::readerPageFor(renderer, fontId, *page, marginLeft, marginTop);
   }
-#endif
 }
 
 // Index of the word whose box (with finger-sized slop) contains the touch
@@ -157,7 +141,6 @@ int DictionaryWordSelectActivity::wordAt(const int x, const int y) const {
   return -1;
 }
 
-#if LEXIRISE
 // LEXIPOINT: wordAt() over the boxes extractWords() would make (WordBoxes.h), measuring only the words of
 // the lines under the press. The caller holds the render lock (the measuring shares the glyph cache with
 // the render task).
@@ -170,7 +153,6 @@ bool DictionaryWordSelectActivity::pressOnWord(GfxRenderer& renderer, const Page
                                  return renderer.getTextAdvanceX(fontId, text, style);
                                });
 }
-#endif
 
 // Index of the word in `row` whose horizontal center is closest to centerX;
 // -1 when the row has no words.
@@ -201,7 +183,6 @@ void DictionaryWordSelectActivity::moveVertical(const int direction) {
 }
 
 void DictionaryWordSelectActivity::performLookup() {
-#if LEXIRISE
   // LEXIPOINT: Lexirise first, in the card; StarDict only when it isn't asked or had no answer
   // (lookup-flow.md §4, offline-and-errors.md §1).
   using lexipoint::lookup::Gate;
@@ -217,15 +198,11 @@ void DictionaryWordSelectActivity::performLookup() {
   if (gate == Gate::Ask && tap && openLexiriseCard(std::move(*tap), settings)) return;
   fallBack(lexipoint::lookup::gateFallback(gate, lexipoint::lookup::takeNoKeyNoticeIf(gate),
                                            lexipoint::lookup::takeUnannouncedIf(gate), starDictSet()));
-  return;
-#endif
-  runStarDict();
 }
 
 // LEXIPOINT: split from performLookup(), unchanged: the Lexirise card hands back to it.
 void DictionaryWordSelectActivity::runStarDict() {
   popup = Popup::Busy;
-#if LEXIRISE
   // LEXIPOINT: the selected word's language's own dictionary, else (removed from the card, say) CrossPoint's;
   // a tap in the other language reopens (lookup/StarDictChoice.h).
   if (const auto state = lexipoint::lookup::prepareStarDict(
@@ -237,16 +214,6 @@ void DictionaryWordSelectActivity::runStarDict() {
     dictOpenOk = state->ok();
     dictNeedsIndex = state->needsIndex;
   }
-#else
-  if (!dictOpenAttempted) {
-    dictOpenAttempted = true;
-    dictOpenOk = dict.open(SETTINGS.dictionaryName);
-    // needsIndex() opens and validates the .qidx sidecar, so ask it once per
-    // open rather than once per word: the answer only changes when we build
-    // the sidecar ourselves, which is handled below.
-    dictNeedsIndex = dictOpenOk && dict.needsIndex();
-  }
-#endif
   popupMsg = dictNeedsIndex ? StrId::STR_DICT_INDEXING : StrId::STR_DICT_LOOKING_UP;
   requestUpdateAndWait();  // paint the page + busy popup before blocking on SD
 
@@ -260,26 +227,16 @@ void DictionaryWordSelectActivity::runStarDict() {
   std::string definition;
   std::string headword;
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
-#if LEXIRISE
   const bool found = ok && starDictLookup(definition, headword, &result);  // LEXIPOINT: longest CJK prefix
-#else
-  const bool found = ok && dict.lookup(words[selected].text, definition, headword, &result);
-#endif
 
   if (found) {
     popup = Popup::None;
-#if LEXIRISE
     if (starDictOffline) headword += std::string(tr(STR_LEXI_CARD_SEPARATOR)) + tr(STR_LEXI_OFFLINE);  // LEXIPOINT: §2
     starDictOffline = false;
-#endif
     startActivityForResult(
         std::make_unique<DictionaryDefinitionActivity>(renderer, mappedInput, std::move(headword),
                                                        std::move(definition), dict.definitionsAreHtml()),
-#if LEXIRISE
         [this](const ActivityResult&) { answerClosed(); });  // LEXIPOINT: by entry point
-#else
-        [this](const ActivityResult&) { requestUpdate(); });
-#endif
     return;
   }
   // Name the failure: a genuine miss is "Not found"; a word that WAS found but
@@ -327,7 +284,6 @@ void DictionaryWordSelectActivity::runStarDict() {
 }
 
 void DictionaryWordSelectActivity::loop() {
-#if LEXIRISE
   if (lookupPending) {  // LEXIPOINT: the long-press lookup (setInitialTouch)
     lookupPending = false;
     performLookup();
@@ -338,11 +294,9 @@ void DictionaryWordSelectActivity::loop() {
     runStarDict();
     return;
   }
-#endif
   if (popup == Popup::NotFound || popup == Popup::Error) {
     if (millis() - popupTime >= POPUP_DURATION_MS) {
       popup = Popup::None;
-#if LEXIRISE
       // LEXIPOINT: the notice has been read (card::afterNotice).
       using lexipoint::card::AfterNotice;
       const std::optional<lexipoint::card::AfterPopup> waiting = afterPopup;
@@ -360,7 +314,6 @@ void DictionaryWordSelectActivity::loop() {
         case AfterNotice::Redraw:
           break;
       }
-#endif
       requestUpdate();
     }
     return;
@@ -456,25 +409,6 @@ bool DictionaryWordSelectActivity::drawHighlightWithSnapshot() {
   return saved;
 }
 
-// Front-button bar (Back/Confirm/Left/Right). Drawn last on every repaint
-// path, including the differential highlight-only path, so it always ends
-// up as the top layer even when a highlighted word's box falls under a
-// hint's screen area. No side-button hints: the full-bleed reader page has no
-// spare gutter for them, so a hint box there would hide text.
-void DictionaryWordSelectActivity::drawHints() const {
-  // No selectable word on this page: Confirm and navigation are all no-ops
-  // (guarded by words.empty() in loop()/performLookup), so only Back does
-  // anything and only Back is hinted.
-  if (words.empty()) {
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    return;
-  }
-  const auto labels = mappedInput.mapDirectionalLabels(tr(STR_BACK), tr(STR_LOOKUP), tr(STR_DIR_LEFT),
-                                                       tr(STR_DIR_RIGHT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-}
-
 void DictionaryWordSelectActivity::render(RenderLock&&) {
   // Differential fast path: only the highlight moved and the framebuffer
   // still holds a clean page (no popup or sub-activity since the last full
@@ -487,7 +421,6 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
     renderer.getFontCacheManager()->prewarmCache(
         fontId, words[selected].text, static_cast<uint8_t>(1u << (static_cast<uint8_t>(words[selected].style) & 0x03)));
     if (drawHighlightWithSnapshot()) {
-      drawHints();
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
       return;
     }
@@ -508,8 +441,6 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
     drawHighlightWithSnapshot();
   }
 
-  drawHints();
-
   if (popup != Popup::None) {
     // The popup overdraws the page, so the snapshot no longer matches the
     // framebuffer — force the next render onto the full-repaint path.
@@ -522,7 +453,6 @@ void DictionaryWordSelectActivity::render(RenderLock&&) {
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }
 
-#if LEXIRISE
 // LEXIPOINT: opens the Lexirise card on the selected word (lookup-flow.md §4-6, popup-ui.md). False when
 // Lexirise isn't asked (no language to send: off, a switched-off language, a non-CJK book). The card
 // hands back when Lexirise found no word (Not found) or had no answer (no key, no WiFi, network, a bad
@@ -686,4 +616,3 @@ bool DictionaryWordSelectActivity::starDictLookup(std::string& definition, std::
   });
   return probe == ProbeResult::Found;
 }
-#endif

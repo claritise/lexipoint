@@ -51,7 +51,10 @@ namespace {
 // v45: Internal EPUB links preserve CSS superscript/subscript positioning.
 // v46: Ordered lists number their items, list-style-type: none suppresses markers,
 //      and <ul>/<ol> containers contribute their own margins/padding to child insets.
-constexpr uint8_t SECTION_FILE_VERSION = 46;
+// v47 (LEXIPOINT, v0.2 V8): MiniBidi removed: no bidi reordering or Arabic shaping, so Hebrew
+//      and Arabic words are measured and placed in logical order (a direction: rtl paragraph
+//      is still pushed right, its words left to right); hyphenation for English only.
+constexpr uint8_t SECTION_FILE_VERSION = 47;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects

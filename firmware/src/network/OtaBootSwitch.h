@@ -5,7 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 
-// X4 (and X3) factory bootloaders accept our patch_firmware_image.py-patched
+// (Written by CrossPoint for its C3 X4 and X3; the X4 Pro's updates take the same raw-write path.) Their factory
+// bootloaders accept our patch_firmware_image.py-patched
 // firmware.bin (web flasher proves this), but the running ESP-IDF's
 // esp_image_verify rejects with bogus efuse-blk-rev errors. Both SD-card and
 // OTA update paths bypass that runtime check by writing the OTA app partition

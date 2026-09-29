@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "BenchSource.h"
 
 #include "BenchPage.h"
@@ -70,5 +68,3 @@ PageScene BenchSource::scene(const int index, const bool highlight, const TextMe
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

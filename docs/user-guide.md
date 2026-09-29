@@ -5,8 +5,13 @@ for **Japanese and Simplified Chinese** books: long-press a word and a card show
 frequency, and one tap saves it to your Lexirise account at the level you choose. Without WiFi (or without a
 key) the offline StarDict dictionaries you put on the SD card answer instead.
 
-Lexipoint is built on CrossPoint Reader, and everything the reader does (books, fonts, File Transfer, the
-dictionary) works the way CrossPoint's does. Lexipoint adds the lookup.
+Lexipoint is built on CrossPoint Reader, and the reader (books, fonts, File Transfer, the dictionary) works the
+way CrossPoint's does, without the parts a Japanese and Chinese reader on the X4 Pro doesn't use: KOReader sync,
+OPDS catalogs, Calibre wireless, WebDAV, the other UI languages (the UI is in English), hyphenation in languages
+other than English, right-to-left text (Arabic, Hebrew and Persian draw unjoined, in logical order, and their vowel marks take
+up space of their own), the device's
+font download, the front-button remap, the tilt page turn and the UI themes but Lyra (the full list:
+`v0.2/slimming.md` §8). Lexipoint adds the lookup.
 
 ---
 
@@ -24,6 +29,10 @@ dictionary) works the way CrossPoint's does. Lexipoint adds the lookup.
 3. Later updates arrive **over the air**: Settings → System → *Check for updates* offers the newest
    Lexipoint release. It never offers CrossPoint's own releases, which would remove
    Lexipoint. To go back to stock CrossPoint, flash its release the same way.
+4. **If it won't start after an update:** hold **Down** and press **Power** to boot into recovery: it lets you pick a
+   firmware `.bin` you copied to the SD card and installs it (the SD-card update). Or flash it over USB as in
+   step 2. (Whether a reader that won't boot at all can still be reached over USB is owed on the device:
+   `v0.1/device-checks.md`, "v0.2 V8".)
 
 ## 2. A font that has Japanese and Chinese
 
@@ -134,6 +143,10 @@ address is on the web page only (under Advanced), for a local proxy; changing it
   WiFi passwords. Anyone with the SD card has it: if you lose the card, revoke the key in your Lexirise
   account and make a new one. The web file manager can't read or replace that folder, and the key is never
   shown in full or logged.
+- **Left over from before the upgrade:** a card that had KOReader sync or OPDS servers set up keeps their files,
+  `/.crosspoint/koreader.json` (the sync account) and `/.crosspoint/opds.json` (the catalog servers). They hold those
+  accounts' passwords, lightly scrambled, not encrypted. The reader no longer reads them: delete them over USB Drive
+  (the folder is hidden) if you don't want them on the card.
 - **Use File Transfer on networks you trust.** File Transfer's web pages have no login: anyone on the same
   WiFi can open them while File Transfer is on. They can replace your key, never read it. Other websites
   open in your browser can't change it.

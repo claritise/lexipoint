@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "KeyCheck.h"
 
 namespace lexipoint::api {
@@ -63,5 +61,3 @@ KeyStatus keyStatusFrom(const ApiResponse& response) {
 }
 
 }  // namespace lexipoint::api
-
-#endif  // LEXIRISE

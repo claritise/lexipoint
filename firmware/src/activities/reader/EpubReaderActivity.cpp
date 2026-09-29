@@ -24,19 +24,11 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "DictionaryWordSelectActivity.h"
-#if LEXIRISE
-#include "lexirise/lookup/LongPress.h"        // LEXIPOINT
-#include "lexirise/lookup/PageTap.h"          // LEXIPOINT
-#include "lexirise/lookup/StarDictChoice.h"   // LEXIPOINT
-#include "lexirise/settings/SettingsStore.h"  // LEXIPOINT
-#endif
 #include "EpubReaderBookmarksActivity.h"
 #include "EpubReaderChapterSelectionActivity.h"
 #include "EpubReaderFootnotesActivity.h"
 #include "EpubReaderPercentSelectionActivity.h"
 #include "EpubReaderUtils.h"
-#include "KOReaderCredentialStore.h"
-#include "KOReaderSyncActivity.h"
 #include "MappedInputManager.h"
 #include "ProgressMapper.h"
 #include "QrDisplayActivity.h"
@@ -49,17 +41,15 @@
 #include "activities/settings/TextSettingsActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "lexirise/lookup/LongPress.h"
+#include "lexirise/lookup/PageTap.h"
+#include "lexirise/lookup/StarDictChoice.h"
+#include "lexirise/settings/SettingsStore.h"
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
 
 namespace {
-// The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
-// (that helper also gates power management). Overlay refresh choices are per-panel:
-// this family runs the grayscale anti-aliasing pass, so chrome painted over a
-// fresh page needs the HALF ghost-cleanup and closing re-renders the page.
-bool xteinkClassPanel() { return gpio.isXteinkDevice() || BoardConfig::isX4Pro() || BoardConfig::isX4Classic(); }
-
 constexpr int PAGE_TURN_RATES[] = {1, 1, 3, 6, 12};
 constexpr size_t initialBookmarkCacheCapacity = 16;
 constexpr float bookmarkProgressEpsilon = 0.0001f;
@@ -186,7 +176,6 @@ bool EpubReaderActivity::loadBook() {
 
   const bool uncached = !Storage.exists((loadedEpub->getCachePath() + "/book.bin").c_str());
   if (uncached) {
-    disableFastInitialRefresh();
     GUI.drawPopup(renderer, tr(STR_INDEXING));
   }
 
@@ -285,9 +274,7 @@ void EpubReaderActivity::openReaderMenu() {
   auto menu = std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
                                                        position.totalPages, bookProgressPercent, SETTINGS.orientation,
                                                        !currentPageFootnotes.empty(), !cachedBookmarks.empty());
-#if LEXIRISE
-  menu->setBookPath(epub->getPath());  // LEXIPOINT
-#endif
+  menu->setBookPath(epub->getPath());
   startActivityForResult(std::move(menu), [this](const ActivityResult& result) {
     const auto& menu = std::get<MenuResult>(result.data);
 
@@ -317,7 +304,6 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
-#if LEXIRISE
 // LEXIPOINT: with Lexirise usable, word select works without a StarDict dictionary installed; a language
 // can have its own (settings.md §1).
 bool EpubReaderActivity::dictionaryLookupsAvailable() const {
@@ -338,7 +324,6 @@ std::unique_ptr<Page> EpubReaderActivity::pageWithWordAt(const int x, const int 
   if (!DictionaryWordSelectActivity::pressOnWord(renderer, *page, left, top, x, y)) return nullptr;
   return page;
 }
-#endif
 
 // LEXIPOINT: where word select draws the page, shared with the long-press check (not gated: CrossPoint uses it).
 void EpubReaderActivity::wordSelectOrigin(int& left, int& top) const {
@@ -350,13 +335,7 @@ void EpubReaderActivity::wordSelectOrigin(int& left, int& top) const {
 }
 
 void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int touchY, std::unique_ptr<Page> page) {
-#if LEXIRISE
-  const bool lookupsAvailable = dictionaryLookupsAvailable();  // LEXIPOINT
-#else
-  (void)touchX;
-  (void)touchY;
-  const bool lookupsAvailable = SETTINGS.dictionaryName[0] != '\0';
-#endif
+  const bool lookupsAvailable = dictionaryLookupsAvailable();
   if (!lookupsAvailable) {
     showDictionaryMessage = true;
     dictionaryMessageTime = millis();
@@ -373,12 +352,10 @@ void EpubReaderActivity::openDictionaryWordSelect(const int touchX, const int to
 
   auto wordSelect = std::make_unique<DictionaryWordSelectActivity>(renderer, mappedInput, std::move(page),
                                                                    orientedMarginLeft, orientedMarginTop);
-#if LEXIRISE
-  wordSelect->setBook(lexipoint::lookup::bookLanguageFor(epub->getLanguage(), epub->getPath()),  // LEXIPOINT
-                      epub->getTitle(), epub->getPath());
+  wordSelect->setBook(lexipoint::lookup::bookLanguageFor(epub->getLanguage(), epub->getPath()), epub->getTitle(),
+                      epub->getPath());
   if (touchX >= 0) wordSelect->setInitialTouch(touchX, touchY);
   wordSelect->setSpine(currentSpineIndex);  // LEXIPOINT: where the page's analysis is kept (C12, V7b)
-#endif
   startActivityForResult(std::move(wordSelect), [this](const ActivityResult&) { requestUpdate(); });
 }
 
@@ -436,7 +413,6 @@ void EpubReaderActivity::loop() {
     }
   }
 
-#if LEXIRISE
   // LEXIPOINT: page analysis (C12, V7b): this page and the next, over WiFi already up, once the page has been up a
   // moment; a button or a touch gives a call up at once. After the partial build's start above: a build it started is
   // busy (buildTickDue), so no call holds it up.
@@ -455,7 +431,6 @@ void EpubReaderActivity::loop() {
                    mappedInput.isScreenTouchHeld(touchX, touchY), readerBusy, buildTickDue(), epub->getPath(),
                    epub->getLanguage());
   }
-#endif
 
   if (section && section->isBuilding() && !RenderLock::peek() &&
       (section->isPartial() || static_cast<int>(section->pageCount) < section->currentPage + BUILD_WINDOW_AHEAD) &&
@@ -571,11 +546,6 @@ void EpubReaderActivity::loop() {
         bookmarkMessageTime = millis();
         requestUpdate();
         break;
-      case CrossPointSettings::LP_MENU_KOSYNC:
-        if (launchKOReaderSync()) {
-          return;
-        }
-        break;
       case CrossPointSettings::LP_MENU_DICTIONARY:
         openDictionaryWordSelect();
         return;
@@ -599,9 +569,6 @@ void EpubReaderActivity::loop() {
           requestUpdate();
         }
         return;
-      case CrossPointSettings::LP_MENU_KOSYNC:
-        launchKOReaderSync();
-        return;
       case CrossPointSettings::LP_MENU_DICTIONARY:
         if (!showDictionaryMessage) {
           openDictionaryWordSelect();
@@ -620,7 +587,6 @@ void EpubReaderActivity::loop() {
     }
   }
 
-#if LEXIRISE
   // LEXIPOINT: a long-press on the page looks the word up (lookup-flow.md §1, D15). It fires while the
   // finger is still down; with CrossPoint's hold action on, the page-turn thirds stay CrossPoint's.
   if (!atEndOfBook && section && mappedInput.hasTouch()) {
@@ -647,7 +613,6 @@ void EpubReaderActivity::loop() {
       return;
     }
   }
-#endif
 
   // Link taps take priority over the reader-menu and page-turn zones.
   if (!atEndOfBook && !currentPageLinks.empty() && SETTINGS.touchReaderControls && mappedInput.hasTouch()) {
@@ -721,7 +686,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
+  auto [prevTriggered, nextTriggered] = ReaderUtils::detectPageTurn(mappedInput);
   prevTriggered = prevTriggered || touch.prev;
   nextTriggered = nextTriggered || touch.next;
   if (!prevTriggered && !nextTriggered) {
@@ -738,7 +703,7 @@ void EpubReaderActivity::loop() {
   }
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
-  const bool longPress = !fromTilt && heldMs >= ReaderUtils::SKIP_HOLD_MS;
+  const bool longPress = heldMs >= ReaderUtils::SKIP_HOLD_MS;
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
     skipPages(nextTriggered ? 1 : -1);
     requestUpdate();
@@ -959,15 +924,9 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
           });
       break;
     }
-    case EpubReaderMenuActivity::MenuAction::DICTIONARY: {
-      openDictionaryWordSelect();
-      break;
-    }
-#if LEXIRISE
     case EpubReaderMenuActivity::MenuAction::LOOKUP_LANGUAGE:
       // LEXIPOINT: handled in place by the menu (and the More panel), like Night mode.
       break;
-#endif
     case EpubReaderMenuActivity::MenuAction::DISPLAY_QR: {
       if (section && section->currentPage >= 0 && section->currentPage < section->pageCount) {
         std::string fullText = section->getTextFromSectionFile();
@@ -1010,10 +969,6 @@ void EpubReaderActivity::onReaderMenuConfirm(EpubReaderMenuActivity::MenuAction 
       requestUpdate();
       break;
     }
-    case EpubReaderMenuActivity::MenuAction::SYNC: {
-      launchKOReaderSync();
-      break;
-    }
     case EpubReaderMenuActivity::MenuAction::BOOKMARKS: {
       startActivityForResult(
           std::make_unique<EpubReaderBookmarksActivity>(renderer, mappedInput, epub, epub->getPath()),
@@ -1032,60 +987,11 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
     case CrossPointSettings::LP_MENU_BOOKMARK:
     case CrossPointSettings::LP_MENU_DICTIONARY:
       return ReaderUtils::BOOKMARK_HOLD_MS;
-    case CrossPointSettings::LP_MENU_KOSYNC:
-      return KOREADER_STORE.hasCredentials() ? ReaderUtils::GO_HOME_MS : 0;
     case CrossPointSettings::LP_MENU_READER_MENU:
     case CrossPointSettings::LP_MENU_DISABLED:
     default:
       return 0;
   }
-}
-
-bool EpubReaderActivity::launchKOReaderSync() {
-  if (!KOREADER_STORE.hasCredentials()) return false;
-
-  RenderLock renderLock;
-
-  const int currentPage = section ? section->currentPage : nextPageNumber;
-  const int totalPages = section ? section->estimatedTotalPages() : cachedChapterTotalPageCount;
-
-  CrossPointPosition localPos = getCurrentPosition();
-  SavedProgressPosition localKoPos;
-  const int tocIdx = epub->getTocIndexForSpineIndex(currentSpineIndex);
-  std::string localChapterName = (tocIdx >= 0) ? epub->getTocItem(tocIdx).title : "";
-  const std::string savedEpubPath = epub->getPath();
-
-  if (!saveProgress(currentSpineIndex, currentPage, totalPages)) {
-    LOG_ERR("KOSync", "Aborting sync because current progress could not be saved");
-    pendingSyncSaveError = true;
-    requestUpdate();
-    return true;
-  }
-
-  LOG_DBG("KOSync", "Releasing epub for sync (heap before: %u)", (unsigned)ESP.getFreeHeap());
-  {
-    if (section) {
-      nextPageNumber = section->currentPage;
-    }
-    discardOverlayPage();
-    ImageBlock::releaseRenderCache();
-    ImageBlock::setExtractor(nullptr, nullptr);
-    section.reset();
-    if (auto* fcm = renderer.getFontCacheManager()) {
-      fcm->releaseSdFontCaches();
-    }
-    // No rendering may run while the chapter mapper borrows the framebuffer.
-    {
-      GfxRenderer::FrameBufferLoan loan(renderer);
-      localKoPos = ProgressMapper::toSavedProgress(epub, localPos);
-    }
-    epub.reset();
-  }
-  LOG_DBG("KOSync", "Epub released (heap after: %u)", (unsigned)ESP.getFreeHeap());
-
-  activityManager.replaceActivity(std::make_unique<KOReaderSyncActivity>(
-      renderer, mappedInput, savedEpubPath, localPos, std::move(localKoPos), std::move(localChapterName)));
-  return true;
 }
 
 void EpubReaderActivity::applyInitialOrientation() {
@@ -1226,12 +1132,6 @@ bool EpubReaderActivity::skipLoopDelay() { return buildTickDue(); }
 void EpubReaderActivity::renderBook() {
   currentPageLinks.clear();
   if (!epub) return;
-
-  const auto showPendingSyncSaveError = [this]() {
-    if (!pendingSyncSaveError) return;
-    pendingSyncSaveError = false;
-    GUI.drawPopup(renderer, tr(STR_SAVE_PROGRESS_FAILED));
-  };
 
   const auto showBuildError = [this]() {
     renderer.clearScreen();
@@ -1455,7 +1355,6 @@ void EpubReaderActivity::renderBook() {
     renderStatusBar();
     renderer.displayBuffer();
     automaticPageTurnActive = false;
-    showPendingSyncSaveError();
     return;
   }
 
@@ -1465,7 +1364,6 @@ void EpubReaderActivity::renderBook() {
     renderStatusBar();
     renderer.displayBuffer();
     automaticPageTurnActive = false;
-    showPendingSyncSaveError();
     return;
   }
 
@@ -1486,11 +1384,9 @@ void EpubReaderActivity::renderBook() {
         renderer.clearScreen();
         renderer.drawCenteredText(UI_12_FONT_ID, 300, tr(STR_PAGE_LOAD_ERROR), true, EpdFontFamily::BOLD);
         renderer.displayBuffer();
-        showPendingSyncSaveError();
         return;
       }
       requestUpdate();
-      showPendingSyncSaveError();
       return;
     }
     pageLoadRetryCount = 0;
@@ -1510,10 +1406,7 @@ void EpubReaderActivity::renderBook() {
     renderContents(std::move(p), orientedMarginTop, orientedMarginRight, orientedMarginBottom, orientedMarginLeft);
     LOG_DBG("ERS", "Rendered page in %dms", millis() - start);
     lastRenderCompleteMs = millis();
-#if LEXIRISE
-    lexiDrawn.store(
-        lexipoint::page::packDrawn(currentSpineIndex, section->currentPage, lastRenderCompleteMs));  // LEXIPOINT
-#endif
+    lexiDrawn.store(lexipoint::page::packDrawn(currentSpineIndex, section->currentPage, lastRenderCompleteMs));
   }
 
   if (currentSpineIndex != lastSavedSpineIndex || section->currentPage != lastSavedPage ||
@@ -1524,8 +1417,6 @@ void EpubReaderActivity::renderBook() {
       lastSavedPageCount = section->estimatedTotalPages();
     }
   }
-
-  showPendingSyncSaveError();
 
   if (pendingScreenshot) {
     pendingScreenshot = false;
@@ -1557,13 +1448,7 @@ void EpubReaderActivity::renderBook() {
   }
 }
 
-void EpubReaderActivity::onEndOfBookRendered() {
-  automaticPageTurnActive = false;
-  if (pendingSyncSaveError) {
-    pendingSyncSaveError = false;
-    GUI.drawPopup(renderer, tr(STR_SAVE_PROGRESS_FAILED));
-  }
-}
+void EpubReaderActivity::onEndOfBookRendered() { automaticPageTurnActive = false; }
 
 bool EpubReaderActivity::applyDeferredReposition() {
   if ((!cachedVisibleTextOffset.has_value() && cachedChapterTotalPageCount == 0) || !section || section->isBuilding()) {
@@ -1646,8 +1531,7 @@ void EpubReaderActivity::renderContents(std::unique_ptr<Page> page, const int or
   const bool cleanImageBasePending = manualRefreshPending || pagesUntilFullRefresh <= 1;
   const bool needsTextGrayscale = SETTINGS.textAntiAliasing;
   const bool needsAnyGrayscale = needsTextGrayscale || pageHasImages;
-  const bool absoluteImageGrayscale = pageHasImages && !gpio.deviceIsX3() &&
-                                      display.getController() == HalDisplay::Controller::UC8279 &&
+  const bool absoluteImageGrayscale = pageHasImages && display.getController() == HalDisplay::Controller::UC8279 &&
                                       renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
   const auto grayscale = renderer.grayscaleCapabilities(absoluteImageGrayscale ? HalDisplay::GrayscaleMode::Absolute
                                                                                : HalDisplay::GrayscaleMode::Overlay);
@@ -2074,22 +1958,12 @@ void EpubReaderActivity::openOverlay(Overlay target) {
   }
 }
 
-// Close the overlay back to the reading page. Boards without the Xteink
-// grayscale-AA pass restore the page snapshot and push one FAST refresh -- no
-// re-render, no flash; Xteink boards re-render to restore the AA planes.
+// Close the overlay back to the reading page: the X4 Pro's panel runs the
+// grayscale anti-aliasing pass, so the page is re-rendered to restore the AA planes.
 void EpubReaderActivity::closeOverlayToPage() {
   overlay = Overlay::None;
   overlayPopup.dismiss();  // an option picker cannot outlive its panel
   toolbarUi.reset();       // ~1 KB of interaction table + props, only needed while open
-  if (!xteinkClassPanel() && overlayPageStored) {
-    RenderLock lock;  // the render task shares the framebuffer
-    // No baseline resync: the glass shows the chrome, and erasing it needs
-    // the differential to keep diffing against the last pushed frame.
-    renderer.restoreBwBuffer(/*resyncPanelBaseline=*/false);
-    overlayPageStored = false;
-    renderer.displayBuffer(HalDisplay::FAST_REFRESH);
-    return;
-  }
   discardOverlayPage();
   requestUpdate();  // redraw the clean page
 }
@@ -2121,7 +1995,7 @@ void EpubReaderActivity::renderOverlay() {
     return;
   }
 
-  // Panels (Contents / Text / More): a bottom sheet over the page + button hints.
+  // Panels (Contents / Text / More): a bottom sheet over the page.
   model.panel = true;
   if (!mappedInput.hasTouch()) {
     model.bottomReserve = UITheme::getInstance().getMetrics().buttonHintsHeight;
@@ -2151,11 +2025,6 @@ void EpubReaderActivity::renderOverlay() {
   }
   toolbarUi->setModel(model);
   toolbarUi->render();
-
-  if (!mappedInput.hasTouch()) {
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-  }
 }
 
 void EpubReaderActivity::handleOverlayInput() {
@@ -2470,9 +2339,7 @@ void EpubReaderActivity::buildMoreActions() {
                                    return item.action == MA::SELECT_CHAPTER || item.action == MA::TEXT_SETTINGS;
                                  }),
                   moreItems.end());
-#if LEXIRISE
-  if (epub) moreBookLanguage.open(epub->getPath());  // LEXIPOINT
-#endif
+  if (epub) moreBookLanguage.open(epub->getPath());
 }
 
 std::string EpubReaderActivity::moreRowName(int row) const {
@@ -2496,10 +2363,8 @@ std::string EpubReaderActivity::moreRowValue(int row) const {
       return SETTINGS.screenInverted ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
     case MA::FRONTLIGHT:
       return Frontlight.isOn() ? tr(STR_STATE_ON) : tr(STR_STATE_OFF);
-#if LEXIRISE
-    case MA::LOOKUP_LANGUAGE:  // LEXIPOINT
+    case MA::LOOKUP_LANGUAGE:
       return I18N.get(EpubReaderMenuActivity::bookLanguageLabel(moreBookLanguage.language()));
-#endif
     default:
       return "";
   }
@@ -2556,7 +2421,6 @@ void EpubReaderActivity::activateMoreRow(int row) {
       }
       return;
     }
-#if LEXIRISE
     case MA::LOOKUP_LANGUAGE:  // LEXIPOINT: only the row's value changes, as with the frontlight
       if (moreBookLanguage.cycle()) {
         RenderLock lock;
@@ -2564,7 +2428,6 @@ void EpubReaderActivity::activateMoreRow(int row) {
         renderer.displayBuffer(HalDisplay::FAST_REFRESH);
       }
       return;
-#endif
     default:
       break;
   }

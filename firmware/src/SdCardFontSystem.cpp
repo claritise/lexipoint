@@ -175,14 +175,12 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
   }
 }
 
-#if LEXIRISE
-int SdCardFontSystem::familyFontIdAt(GfxRenderer& renderer, const uint8_t pointSize) {  // LEXIPOINT
+int SdCardFontSystem::familyFontIdAt(GfxRenderer& renderer, const uint8_t pointSize) {
   const std::string& familyName = manager_.currentFamilyName();
   if (familyName.empty()) return 0;
   const auto* family = registry_.findFamily(familyName);
   return family ? manager_.loadFamilyExtraSize(*family, renderer, pointSize) : 0;
 }
-#endif
 
 int SdCardFontSystem::resolveFontId(const char* familyName, uint8_t /*pointSize*/) const {
   // The manager holds exactly one reader-size font, already selected for

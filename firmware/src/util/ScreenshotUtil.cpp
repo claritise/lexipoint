@@ -144,7 +144,7 @@ bool ScreenshotUtil::saveFramebufferAsBmp(const char* filename, const uint8_t* f
   }
 
   const uint32_t rowSizePadded = (phyWidth + 31) / 32 * 4;
-  // Max row size for 528px height (X3) after rotation = 68 bytes; use fixed buffer to avoid VLA
+  // Fixed row buffer (no VLA): 68 bytes fits 528 px, CrossPoint's widest panel; the X4 Pro's 480 px needs 60
   constexpr size_t kMaxRowSize = 68;
   if (rowSizePadded > kMaxRowSize) {
     LOG_ERR("SCR", "Row size %u exceeds buffer capacity", rowSizePadded);

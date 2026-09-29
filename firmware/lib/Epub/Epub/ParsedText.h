@@ -36,7 +36,7 @@ class ParsedText {
   // 0 = none. An annotation rather than a token split, so the hyphenator and line breaker still
   // see whole words; TextBlock stores emphasis the same way, so extractLine passes it through.
   std::vector<uint8_t> wordFocusBoundary;
-  // Internal-link identity through tokenization, hyphenation and BiDi reorder.
+  // Internal-link identity through tokenization and hyphenation.
   // Zero means plain text; non-zero indexes linkTargets. Kept at one byte per
   // token and discarded after layout, never added to the page-cache TextBlock.
   std::vector<uint8_t> wordLinkIds;
@@ -58,14 +58,6 @@ class ParsedText {
   bool hyphenationEnabled;
   bool focusReadingEnabled;
   bool isNaturalAlign;
-  bool hasRtlWord;
-  std::vector<std::string> reorderedWordsScratch;
-  std::vector<EpdFontFamily::Style> reorderedStylesScratch;
-  std::vector<uint16_t> reorderedWidthsScratch;
-  std::vector<bool> reorderedContinuesScratch;
-  std::vector<bool> reorderedNoSpaceBeforeScratch;
-  std::vector<uint8_t> reorderedFocusBoundaryScratch;
-  std::vector<uint16_t> visualOrderScratch;
 
   uint32_t visibleOffsetBaseAt(size_t wordIndex) const;
   uint32_t visibleOffsetAt(size_t wordIndex) const;
@@ -98,8 +90,7 @@ class ParsedText {
         extraParagraphSpacing(extraParagraphSpacing),
         hyphenationEnabled(hyphenationEnabled),
         focusReadingEnabled(focusReadingEnabled),
-        isNaturalAlign(false),
-        hasRtlWord(false) {}
+        isNaturalAlign(false) {}
   ~ParsedText() = default;
 
   void addWord(std::string word, EpdFontFamily::Style fontStyle, bool underline = false, bool attachToPrevious = false,

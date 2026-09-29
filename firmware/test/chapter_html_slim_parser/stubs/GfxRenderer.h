@@ -5,18 +5,12 @@
 #include <deque>
 #include <string>
 
-namespace BidiUtils {
-enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
-}
-
 class GfxRenderer {
  public:
   bool isFontCacheScanning() const { return false; }
   void drawLine(int, int, int, int, int, bool) const {}
-  void drawText(int, int, int, const char*, bool, EpdFontFamily::Style,
-                BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO) const {}
-  int getTextWidth(int font, const char* text, EpdFontFamily::Style style,
-                   BidiUtils::BidiBaseDir = BidiUtils::BidiBaseDir::AUTO) const {
+  void drawText(int, int, int, const char*, bool, EpdFontFamily::Style) const {}
+  int getTextWidth(int font, const char* text, EpdFontFamily::Style style) const {
     return getTextAdvanceX(font, text, style);
   }
   int getScreenWidth() const { return 480; }

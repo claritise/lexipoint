@@ -244,7 +244,7 @@ This removes `std::function` overhead (~2-4KB per unique signature) and eliminat
 
 ### FreeRTOS Task Model
 
-The firmware runs on an ESP32-C3, a single-core RISC-V microcontroller. FreeRTOS provides cooperative and preemptive multitasking on this single core — only one task executes at any moment, and the scheduler switches between tasks at yield points (blocking calls, `vTaskDelay`, `taskYIELD`) or when a tick interrupt promotes a higher-priority task.
+The firmware runs on the X4 Pro's ESP32-S3 (CrossPoint wrote this for the single-core ESP32-C3). FreeRTOS switches between tasks at yield points (blocking calls, `vTaskDelay`, `taskYIELD`) or when a tick interrupt promotes a higher-priority task; the two tasks below share the render mutex, so they never draw at once.
 
 There are two tasks relevant to the activity system:
 
@@ -264,7 +264,7 @@ There are two tasks relevant to the activity system:
 └──────────────────────┘     └──────────────────────────┘
 ```
 
-Both tasks run at priority 1. Since the ESP32-C3 is single-core, they alternate execution: the main task runs `loop()`, then at the end of the loop iteration, notifies the render task if an update was requested. The render task wakes, acquires the mutex, calls `render()`, releases the mutex, and blocks again.
+Both tasks run at priority 1: the main task runs `loop()`, then at the end of the loop iteration, notifies the render task if an update was requested. The render task wakes, acquires the mutex, calls `render()`, releases the mutex, and blocks again.
 
 Do not use `xTaskCreate` inside activities. If you have a use case that seems to require a background task, open a discussion to propose a lifecycle-aware `Worker` abstraction first.
 

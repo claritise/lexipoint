@@ -24,7 +24,6 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
                                  .listSelectionStyle = 1,  // light pill
                                  .listScrollWidth = 4,
                                  .listScrollSide = 0,
-                                 .listTitleBold = false,
                                  .headerSidePadding = 18,
                                  .headerUnderlineSize = 3,
                                  .headerTitleAlign = 0,  // left
@@ -42,7 +41,7 @@ constexpr ThemeMetrics values = {.batteryWidth = 16,
                                  .homeRecentBooksCount = 1,
                                  .homeContinueReadingInMenu = false,
                                  .homeMenuTopOffset = 16,
-                                 .buttonHintsHeight = 40,
+                                 .buttonHintsHeight = 0,  // LEXIPOINT (v0.2 V8): no button legend (CrossPoint: 40)
                                  .sideButtonHintsWidth = 30,
                                  .progressBarHeight = 16,
                                  .progressBarMarginTop = 1,
@@ -86,9 +85,6 @@ class LyraTheme : public BaseTheme {
   void fillBatteryIcon(const GfxRenderer& renderer, Rect rect, uint16_t percentage) const override;
   void drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label,
                      const char* rightLabel = nullptr) const override;
-  void drawButtonHints(GfxRenderer& renderer, const char* btn1, const char* btn2, const char* btn3,
-                       const char* btn4) const override;
-  void drawSideButtonHints(const GfxRenderer& renderer, const char* topBtn, const char* bottomBtn) const override;
   void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                       const std::function<std::string(int index)>& buttonLabel,
                       const std::function<UIIcon(int index)>& rowIcon) const override;

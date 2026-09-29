@@ -165,8 +165,8 @@ constexpr uint16_t kHttpsPort = 443;
 // One whole request (the stale-session retry included) once a connection is open. Opening is bounded
 // separately (NTP kNtpWaitMs + TCP and handshake kHttpTimeoutMs each): see kMaxCallMs below.
 constexpr uint32_t kRequestDeadlineMs = 15000;
-// An idle TLS session is closed after this, so it never sits on internal heap that CrossPoint's TLS users
-// (KOSync, fonts, OTA) pre-flight for. Keep-alive still covers a lookup's back-to-back calls.
+// An idle TLS session is closed after this, so it never sits on internal heap that CrossPoint's TLS user
+// (OTA) pre-flights for. Keep-alive still covers a lookup's back-to-back calls.
 constexpr unsigned long kTlsIdleCloseMs = 30000;
 // One TLS open's budget: a TCP connect and a handshake, each up to kHttpTimeoutMs (kMaxCallMs counts it once). V7c: a
 // handshake offered the kept session that failed is tried once more in full only inside it, with at least
@@ -186,6 +186,8 @@ constexpr char kDhcpHostnamePrefix[] = "Lexipoint-";
 // publish_release.py, release_tag.py ASSET_PREFIX).
 constexpr const char* kReleasesLatestUrl = "https://api.github.com/repos/claritise/lexipoint/releases/latest";
 constexpr const char* kReleaseAssetPrefix = "lexipoint-";
+constexpr const char* kReleaseAssetSuffix = "-x4pro.bin";  // the one board (publish_release.py DEVICE)
+constexpr size_t kReleaseAssetNameBytes = 48;              // the updater's buffer (release_tag.py ASSET_NAME_BYTES)
 #ifdef LEXIPOINT_VERSION
 constexpr const char* kLexipointVersion = LEXIPOINT_VERSION;  // platformio.ini [lexirise]
 #else
@@ -299,6 +301,10 @@ constexpr const char* kDefaultTags = "xteink";
 constexpr char kBookTagPrefix[] = "book:";
 constexpr size_t kBookSlugMaxBytes = kMaxTagLength - (sizeof(kBookTagPrefix) - 1);
 constexpr size_t kBookSlugMinAlnum = 3;  // fewer ASCII letters and digits (a Japanese title): a hash instead
+// book-tags.ini's longest line, `<slug>=<title>\n`: the file never drops a book for size before kBookTagsMax (its byte
+// cap is a backstop, as decks.ini's is below).
+static_assert(kBookTagsMax * (kBookSlugMaxBytes + 1 + kBookTagTitleMaxBytes + 1) <= kBookTagsMaxBytes,
+              "the book tags file fits kBookTagsMax of the longest lines");
 // A book's deck (C4, V3): a dynamic deck on its book tag, titled kDeckTitlePrefix + the book's title. The type,
 // unit and rule names are the reference's (lexirise-api-notes.md, Decks), sent and matched as they are.
 constexpr const char* kDeckTitlePrefix = "Lexipoint: ";

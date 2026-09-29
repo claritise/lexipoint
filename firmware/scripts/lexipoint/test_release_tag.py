@@ -87,7 +87,9 @@ class ReleaseTag(unittest.TestCase):
         with open(os.path.join(REPO, "lib/JsonParser/ReleaseJsonParser.h"), encoding="utf-8") as f:
             self.assertIn("char tagName[32];", f.read())
         with open(os.path.join(REPO, "src/network/OtaUpdater.cpp"), encoding="utf-8") as f:
-            self.assertIn(f"char assetName[{release_tag.ASSET_NAME_BYTES}]", f.read())
+            self.assertIn("char assetName[lexipoint::config::kReleaseAssetNameBytes]", f.read())
+        with open(os.path.join(REPO, "src/lexirise/LexiriseConfig.h"), encoding="utf-8") as f:
+            self.assertIn(f"kReleaseAssetNameBytes = {release_tag.ASSET_NAME_BYTES};", f.read())
 
 
 if __name__ == "__main__":

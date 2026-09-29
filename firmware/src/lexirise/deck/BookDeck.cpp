@@ -1,10 +1,9 @@
-#if LEXIRISE
-
 #include "BookDeck.h"
 
 #include <Logging.h>
 
 #include <algorithm>
+#include <numeric>
 
 #include "lexirise/api/Requests.h"
 #include "lexirise/text/BookSlug.h"
@@ -28,9 +27,9 @@ bool isKey(const std::string_view key) {
 }
 
 size_t serializedSize(const DeckList& list) {
-  size_t size = 0;
-  for (const auto& entry : list) size += entry.key.size() + 1 + entry.id.size() + 1;
-  return size;
+  return std::accumulate(list.begin(), list.end(), size_t{0}, [](const size_t size, const auto& entry) {
+    return size + entry.key.size() + 1 + entry.id.size() + 1;
+  });
 }
 
 bool hasTag(const api::DeckSummary& deck, const std::string& tag) {
@@ -88,12 +87,11 @@ std::optional<std::string> findBookDeck(const std::vector<api::DeckSummary>& dec
     const std::optional<Language> said = languageFromCode(code);
     return !said || *said == language;
   };
-  for (const api::DeckSummary& d : decks) {
-    if (candidate(d) && d.deckType == config::kDeckTypeDynamic && d.unitType == config::kDeckUnitWord &&
-        d.ruleType == config::kDeckRuleTagFilter && hasTag(d, tag)) {
-      return d.id;
-    }
-  }
+  const auto tagDeck = std::find_if(decks.begin(), decks.end(), [&](const api::DeckSummary& d) {
+    return candidate(d) && d.deckType == config::kDeckTypeDynamic && d.unitType == config::kDeckUnitWord &&
+           d.ruleType == config::kDeckRuleTagFilter && hasTag(d, tag);
+  });
+  if (tagDeck != decks.end()) return tagDeck->id;
   for (const api::DeckSummary& d : decks) {
     const bool maybeDynamic = d.deckType.empty() || d.deckType == config::kDeckTypeDynamic;
     const bool maybeWords = d.unitType.empty() || d.unitType == config::kDeckUnitWord;  // not C3's sentence deck
@@ -291,10 +289,10 @@ DeckState DeckStore::stateLocked(const std::string_view key) {
   loadLocked();
   const auto it = std::find_if(work_.begin(), work_.end(), [key](const Work& w) { return w.key == key; });
   if (it != work_.end()) return it->state;
-  DeckState state;  // untouched this boot: what the file says, nothing wanted
+  DeckState recorded;  // untouched this boot: what the file says, nothing wanted
   const auto entry = std::find_if(list_.begin(), list_.end(), [key](const DeckEntry& e) { return e.key == key; });
-  if (entry != list_.end()) state.id = entry->id;
-  return state;
+  if (entry != list_.end()) recorded.id = entry->id;
+  return recorded;
 }
 
 DeckStore::Work& DeckStore::workLocked(const std::string_view key) {
@@ -336,16 +334,16 @@ DeckStep DeckStore::next(const std::string_view key) {
 
 bool DeckStore::apply(const DeckCall& call) {
   std::lock_guard<std::mutex> lock(mutex_);
-  DeckState& state = workLocked(call.key).state;
-  const DeckState before = state;
-  answer(state, call.step, call.answer);
-  if (state.id == before.id) return true;  // nothing on the card changes
-  if (state.id && !setDeckIn(list_, call.key, *state.id)) {
+  DeckState& deck = workLocked(call.key).state;
+  const DeckState before = deck;
+  answer(deck, call.step, call.answer);
+  if (deck.id == before.id) return true;  // nothing on the card changes
+  if (deck.id && !setDeckIn(list_, call.key, *deck.id)) {
     LOG_ERR(kLogTag, "Deck %s: not recorded (not a key or id a line can hold)", call.key.c_str());
     return false;  // memory keeps it: no repeat call this boot
   }
-  if (!state.id) forgetDeckIn(list_, call.key);
-  LOG_INF(kLogTag, "Deck %s: %s", call.key.c_str(), state.id ? "recorded" : "forgotten");
+  if (!deck.id) forgetDeckIn(list_, call.key);
+  LOG_INF(kLogTag, "Deck %s: %s", call.key.c_str(), deck.id ? "recorded" : "forgotten");
   if (!replaceSafely(files_, config::kDecksFile, serializeDecks(list_))) {
     LOG_ERR(kLogTag, "Couldn't save the book's deck");  // memory keeps it: no repeat call this boot
     return false;
@@ -354,5 +352,3 @@ bool DeckStore::apply(const DeckCall& call) {
 }
 
 }  // namespace lexipoint::deck
-
-#endif  // LEXIRISE

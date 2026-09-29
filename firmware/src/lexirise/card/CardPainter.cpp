@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "CardPainter.h"
 
 #include <GfxRenderer.h>
@@ -122,5 +120,3 @@ void paint(GfxRenderer& renderer, const DisplayList& list, const CardFonts& font
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

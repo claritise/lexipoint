@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LiveWord.h"
 
 #include <algorithm>
@@ -180,5 +178,3 @@ CardWord cardWord(const lookup::LookupCard& card, const PageSentence& sentence, 
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

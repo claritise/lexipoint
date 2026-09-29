@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "SettingsStore.h"
 
 #include <Logging.h>
@@ -84,5 +82,3 @@ bool SettingsStore::saveLocked(const Settings& settings) {
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

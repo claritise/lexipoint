@@ -1,12 +1,11 @@
 # Webserver Endpoints
 
-This document describes the HTTP, WebSocket, WebDAV, and discovery endpoints
-available while CrossPoint Reader is in File Transfer or Calibre Wireless mode.
+This document describes the HTTP and WebSocket endpoints available while the
+reader is in File Transfer mode. (KOReader sync, OPDS, Calibre Wireless, its UDP
+discovery and WebDAV were removed in Lexipoint's v0.2 slimming.)
 
 - HTTP server: port 80
 - WebSocket upload server: port 81
-- UDP discovery listener: port 8134
-- WebDAV: port 80, handled by the same HTTP server
 
 Examples use `lexipoint.local`. If mDNS does not resolve on your network, use
 the IP address shown on the device screen.
@@ -39,7 +38,7 @@ Response:
   "rssi": -45,
   "freeHeap": 123456,
   "uptime": 3600,
-  "device": "X4"
+  "device": "xteink_x4_pro"
 }
 ```
 
@@ -51,7 +50,7 @@ Response:
 | `rssi` | number | Wi-Fi RSSI in dBm; `0` in AP mode |
 | `freeHeap` | number | Free heap in bytes |
 | `uptime` | number | Seconds since boot |
-| `device` | string | `"X3"` or `"X4"` hardware detection |
+| `device` | string | The board profile's name (`BoardConfig::ACTIVE.name`): `"xteink_x4_pro"` |
 
 ## File Management
 
@@ -253,6 +252,11 @@ Successful response:
 Applied 2 setting(s)
 ```
 
+A key the firmware no longer has (a setting removed in v0.2 V8, such as `uiTheme`) is ignored: `{"uiTheme":0}`
+answers `Applied 0 setting(s)`. An enum is sent as an index into the `options` of today's `GET`, and
+`longPressMenuFunction`'s options changed in V8 (KOReader Sync went): reload the settings page after an update
+before saving, or a tab opened before it can send the index of another choice (Disabled read as Bookmark).
+
 ## Font Management API
 
 ### `GET /api/fonts`
@@ -317,53 +321,6 @@ Successful response:
 {"ok":true}
 ```
 
-## OPDS Server API
-
-### `GET /api/opds`
-
-Lists saved OPDS servers. Passwords are never returned.
-
-```bash
-curl http://lexipoint.local/api/opds
-```
-
-Response:
-
-```json
-[
-  {
-    "index": 0,
-    "name": "My Catalog",
-    "url": "http://calibre.local:8080/opds",
-    "username": "reader",
-    "hasPassword": true
-  }
-]
-```
-
-### `POST /api/opds`
-
-Adds or updates an OPDS server. Include `index` to update an existing entry.
-If `password` is omitted during an update, the existing password is preserved.
-
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"name":"My Catalog","url":"http://calibre.local:8080/opds","username":"reader","password":"secret"}' \
-  http://lexipoint.local/api/opds
-```
-
-### `POST /api/opds/delete`
-
-Deletes an OPDS server by index.
-
-```bash
-curl -X POST \
-  -H "Content-Type: application/json" \
-  -d '{"index":0}' \
-  http://lexipoint.local/api/opds/delete
-```
-
 ## Wi-Fi Credential API
 
 ### `GET /api/wifi`
@@ -415,8 +372,7 @@ curl -X POST \
 
 ### Port 81
 
-The WebSocket path is used for fast binary uploads from the file manager and
-Calibre plugin workflows.
+The WebSocket path is used for fast binary uploads from the file manager.
 
 Connection:
 
@@ -456,35 +412,6 @@ Error messages include:
 
 Incomplete WebSocket uploads are deleted on disconnect or error.
 
-## WebDAV
-
-The same HTTP server registers a WebDAV-compatible handler for file manager clients.
-
-Supported methods:
-
-```text
-OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL, MOVE, COPY, LOCK, UNLOCK
-```
-
-Notes:
-
-- `PUT` writes to a temporary `.davtmp` file first, then renames it into place.
-- Protected paths are rejected.
-- `LOCK` and `UNLOCK` are accepted for client compatibility only. The server
-  does not implement full WebDAV Class 2 locking semantics such as persistent
-  locks or lock discovery.
-
-## UDP Discovery
-
-The server listens on UDP port `8134`. When it receives the text payload
-`hello`, it replies to the sender with:
-
-```text
-crosspoint (on <hostname>);81
-```
-
-The final field is the WebSocket upload port.
-
 ## Network Modes
 
 ### Station Mode (STA)
@@ -500,7 +427,3 @@ The final field is the WebSocket upload port.
 - The fallback IP is typically `192.168.4.1`.
 - `/api/status` returns `"mode": "AP"` and `"rssi": 0`.
 
-### Calibre Wireless
-
-Calibre Wireless starts the same web server in STA mode and displays setup
-instructions plus WebSocket upload progress on the device screen.

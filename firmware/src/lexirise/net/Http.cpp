@@ -1,7 +1,6 @@
-#if LEXIRISE
-
 #include "Http.h"
 
+#include <algorithm>
 #include <cctype>
 
 namespace lexipoint::net {
@@ -87,12 +86,9 @@ bool parseBaseUrl(std::string_view url, Endpoint& out) {
     authority = authority.substr(0, colon);
   }
   if (authority.empty() || authority.front() == '.' || authority.front() == '-') return false;
-  for (const char c : authority) {
-    if (!isHostChar(c)) return false;
-  }
-  for (const char c : path) {
-    if (static_cast<unsigned char>(c) <= 0x20 || c == 0x7F) return false;
-  }
+  if (!std::all_of(authority.begin(), authority.end(), isHostChar)) return false;
+  const auto printable = [](const char c) { return static_cast<unsigned char>(c) > 0x20 && c != 0x7F; };
+  if (!std::all_of(path.begin(), path.end(), printable)) return false;
   result.host = std::string(authority);
   result.basePath = std::string(path);
   out = std::move(result);
@@ -392,5 +388,3 @@ void ResponseParser::onClose() {
 }
 
 }  // namespace lexipoint::net
-
-#endif  // LEXIRISE

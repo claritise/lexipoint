@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "CardInput.h"
 
 namespace lexipoint::card {
@@ -51,5 +49,3 @@ Outcome handleInput(CardController& controller, const ShownTargets& targets, con
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

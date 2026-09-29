@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "ReaderPageFor.h"
 
 #include <Epub/Page.h>
@@ -28,5 +26,3 @@ ReaderPage readerPageFor(GfxRenderer& renderer, const int fontId, const Page& pa
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

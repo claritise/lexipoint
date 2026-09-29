@@ -2,7 +2,6 @@
 
 #include <BoardConfig.h>
 #include <HalClock.h>
-#include <HalTiltSensor.h>
 #include <I18n.h>
 #include <SdCardFontRegistry.h>
 
@@ -13,13 +12,10 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
-#include "KOReaderCredentialStore.h"
 #include "ReaderFontSizes.h"
-#include "activities/settings/SettingsActivity.h"
+#include "SettingInfo.h"
+#include "lexirise/settings/LongPressMenu.h"
 #include "util/DictionaryRegistry.h"
-#if LEXIRISE
-#include "lexirise/settings/LongPressMenu.h"  // LEXIPOINT
-#endif
 
 // Build the font family setting dynamically. When registry is non-null, SD card fonts
 // are appended after the built-in fonts. Otherwise only built-in fonts are listed.
@@ -181,14 +177,6 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
   return s;
 }
 
-inline std::vector<StrId> buildLongPressMenuValues() {
-  static constexpr StrId VALUES[] = {StrId::STR_KOSYNC, StrId::STR_DISABLED, StrId::STR_BOOKMARK_OPTION,
-                                     StrId::STR_DICTIONARY, StrId::STR_READER_MENU};
-  const size_t count = BoardConfig::hasHomeKey() ? std::size(VALUES) : std::size(VALUES) - 1;
-  return {VALUES, VALUES + count};
-}
-
-#if LEXIRISE
 // LEXIPOINT: Long-press Menu without Dictionary (word select's lookup mode): lexirise/settings/LongPressMenu.h.
 static_assert(lexipoint::long_press_menu::kKoSync == CrossPointSettings::LP_MENU_KOSYNC &&
                   lexipoint::long_press_menu::kDisabled == CrossPointSettings::LP_MENU_DISABLED &&
@@ -196,14 +184,25 @@ static_assert(lexipoint::long_press_menu::kKoSync == CrossPointSettings::LP_MENU
                   lexipoint::long_press_menu::kDictionary == CrossPointSettings::LP_MENU_DICTIONARY &&
                   lexipoint::long_press_menu::kReaderMenu == CrossPointSettings::LP_MENU_READER_MENU,
               "LongPressMenu.h mirrors CrossPointSettings::LP_MENU_*");
+// A stored Long-press Menu value's label (only offered values are shown: KOReader Sync and Dictionary never are).
+inline StrId longPressMenuLabel(const uint8_t value) {
+  switch (value) {
+    case CrossPointSettings::LP_MENU_BOOKMARK:
+      return StrId::STR_BOOKMARK_OPTION;
+    case CrossPointSettings::LP_MENU_READER_MENU:
+      return StrId::STR_READER_MENU;
+    case CrossPointSettings::LP_MENU_DISABLED:
+    default:
+      return StrId::STR_DISABLED;
+  }
+}
 inline std::vector<StrId> lexiriseLongPressMenuLabels() {
-  const auto all = buildLongPressMenuValues();  // upstream's, where a stored value is its position
+  const auto offered = lexipoint::long_press_menu::offered(BoardConfig::hasHomeKey());
   std::vector<StrId> labels;
-  for (const uint8_t value : lexipoint::long_press_menu::offered(BoardConfig::hasHomeKey()))
-    labels.push_back(all[value]);
+  labels.reserve(offered.size());
+  std::transform(offered.begin(), offered.end(), std::back_inserter(labels), longPressMenuLabel);
   return labels;
 }
-#endif
 
 // Shared settings list used by both the device settings UI and the web settings API.
 // Each entry has a key (for JSON API) and category (for grouping).
@@ -254,16 +253,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
                           {StrId::STR_PAGES_1, StrId::STR_PAGES_5, StrId::STR_PAGES_10, StrId::STR_PAGES_15,
                            StrId::STR_PAGES_30, StrId::STR_NEVER},
                           "refreshFrequency", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Enum(StrId::STR_UI_THEME, &CrossPointSettings::uiTheme,
-                          {StrId::STR_THEME_CLASSIC, StrId::STR_THEME_LYRA, StrId::STR_THEME_LYRA_EXTENDED,
-                           StrId::STR_THEME_ROUNDEDRAFF},
-                          "uiTheme", StrId::STR_CAT_DISPLAY),
-        SettingInfo::Toggle(StrId::STR_SUNLIGHT_FADING_FIX, &CrossPointSettings::fadingFix, "fadingFix",
-                            StrId::STR_CAT_DISPLAY),
-#if FREEINK_CAP_FRONTLIGHT
         SettingInfo::Toggle(StrId::STR_RESTORE_LIGHT_ON_WAKE, &CrossPointSettings::frontlightRestoreOnWake,
                             "frontlightRestoreOnWake", StrId::STR_CAT_DISPLAY),
-#endif
         // Night mode = inverted output polarity everywhere (ActivityManager
         // applies it to every activity), so it lives in the Display category.
         SettingInfo::Toggle(StrId::STR_NIGHT_MODE, &CrossPointSettings::screenInverted, "screenInverted",
@@ -331,13 +322,10 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Enum(StrId::STR_SHOW_READER_MENU, &CrossPointSettings::showReaderMenu,
                           {StrId::STR_STATE_OFF, StrId::STR_STATE_TAP, StrId::STR_STATE_SWIPE_UP}, "tapForReaderMenu",
                           StrId::STR_CAT_CONTROLS),
-        SettingInfo::Toggle(StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION, &CrossPointSettings::frontButtonFollowOrientation,
-                            "frontButtonFollowOrientation", StrId::STR_CAT_CONTROLS),
         SettingInfo::Enum(StrId::STR_LONG_PRESS_BEHAVIOR, &CrossPointSettings::longPressButtonBehavior,
                           {StrId::STR_LONG_PRESS_BEHAVIOR_OFF, StrId::STR_LONG_PRESS_BEHAVIOR_SKIP,
                            StrId::STR_LONG_PRESS_BEHAVIOR_ORIENTATION},
                           "longPressButtonBehavior", StrId::STR_CAT_CONTROLS),
-#if LEXIRISE
         // LEXIPOINT: without Dictionary; saved by CrossPointSettings::toJson / fromJson (a dynamic entry).
         SettingInfo::DynamicEnum(
             StrId::STR_LONG_PRESS_MENU, lexiriseLongPressMenuLabels(),
@@ -348,25 +336,12 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
               SETTINGS.longPressMenuFunction = lexipoint::long_press_menu::valueAt(index, BoardConfig::hasHomeKey());
             },
             "longPressMenuFunction", StrId::STR_CAT_CONTROLS),
-#else
-        SettingInfo::Enum(StrId::STR_LONG_PRESS_MENU, &CrossPointSettings::longPressMenuFunction,
-                          buildLongPressMenuValues(), "longPressMenuFunction", StrId::STR_CAT_CONTROLS),
-#endif
-#if FREEINK_CAP_TOUCH
         SettingInfo::Enum(StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
                           {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH,
                            StrId::STR_FOOTNOTES, StrId::STR_CONFIRM},
                           "shortPwrBtn", StrId::STR_CAT_CONTROLS),
-#else
-        SettingInfo::Enum(
-            StrId::STR_SHORT_PWR_BTN, &CrossPointSettings::shortPwrBtn,
-            {StrId::STR_IGNORE, StrId::STR_SLEEP, StrId::STR_PAGE_TURN, StrId::STR_FORCE_REFRESH, StrId::STR_FOOTNOTES},
-            "shortPwrBtn", StrId::STR_CAT_CONTROLS),
-#endif
         SettingInfo::Toggle(StrId::STR_PWR_BTN_FOOTNOTE_BACK, &CrossPointSettings::pwrBtnFootnoteBack,
                             "pwrBtnFootnoteBack", StrId::STR_CAT_CONTROLS),
-        SettingInfo::Toggle(StrId::STR_BACK_SHORT_TO_FILE_BROWSER, &CrossPointSettings::backShortToFileBrowser,
-                            "backShortToFileBrowser", StrId::STR_CAT_CONTROLS),
 
         // --- System ---
         SettingInfo::Value(
@@ -382,71 +357,13 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_MOVE_FINISHED_TO_READ, &CrossPointSettings::moveFinishedToReadFolder,
                             "moveFinishedToReadFolder", StrId::STR_CAT_SYSTEM),
 
-        // OPDS download folder: persisted + web-exposed, but category-less so it
-        // is hidden from the on-device Settings screen (edited via OPDS UI).
-        SettingInfo::String(StrId::STR_OPDS_DOWNLOAD_FOLDER, &SETTINGS.opdsDownloadFolder[0],
-                            sizeof(SETTINGS.opdsDownloadFolder), "opdsDownloadFolder"),
-        // OPDS download filename format: persisted + web-exposed, category-less so it
-        // is hidden from the on-device Settings screen (cycled from the OPDS UI).
-        SettingInfo::Enum(StrId::STR_OPDS_FILENAME_FORMAT, &CrossPointSettings::opdsFilenameFormat,
-                          {StrId::STR_FMT_AUTHOR_TITLE, StrId::STR_FMT_TITLE_AUTHOR, StrId::STR_FMT_TITLE},
-                          "opdsFilenameFormat"),
-
         // Frontlight quick-panel state: persisted and web-exposed, but hidden
         // from the on-device Settings screen because the swipe panel owns it.
         SettingInfo::Value(StrId::STR_BRIGHTNESS, &CrossPointSettings::frontlightBrightness, {0, 100, 5},
                            "frontlightBrightness"),
-#if FREEINK_CAP_WARMLIGHT
         SettingInfo::Value(StrId::STR_WARMTH, &CrossPointSettings::frontlightWarmth, {0, 100, 5}, "frontlightWarmth"),
-#endif
         SettingInfo::Toggle(StrId::STR_FRONTLIGHT, &CrossPointSettings::frontlightOn, "frontlightOn"),
 
-        // --- KOReader Sync (web-only, uses KOReaderCredentialStore) ---
-        SettingInfo::DynamicString(
-            StrId::STR_KOREADER_USERNAME, [] { return KOREADER_STORE.getUsername(); },
-            [](const std::string& v) {
-              KOREADER_STORE.setCredentials(v, KOREADER_STORE.getPassword());
-              KOREADER_STORE.saveToFile();
-            },
-            "koUsername", StrId::STR_KOREADER_SYNC),
-        SettingInfo::DynamicString(
-            StrId::STR_KOREADER_PASSWORD, [] { return KOREADER_STORE.getPassword(); },
-            [](const std::string& v) {
-              KOREADER_STORE.setCredentials(KOREADER_STORE.getUsername(), v);
-              KOREADER_STORE.saveToFile();
-            },
-            "koPassword", StrId::STR_KOREADER_SYNC),
-        SettingInfo::DynamicString(
-            StrId::STR_SYNC_SERVER_URL, [] { return KOREADER_STORE.getServerUrl(); },
-            [](const std::string& v) {
-              KOREADER_STORE.setServerUrl(v);
-              KOREADER_STORE.saveToFile();
-            },
-            "koServerUrl", StrId::STR_KOREADER_SYNC),
-        SettingInfo::DynamicEnum(
-            StrId::STR_DOCUMENT_MATCHING, {StrId::STR_FILENAME, StrId::STR_BINARY},
-            [] { return static_cast<uint8_t>(KOREADER_STORE.getMatchMethod()); },
-            [](uint8_t v) {
-              KOREADER_STORE.setMatchMethod(static_cast<DocumentMatchMethod>(v));
-              KOREADER_STORE.saveToFile();
-            },
-            "koMatchMethod", StrId::STR_KOREADER_SYNC),
-        SettingInfo::DynamicEnum(
-            StrId::STR_SEND_METADATA, {StrId::STR_STATE_OFF, StrId::STR_STATE_ON},
-            [] { return static_cast<uint8_t>(KOREADER_STORE.getSendMetadata()); },
-            [](uint8_t v) {
-              KOREADER_STORE.setSendMetadata(v != 0);
-              KOREADER_STORE.saveToFile();
-            },
-            "koSendMetadata", StrId::STR_KOREADER_SYNC),
-        SettingInfo::DynamicEnum(
-            StrId::STR_SYNC_BEHAVIOR, {StrId::STR_ASK_EVERY_TIME, StrId::STR_SMART_SYNC},
-            [] { return static_cast<uint8_t>(KOREADER_STORE.getSyncBehavior()); },
-            [](uint8_t v) {
-              KOREADER_STORE.setSyncBehavior(static_cast<KOReaderSyncBehavior>(v));
-              KOREADER_STORE.saveToFile();
-            },
-            "koSyncBehavior", StrId::STR_KOREADER_SYNC),
         // --- Status Bar Settings (web-only, uses StatusBarSettingsActivity) ---
         SettingInfo::Toggle(StrId::STR_CHAPTER_PAGE_COUNT, &CrossPointSettings::statusBarChapterPageCount,
                             "statusBarChapterPageCount", StrId::STR_CUSTOMISE_STATUS_BAR),
@@ -480,51 +397,10 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
         SettingInfo::Toggle(StrId::STR_CLOCK_SYNCED, &CrossPointSettings::clockHasBeenSynced, "clockHasBeenSynced",
                             StrId::STR_CUSTOMISE_STATUS_BAR),
     };
-    // Only show tilt page turn setting when the QMI8658 IMU is present (X3)
-    if (halTiltSensor.isAvailable()) {
-      // Insert after the short power button setting (end of Controls section)
-      for (auto it = v.begin(); it != v.end(); ++it) {
-        if (it->nameId == StrId::STR_SHORT_PWR_BTN) {
-          v.insert(it + 1, SettingInfo::Enum(StrId::STR_TILT_PAGE_TURN, &CrossPointSettings::tiltPageTurn,
-                                             {StrId::STR_STATE_OFF, StrId::STR_NORMAL, StrId::STR_INVERTED},
-                                             "tiltPageTurn", StrId::STR_CAT_CONTROLS));
-          break;
-        }
-      }
-    }
     return v;
   }();
 
   std::vector<SettingInfo> v = baseList;
-  if (!BoardConfig::hasTouch()) {
-    // The toolbar reader menu is touch-first chrome: button boards keep the
-    // classic list menu, so the style choice is hidden along with the touch
-    // controls.
-    v.erase(std::remove_if(v.begin(), v.end(),
-                           [](const SettingInfo& s) {
-                             return s.nameId == StrId::STR_TOUCH_READER_CONTROLS ||
-                                    s.nameId == StrId::STR_READER_MENU_STYLE;
-                           }),
-            v.end());
-  }
-  // The reader-menu gesture choice only makes sense where the menu stays
-  // reachable without the tap and the bottom edge is free (the capacitive
-  // Home key); everywhere else the bottom-edge up-swipe is Home and the
-  // center tap is the primary path, so the setting stays at its Tap default.
-  if (!BoardConfig::hasHomeKey()) {
-    v.erase(std::remove_if(v.begin(), v.end(),
-                           [](const SettingInfo& s) { return s.nameId == StrId::STR_SHOW_READER_MENU; }),
-            v.end());
-  }
-  if (BoardConfig::hasTouch()) {
-    v.erase(std::remove_if(v.begin(), v.end(),
-                           [](const SettingInfo& s) {
-                             return s.nameId == StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION ||
-                                    s.nameId == StrId::STR_SUNLIGHT_FADING_FIX ||
-                                    s.nameId == StrId::STR_BACK_SHORT_TO_FILE_BROWSER;
-                           }),
-            v.end());
-  }
   if (registry && registry->getFamilyCount() > 0) {
     auto it = std::find_if(v.begin(), v.end(), [](const SettingInfo& s) { return s.nameId == StrId::STR_FONT_FAMILY; });
     if (it != v.end()) {

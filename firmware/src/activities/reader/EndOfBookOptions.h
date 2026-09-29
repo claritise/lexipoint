@@ -43,7 +43,7 @@ class EndOfBookOptions : private UiAppHost {
 
  private:
   // The UiAppHost base hosts the suggestion list (themed rows, touch routing);
-  // the title and button hints stay on the legacy UITheme calls.
+  // the title stays on the legacy UITheme calls.
   static void listScreen(UiScreen& screen, void* user);
   static void onRowEvent(const freeink::ui::ActionEvent& event, void* user);
   void buildListScreen(UiScreen& screen);

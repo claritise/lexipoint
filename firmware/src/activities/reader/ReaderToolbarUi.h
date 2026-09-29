@@ -41,10 +41,10 @@ class ReaderToolbarUi : public UiAppHost {
     // Tile row: the tool in focus (toolbar) / the open panel (panel). 0..2.
     int activeTool = 0;
     // Pixels kept free along the screen's bottom edge under the panel sheet
-    // (the button-hint row on boards without touch). 0 on touch boards.
+    // (buttonHintsHeight when touch is unavailable: 0 since v0.2 V8 R7, no legend is drawn).
     int bottomReserve = 0;
-    // Button boards keep the theme's denser list row height (as every other
-    // list does there); touch boards use FreeInkUI's finger-sized rows.
+    // Without touch the theme's denser list row height is kept (as every other
+    // list does then); with touch FreeInkUI's finger-sized rows are used.
     bool denseRows = false;
   };
 

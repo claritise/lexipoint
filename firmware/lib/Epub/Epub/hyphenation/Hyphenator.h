@@ -28,8 +28,7 @@ class Hyphenator {
   //      A direct break at the apostrophe boundary is allowed only when the left
   //      segment has at least 3 letters and the right segment has at least 3 letters,
   //      avoiding short clitics (e.g. l', d') and contraction tails (e.g. 've, 're, 'll).
-  //   3. Language-specific Liang patterns (e.g. German de_patterns).
-  //      Example: "Quadratkilometer" -> Qua|drat|ki|lo|me|ter.
+  //   3. Language-specific Liang patterns (LEXIPOINT, v0.2 V8: English's en_patterns only).
   //   4. Fallback every-N-chars splitting (only when includeFallback is true AND no
   //      pattern breaks were found). Used as a last resort to prevent a single oversized
   //      word from overflowing the page width.

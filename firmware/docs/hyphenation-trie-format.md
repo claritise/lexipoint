@@ -45,7 +45,7 @@ byte arrays, and emits headers under
 `SerializedHyphenationPatterns` descriptor so the reader can keep the automaton
 in flash.
 
-A convenient script `update_hyphenation.sh` is used to update all languages.
+A convenient script `update_hyphenation.sh` updates English's trie, the only one kept (v0.2 V8).
 To use it, run:
 
 ```sh

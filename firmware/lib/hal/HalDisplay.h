@@ -31,9 +31,8 @@ class HalDisplay {
   // Pass seamless=true on any path where the panel already shows the
   // content it should after begin() returns (silent reboot's popup,
   // sleep-wake with a restored buffer). Skips the wakeup-gated
-  // requestResync() and defuses the SDK's X3 _x3InitialFullSyncsRemaining
-  // counter; otherwise the first two paints get promoted to FULL
-  // (~770ms each on X3).
+  // requestResync(), so the first paint isn't promoted to FULL (the SDK's X3
+  // counter it also defuses is a no-op on the X4 Pro).
   void begin(bool seamless = false);
 
   // Display dimensions

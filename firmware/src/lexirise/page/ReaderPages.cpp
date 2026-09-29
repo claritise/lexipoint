@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "ReaderPages.h"
 
 #include <Epub/Page.h>
@@ -156,5 +154,3 @@ void ReaderPages::step(Section& section, const int spine, const Drawn& drawn, co
 }
 
 }  // namespace lexipoint::page
-
-#endif  // LEXIRISE

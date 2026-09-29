@@ -22,6 +22,7 @@
 // plus the store; tests: test/lexirise_vocab.
 
 #include <cstdint>
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -296,7 +297,7 @@ class VocabStore {
     Mirror mirror;
     RunState run;
   };
-  Slot& slot(Language language) { return slots_[language == Language::Japanese ? 0 : 1]; }
+  Slot& slot(Language language) { return slots_[languageSlot(language)]; }
   void loadLocked(Language language);  // requires mutex_
   bool writeLocked(Language language);
   bool budgetLeftLocked(unsigned long nowMs);
@@ -304,7 +305,7 @@ class VocabStore {
   SettingsFiles& files_;
   EpochClock clock_ = nullptr;
   std::mutex mutex_;
-  Slot slots_[2];
+  Slot slots_[std::size(kLanguages)];
   bool cardProbeDueLocked(Language language, unsigned long nowMs);
   std::vector<unsigned long> pageTimes_;          // pages fetched in the last hour
   std::vector<unsigned long> manualTimes_;        // the home screen's sync's pages in the last hour

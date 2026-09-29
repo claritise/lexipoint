@@ -134,14 +134,10 @@ void IntervalSelectionActivity::loop() {
   buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Left}, [this] { adjustValue(-smallStep); });
   buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Right}, [this] { adjustValue(smallStep); });
 
-  // On edge-button boards (X3, X4 Pro) the side buttons sit on the left/right edges of the screen rather
-  // than as a vertical up/down rocker (X4), so BTN_UP is physically the left button and BTN_DOWN the right
-  // one. Flip the large-step direction there so the left button decreases and the right button increases.
-  const int upDelta = gpio.hasEdgeSideButtons() ? -largeStep : largeStep;
-  const int downDelta = gpio.hasEdgeSideButtons() ? largeStep : -largeStep;
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this, upDelta] { adjustValue(upDelta); });
-  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down},
-                                       [this, downDelta] { adjustValue(downDelta); });
+  // The X4 Pro's side buttons sit on the left/right edges of the screen, so BTN_UP is physically the left
+  // button and BTN_DOWN the right one: the left button decreases and the right button increases.
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Up}, [this] { adjustValue(-largeStep); });
+  buttonNavigator.onPressAndContinuous({MappedInputManager::Button::Down}, [this] { adjustValue(largeStep); });
 }
 
 void IntervalSelectionActivity::formatValue(char* buffer, const size_t size, const int forValue) const {
@@ -200,9 +196,6 @@ void IntervalSelectionActivity::render(RenderLock&&) {
   // Value readout, slider, hints, and the touch Cancel/OK pair render through the
   // app so the interactive elements register touch hit rects.
   renderUi();
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "-", "+");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
 }

@@ -348,9 +348,8 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
   screen.sheet(sheetProps, static_cast<int16_t>(panelBottom));
   screen.insetContent(fui::Insets{0, kPanelSideMargin, 0, kPanelSideMargin});
 
-  // Reuse the exact battery renderer and header rectangle used by Home. Call
-  // the base implementation directly because RoundedRaff suppresses its
-  // untitled Home header.
+  // Reuse the exact battery renderer and header rectangle used by Home (the base
+  // implementation, called directly).
   {
     const auto& metrics = UITheme::getInstance().getMetrics();
     screen.spacer(theme.spaceMd);

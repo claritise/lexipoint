@@ -1,7 +1,6 @@
-#if LEXIRISE
-
 #include "WebApi.h"
 
+#include <algorithm>
 #include <iterator>
 
 #include "lexirise/LexiriseConfig.h"
@@ -81,12 +80,9 @@ class PatchVisitor final : public json::Visitor {
         "baseUrl", "ja",  "zh",       "ja.enabled",      "ja.reading", "ja.stardict", "zh.enabled",  "zh.stardict"};
     std::string name = path.at(0).key;
     if (path.depth() >= 2 && !path.isIndex(1)) name += "." + path.at(1).key;
-    for (const char* field : kFields) {
-      if (name == field) {
-        error = field;
-        return;
-      }
-    }
+    const auto field =
+        std::find_if(std::begin(kFields), std::end(kFields), [&name](const char* f) { return name == f; });
+    if (field != std::end(kFields)) error = *field;
   }
 
   bool readBool(const Path& path, const Type type, const std::string_view text, std::optional<bool>& field) {
@@ -235,5 +231,3 @@ std::string errorJson(const char* error, const char* field) {
 }
 
 }  // namespace lexipoint::web
-
-#endif  // LEXIRISE

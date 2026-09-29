@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "CardLayout.h"
 
 #include <Utf8.h>
@@ -798,7 +796,7 @@ class Layout {
   void actions(Flow& f) {
     std::vector<std::string> rows;
     if (s_.level != Level::None) rows.emplace_back(str_.actionUndo);
-    for (const char* a : str_.actions) rows.emplace_back(a);
+    rows.insert(rows.end(), std::begin(str_.actions), std::end(str_.actions));
     const int h = 2 * m::kActionFrame + 2 * m::kActionPadV + lh(Font::UiSmall);
     for (size_t i = 0; i < rows.size(); i++) {
       if (!f.room(h)) return;
@@ -849,5 +847,3 @@ DisplayList layoutCard(const CardWord& word, const CardState& state, const TextM
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

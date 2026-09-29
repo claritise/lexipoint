@@ -767,8 +767,8 @@ options); 6 (seeding the clock from the RTC is outside V7c's line and needs the 
 pack); caching `GET /v1/vocabulary/{id}` (a saved word's own data: the mirror's domain).
 
 **Device checks owed with the build** (`../v0.1/device-checks.md` "v0.2 V7c", written by the build): a full and a
-resumed handshake's time and heap (free, lowest, largest), the first call after boot and one after 30 s idle; OTA,
-KOSync and a font download still connect with the flag; a hit's phase B time and a bucket's read and write times; a
+resumed handshake's time and heap (free, lowest, largest), the first call after boot and one after 30 s idle; OTA~~,
+KOSync and a font download~~ (superseded 2026-09-29: KOSync and the font download went in V8) still connects with the flag; a hit's phase B time and a bucket's read and write times; a
 card on an analyzed page whose word hits makes no call and doesn't join WiFi; the hit count over a reading session.
 
 **Also in V7c** (carried from V7b's review, its landing commit): `page-annotations.md` §1.2's "16-byte record" lines
@@ -817,7 +817,7 @@ page); a page stamped before its call when the clock is set; `home-sync-smoke` w
   that copy), and one closed before its NewSessionTicket would hold the old ticket with the new secret,
   so it keeps nothing and the next open is full, never a failed resumption; a session wolfSSL refuses to offer
   (expired) is dropped and not retried, `Attempted::refused`). **R2:** the kept session is dropped when WiFi is given back (`LexiriseService::
-  releaseWifi`: leaving reading, where OTA, fonts and KOSync want the internal RAM, and a home sync's end;
+  releaseWifi`: leaving reading, where OTA~~, fonts and KOSync~~ want~~s~~ the internal RAM (superseded 2026-09-29: V8 removed the others), and a home sync's end;
   `Connection::forgetSession`), not on the idle close or the radio's idle teardown while reading. **Cost, measured
   2026-09-28** (`pio run -e x4pro`, this code with and without the flag): 4,292 bytes of flash
   and 192 bytes of static RAM (the flag's ticket code and wolfSSL's one-session client cache growing by the ticket
@@ -825,13 +825,13 @@ page); a page stamped before its call when the clock is set; `home-sync-smoke` w
   static session cache row's size from `nm`; to measure on the device).
   The rest of V7c (the lemma cache, the nits) adds 8,108 bytes of flash and 88 of static RAM (`x4pro`, against `main` @
   `035313a1`).
-- **The flag reaches every wolfSSL user in the X4 Pro builds** (OTA, KOSync, font downloads through the SDK's
-  `SecureClient`): ~~their TLS 1.3 ClientHello now offers PSK key-exchange modes and~~ (struck 2026-09-28, V7c R8: it
+- **The flag reaches every wolfSSL user in the X4 Pro builds** (OTA~~, KOSync, font downloads~~ through the SDK's
+  `SecureClient`; superseded 2026-09-29: V8 removed KOSync and the font download, OTA is the only one left): ~~their TLS 1.3 ClientHello now offers PSK key-exchange modes and~~ (struck 2026-09-28, V7c R8: it
   offered them already, `NO_PSK` isn't set) they now parse a server's NewSessionTickets, and the tickets are stored in
   wolfSSL's one-session cache, and every connection's heap `WOLFSSL_SESSION` grows by 192 bytes (the ticket buffer); none of them asks for a session back (`SecureClient` never calls `wolfSSL_set_session`),
   so they still handshake in full. Device checks below. (R4: so a
   server's ticket longer than wolfSSL's static `SESSION_TICKET_LEN` is held on the heap in its one-row client session
-  cache after an OTA check, a KOSync sync or a font download: a few hundred bytes, which the existing heap device checks
+  cache after an OTA check~~, a KOSync sync or a font download~~: a few hundred bytes, which the existing heap device checks
   see).
 - **V7b's carried nits:** §1.2's record size and "the live answer wins" struck in place (`page-annotations.md`);
   `kVocabPendingMax`'s comment (28 B); §1.1 (e) superseded; `ReaderPages::step` returns on the cheap gates (drawn, usable,
@@ -866,9 +866,13 @@ page); a page stamped before its call when the clock is set; `home-sync-smoke` w
   tears down without keeping (`TlsConnection::teardown`), so the keeper's offered pointer stays valid; an idle step run
   for the cache doesn't retry the mirror's failed write (the close does); the flush order lives in
   `CardSession::flushFiles` (the activity only logs); `Fetched` carries the read's log (`CacheReadLog`), not its entry.
-  **Known limit (R6):** the cache isn't keyed by account; `translation_target` is account-wide
+  ~~**Known limit (R6):** the cache isn't keyed by account; `translation_target` is account-wide
   (`../reference/lexirise-api-notes.md`), so another account on the same card with another target language sees the
-  cached senses in the old one for up to 30 days.
+  cached senses in the old one for up to 30 days.~~ **Superseded 2026-09-29 (V8, a carried nit):** the cache is keyed
+  by account. A bucket's header (20 bytes, format 2) holds `lookup::accountTag`, FNV-1a 32 of the API key (the
+  request can't name the target, the key's account sets it): a bucket written under another key reads as empty and
+  stays until that bucket's next write, which drops the other account's answers; a format-1 file reads as malformed
+  (removed, a miss). Tests: `LookupCacheAccountTest`.
 - **R8 (2026-09-28):** the fallback to a full handshake fits one open's budget: `TlsConnection::open` sets a deadline
   of a TCP connect and a handshake (`2 * kHttpTimeoutMs`, as `kMaxCallMs` counts them), each step stops by it, and the
   fallback runs only with `config::kTlsFallbackMinMs` (~~3 s~~ 4 s since R9: a full handshake with its TCP connect took
@@ -882,6 +886,14 @@ page); a page stamped before its call when the clock is set; `home-sync-smoke` w
   `CardSession::flushFiles(closing)` writes both and never reads the mirror); `config::kTlsOpenBudgetMs` names the open's
   budget (`kMaxCallMs` uses it); the pending answers aren't reserved for the whole card (a card that looks nothing up
   holds none); the cache's folders made once per write.
+- **V7c's carried nits, done in V8 (2026-09-29):** the cache keyed by account (the Known limit above); a mirror write
+  that fails is logged as such (`[LXVOCAB] mirror file not written (write failed) in <ms> ms`, `CardSession::FilesFlushed
+  ::mirrorFailed`); the idle time starts again when the idle Flush step ends, not when it started
+  (`CardSession::flushFiles`); the cache's once-per-language folder flags sized by `kLanguages`;
+  `certificateRejected`'s errors commented; a note at the wolfSSL pin (`platformio.ini`) to recheck `ticketSeen` /
+  `ticketLen` on a bump; `lxctl.py`'s `CACHE_SECOND_WORD_DY`; a Service test for the home sync's end forgetting the
+  session; the resumed connection's heap owed on the device. The two questions for claritise stay open (a stale cached
+  meaning as an offline fallback; "Synced · 0 words changed" on a capped run).
 - **Device checks owed:** `../v0.1/device-checks.md` "v0.2 V7c".
 
 ## C22. One font for everything

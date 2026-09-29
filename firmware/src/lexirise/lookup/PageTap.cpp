@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "PageTap.h"
 
 #include <Epub/Page.h>
@@ -63,5 +61,3 @@ void logTap(const text::TapContext& context) {
 }
 
 }  // namespace lexipoint::lookup
-
-#endif  // LEXIRISE

@@ -5,7 +5,8 @@
 // isn't offered, since a long-press on a word looks it up. The setting keeps CrossPoint's stored values
 // (CrossPointSettings::LP_MENU_*, mirrored below and checked in SettingsList.h), so its file stays compatible;
 // the screens show the other choices, and a stored Dictionary reads as Reader Menu (Disabled on a board
-// without a Home key, where Reader Menu isn't offered). Pure; tests: test/lexirise_settings/LongPressMenuTest.cpp.
+// without a Home key, where Reader Menu isn't offered). KOReader Sync went in v0.2 V8 (docs/v0.2/slimming.md): a
+// stored KOReader Sync reads as Disabled. Pure; tests: test/lexirise_settings/LongPressMenuTest.cpp.
 
 #include <cstddef>
 #include <cstdint>
@@ -14,30 +15,32 @@
 namespace lexipoint::long_press_menu {
 
 // CrossPointSettings::LP_MENU_* (CrossPoint's stored values).
-constexpr uint8_t kKoSync = 0;
+constexpr uint8_t kKoSync = 0;  // removed (V8): read as Disabled
 constexpr uint8_t kDisabled = 1;
 constexpr uint8_t kBookmark = 2;
 constexpr uint8_t kDictionary = 3;
 constexpr uint8_t kReaderMenu = 4;
 
-// The stored values offered, in CrossPoint's order without Dictionary; Reader Menu only with a Home key.
+// The stored values offered, in CrossPoint's order without KOReader Sync and Dictionary; Reader Menu only with a
+// Home key.
 inline std::vector<uint8_t> offered(const bool hasHomeKey) {
-  std::vector<uint8_t> values = {kKoSync, kDisabled, kBookmark};
+  std::vector<uint8_t> values = {kDisabled, kBookmark};
   if (hasHomeKey) values.push_back(kReaderMenu);
   return values;
 }
 
-// What a stored value means now: Dictionary (or anything not offered) becomes Reader Menu, or Disabled
-// without a Home key.
+// What a stored value means now: KOReader Sync becomes Disabled; Dictionary (or anything else not offered) becomes
+// Reader Menu, or Disabled without a Home key.
 inline uint8_t migrated(const uint8_t stored, const bool hasHomeKey) {
   for (const uint8_t value : offered(hasHomeKey)) {
     if (value == stored) return stored;
   }
+  if (stored == kKoSync) return kDisabled;
   return hasHomeKey ? kReaderMenu : kDisabled;
 }
 
-// Loading the setting: its value now, and whether the file must be rewritten (it held Dictionary, or a value
-// no choice has).
+// Loading the setting: its value now, and whether the file must be rewritten (it held KOReader Sync or
+// Dictionary, or a value no choice has).
 struct Loaded {
   uint8_t value;
   bool resave;

@@ -4,8 +4,6 @@ add_executable(LexiriseLayoutTest
   ${REPO_ROOT}/test/chapter_html_slim_parser/ParserLinkStubs.cpp
   ${REPO_ROOT}/lib/Epub/Epub/Page.cpp
   ${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
-  ${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp
-  ${REPO_ROOT}/lib/MiniBidi/minibidi.c
   ${REPO_ROOT}/lib/Epub/Epub/parsers/ChapterHtmlSlimParser.cpp
   ${REPO_ROOT}/lib/Epub/Epub/css/CssParser.cpp
   ${REPO_ROOT}/lib/Epub/Epub/ParsedText.cpp
@@ -16,7 +14,6 @@ add_executable(LexiriseLayoutTest
   ${REPO_ROOT}/src/lexirise/text/Punctuation.cpp
 )
 
-target_compile_definitions(LexiriseLayoutTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseLayoutTest PRIVATE
   ${REPO_ROOT}/test/chapter_html_slim_parser/stubs
@@ -30,7 +27,6 @@ target_include_directories(LexiriseLayoutTest PRIVATE
   ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/lib/Memory
   ${REPO_ROOT}/lib/Serialization
-  ${REPO_ROOT}/lib/MiniBidi
   ${REPO_ROOT}/lib/FsHelpers
   ${REPO_ROOT}/lib/XmlParserUtils
 )

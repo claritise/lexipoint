@@ -1,4 +1,4 @@
-// LEXIPOINT: with LEXIRISE the prewarm scan takes every font the card draws with (popup-ui.md §1.1: the
+// LEXIPOINT: the prewarm scan takes every font the card draws with (popup-ui.md §1.1: the
 // page, 3 UI and 3 reader sizes), so none of them falls back to loading glyphs one by one from SD.
 
 #include <gtest/gtest.h>

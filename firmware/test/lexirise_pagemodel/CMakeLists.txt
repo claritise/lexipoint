@@ -7,12 +7,9 @@ add_executable(LexirisePageModelTest
   ${REPO_ROOT}/src/lexirise/text/Punctuation.cpp
   ${REPO_ROOT}/lib/Epub/Epub/Page.cpp
   ${REPO_ROOT}/lib/Epub/Epub/blocks/TextBlock.cpp
-  ${REPO_ROOT}/lib/MiniBidi/BidiUtils.cpp
-  ${REPO_ROOT}/lib/MiniBidi/minibidi.c
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexirisePageModelTest PRIVATE LEXIRISE=1)
 
 # Page/TextBlock build on the host with the parser suite's Arduino/renderer stubs.
 target_include_directories(LexirisePageModelTest PRIVATE
@@ -25,7 +22,6 @@ target_include_directories(LexirisePageModelTest PRIVATE
   ${REPO_ROOT}/lib/Utf8
   ${REPO_ROOT}/lib/Memory
   ${REPO_ROOT}/lib/Serialization
-  ${REPO_ROOT}/lib/MiniBidi
   ${REPO_ROOT}/lib/FsHelpers
 )
 

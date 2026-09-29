@@ -13,7 +13,6 @@ add_executable(LexiriseDeckTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseDeckTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseDeckTest PRIVATE
   ${REPO_ROOT}/src

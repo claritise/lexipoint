@@ -233,7 +233,11 @@ class Checks(unittest.TestCase):
     def test_the_asset_is_what_the_updater_looks_for(self):
         self.assertEqual(publish_release.asset_name("1.6.5-lexi.2"), "lexipoint-1.6.5-lexi.2-x4pro.bin")
         with open(publish_release.CONFIG_H, encoding="utf-8") as f:
-            self.assertIn(f'kReleaseAssetPrefix = "{release_tag.ASSET_PREFIX}";', f.read())
+            config = f.read()
+        self.assertIn(f'kReleaseAssetPrefix = "{release_tag.ASSET_PREFIX}";', config)
+        # V8 R7: the device builds <prefix><tag><suffix> (lexirise/ota/ReleaseAsset.h, test/lexirise_ota).
+        self.assertIn(f'kReleaseAssetSuffix = "-{publish_release.DEVICE}.bin";', config)
+        self.assertIn(f"kReleaseAssetNameBytes = {release_tag.ASSET_NAME_BYTES};", config)
         longest = "9" * release_tag.MAX_TAG_LENGTH  # the longest tag still fits the updater's asset-name buffer
         self.assertEqual(len(publish_release.asset_name(longest)) + 1, release_tag.ASSET_NAME_BYTES)
 

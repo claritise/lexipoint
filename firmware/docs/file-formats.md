@@ -90,6 +90,19 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 47
+
+Version 47 (Lexipoint, v0.2 V8) keeps the version 46 serialized layout
+unchanged. It was bumped because the slimming removed MiniBidi: text is no
+longer bidi-reordered or Arabic-shaped (`getTextAdvanceX` and `drawText`
+measure and draw the logical text, and `ParsedText` no longer reorders RTL
+words; a paragraph whose direction is rtl keeps its words left to right, pushed to
+the right margin, as MiniBidi placed a line with no Hebrew or Arabic), and
+hyphenation is English only, so word positions cached by v46 for Hebrew or Arabic
+text or hyphenated non-English text no longer match. (V8 R5 fixed how an rtl
+paragraph was placed without a bump: 47 was never released.) The partial
+sentinel follows by formula (`0xFE - (47 - 28)` = `0xEB`).
+
 ### Version 46
 
 Version 46 keeps the version 45 serialized layout unchanged. It was bumped
@@ -388,6 +401,15 @@ if (parsedSize != fileSize) {
     std::warning(std::format("Unparsed data detected: {} bytes remaining at offset 0x{:X}", fileSize - parsedSize, parsedSize));
 }
 ```
+
+## TXT page index (`.crosspoint/txt_<hash>/index.bin`, `TXTI`)
+
+### Version 4
+
+Version 4 (Lexipoint, v0.2 V8) keeps version 3's layout. It was bumped because
+the slimming removed MiniBidi: a right-to-left line was measured on its shaped,
+reordered form, so page breaks cached by version 3 for such text no longer match
+what the reader draws.
 
 ## CLX1 — library index (`.crosspoint/library.idx`)
 

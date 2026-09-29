@@ -66,7 +66,7 @@ Never invoke or probe `clang-format` directly. The repository wrapper is the onl
 2. Heap Fragmentation: Avoid repeated new/delete in loops. Allocate buffers once during onEnter() and reuse them.
 3. Flash Persistence: Large constant data (UI strings, lookup tables) MUST be marked static const to stay in Flash (Instruction Bus), freeing DRAM.
 4. String Policy: Prohibit std::string and Arduino String in hot paths. Use std::string_view for read-only access and snprintf with fixed char[] buffers for construction.
-5. UI Strings: All user-facing text must use the `tr()` macro (e.g., `tr(STR_LOADING)`) for i18n support. Never hardcode UI strings directly. For the avoidance of doubt, logging messages (LOG_DBG/LOG_ERR) can be hardcoded, but user-facing text must use `tr()`.
+5. UI Strings: All user-facing text must use the `tr()` macro (e.g., `tr(STR_LOADING)`); the UI is English only, and every string has one home in `english.yaml`. Never hardcode UI strings directly. For the avoidance of doubt, logging messages (LOG_DBG/LOG_ERR) can be hardcoded, but user-facing text must use `tr()`.
 6. `constexpr` First: Compile-time constants and lookup tables must be `constexpr`, not just `static const`. This moves computation to compile time, enables dead-branch elimination, and guarantees flash placement. Use `static constexpr` for class-level constants.
 7. `std::vector` Pre-allocation: Always call `.reserve(N)` before any `push_back()` loop. Each growth event allocates a new block (2×), copies all elements, then frees the old one — three heap operations that fragment DRAM. When the final size is unknown, estimate conservatively.
 8. SD Persistence Throttling: Settings, state, credentials, and other `PersistableStore` JSON files live on SD under `/.crosspoint/` through `HalStorage`; SPIFFS is not mounted. Guard redundant writes and debounce progress saves to avoid serialization, SD I/O, and `storageMutex` cost.
@@ -114,7 +114,6 @@ Never invoke or probe `clang-format` directly. The repository wrapper is the onl
   * `x4pro`: Development (LOG_LEVEL=2, serial enabled, the dev harness `LEXIPOINT_DEV_HARNESS`)
   * `x4pro-gh_release`: Production (LOG_LEVEL=1, no dev harness)
   * `x4pro-gh_release_rc`: Release candidate (LOG_LEVEL=1)
-  * `x4pro-lexirise-off`: checks only (never flashed): proves every `LEXIRISE` hook in a base file compiles out
 
 ### Critical Build Flags
 
@@ -154,7 +153,7 @@ These flags in `platformio.ini` fundamentally affect firmware behavior:
 
 * lib/: Internal libraries (Epub engine, GfxRenderer, UITheme, I18n)
   * lib/hal/: Hardware Abstraction Layer (HalDisplay, HalGPIO, HalStorage)
-  * lib/I18n/: Internationalization (translations in `translations/*.yaml`, generated string tables)
+  * lib/I18n/: UI strings (`translations/english.yaml`, generated string tables; English only since v0.2 V8)
 * src/activities/: UI logic using the Activity Lifecycle (onEnter, loop, onExit)
 * freeink-sdk/: Low-level SDK (EInkDisplay, InputManager, BatteryMonitor, SDCardManager)
 * .crosspoint/: SD-based binary cache for EPUB metadata and pre-rendered layout sections
@@ -413,42 +412,19 @@ sdkApiThatTakesOwnership(obj);  // SDK calls delete
 
 ### Logical Button Mapping
 
-**Source**: [src/MappedInputManager.cpp:20-55](src/MappedInputManager.cpp)
+**Source**: [src/MappedInputManager.cpp](src/MappedInputManager.cpp)
 
-Constraint: Physical button positions are fixed on hardware, but their logical functions change based on user settings and screen orientation.
+Activities read logical buttons (`MappedInputManager::Button::*`); `MappedInputManager` maps them to the X4 Pro's
+inputs:
 
-**Button Categories**:
+1. **Side buttons**: `Button::Up` → `HalGPIO::BTN_UP`, `Button::Down` → `HalGPIO::BTN_DOWN`.
+2. **Back / Confirm / Left / Right** → `HalGPIO::BTN_BACK` / `BTN_CONFIRM` / `BTN_LEFT` / `BTN_RIGHT` (fixed: the
+   front-button remap went in v0.2 V8). `Button::Back` is also the left-edge swipe; `Button::Confirm` also the power
+   button's click when Short Power Button is Confirm.
+3. **Reader page turns**: `Button::PageBack` / `Button::PageForward` use the side buttons, swapped by
+   `SETTINGS.sideButtonLayout` and by the live orientation (INVERTED / LANDSCAPE_CCW flip the axis).
 
-1. **Physical Fixed** (Up/Down side buttons):
-   
-   - `Button::Up` → Always `HalGPIO::BTN_UP`
-   
-   - `Button::Down` → Always `HalGPIO::BTN_DOWN`
-
-2. **User Remappable** (Front buttons):
-   
-   - `Button::Back` → Maps to `SETTINGS.frontButtonBack` (hardware index)
-   
-   - `Button::Confirm` → Maps to `SETTINGS.frontButtonConfirm`
-   
-   - `Button::Left` → Maps to `SETTINGS.frontButtonLeft`
-   
-   - `Button::Right` → Maps to `SETTINGS.frontButtonRight`
-
-3. **Reader-Specific** (Page navigation with optional swap):
-   
-   - `Button::PageBack` → Uses side button (swappable via `SETTINGS.sideButtonLayout`)
-   
-   - `Button::PageForward` → Uses side button (swappable)
-
-**Implementation**:
-
-- Activities use **logical buttons** (e.g., `Button::Confirm`)
-- `MappedInputManager` translates to **physical hardware buttons**
-- User can remap front buttons in settings
-- Orientation changes handled separately by renderer coordinate transforms
-
-**Rule**: Always use `MappedInputManager::Button::*` enums, never raw `HalGPIO::BTN_*` indices (except in ButtonRemapActivity).
+**Rule**: Always use `MappedInputManager::Button::*` enums, never raw `HalGPIO::BTN_*` indices.
 
 ### UITheme (The GUI Macro)
 
@@ -512,7 +488,7 @@ void onExit()   { /* free: vTaskDelete, free buffer, close member FsFiles */ Act
 
 ### FreeRTOS Task Guidelines
 
-**Source**: [src/activities/util/KeyboardEntryActivity.cpp:45-50](src/activities/util/KeyboardEntryActivity.cpp)
+**Source**: [src/activities/ActivityManager.cpp](src/activities/ActivityManager.cpp) (the render task, `xTaskCreatePinnedToCore`)
 
 **Pattern**: See Activity Lifecycle above. `xTaskCreate(&taskTrampoline, "Name", stackSize, this, 1, &handle)`
 
@@ -700,9 +676,9 @@ checks every tracked file).
    
    - `lib/I18n/I18nKeys.h`, `lib/I18n/I18nStrings.h`, `lib/I18n/I18nStrings.cpp`
    
-   - **Source**: YAML translation files in `lib/I18n/translations/` (one per language)
+   - **Source**: `lib/I18n/translations/english.yaml` (English only)
    
-   - **To modify**: Edit source YAML files, then run `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/`
+   - **To modify**: Edit the YAML file, then run `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/`
    
    - **Commit**: Source YAML files only. All three generated files (`I18nKeys.h`, `I18nStrings.h`, `I18nStrings.cpp`) are in `.gitignore` and regenerated at build time.
 
@@ -725,16 +701,15 @@ checks every tracked file).
 3. Generated headers update: `src/network/html/<pagename>Html.generated.h`
 4. **Commit ONLY** source HTML, NOT generated `.generated.h` files
 
-**To add/modify translations (i18n)**:
+**To add/modify UI strings**:
 
-1. Edit or add YAML file: `lib/I18n/translations/<language>.yaml`
-   - Each file must contain: `_language_name`, `_language_code`, `_order`, `_bcp47`, and `STR_*` keys
-   - English (`english.yaml`) is the reference; missing keys in other languages fall back to English
+1. Edit `lib/I18n/translations/english.yaml` (its four `_language_*` / `_order` / `_bcp47` header lines stay, then
+   `STR_*` keys); see `docs/i18n.md`
 2. Run generator: `python scripts/gen_i18n.py lib/I18n/translations lib/I18n/`
 3. Generated files update: `I18nKeys.h`, `I18nStrings.h`, `I18nStrings.cpp`
-4. **Commit** source YAML files only. All three generated files are in `.gitignore` and regenerated at build time.
+4. **Commit** the YAML file only. All three generated files are in `.gitignore` and regenerated at build time.
 
-**To use translated strings in code**:
+**To use strings in code**:
 
 ```cpp
 #include <I18n.h>
@@ -907,10 +882,7 @@ rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/
 
 **Source**: `lib/Epub/Epub/Section.cpp`, `lib/Epub/Epub/BookMetadataCache.cpp`
 
-**Current Versions** (as of docs/file-formats.md):
-
-- `book.bin`: **Version 7** (metadata structure)
-- `section.bin`: **Version 25** (layout structure)
+**Current Versions**: `docs/file-formats.md` (one home: not repeated here).
 
 **Version Increment Rules**:
 
@@ -922,7 +894,7 @@ rm -rf /path/to/sd/.crosspoint/epub_<hash>/sections/
 
 ```cpp
 // lib/Epub/Epub/Section.cpp
-static constexpr uint8_t SECTION_FILE_VERSION = 26;  // Was 25, now 26
+static constexpr uint8_t SECTION_FILE_VERSION = N + 1;  // Was N
 
 // Add new field to structure
 struct PageLine {

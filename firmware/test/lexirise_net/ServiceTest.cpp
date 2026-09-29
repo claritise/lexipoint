@@ -118,7 +118,7 @@ TEST(Service, LeavingReadingGivesWifiBack) {
   rig.service.onActivityChanged(/*reading=*/true);
   EXPECT_EQ(rig.wifi.releases, 0);
   EXPECT_TRUE(rig.conn.isOpen());
-  // ...anything else (KOSync replacing the reader, here) gets the radio back before it starts.
+  // ...anything else (an activity replacing the reader, here) gets the radio back before it starts.
   rig.service.onActivityChanged(/*reading=*/false);
   EXPECT_EQ(rig.wifi.releases, 1);
   EXPECT_FALSE(rig.wifi.owned);
@@ -409,4 +409,21 @@ TEST(Service, TheReadersOwnSyncJoinsWifi) {
   rig.wifi.isConnected = false;
   EXPECT_EQ(rig.service.joinForUser(), ApiError::None);
   EXPECT_EQ(rig.wifi.ensures, 1);
+}
+
+// V8 (V7c's carried nit): the home sync's end (vocab::HomeSync's destructor: holdWifi(false), then releaseWifi())
+// gives the radio back and forgets the resumption session, as leaving reading does.
+TEST(Service, TheHomeSyncsEndForgetsTheResumptionSession) {
+  Rig rig;
+  rig.wifi.isConnected = false;
+  ASSERT_EQ(rig.service.joinForUser(), ApiError::None);
+  rig.service.holdWifi(true);
+  rig.conn.reads = {httpOk(kMe)};
+  rig.service.checkKey();  // a call on the sync's connection
+  rig.wifi.owned = true;
+  rig.service.holdWifi(false);
+  EXPECT_TRUE(rig.service.releaseWifi());
+  EXPECT_EQ(rig.wifi.releases, 1);
+  EXPECT_FALSE(rig.conn.isOpen());
+  EXPECT_EQ(rig.conn.forgets, 1);
 }

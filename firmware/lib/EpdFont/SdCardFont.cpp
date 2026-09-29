@@ -33,8 +33,8 @@ uint32_t fnv1a(const uint8_t* data, size_t len, uint32_t hash = FNV_OFFSET) {
 
 // .cpfont magic bytes
 constexpr char CPFONT_MAGIC[8] = {'C', 'P', 'F', 'O', 'N', 'T', '\0', '\0'};
-// CPFONT_VERSION is defined as a #define in SdCardFont.h so it can be
-// stringified into FONT_MANIFEST_URL.
+// CPFONT_VERSION is a #define in SdCardFont.h (it was stringified into the font
+// download's manifest URL, which went in Lexipoint's v0.2 V8).
 constexpr uint32_t HEADER_SIZE = 32;
 constexpr uint32_t STYLE_TOC_ENTRY_SIZE = 32;
 
@@ -1514,8 +1514,7 @@ int SdCardFont::fetchAdvancesForCodepoints(uint32_t* codepoints, uint32_t cpCoun
 }
 
 template <typename Iter>
-int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, bool includeHyphen, uint8_t styleMask,
-                                       const char* extraText) {
+int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, bool includeHyphen, uint8_t styleMask) {
   if (!loaded_) return -1;
   styleMask = resolveStyleMask(styleMask);
   if (styleMask == 0) return 0;
@@ -1535,9 +1534,6 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   for (auto it = begin; it != end && !hitCap; ++it) {
     hitCap = collectUniqueCodepoints(asCStr(*it), codepoints, cpCount, MAX_UNIQUE_CODEPOINTS);
   }
-  if (extraText && !hitCap) {
-    hitCap = collectUniqueCodepoints(extraText, codepoints, cpCount, MAX_UNIQUE_CODEPOINTS);
-  }
 
   if (includeSpace && std::none_of(codepoints, codepoints + cpCount, [](uint32_t c) { return c == ' '; }))
     codepoints[cpCount++] = ' ';
@@ -1555,13 +1551,12 @@ int SdCardFont::buildAdvanceTableRange(Iter begin, Iter end, bool includeSpace, 
   return totalMissed;
 }
 
-int SdCardFont::buildAdvanceTable(const char* utf8Text, uint8_t styleMask, const char* extraText) {
-  return buildAdvanceTableRange(&utf8Text, &utf8Text + 1, false, false, styleMask, extraText);
+int SdCardFont::buildAdvanceTable(const char* utf8Text, uint8_t styleMask) {
+  return buildAdvanceTableRange(&utf8Text, &utf8Text + 1, false, false, styleMask);
 }
 
-int SdCardFont::buildAdvanceTable(const std::deque<std::string>& words, bool includeHyphen, uint8_t styleMask,
-                                  const char* extraText) {
-  return buildAdvanceTableRange(words.begin(), words.end(), words.size() > 1, includeHyphen, styleMask, extraText);
+int SdCardFont::buildAdvanceTable(const std::deque<std::string>& words, bool includeHyphen, uint8_t styleMask) {
+  return buildAdvanceTableRange(words.begin(), words.end(), words.size() > 1, includeHyphen, styleMask);
 }
 
 // --- Stats ---

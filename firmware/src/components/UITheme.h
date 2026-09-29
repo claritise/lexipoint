@@ -20,8 +20,7 @@ class UITheme {
 
   const ThemeMetrics& getMetrics() const;
   const BaseTheme& getTheme() const { return *currentTheme; }
-  Rect getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButtonHints = false,
-                         bool hasSideButtonHints = false);
+  Rect getScreenSafeArea(const GfxRenderer& renderer);
   static void drawCenteredText(const GfxRenderer& renderer, Rect screen, int fontId, int y, const char* text,
                                bool black = true, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   // Wraps only overflowing text, then aligns the complete line block within bounds.
@@ -29,8 +28,6 @@ class UITheme {
                                       int maxLines, bool black = true,
                                       EpdFontFamily::Style style = EpdFontFamily::REGULAR,
                                       TextVerticalAlignment verticalAlignment = TextVerticalAlignment::CENTER);
-  void reload();
-  void setTheme(CrossPointSettings::UI_THEME type);
   static std::string getCoverThumbPath(std::string coverBmpPath, int coverHeight);
   static UIIcon getFileIcon(const std::string& filename);
   static int getStatusBarHeight();
@@ -39,9 +36,6 @@ class UITheme {
  private:
   const ThemeMetrics* currentMetrics;
   std::unique_ptr<BaseTheme> currentTheme;
-  mutable ThemeMetrics adjustedMetrics;
-  mutable bool metricsValid = false;
-  mutable bool metricsForTouch = false;
 };
 
 // Helper macro to access current theme

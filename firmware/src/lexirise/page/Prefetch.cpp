@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "Prefetch.h"
 
 #include <Logging.h>
@@ -174,5 +172,3 @@ bool PagePass::ready(const Pass& pass, const unsigned long nowMs, PageStarts& st
 }
 
 }  // namespace lexipoint::page
-
-#endif  // LEXIRISE

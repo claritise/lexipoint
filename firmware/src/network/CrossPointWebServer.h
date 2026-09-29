@@ -1,7 +1,6 @@
 #pragma once
 
 #include <HalStorage.h>
-#include <NetworkUdp.h>
 #include <WebServer.h>
 #include <WebSocketsServer.h>
 
@@ -75,8 +74,6 @@ class CrossPointWebServer {
   bool apMode = false;  // true when running in AP mode, false for STA mode
   uint16_t port = 80;
   uint16_t wsPort = 81;  // WebSocket port
-  NetworkUDP udp;
-  bool udpActive = false;
 
   // WebSocket upload state
   void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
@@ -129,11 +126,6 @@ class CrossPointWebServer {
 
     FontUploadState() { buffer.resize(BUFFER_SIZE); }
   } fontUpload;
-
-  // OPDS server handlers
-  void handleGetOpdsServers() const;
-  void handlePostOpdsServer();
-  void handleDeleteOpdsServer();
 
   // Wi-Fi credential handlers
   void handleGetWifiNetworks() const;

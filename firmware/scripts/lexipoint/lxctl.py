@@ -48,7 +48,7 @@ Examples:
                                       # /.lexirise/vocab-<lang>.bin aside so a full pass runs). Read-only; one
                                       # held session
   lxctl.py home-sync-smoke [x y]      # a dev build, Lexirise on with a key, WiFi saved: Home, then tap Sync
-                                      # Vocabulary (x y: the row, default theme without OPDS); checks the result,
+                                      # Vocabulary (x y: the row, default theme); checks the result,
                                       # read-only calls, and WiFi given back after it (V7b). One held session
   lxctl.py cache-smoke [x1 y1 x2 y2]  # a dev build, a Japanese or Chinese book open at running text (upright
                                       # portrait), WiFi saved; two words not looked up before (x1 y1, x2 y2): a
@@ -1141,7 +1141,7 @@ HOME_SYNC_LOG = re.compile(r"\[LXVOCAB\] home sync: (up to date|synced|no WiFi|s
                            r"(\d+) words changed")
 HOME_SYNC_WIFI_LOG = re.compile(r"\[LXVOCAB\] home sync: WiFi (given back|left up \(not Lexipoint's\)|not up) in (\d+) ms")
 HOME_OPENED = "Entering activity: Home"
-# The row's centre in the default theme with no OPDS server (docs/v0.2/reference/v7b-home-sync.html): rows from y 314,
+# The row's centre in the default theme (docs/v0.2/reference/v7b-home-sync.html): rows from y 314,
 # 72 apart; Sync Vocabulary is the fourth (Browse Files, Library, File Transfer, it, Settings).
 HOME_SYNC_ROW = (240, 314 + 72 * 3 + 32)
 HOME_SYNC_WATCH_S = 120.0  # a join, then up to a few dozen pages on a first sync
@@ -1181,7 +1181,7 @@ def check_home_sync_log(log: list[str]) -> dict[str, int | str]:
 def home_sync_smoke(h: Harness, row: tuple[int, int] = HOME_SYNC_ROW,
                     watch_s: float = HOME_SYNC_WATCH_S) -> dict[str, int | str]:
     """V7b's Sync Vocabulary on the device, read-only. A dev build, one held serial session (dev-harness.md §3), the
-    home screen reachable with the Home key, Lexirise on with a key, WiFi saved, the default theme, no OPDS server
+    home screen reachable with the Home key, Lexirise on with a key, WiFi saved, the default theme
     (else pass the row's point). Goes home, taps the row, and reads the log until WiFi is given back after the result
     (or `watch_s`). Checked by check_home_sync_log."""
     h.command("AWAKE 1")
@@ -1211,7 +1211,8 @@ CACHE_WRITE_LOG = re.compile(r"\[LXLOOK\] cache: (\d+) answers (written|not writ
 TLS_VERIFIED_LOG = re.compile(r"\[LXT\] Verified (\S+) \(([^,]+), ([^,]+), (resumed|full)\) in (\d+) ms, "
                               r"free heap (\d+)")
 CACHE_LOOKUP = ("POST", "/v1/dictionary/lookup")
-CACHE_SECOND_WORD = (READER_ON_TEXT[0], READER_ON_TEXT[1] + 120)  # another line of the page: pass a real word
+CACHE_SECOND_WORD_DY = 120  # px below READER_ON_TEXT: a few lines further down the same page (another word)
+CACHE_SECOND_WORD = (READER_ON_TEXT[0], READER_ON_TEXT[1] + CACHE_SECOND_WORD_DY)  # pass a real word's point
 TLS_IDLE_CLOSE_S = 30.0  # config::kTlsIdleCloseMs (test_lxctl checks it)
 CACHE_IDLE_WAIT_S = TLS_IDLE_CLOSE_S + 5.0  # past it: the session closed, the next call handshakes again
 CARD_CLOSED = "Exiting activity: LexiriseCard"

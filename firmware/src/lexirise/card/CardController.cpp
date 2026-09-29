@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "CardController.h"
 
 #include <algorithm>
@@ -40,14 +38,9 @@ bool CardController::syncWord(const unsigned long nowMs) {
     // A word already on the card (the same entry in an earlier sentence) has the level the user set, which
     // may not have reached Lexirise yet (its Undo window): the new one shows that.
     const int i = static_cast<int>(levels_.size());
-    Level level = source_.savedLevel(i);
-    for (const int w : source_.sameWord(i)) {
-      if (w < i) {
-        level = levels_[static_cast<size_t>(w)];
-        break;
-      }
-    }
-    levels_.push_back(level);
+    const auto same = source_.sameWord(i);
+    const auto earlier = std::find_if(same.begin(), same.end(), [i](const int w) { return w < i; });
+    levels_.push_back(earlier != same.end() ? levels_[static_cast<size_t>(*earlier)] : source_.savedLevel(i));
   }
   const CardState before = state_;
   const int wordBefore = word_;
@@ -375,5 +368,3 @@ Outcome CardController::longPress(const Hit* hit, const int x, const int y) {
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

@@ -10,30 +10,25 @@
 namespace fui = freeink::ui;
 
 namespace {
-constexpr StrId menuItems[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    StrId::STR_JOIN_NETWORK,
-    StrId::STR_CALIBRE_WIRELESS,
-    StrId::STR_CREATE_HOTSPOT,
-#if FREEINK_CAP_USB_MSC
-    StrId::STR_USB_DRIVE,
-#endif
+// One row per mode, in kNetworkModes' order (NetworkModes.h, host-tested); the mode is taken from the row.
+struct ModeRow {
+  NetworkMode mode;
+  StrId label;
+  StrId desc;
+  UIIcon icon;
 };
-constexpr StrId menuDescs[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    StrId::STR_JOIN_DESC,
-    StrId::STR_CALIBRE_DESC,
-    StrId::STR_HOTSPOT_DESC,
-#if FREEINK_CAP_USB_MSC
-    StrId::STR_USB_DRIVE_DESC,
-#endif
+constexpr ModeRow kRows[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
+    {NetworkMode::JOIN_NETWORK, StrId::STR_JOIN_NETWORK, StrId::STR_JOIN_DESC, UIIcon::Wifi},
+    {NetworkMode::CREATE_HOTSPOT, StrId::STR_CREATE_HOTSPOT, StrId::STR_HOTSPOT_DESC, UIIcon::Hotspot},
+    {NetworkMode::USB_DRIVE, StrId::STR_USB_DRIVE, StrId::STR_USB_DRIVE_DESC, UIIcon::Usb},
 };
-constexpr UIIcon menuIcons[NetworkModeSelectionActivity::MENU_ITEM_COUNT] = {
-    UIIcon::Wifi,
-    UIIcon::Library,
-    UIIcon::Hotspot,
-#if FREEINK_CAP_USB_MSC
-    UIIcon::Usb,
-#endif
-};
+constexpr bool rowsFollowTheModes() {
+  for (size_t i = 0; i < kNetworkModeCount; i++) {
+    if (kRows[i].mode != kNetworkModes[i]) return false;
+  }
+  return true;
+}
+static_assert(rowsFollowTheModes(), "kRows must list the modes in kNetworkModes' order");
 }  // namespace
 
 NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -41,9 +36,9 @@ NetworkModeSelectionActivity::NetworkModeSelectionActivity(GfxRenderer& renderer
   // Entirely static, so built once here rather than every buildScreen() call.
   for (int i = 0; i < MENU_ITEM_COUNT; i++) {
     fui::ListItem item;
-    item.label = I18N.get(menuItems[i]);
-    item.subtitle = I18N.get(menuDescs[i]);
-    item.icon = listIconFor(menuIcons[i], 32);  // subtitle rows carry the larger icon
+    item.label = I18N.get(kRows[i].label);
+    item.subtitle = I18N.get(kRows[i].desc);
+    item.icon = listIconFor(kRows[i].icon, 32);  // subtitle rows carry the larger icon
     item.actionValue = static_cast<int16_t>(i);
     rowItems_[i] = item;
   }
@@ -59,12 +54,13 @@ void NetworkModeSelectionActivity::activateIndex(const int index) {
   app.clearTapFlash();
   nav.selected = index;
 
-  onModeSelected(static_cast<NetworkMode>(index));
+  if (index < 0 || index >= MENU_ITEM_COUNT) return;
+  onModeSelected(kRows[index].mode);
 }
 
 void NetworkModeSelectionActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  // Content below the GUI.drawHeader band, above the button hints.
+  // Content below the GUI.drawHeader band, above the bottom reserve.
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));

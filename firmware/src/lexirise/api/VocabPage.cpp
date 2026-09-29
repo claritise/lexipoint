@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "VocabPage.h"
 
 #include "lexirise/LexiriseConfig.h"
@@ -186,5 +184,3 @@ ParseStatus parseVocabPage(const std::string_view body, VocabPage& out) {
 }
 
 }  // namespace lexipoint::api
-
-#endif  // LEXIRISE

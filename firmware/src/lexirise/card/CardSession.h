@@ -133,6 +133,7 @@ class CardSession {
   // page can turn Deck per book off while a card is open).
   void setDeckAllowed(const bool allowed) { deckAllowed_ = allowed; }
   void opened(const unsigned long nowMs) { lastActivityMs_ = nowMs; }  // the idle time starts when the card opens
+  unsigned long idleSinceMs() const { return lastActivityMs_; }        // when the idle time last started (tests)
   deck::DeckCall fetchDeck() { return live_ ? live_->fetchDeck() : deck::DeckCall{}; }
   // Outside RenderLock: the card's state doesn't change, only the deck store.
   void applyDeck(const deck::DeckCall& call, unsigned long nowMs);
@@ -196,11 +197,13 @@ class CardSession {
     return live_ ? live_->flushLookups(closing) : LiveSource::LookupsFlushed{};
   }
   // The idle Flush step's and the close's file work, in its one order: the lemma cache's answers, then the mirror's
-  // file (read on an idle step, `load = !closing`). `clock` (millis, optional) times each part for the log.
+  // file (read on an idle step, `load = !closing`). `clock` (millis, optional) times each part for the log. The idle
+  // time starts again once both are done (with `clock`: at its end, so the flush's own time isn't counted as idle).
   struct FilesFlushed {
     LiveSource::LookupsFlushed lookups;
     unsigned long lookupsMs = 0;
-    bool mirrorIo = false;  // the mirror's file was read or written
+    bool mirrorIo = false;      // the mirror's file was read or written (or its write tried)
+    bool mirrorFailed = false;  // ...and the write failed
     unsigned long mirrorMs = 0;
   };
   using Clock = unsigned long (*)();
@@ -211,7 +214,10 @@ class CardSession {
     const unsigned long mid = clock ? clock() : 0;
     out.lookupsMs = mid - start;
     out.mirrorIo = flushMirror(/*load=*/!closing, nowMs);
-    out.mirrorMs = (clock ? clock() : 0) - mid;
+    out.mirrorFailed = out.mirrorIo && live_ && live_->lastFlushWriteFailed();
+    const unsigned long end = clock ? clock() : 0;
+    out.mirrorMs = end - mid;
+    lastActivityMs_ = clock ? end : nowMs;
     return out;
   }
 

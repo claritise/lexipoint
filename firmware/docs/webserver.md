@@ -1,19 +1,18 @@
 # Web Server Guide
 
 This guide explains how to use CrossPoint Reader's built-in web server for file
-transfer, device settings, Wi-Fi/OPDS management, and SD-card font management.
+transfer, device settings, Wi-Fi management, and SD-card font management.
 
 ## Overview
 
-The web server is available while the device is in **File Transfer** or
-**Calibre Wireless** mode. It can:
+The web server is available while the device is in **File Transfer** mode. It
+can:
 
 - Upload, download, rename, move, and delete files on the SD card
 - Create folders
 - Edit many device settings from a browser
-- Manage saved Wi-Fi networks and OPDS servers
+- Manage saved Wi-Fi networks
 - Upload and delete `.cpfont` SD-card font families
-- Accept WebDAV clients and Calibre wireless uploads
 
 The server does not require authentication. Use it only on trusted private
 networks or in hotspot mode when you control who is connected.
@@ -26,8 +25,8 @@ networks or in hotspot mode when you control who is connected.
 | Mode | Use when |
 |------|----------|
 | **Join Network** | You want the reader to join an existing Wi-Fi network. |
-| **Calibre Wireless** | You want to receive books from the CrossPoint Calibre plugin workflow. |
 | **Create Hotspot** | You want the reader to create its own open Wi-Fi network. |
+| **USB Drive** | You want the SD card to show up on a computer over USB. |
 
 ## Join Network Mode
 
@@ -65,16 +64,6 @@ Lexipoint
 The reader displays one QR code for joining the hotspot and another QR code for
 opening the web interface.
 
-## Calibre Wireless Mode
-
-Calibre Wireless starts the same web server in station mode, then displays setup
-instructions and upload progress on the reader. Use this mode with the
-CrossPoint Calibre plugin or other clients that speak the documented WebSocket
-upload protocol.
-
-For Calibre OPDS browsing, add `/opds` to the catalog URL when configuring an
-OPDS server.
-
 ## Web Interface
 
 The browser UI has four primary pages.
@@ -102,13 +91,8 @@ book cache is cleared so stale metadata is not reused.
 
 ### Settings
 
-The Settings page exposes many firmware settings in the browser. It also has
-cards for:
-
-- Saved Wi-Fi networks
-- OPDS servers
-
-Passwords are accepted when adding or editing entries, but saved passwords are
+The Settings page exposes many firmware settings in the browser. It also has a
+card for saved Wi-Fi networks. Passwords are accepted when adding or editing entries, but saved passwords are
 not returned by the API.
 
 ### Fonts
@@ -123,7 +107,7 @@ registry refreshes.
 
 ## Command Line Use
 
-Power users can use `curl`, WebDAV clients, or WebSocket clients while the web
+Power users can use `curl` or WebSocket clients while the web
 server is running.
 
 Endpoint details are documented in [webserver-endpoints.md](./webserver-endpoints.md).
@@ -134,7 +118,7 @@ Endpoint details are documented in [webserver-endpoints.md](./webserver-endpoint
 - The WebSocket upload server runs on port 81.
 - There is no authentication.
 - Anyone on the same network can access the web interface while it is running.
-- The server stops when you exit File Transfer or Calibre Wireless mode.
+- The server stops when you exit File Transfer mode.
 - Hotspot mode creates an open network for connectivity fallback; disconnect when done.
 
 ## Tips

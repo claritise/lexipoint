@@ -1,11 +1,11 @@
-#if LEXIRISE
-
 #include "LexiriseWeb.h"
 
 #include <Logging.h>
 #include <WebServer.h>
 
+#include <algorithm>
 #include <cstring>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -53,7 +53,7 @@ void sendState(WebServer& server) {
   DictionaryRegistry::discover(found);
   std::vector<std::string> names;
   names.reserve(found.size());
-  for (auto& d : found) names.push_back(std::move(d.name));
+  std::transform(found.begin(), found.end(), std::back_inserter(names), [](auto& d) { return std::move(d.name); });
   sendJson(server, kHttpOk,
            stateJson(settingsStore().snapshot(), service().keyStatus(), names,
                      settingsStore().lastLoad() == LoadOutcome::Unreadable));
@@ -132,5 +132,3 @@ void registerRoutes(WebServer& server) {
 }
 
 }  // namespace lexipoint::web
-
-#endif  // LEXIRISE

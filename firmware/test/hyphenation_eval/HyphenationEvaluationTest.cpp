@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "lib/Epub/Epub/hyphenation/HyphenationCommon.h"
+#include "lib/Epub/Epub/hyphenation/Hyphenator.h"
 #include "lib/Epub/Epub/hyphenation/LanguageHyphenator.h"
 #include "lib/Epub/Epub/hyphenation/LanguageRegistry.h"
 
@@ -225,10 +226,12 @@ void runLanguageEval(const char* langName, const char* primaryTag, const char* r
 }  // namespace
 
 TEST(HyphenationEval, English) { runLanguageEval("english", "en", "english_hyphenation_tests.txt", 98.10); }
-TEST(HyphenationEval, French) { runLanguageEval("french", "fr", "french_hyphenation_tests.txt", 99.00); }
-TEST(HyphenationEval, German) { runLanguageEval("german", "de", "german_hyphenation_tests.txt", 96.73); }
-TEST(HyphenationEval, Russian) { runLanguageEval("russian", "ru", "russian_hyphenation_tests.txt", 96.22); }
-TEST(HyphenationEval, Spanish) { runLanguageEval("spanish", "es", "spanish_hyphenation_tests.txt", 98.02); }
-TEST(HyphenationEval, Italian) { runLanguageEval("italian", "it", "italian_hyphenation_tests.txt", 98.99); }
-TEST(HyphenationEval, Polish) { runLanguageEval("polish", "pl", "polish_hyphenation_tests.txt", 98.92); }
-TEST(HyphenationEval, Swedish) { runLanguageEval("swedish", "sv", "swedish_hyphenation_tests.txt", 94.01); }
+
+// V8 R2: a book tagged with the ISO 639-2 "eng" hyphenates as English; a book in a language whose trie went doesn't.
+TEST(HyphenationEval, ABookTaggedEngHyphenatesAndOthersDont) {
+  Hyphenator::setPreferredLanguage("eng");
+  EXPECT_FALSE(Hyphenator::breakOffsets("hyphenation", /*includeFallback=*/false).empty());
+  Hyphenator::setPreferredLanguage("de");
+  EXPECT_TRUE(Hyphenator::breakOffsets("Silbentrennung", /*includeFallback=*/false).empty());
+  Hyphenator::setPreferredLanguage("");
+}

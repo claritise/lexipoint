@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -60,7 +61,11 @@ class CountingFiles final : public SettingsFiles {
     return files.erase(path) != 0;
   }
   bool rename(const char*, const char*) override { return false; }
-  bool ensureDir(const char*) override { return true; }
+  bool ensureDir(const char* path) override {
+    dirs.emplace_back(path);
+    return true;
+  }
+  std::vector<std::string> dirs;  // every ensureDir, in order
 };
 
 uint32_t wallNow = 0;
@@ -79,7 +84,7 @@ LookupResult entry(const std::string& word, const std::string& meaning = "a mean
 }
 
 CachedLookup record(const std::string& text, const Language language = Language::Japanese, const uint32_t at = kNow) {
-  return CachedLookup{language, text, entry(text), at};
+  return CachedLookup{language, text, entry(text), at, std::nullopt};
 }
 
 class LookupCacheTest : public ::testing::Test {
@@ -193,7 +198,7 @@ TEST_F(LookupCacheTest, NeverKeepsAPendingAnEmptyOrAnOversizedAnswer) {
   EXPECT_FALSE(cacheable("y", huge));
   EXPECT_FALSE(cacheable("", entry("")));
   EXPECT_TRUE(cacheable("猫", entry("猫")));
-  ASSERT_TRUE(cache.write({CachedLookup{Language::Japanese, "書きこむ", pending, kNow}}));
+  ASSERT_TRUE(cache.write({CachedLookup{Language::Japanese, "書きこむ", pending, kNow, std::nullopt}}));
   EXPECT_EQ(files.writes, 0);  // nothing to add: no bucket touched
   EXPECT_EQ(files.reads, 0);
   EXPECT_EQ(cache.read(Language::Japanese, "書きこむ").outcome, CacheRead::Outcome::Miss);
@@ -221,11 +226,12 @@ TEST_F(LookupCacheTest, ABucketKeepsItsNewestWithinItsCaps) {
 
 TEST_F(LookupCacheTest, ABucketNeverOutgrowsItsBytes) {
   const std::string first = "b0";
-  std::vector<CachedLookup> all{CachedLookup{Language::Japanese, first, entry(first, std::string(900, 'm')), kNow}};
+  std::vector<CachedLookup> all{
+      CachedLookup{Language::Japanese, first, entry(first, std::string(900, 'm')), kNow, std::nullopt}};
   for (int i = 1; all.size() < 40; i++) {
     const std::string t = "b" + std::to_string(i);
     if (bucketPath(Language::Japanese, t) == bucketPath(Language::Japanese, first)) {
-      all.push_back(CachedLookup{Language::Japanese, t, entry(t, std::string(900, 'm')), kNow});
+      all.push_back(CachedLookup{Language::Japanese, t, entry(t, std::string(900, 'm')), kNow, std::nullopt});
     }
   }
   ASSERT_TRUE(cache.write(all));
@@ -284,6 +290,16 @@ TEST_F(LookupCacheTest, SomeBucketsWrittenOthersNot) {
   EXPECT_EQ(cache.read(Language::Japanese, other).outcome, CacheRead::Outcome::Miss);
 }
 
+// V8 R3: each language's folder is made once per write, whichever order the answers come in (languageSlot).
+TEST_F(LookupCacheTest, EachLanguagesFolderIsMadeOncePerWrite) {
+  ASSERT_TRUE(
+      cache.write({record("猫"), record("书", Language::Chinese), record("犬"), record("猫咪", Language::Chinese)}));
+  const std::string ja = std::string(config::kLookupCacheDir) + "/ja";
+  const std::string zh = std::string(config::kLookupCacheDir) + "/zh";
+  EXPECT_EQ(std::count(files.dirs.begin(), files.dirs.end(), ja), 1);
+  EXPECT_EQ(std::count(files.dirs.begin(), files.dirs.end(), zh), 1);
+}
+
 TEST_F(LookupCacheTest, AReadDecodesOnlyTheRecordAsked) {
   const std::string bytes = serializeBucket({record("犬"), record("猫"), record("鳥")});
   CachedLookup found;
@@ -303,3 +319,112 @@ TEST_F(LookupCacheTest, AFailedWriteSaysSo) {
 }
 
 }  // namespace
+
+// V8 (V7c's carried nit): the cache is keyed by account, since the senses come in the account's translation target.
+namespace {
+uint32_t accountNow = 0;
+uint32_t account() { return accountNow; }
+}  // namespace
+
+class LookupCacheAccountTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    wallNow = kNow;
+    accountNow = lexipoint::lookup::accountTag("lx_TEST_first");
+  }
+  CountingFiles files;
+  LookupCache cache{files, wall, nullptr, account};
+};
+
+TEST_F(LookupCacheAccountTest, TheTagIsTheKeysHashNotTheKey) {
+  EXPECT_NE(lexipoint::lookup::accountTag("lx_TEST_first"), lexipoint::lookup::accountTag("lx_TEST_second"));
+  ASSERT_TRUE(cache.write({record("猫")}));
+  EXPECT_EQ(files.files[bucketPath(Language::Japanese, "猫")].find("lx_TEST"), std::string::npos);
+}
+
+TEST_F(LookupCacheAccountTest, AnotherAccountsBucketIsAMissAndStays) {
+  ASSERT_TRUE(cache.write({record("猫")}));
+  accountNow = lexipoint::lookup::accountTag("lx_TEST_second");
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Miss);
+  EXPECT_EQ(files.removes, 0);  // not malformed: the first account's answers wait for its next write
+  accountNow = lexipoint::lookup::accountTag("lx_TEST_first");
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Hit);
+}
+
+TEST_F(LookupCacheAccountTest, AWriteUnderAnotherAccountDropsTheFirstAccountsAnswers) {
+  ASSERT_TRUE(cache.write({record("猫")}));
+  accountNow = lexipoint::lookup::accountTag("lx_TEST_second");
+  CachedLookup second = record("猫");
+  second.entry.senses = {Sense{"gato", "sustantivo"}};
+  ASSERT_TRUE(cache.write({second}));
+  const CacheRead read = cache.read(Language::Japanese, "猫");
+  ASSERT_EQ(read.outcome, CacheRead::Outcome::Hit);
+  EXPECT_EQ(read.entry->senses.front().translation, "gato");
+  std::vector<CachedLookup> kept;
+  ASSERT_TRUE(parseBucket(files.files[bucketPath(Language::Japanese, "猫")], Language::Japanese, kept,
+                          lexipoint::lookup::accountTag("lx_TEST_second")));
+  EXPECT_EQ(kept.size(), 1u);
+  accountNow = lexipoint::lookup::accountTag("lx_TEST_first");
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Miss);  // its answer went
+}
+
+// V8 R4: an answer fetched under one key and written after the key changed isn't the new account's: it's dropped, and
+// the new account's bucket keeps what it held.
+TEST_F(LookupCacheAccountTest, AnAnswerFetchedUnderTheOldKeyIsntWrittenUnderTheNewOne) {
+  const uint32_t first = lexipoint::lookup::accountTag("lx_TEST_first");
+  const uint32_t second = lexipoint::lookup::accountTag("lx_TEST_second");
+  accountNow = second;
+  CachedLookup own = record("猫");
+  own.entry.senses = {Sense{"gato", "sustantivo"}};
+  ASSERT_TRUE(cache.write({own}));
+  CachedLookup old = record("猫");
+  old.account = first;  // fetched before the key changed
+  CachedLookup current = record("犬");
+  current.account = second;
+  ASSERT_TRUE(cache.write({old, current}));
+  EXPECT_EQ(cache.read(Language::Japanese, "犬").outcome, CacheRead::Outcome::Hit);
+  const CacheRead read = cache.read(Language::Japanese, "猫");
+  ASSERT_EQ(read.outcome, CacheRead::Outcome::Hit);
+  EXPECT_EQ(read.entry->senses.front().translation, "gato");
+  accountNow = first;
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Miss);
+}
+
+TEST_F(LookupCacheAccountTest, ABucketFromBeforeTheAccountIsRemoved) {
+  std::string bytes = serializeBucket({record("猫")}, account());
+  bytes[4] = 1;  // V7c's version: no account in its header
+  files.files[bucketPath(Language::Japanese, "猫")] = bytes;
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Miss);
+  EXPECT_EQ(files.files.count(bucketPath(Language::Japanese, "猫")), 0u);
+}
+
+// V8 R7: V7c's format as written, a 16-byte header ("LXLK", version 1, the language, no records, a zero CRC), is
+// malformed now: removed on its first read.
+TEST_F(LookupCacheAccountTest, AFormatOneFileAsV7cWroteItIsRemoved) {
+  const std::string v1("LXLK\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", 16);
+  files.files[bucketPath(Language::Japanese, "猫")] = v1;
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Miss);
+  EXPECT_EQ(files.files.count(bucketPath(Language::Japanese, "猫")), 0u);
+  EXPECT_EQ(files.removes, 1);
+}
+
+// V8 R2: another account's records in a bucket are not the new account's: after a write under B to a bucket holding A's
+// answer for another text, that answer is gone (read under B misses it) and the file holds only B's.
+TEST_F(LookupCacheAccountTest, AWriteUnderAnotherAccountKeepsOnlyItsOwnRecords) {
+  std::string sameBucket;  // another text in 猫's bucket
+  for (int i = 0; sameBucket.empty(); i++) {
+    const std::string t = "w" + std::to_string(i);
+    if (bucketPath(Language::Japanese, t) == bucketPath(Language::Japanese, "猫")) sameBucket = t;
+  }
+  ASSERT_TRUE(cache.write({record("猫")}));  // under the first account
+  accountNow = lexipoint::lookup::accountTag("lx_TEST_second");
+  ASSERT_TRUE(cache.write({record(sameBucket)}));
+  EXPECT_EQ(files.removes, 0);  // another account's bucket isn't malformed: rewritten, never removed
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Miss);
+  EXPECT_EQ(cache.read(Language::Japanese, sameBucket).outcome, CacheRead::Outcome::Hit);
+  std::vector<CachedLookup> kept;
+  ASSERT_TRUE(parseBucket(files.files[bucketPath(Language::Japanese, "猫")], Language::Japanese, kept,
+                          lexipoint::lookup::accountTag("lx_TEST_second")));
+  ASSERT_EQ(kept.size(), 1u);
+  EXPECT_EQ(kept.front().text, sameBucket);
+}

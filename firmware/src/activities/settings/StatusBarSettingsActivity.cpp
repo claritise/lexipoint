@@ -27,14 +27,15 @@ enum MenuItem {
   ITEM_TITLE,
   ITEM_BATTERY,
   ITEM_XTC_STATUS_BAR,
-  ITEM_CLOCK,             // X3 only
-  ITEM_CLOCK_FORMAT,      // X3 only
-  ITEM_CLOCK_UTC_OFFSET,  // X3 only, launches ClockOffsetActivity
-  ITEM_CLOCK_SYNC,        // X3 only, launches ClockSyncActivity
+  // The clock rows show only when halClock finds an RTC (onEnter: visibleItemCount).
+  ITEM_CLOCK,
+  ITEM_CLOCK_FORMAT,
+  ITEM_CLOCK_UTC_OFFSET,  // launches ClockOffsetActivity
+  ITEM_CLOCK_SYNC,        // launches ClockSyncActivity
   ITEM_COUNT
 };
 
-constexpr int BASE_MENU_ITEMS = ITEM_CLOCK;  // Items shown on every device
+constexpr int BASE_MENU_ITEMS = ITEM_CLOCK;  // Items shown without an RTC
 constexpr int FULL_MENU_ITEMS = ITEM_COUNT;  // Items shown when RTC is available
 static_assert(FULL_MENU_ITEMS == StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS,
               "keep StatusBarSettingsActivity::MAX_STATUS_BAR_ITEMS in sync with ITEM_COUNT");
@@ -237,8 +238,8 @@ std::string StatusBarSettingsActivity::rowValueText(const int index) {
 void StatusBarSettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Reserve the bottom band for the live status-bar preview footer (label +
-  // bar) so the list never runs underneath it, plus the button-hints row below.
-  // The preview is pinned directly above the hints (see render()), so the band
+  // bar) so the list never runs underneath it. The preview is pinned to the
+  // bottom (see render()), so the band
   // is just the bar + its label, not a floating gap.
   const int statusBarHeight = UITheme::getInstance().getStatusBarHeight();
   const auto previewFooter =
@@ -282,9 +283,6 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
 
   renderUi();
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TOGGLE), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
   std::string title;
   if (SETTINGS.statusBarTitle == CrossPointSettings::STATUS_BAR_TITLE::BOOK_TITLE) {
     title = tr(STR_EXAMPLE_BOOK);
@@ -292,7 +290,7 @@ void StatusBarSettingsActivity::render(RenderLock&&) {
     title = tr(STR_EXAMPLE_CHAPTER);
   }
 
-  // Anchor the preview as a footer directly above the button hints.
+  // Anchor the preview as a footer at the bottom (buttonHintsHeight is 0).
   GUI.drawStatusBar(renderer, 75, 8, 32, title, metrics.buttonHintsHeight, 0, false);
 
   renderer.drawCenteredText(UI_10_FONT_ID,

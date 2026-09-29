@@ -9,8 +9,6 @@
 
 const char* lookupHtmlEntity(const char*, size_t) { return nullptr; }
 
-#include <BidiUtils.h>
-
 bool isExplicitHyphen(uint32_t) { return false; }
 bool isSoftHyphen(uint32_t) { return false; }
 

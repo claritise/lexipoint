@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "ReleaseVersion.h"
 
 #include <tuple>
@@ -62,5 +60,3 @@ bool isNewerRelease(const std::string_view latest, const std::string_view curren
 }
 
 }  // namespace lexipoint::ota
-
-#endif  // LEXIRISE

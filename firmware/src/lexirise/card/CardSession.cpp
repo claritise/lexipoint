@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "CardSession.h"
 
 #if LEXIPOINT_DEV_HARNESS
@@ -7,6 +5,7 @@
 #endif
 
 #include <algorithm>
+#include <iterator>
 
 #include "lexirise/util/Timing.h"
 
@@ -60,7 +59,8 @@ CardSession::Persisted CardSession::persistIgnores(const Outcome& outcome) const
   const size_t n = outcome.ignores.size();
   std::vector<std::optional<IgnoredKey>> keys;
   keys.reserve(n);
-  for (const IgnoreChange& change : outcome.ignores) keys.push_back(live_->ignoreKey(change.word));
+  std::transform(outcome.ignores.begin(), outcome.ignores.end(), std::back_inserter(keys),
+                 [this](const IgnoreChange& change) { return live_->ignoreKey(change.word); });
   done.failed.reserve(n);
   done.evicted.reserve(n);
   // In the order they were made (the file stays newest last); a change a later one for the same key overrides is
@@ -158,5 +158,3 @@ CardSession::Answer CardSession::applyClosing(LiveSource::Fetched fetched, const
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

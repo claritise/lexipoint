@@ -20,7 +20,6 @@ class EpubReaderFootnotesActivity final : public UiListActivity {
   // Header is drawn inside the safe area (not full-width like the base).
   void drawChrome() override;
   // Hints show Back only (empty list) or Back/Select; no Up/Down labels.
-  void drawFooter() override;
 
   const std::vector<FootnoteEntry>& footnotes;
   // Built once in the constructor (footnotes is fixed for this activity's

@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "VocabMirror.h"
 
 #include <Logging.h>
@@ -781,10 +779,11 @@ bool VocabStore::cardProbeDueLocked(const Language language, const unsigned long
 std::optional<LiveState> VocabStore::pendingState(const Language language, const uint32_t entryId) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (slot(language).loaded) return std::nullopt;
-  for (auto it = pending_.rbegin(); it != pending_.rend(); ++it) {
-    if (it->language == language && it->entryId == entryId) return *it;
-  }
-  return std::nullopt;
+  const auto it = std::find_if(pending_.rbegin(), pending_.rend(), [language, entryId](const auto& p) {
+    return p.language == language && p.entryId == entryId;
+  });
+  if (it == pending_.rend()) return std::nullopt;
+  return *it;
 }
 
 bool VocabStore::manualBudgetLeft(const unsigned long nowMs) {
@@ -913,5 +912,3 @@ size_t VocabStore::size(const Language language) {
 }
 
 }  // namespace lexipoint::vocab
-
-#endif  // LEXIRISE

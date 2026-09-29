@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "SettingsScreen.h"
 
 #include <algorithm>
@@ -195,5 +193,3 @@ std::optional<SettingsPatch> tapPatch(const Row row, const Settings& settings,
 }
 
 }  // namespace lexipoint::settings_screen
-
-#endif  // LEXIRISE

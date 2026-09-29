@@ -8,6 +8,8 @@
 
 #include <array>
 #include <cstdint>
+#include <iterator>
+#include <numeric>
 
 #include "lexirise/LexiriseConfig.h"
 
@@ -27,9 +29,7 @@ class RequestWindow {
   // Requests in the last config::kRateWindowMs (to the minute).
   unsigned count(const unsigned long nowMs) {
     advance(nowMs);
-    unsigned total = 0;
-    for (const uint16_t n : buckets_) total += n;
-    return total;
+    return std::accumulate(std::begin(buckets_), std::end(buckets_), 0u);
   }
 
  private:

@@ -99,17 +99,10 @@ void BmpViewerActivity::onEnter() {
   GUI.fillPopupProgress(renderer, popupRect, 20);  // Initial 20% progress
   if (FsHelpers::hasPngExtension(filePath)) {
     renderer.clearScreen();
-    const bool hasPrevious = siblingImages.size() > 1 && currentImageIndex > 0;
-    const bool hasNext = siblingImages.size() > 1 && currentImageIndex != -1 &&
-                         currentImageIndex < static_cast<int>(siblingImages.size()) - 1;
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), canSetSleepCover() ? tr(STR_SET_SLEEP_COVER) : "",
-                                              hasPrevious ? "<" : "", hasNext ? ">" : "");
     if (renderPng()) {
-      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       renderer.displayBuffer(HalDisplay::FAST_REFRESH);
     } else {
       renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_FILE_OPEN_FAILED));
-      GUI.drawButtonHints(renderer, labels.btn1, "", "", "");
       renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     }
     return;
@@ -146,13 +139,6 @@ void BmpViewerActivity::onEnter() {
       }
 
       // 4. Prepare Rendering
-      bool hasPrevious = (siblingImages.size() > 1 && currentImageIndex > 0);
-      bool hasNext = (siblingImages.size() > 1 && currentImageIndex != -1 &&
-                      currentImageIndex < static_cast<int>(siblingImages.size()) - 1);
-
-      const auto labels = mappedInput.mapLabels(tr(STR_BACK), canSetSleepCover() ? tr(STR_SET_SLEEP_COVER) : "",
-                                                (hasPrevious ? "<" : ""), (hasNext ? ">" : ""));
-
       GUI.fillPopupProgress(renderer, popupRect, 50);
 
       renderer.clearScreen();
@@ -163,8 +149,6 @@ void BmpViewerActivity::onEnter() {
         return;
       }
 
-      // Draw UI hints on the base layer
-      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       if (bitmap.hasGreyscale()) {
         const bool absolute = renderer.grayscaleCapabilities(HalDisplay::GrayscaleMode::Absolute).supported();
         if (absolute && !renderer.displayGrayscaleBase(HalDisplay::GrayscaleMode::Absolute)) return;
@@ -182,7 +166,6 @@ void BmpViewerActivity::onEnter() {
             planesReady = false;
             break;
           }
-          GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
           if (mode == GfxRenderer::GRAYSCALE_LSB) {
             renderer.copyGrayscaleLsbBuffers();
           } else {
@@ -200,7 +183,6 @@ void BmpViewerActivity::onEnter() {
           renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_FILE_OPEN_FAILED));
           planesReady = false;
         }
-        GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
         renderer.cleanupGrayscaleWithFrameBuffer();
         if (!planesReady) renderer.displayBuffer(HalDisplay::HALF_REFRESH);
       } else {
@@ -211,8 +193,6 @@ void BmpViewerActivity::onEnter() {
       // Handle file parsing error
       renderer.clearScreen();
       renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_INVALID_BMP_FILE));
-      const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       renderer.displayBuffer(HalDisplay::HALF_REFRESH);
     }
 
@@ -221,8 +201,6 @@ void BmpViewerActivity::onEnter() {
     // Handle file open error
     renderer.clearScreen();
     renderer.drawCenteredText(UI_10_FONT_ID, pageHeight / 2, tr(STR_FILE_OPEN_FAILED));
-    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
     renderer.displayBuffer(HalDisplay::HALF_REFRESH);
   }
 }

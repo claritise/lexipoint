@@ -32,7 +32,7 @@ struct WifiHint {
 
 class WifiHints {
  public:
-  // A connection seen on `hint.ssid` (ours, or anyone's: the web server's, KOSync's). An unusable one
+  // A connection seen on `hint.ssid` (ours, or anyone's: the web server's, OTA's). An unusable one
   // (no network name, no channel, an all-zero access point) is ignored.
   void remember(const WifiHint& hint) {
     if (hint.ssid.empty() || hint.channel <= 0 || hint.bssid == Bssid{}) return;
@@ -51,7 +51,7 @@ class WifiHints {
 };
 
 // Notices a connection appearing, whoever made it: WifiSession::tick asks every loop pass, so a connection
-// the web server or KOSync made is remembered too, not only Lexipoint's own.
+// the web server or OTA made is remembered too, not only Lexipoint's own.
 class ConnectionWatch {
  public:
   // True once per connection: on the first pass it's seen connected.

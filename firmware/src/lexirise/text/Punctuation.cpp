@@ -1,8 +1,8 @@
-#if LEXIRISE
-
 #include "Punctuation.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
 
 #include "CharClass.h"
 
@@ -11,10 +11,7 @@ namespace {
 
 template <size_t N>
 bool oneOf(const uint32_t cp, const uint32_t (&set)[N]) {
-  for (const uint32_t c : set) {
-    if (c == cp) return true;
-  }
-  return false;
+  return std::find(std::begin(set), std::end(set), cp) != std::end(set);
 }
 
 // Japanese
@@ -113,5 +110,3 @@ bool Punctuation::isFallbackCut(const uint32_t cp, const Script script) {
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE

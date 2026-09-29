@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "BookSlug.h"
 
 #include <cstdio>
@@ -74,5 +72,3 @@ std::string bookTag(const std::string_view title, const std::string_view fallbac
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE

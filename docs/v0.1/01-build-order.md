@@ -55,16 +55,18 @@ One phase = one branch = one gate = one ledger row.
 
 Some of these rules were made to keep rebases onto CrossPoint cheap: the `LEXIRISE` gate and markers, leaving
 `util/Dictionary*` alone, the Lexirise-off build, and hooks in their own commits. Lexipoint no longer rebases
-(D21), but they stay for now (`standalone-repo.md` §6). Relaxing them is part of the v0.2 slimming
-(`../v0.2/slimming.md`).
+(D21), ~~but they stay for now (`standalone-repo.md` §6). Relaxing them is part of the v0.2 slimming
+(`../v0.2/slimming.md`).~~ (superseded 2026-09-29) and V8 ended the gate, the Dictionary rule and the Lexirise-off build
+(`../v0.2/slimming.md` §8); the markers stay, to show which base files we edited.
 
-- **Every base-file change** is wrapped in `#if LEXIRISE` and marked `// LEXIPOINT:`
-  (`firmware-base.md` §3). New logic goes in `src/lexirise/`.
+- ~~**Every base-file change** is wrapped in `#if LEXIRISE` and marked `// LEXIPOINT:`
+  (`firmware-base.md` §3).~~ Superseded 2026-09-29 (v0.2 V8, `../v0.2/slimming.md` §2, §8): there is no `LEXIRISE` gate; a base-file change is marked
+  `// LEXIPOINT:` where the marker says why, and listed in `firmware-base.md` §3. New logic goes in `src/lexirise/`.
 - **The key never appears** in logs, screens, test fixtures or commits. Fixtures use `lx_TEST`.
 - **Pure logic gets host tests** (`test/lexirise_*`). Hardware-only behavior gets a written manual
   check in the ledger note.
-- **Don't modify `util/Dictionary*`.** StarDict is the fallback, and its code stays CrossPoint's
-  (`standalone-repo.md` §6).
+- ~~**Don't modify `util/Dictionary*`.** StarDict is the fallback, and its code stays CrossPoint's
+  (`standalone-repo.md` §6).~~ Superseded 2026-09-29 (v0.2 V8, `../v0.2/slimming.md` §2, §8): the rule ended with the rebases; StarDict stays (the offline fallback).
 - **The card design is binding and pixel-perfect** (`popup-ui.md` banner, §1.1,
   `reference/card-reference.html`). No phase may change its look or behaviour without claritise's
   sign-off recorded in the ledger. "It looked better this way" is not a reason.
@@ -85,8 +87,8 @@ Some of these rules were made to keep rebases onto CrossPoint cheap: the `LEXIRI
 Run it from `firmware/` (`cd firmware` first).
 
 1. `pio run -e x4pro` builds with no new warnings in `src/lexirise/`.
-2. `pio run -e x4pro-lexirise-off` builds too: the X4 Pro **with `LEXIRISE` undefined**, so every hook in a
-   base file must compile out.
+2. ~~`pio run -e x4pro-lexirise-off` builds too: the X4 Pro **with `LEXIRISE` undefined**, so every hook in a
+   base file must compile out.~~ Superseded 2026-09-29 (v0.2 V8, `../v0.2/slimming.md` §2, §8): Lexirise is always built; the env went with the gate.
 3. The host suite passes: `cmake -S test -B build/test && cmake --build build/test -j6 && ctest --test-dir build/test -j6`,
    and so do the script tests: `cd scripts/lexipoint && python3 -m unittest discover -p 'test_*.py'` (they need
    node: `test_rebrand.py` runs `LexiriseNav.js`). The

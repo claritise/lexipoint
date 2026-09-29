@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "SafeFile.h"
 
 namespace lexipoint {
@@ -66,5 +64,3 @@ bool replaceSafely(SettingsFiles& files, const SafeFilePaths& paths, const std::
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

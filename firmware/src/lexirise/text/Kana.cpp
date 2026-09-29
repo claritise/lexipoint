@@ -1,11 +1,11 @@
-#if LEXIRISE
-
 #include "Kana.h"
 
 #include <Utf8.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 
 #include "CharClass.h"
 
@@ -218,9 +218,9 @@ std::optional<MacronMatch> macronSyllable(const std::u32string& s, const size_t 
       std::string plain;
       for (size_t k = i; k < at; k++) plain += ascii(k);
       plain += m.vowel;
-      for (const Syllable& syllable : kSyllables) {
-        if (plain == syllable.romaji) return MacronMatch{std::string(syllable.kana) + m.tail, letters + 1};
-      }
+      const auto syllable = std::find_if(std::begin(kSyllables), std::end(kSyllables),
+                                         [&plain](const Syllable& candidate) { return plain == candidate.romaji; });
+      if (syllable != std::end(kSyllables)) return MacronMatch{std::string(syllable->kana) + m.tail, letters + 1};
     }
     return std::nullopt;
   }
@@ -333,5 +333,3 @@ std::optional<std::string> kanaReading(const std::string_view surface, const std
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE

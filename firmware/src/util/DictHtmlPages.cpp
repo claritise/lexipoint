@@ -229,7 +229,7 @@ bool buildDictionaryHtmlPages(GfxRenderer& renderer, const std::string& definiti
   }  // destructor closes the file before the parser reopens the same path
 
   pagesOut.clear();
-  // One fixed allocation (256 bytes on C3); pages must outlive the parser.
+  // One fixed allocation (MAX_STYLED_PAGES entries); pages must outlive the parser.
   pagesOut.reserve(MAX_STYLED_PAGES);
 
   bool ok = false;

@@ -33,6 +33,7 @@ class FakeApi final : public api::LexiriseApi {
   std::deque<api::ApiResponse> analyzeReplies;
   std::deque<api::ApiResponse> wordsReplies;  // analyzeWords: none scripted = offline (the refined answer stands)
   std::deque<api::ApiResponse> lookupReplies;
+  std::function<void()> duringLookup;  // runs inside lookup(), before its reply (a settings change mid-call)
   std::deque<api::ApiResponse> writeReplies;
   std::deque<api::ApiResponse> deckReplies;  // none scripted: offline
   std::deque<api::ApiResponse> itemReplies;  // savedItem: none scripted = offline
@@ -66,6 +67,7 @@ class FakeApi final : public api::LexiriseApi {
   }
   api::ApiResponse lookup(Language, const std::string_view lemma) override {
     looked.emplace_back(lemma);
+    if (duringLookup) duringLookup();
     return next(lookupReplies);
   }
   api::ApiResponse write(const net::Request& request) override {

@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LiveSource.h"
 
 #include <Logging.h>
@@ -11,6 +9,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <numeric>
 #include <utility>
 
 #include "LiveWord.h"
@@ -46,10 +45,9 @@ std::vector<vocab::LiveState> liveStatesOf(const lookup::AnalyzedSentence& analy
 
 // The tapped character: phase 0's text and highlight (popup-ui.md §2).
 const text::SentenceChar* tappedChar(const text::BuiltSentence& sentence) {
-  for (const text::SentenceChar& c : sentence.chars) {
-    if (c.start >= sentence.tapOffset) return &c;
-  }
-  return nullptr;
+  const auto it = std::find_if(sentence.chars.begin(), sentence.chars.end(),
+                               [&sentence](const text::SentenceChar& c) { return c.start >= sentence.tapOffset; });
+  return it != sentence.chars.end() ? &*it : nullptr;
 }
 
 }  // namespace
@@ -83,8 +81,8 @@ std::optional<text::TapContext> LiveSource::nextAskable(const text::TapContext& 
   // Lexirise can only be asked with a sentence and its language (a switched-off language, a non-CJK line).
   // Each call moves on along the page, so this ends at its last sentence; the cap (one per token on the
   // page) only guards against a builder that stopped moving on.
-  size_t limit = 1;
-  for (const ReaderLine& line : page_.lines) limit += line.tokens.size();
+  const size_t limit = std::accumulate(page_.lines.begin(), page_.lines.end(), size_t{1},
+                                       [](const size_t n, const ReaderLine& line) { return n + line.tokens.size(); });
   text::TapContext next = next_(current);
   for (size_t i = 0; i < limit && next.sentence; i++) {
     if (next.language.language) return next;
@@ -152,10 +150,8 @@ bool LiveSource::ours(const std::string& id) const {
 }
 
 const LiveSource::Item* LiveSource::itemFor(const std::string& id) const {
-  for (const Item& item : items_) {
-    if (item.id == id) return &item;
-  }
-  return nullptr;
+  const auto it = std::find_if(items_.begin(), items_.end(), [&id](const Item& item) { return item.id == id; });
+  return it != items_.end() ? &*it : nullptr;
 }
 
 bool LiveSource::fillFromItem(const int index) {
@@ -216,7 +212,8 @@ void LiveSource::setBookDeck(deck::BookDeck bookDeck, deck::DeckStore& store) {
   savesCarryBookTag_ = std::find(tags_.begin(), tags_.end(), bookDeck.tag()) != tags_.end();
   deckKeys_.clear();
   deckKeys_.reserve(std::size(kLanguages));
-  for (const Language language : kLanguages) deckKeys_.push_back(deck::deckKey(language, bookDeck.slug));
+  std::transform(std::begin(kLanguages), std::end(kLanguages), std::back_inserter(deckKeys_),
+                 [&bookDeck](const Language language) { return deck::deckKey(language, bookDeck.slug); });
   bookDeck_ = std::move(bookDeck);
   decks_ = &store;
   decks_->load();
@@ -238,9 +235,9 @@ std::optional<IgnoredKey> LiveSource::ignoreKey(const int index) const {
 bool LiveSource::ignored(const int index) const {
   const std::optional<IgnoredKey> key = ignoreKey(index);
   if (!key) return false;
-  for (auto it = ignoredHere_.rbegin(); it != ignoredHere_.rend(); ++it) {
-    if (it->first == *key) return it->second;
-  }
+  const auto here = std::find_if(ignoredHere_.rbegin(), ignoredHere_.rend(),
+                                 [&key](const auto& change) { return change.first == *key; });
+  if (here != ignoredHere_.rend()) return here->second;  // this card's latest change for it
   return ignoredStore_ && ignoredStore_->contains(*key);
 }
 
@@ -278,10 +275,10 @@ CardWord LiveSource::wordFor(const int index, const FormName* named) const {
   const auto [first, last] = cutChain(sentenceOf_[i]);
   const auto built = [this](const size_t s) -> const text::BuiltSentence& { return *sentences_[s].tap.sentence; };
   PageSentence page = pageSentence(sentenceOf_[i]);
-  std::string joined;
   page.whole.clear();
   page.whole.reserve(last - first + 2);
   if (first != last) {
+    std::string joined;
     for (size_t s = first; s <= last; s++) joined += built(s).text;
     page.whole.push_back({joined, built(first).truncatedLeft, built(last).truncatedRight});
   }
@@ -406,7 +403,8 @@ bool LiveSource::flushMirror(const bool load) {
   if (reads) vocab_->load(*vocabLanguage_);
   // A write that failed on this card waits for the close (an idle step run for the lemma cache doesn't retry it).
   const bool writes = vocab_->dirty() && (!load || !mirrorWriteFailed_);
-  if (writes && !vocab_->flush()) mirrorWriteFailed_ = true;
+  lastFlushWriteFailed_ = writes && !vocab_->flush();
+  if (lastFlushWriteFailed_) mirrorWriteFailed_ = true;
   return reads || writes;
 }
 
@@ -518,15 +516,15 @@ api::ApiResponse LiveSource::send(const LevelChange& change, const lookup::Looku
     return removed;
   }
   if (!id.empty()) return sendItem(api::setProficiencyRequest(id, proficiencyOf(change.to)));
-  api::SaveWord word;
-  word.language = card.language;
+  api::SaveWord save;
+  save.language = card.language;
   const std::string headword = card.headword();
-  word.text = headword;
-  if (!card.senses.empty()) word.translation = card.senses.front().translation;
-  word.notes = sentenceFor(change.word).text;
-  word.proficiency = proficiencyOf(change.to);
-  word.tags = tags_;
-  api::ApiResponse saved = api_.write(api::saveRequest(word));
+  save.text = headword;
+  if (!card.senses.empty()) save.translation = card.senses.front().translation;
+  save.notes = sentenceFor(change.word).text;
+  save.proficiency = proficiencyOf(change.to);
+  save.tags = tags_;
+  api::ApiResponse saved = api_.write(api::saveRequest(save));
   api::SaveResult result;
   if (saved.ok() && api::parseSave(saved.body, result) != api::ParseStatus::Ok) saved.error = api::ApiError::Malformed;
   if (saved.ok()) newId = std::move(result.savedExpressionId);
@@ -549,8 +547,10 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
     // V7c: the card's own answers not written yet first (the same lemma twice on one card), then one bucket read;
     // either needs no call.
     const std::string headword = f.card.headword();
+    // The key the answer is for, taken before the call (settings.md: an answer keeps the key it was fetched under).
+    const uint32_t account = lookupCache_ ? lookupCache_->account() : 0;
     const auto pending = std::find_if(lookupWrites_.rbegin(), lookupWrites_.rend(), [&](const lookup::CachedLookup& w) {
-      return w.language == f.card.language && w.text == headword;
+      return w.language == f.card.language && w.text == headword && w.account == account;
     });
     if (lookupCache_ && pending != lookupWrites_.rend()) {
       f.cacheRead.outcome = lookup::CacheRead::Outcome::Pending;
@@ -568,7 +568,7 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
     std::optional<api::LookupResult> answer;
     f.error = lookup::completeCard(api_, f.card, &f.unreadable, lookupCache_ ? &answer : nullptr);  // a failure too
     if (answer && lookup::cacheable(headword, *answer)) {
-      f.toCache = lookup::CachedLookup{f.card.language, headword, std::move(*answer), 0};
+      f.toCache = lookup::CachedLookup{f.card.language, headword, std::move(*answer), 0, account};
     }
   } else if (loading && !closing) {  // cppcheck-suppress knownConditionTrueFalse ; nullopt when nothing loads
     return analysis(*loading);
@@ -742,12 +742,11 @@ LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
   // analysis): its later occurrences share that, so the next write for any of them is the right one, and its "Met
   // before" (the sentence and tags a save made here sent, or its item once fetched).
   for (int w = first; w < wordCount(); w++) {
-    for (const int e : sameWord(w)) {
-      if (e < first) {
-        cards_[w].saved = cards_[e].saved;
-        cards_[w].savedEntryId = cards_[e].savedEntryId;
-        break;
-      }
+    const std::vector<int> same = sameWord(w);
+    const auto earlier = std::find_if(same.begin(), same.end(), [first](const int e) { return e < first; });
+    if (earlier != same.end()) {
+      cards_[w].saved = cards_[*earlier].saved;
+      cards_[w].savedEntryId = cards_[*earlier].savedEntryId;
     }
     fillFromItem(w);  // a saved item already fetched on this card (a copy under another entry)
     const auto k = static_cast<size_t>(w - first);
@@ -823,5 +822,3 @@ PageScene LiveSource::scene(const int index, const bool highlight, const TextMet
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

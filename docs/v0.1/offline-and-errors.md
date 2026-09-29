@@ -119,13 +119,14 @@ own spec before it's built.
   not connected** (the web server's hotspot, someone else's join in progress) → `Busy`, and the radio is
   not touched. **Never open the WiFi selection UI from a lookup.** No network, a failed join, or `Busy`
   → `NoWifi` → `Unavailable`.
-- `WiFi.setSleep(false)` while up (KOSync does this for the same reason: modem sleep stalls show
-  up as HTTP timeouts).
+- `WiFi.setSleep(false)` while up (~~KOSync does this for the same reason:~~ modem sleep stalls show
+  up as HTTP timeouts). Superseded 2026-09-29, here and below: KOSync was removed in v0.2 V8
+  (`../v0.2/slimming.md` §8).
 - **Ownership is explicit.** Lexipoint owns WiFi only if it brought it up from radio-off, and keeps it
   across the driver's own reconnects. It gives it back after the idle time (`wifi_idle_min`, default
   5 min) **or as soon as the screen leaves reading** (no reader activity on screen or under it: the
   reader's menus, word select and the card keep it). An ActivityManager hook reports this *before* the
-  next activity's `onEnter`, so KOSync, the web server, OTA, ... start with the radio off and bring WiFi
+  next activity's `onEnter`, so ~~KOSync,~~ the web server, OTA, ... start with the radio off and bring WiFi
   up themselves: Lexipoint can never turn WiFi off under another feature. If Lexipoint's own link
   drops, it rejoins (it's still its radio) rather than calling it busy. **The home screen's Sync Vocabulary**
   (v0.2 V7b, `../v0.2/page-annotations.md` §1.1) is the one join outside reading: the reader pressed it, so it joins
@@ -143,7 +144,7 @@ own spec before it's built.
 Transfer let WiFi go. Now `WifiSession` keeps a hint for the boot (`net/WifiHint.h`): the network, access
 point and channel of the last connection seen, its own or anyone's: `WifiSession::tick` runs every loop pass
 the card isn't holding WiFi, whatever is on screen, and notices each new connection (`ConnectionWatch`), so
-File Transfer's and KOSync's count (while the card holds WiFi, the radio is Lexipoint's own, which `ensureUp`
+File Transfer's ~~and KOSync's~~ count (while the card holds WiFi, the radio is Lexipoint's own, which `ensureUp`
 remembers itself). With a hint for the network it joins, `net::join` first asks for that access point
 (`WIFI_FAST_SCAN` with the BSSID and the channel, which the driver treats as where to start: it goes on to
 the other channels until it finds that access point, so a router on a new channel is still joined directly

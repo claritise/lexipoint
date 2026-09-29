@@ -15,9 +15,7 @@
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#if LEXIRISE
-#include "lexirise/LexiriseConfig.h"  // LEXIPOINT
-#endif
+#include "lexirise/LexiriseConfig.h"
 
 namespace fui = freeink::ui;
 
@@ -480,12 +478,8 @@ void WifiSelectionActivity::attemptConnection() {
   uint8_t mac[6] = {};
   const esp_err_t macResult = esp_read_mac(mac, ESP_MAC_WIFI_STA);
   if (macResult == ESP_OK) {
-#if LEXIRISE
     // LEXIPOINT: "Lexipoint-AABBCCDDEEFF" (D22).
     constexpr const auto& hostnamePrefix = lexipoint::config::kDhcpHostnamePrefix;
-#else
-    constexpr const auto& hostnamePrefix = "CrossPoint-Reader-";
-#endif
     constexpr size_t macHexDigits = sizeof(mac) * 2;
     char hostname[sizeof(hostnamePrefix) + macHexDigits];  // the prefix's terminator holds the string's
     snprintf(hostname, sizeof(hostname), "%s%02X%02X%02X%02X%02X%02X", hostnamePrefix, mac[0], mac[1], mac[2], mac[3],
@@ -847,11 +841,11 @@ void WifiSelectionActivity::render(RenderLock&&) {
 
   auto& theme = UITheme::getInstance();
   auto metrics = theme.getMetrics();
-  Rect screen = theme.getScreenSafeArea(renderer, true, false);
+  Rect screen = theme.getScreenSafeArea(renderer);
 
   // Draw header
-  // STR_NETWORKS_FOUND is ~37 bytes once the Arabic translation is substituted,
-  // so 32 truncated it. See ClockSyncActivity for the same class of bug.
+  // Room for STR_NETWORKS_FOUND with its count (CrossPoint sized it for its longest
+  // translation). See ClockSyncActivity for the same class of bug.
   char countStr[64];
   snprintf(countStr, sizeof(countStr), tr(STR_NETWORKS_FOUND), realNetworkCount);
   GUI.drawHeader(renderer, Rect{screen.x, screen.y + metrics.topPadding, screen.width, metrics.headerHeight},
@@ -884,10 +878,6 @@ void WifiSelectionActivity::render(RenderLock&&) {
     case WifiSelectionState::FORGET_PROMPT: {
       // The app's screen builder draws the option dialog panel itself.
       renderUi();
-      const auto labels =
-          mappedInput.mapLabels(state == WifiSelectionState::SAVE_PROMPT ? tr(STR_CANCEL) : tr(STR_BACK),
-                                tr(STR_SELECT), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
-      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
       break;
     }
     case WifiSelectionState::CONNECTION_FAILED:
@@ -904,7 +894,7 @@ void WifiSelectionActivity::listScreen(UiScreen& screen, void* user) {
 
 void WifiSelectionActivity::buildListScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   // Content below the header + MAC sub-band, above the legend line.
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight + metrics.tabBarHeight +
@@ -1027,12 +1017,6 @@ void WifiSelectionActivity::renderNetworkList(const Rect* screen, const ThemeMet
   GUI.drawHelpText(renderer,
                    Rect{screen->x, screen->y + screen->height - metrics->contentSidePadding - 15, screen->width, 20},
                    tr(STR_NETWORK_LEGEND));
-
-  const bool hasSavedPassword = !networks.empty() && networks[selectedNetworkIndex].hasSavedPassword;
-  const char* forgetLabel = hasSavedPassword ? tr(STR_FORGET_BUTTON) : "";
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_CONNECT), forgetLabel, tr(STR_RETRY));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
 void WifiSelectionActivity::renderConnecting(const Rect* screen, const ThemeMetrics* metrics) const {
@@ -1046,10 +1030,6 @@ void WifiSelectionActivity::renderConnecting(const Rect* screen, const ThemeMetr
     const char* statusText = autoConnecting ? tr(STR_FINDING_SAVED_WIFI) : tr(STR_SCANNING);
     const Rect statusBounds{statusX, screen->y, statusWidth, screen->height};
     UITheme::drawCenteredWrappedText(renderer, statusBounds, UI_10_FONT_ID, statusText, MAX_STATUS_LINES);
-    if (autoConnecting) {
-      const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_SHOW_NETWORKS), "", "");
-      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    }
   } else {
     const char* statusText = autoConnecting ? tr(STR_CONNECTING_SAVED_WIFI) : tr(STR_CONNECTING);
     const Rect statusBounds{statusX, screen->y, statusWidth, top - metrics->verticalSpacing - screen->y};
@@ -1061,10 +1041,6 @@ void WifiSelectionActivity::renderConnecting(const Rect* screen, const ThemeMetr
       ssidInfo.replace(22, ssidInfo.length() - 22, "...");
     }
     UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top, ssidInfo.c_str());
-    if (autoConnecting) {
-      const auto labels = mappedInput.mapLabels(tr(STR_CANCEL), tr(STR_SHOW_NETWORKS), "", "");
-      GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-    }
   }
 }
 
@@ -1082,10 +1058,6 @@ void WifiSelectionActivity::renderConnected(const Rect* screen, const ThemeMetri
 
   const std::string ipInfo = std::string(tr(STR_IP_ADDRESS_PREFIX)) + connectedIP;
   UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top + 40, ipInfo.c_str());
-
-  // Use centralized button hints
-  const auto labels = mappedInput.mapLabels("", tr(STR_DONE), "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
 void WifiSelectionActivity::renderConnectionFailed(const Rect* screen, const ThemeMetrics* metrics) const {
@@ -1095,10 +1067,6 @@ void WifiSelectionActivity::renderConnectionFailed(const Rect* screen, const The
   UITheme::drawCenteredText(renderer, *screen, UI_12_FONT_ID, top - 20, tr(STR_CONNECTION_FAILED), true,
                             EpdFontFamily::BOLD);
   UITheme::drawCenteredText(renderer, *screen, UI_10_FONT_ID, top + 20, connectionError.c_str());
-
-  // Use centralized button hints
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_DONE), "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
 void WifiSelectionActivity::onComplete(const bool connected) {

@@ -66,26 +66,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     ORIENTATION_COUNT
   };
 
-  // Front button layout options (legacy)
-  // Default: Back, Confirm, Left, Right
-  // Swapped: Left, Right, Back, Confirm
-  enum FRONT_BUTTON_LAYOUT {
-    BACK_CONFIRM_LEFT_RIGHT = 0,
-    LEFT_RIGHT_BACK_CONFIRM = 1,
-    LEFT_BACK_CONFIRM_RIGHT = 2,
-    BACK_CONFIRM_RIGHT_LEFT = 3,
-    FRONT_BUTTON_LAYOUT_COUNT
-  };
-
-  // Front button hardware identifiers (for remapping)
-  enum FRONT_BUTTON_HARDWARE {
-    FRONT_HW_BACK = 0,
-    FRONT_HW_CONFIRM = 1,
-    FRONT_HW_LEFT = 2,
-    FRONT_HW_RIGHT = 3,
-    FRONT_BUTTON_HARDWARE_COUNT
-  };
-
   // Side button layout options
   // Default: Up = Previous, Down = Next
   enum SIDE_BUTTON_LAYOUT { PREV_NEXT = 0, NEXT_PREV = 1, SIDE_BUTTONS_DISABLED = 2, SIDE_BUTTON_LAYOUT_COUNT };
@@ -146,7 +126,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // value >= 2 and be appended at the END of the enumValues array in SettingsList.h, otherwise the
   // stored indices shift and existing saves are silently misinterpreted.
   enum LONG_PRESS_MENU_FUNCTION {
-    LP_MENU_KOSYNC = 0,
+    LP_MENU_KOSYNC = 0,  // removed in v0.2 V8: loads as Disabled (lexipoint::long_press_menu)
     LP_MENU_DISABLED = 1,
     LP_MENU_BOOKMARK = 2,
     LP_MENU_DICTIONARY = 3,
@@ -165,9 +145,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LONG_PRESS_BUTTON_BEHAVIOR_COUNT
   };
 
-  // UI Theme
-  enum UI_THEME { CLASSIC = 0, LYRA = 1, LYRA_3_COVERS = 2, ROUNDEDRAFF = 3 };
-
   // Image rendering in EPUB reader
   enum IMAGE_RENDERING { IMAGES_DISPLAY = 0, IMAGES_PLACEHOLDER = 1, IMAGES_SUPPRESS = 2, IMAGE_RENDERING_COUNT };
 
@@ -175,8 +152,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // overlay (top/bottom bars with Contents / Text / More bottom-sheet panels)
   // painted over the page.
   enum READER_MENU_STYLE { READER_MENU_LIST = 0, READER_MENU_TOOLBAR = 1, READER_MENU_STYLE_COUNT };
-
-  enum TILT_PAGE_TURN { TILT_OFF = 0, TILT_NORMAL = 1, TILT_NVERTED = 2, TILT_PAGE_TURN_COUNT };
 
   enum TOUCH_READER_CONTROLS {
     TOUCH_READER_OFF = 0,
@@ -186,7 +161,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     TOUCH_READER_CONTROLS_COUNT
   };
 
-  // How the reader menu opens on touch boards. Persisted under the legacy
+  // How the reader menu opens with touch. Persisted under the legacy
   // "tapForReaderMenu" key: 0/1 keep their old Off/Tap meaning.
   enum SHOW_READER_MENU { READER_MENU_OFF = 0, READER_MENU_TAP = 1, READER_MENU_SWIPE_UP = 2, SHOW_READER_MENU_COUNT };
 
@@ -213,7 +188,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t statusBarTitle = CHAPTER_TITLE;
   uint8_t statusBarBattery = 1;
   uint8_t xtcStatusBarMode = XTC_STATUS_BAR_HIDE;
-  // Clock display in status bar (X3 only, requires DS3231 RTC)
+  // Clock display in status bar (drawn only when halClock finds an RTC)
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;
   // Clock UTC offset in quarter-hour steps, biased by 48 so it fits in uint8_t.
   // Value 48 = UTC+0, 0 = UTC-12:00, 104 = UTC+14:00.
@@ -232,16 +207,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // EPUB reading orientation settings
   // 0 = portrait (default), 1 = landscape clockwise, 2 = inverted, 3 = landscape counter-clockwise
   uint8_t orientation = PORTRAIT;
-  // Button layouts (front layout retained for migration only)
-  uint8_t frontButtonLayout = BACK_CONFIRM_LEFT_RIGHT;
   uint8_t sideButtonLayout = PREV_NEXT;
-  uint8_t frontButtonFollowOrientation = 0;
-  // Front button remap (logical -> hardware)
-  // Used by MappedInputManager to translate logical buttons into physical front buttons.
-  uint8_t frontButtonBack = FRONT_HW_BACK;
-  uint8_t frontButtonConfirm = FRONT_HW_CONFIRM;
-  uint8_t frontButtonLeft = FRONT_HW_LEFT;
-  uint8_t frontButtonRight = FRONT_HW_RIGHT;
   // Reader font settings
   uint8_t fontFamily = NOTOSERIF;
   // Point size of the reader font. Only sizes the active family actually ships
@@ -261,14 +227,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   static constexpr uint8_t SCREEN_MARGIN_MAX = 40;
   static constexpr uint8_t SCREEN_MARGIN_STEP = 5;
   uint8_t screenMargin = SCREEN_MARGIN_MIN;
-  // OPDS download destination folder ("" = SD root). Global; edited from the
-  // OPDS server list. Persisted via a category-less SettingInfo::String in
-  // SettingsList.h, so it stays out of the on-device Settings screen.
-  char opdsDownloadFolder[64] = "";
-  // On-disk filename format for OPDS downloads (0=Author-Title default, 1=Title-Author,
-  // 2=Title). See OpdsFilenameFormat. Persisted via a category-less SettingInfo::Enum,
-  // edited from the OPDS server list; hidden from the on-device Settings screen.
-  uint8_t opdsFilenameFormat = 0;
   // Hide battery percentage
   uint8_t hideBatteryPercentage = HIDE_NEVER;
   // Long-press page turn button behavior
@@ -276,10 +234,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Long-press Confirm function in EPUB reader (cycles through LONG_PRESS_MENU_FUNCTION values).
   // Defaults to Disabled so shortcut-based bookmark toggling remains opt-in.
   uint8_t longPressMenuFunction = LP_MENU_DISABLED;
-  // UI Theme
-  uint8_t uiTheme = LYRA;
-  // Sunlight fading compensation
-  uint8_t fadingFix = 0;
   // Power button return from footnotes (1 = enabled, 0 = disabled)
   uint8_t pwrBtnFootnoteBack = 1;
   // Use book's embedded CSS styles for EPUB rendering (1 = enabled, 0 = disabled)
@@ -300,12 +254,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t removeReadBooksFromRecents = 0;
   // Move epub to /Read/ folder on SD card when finished (0 = disabled, 1 = enabled)
   uint8_t moveFinishedToReadFolder = 0;
-  // Short press Back goes to file browser instead of home (0 = disabled, 1 = enabled)
-  uint8_t backShortToFileBrowser = 0;
   // Image rendering mode in EPUB reader
   uint8_t imageRendering = IMAGES_DISPLAY;
-  // Tilt-based page turning (X3 only — requires QMI8658 IMU)
-  uint8_t tiltPageTurn = TILT_OFF;
   // Touch screen reader zones/gestures on boards with a touch controller.
   uint8_t touchReaderControls = TOUCH_READER_SWIPE;
   // Reader menu open gesture (SHOW_READER_MENU: off / center tap / bottom-edge
@@ -320,14 +270,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Restore the saved on/off state after a normal boot or wake. Brightness and
   // warmth are always remembered even when this is disabled.
   uint8_t frontlightRestoreOnWake = 1;
-  // Language setting (Language enum index, default 0 = EN)
-  uint8_t language = 0;
-  // Keyboard layouts the user can reach, using keyboard_layouts::ALL table bits.
-  // 0 means "not configured", resolved to the UI language's layout plus English.
-  // Any other value is an explicit choice and is used as-is: the language of the
-  // books someone reads is not necessarily the language of their UI.
-  // See keyboard_layouts:: for the bit assignment and the defaulting rules.
-  uint16_t keyboardLayouts = 0;
   // Quick Resume: keep current content visible with moon icon instead of showing a static sleep screen.
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
 
@@ -396,7 +338,6 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   void toJson(JsonDocument& doc) const;
   bool fromJson(JsonVariantConst doc);
 
-  static void validateFrontButtonMapping(CrossPointSettings& settings);
   static uint8_t sleepTimeoutEnumToMinutes(uint8_t legacyValue);
 
   float getReaderLineCompression() const;

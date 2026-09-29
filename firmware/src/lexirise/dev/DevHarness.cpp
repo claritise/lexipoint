@@ -18,13 +18,11 @@
 #include "activities/Activity.h"  // complete type needed by ActivityManager.h (via ReaderUtils.h)
 #include "activities/RenderLock.h"
 #include "activities/reader/ReaderUtils.h"
-#if LEXIRISE
 #include "lexirise/LexiriseService.h"
 #include "lexirise/api/Responses.h"
 #include "lexirise/card/BenchFixtures.h"
 #include "lexirise/card/LexiriseCardActivity.h"
 #include "lexirise/settings/LexiriseSettingsActivity.h"
-#endif
 
 extern MappedInputManager mappedInputManager;  // main.cpp (LX:LEXI CARD pushes the bench with it)
 
@@ -125,19 +123,13 @@ void screenshot(const bool legacy) {
 
 void memoryStats() {
   const auto heap = HalMemory::getDefaultHeap();
-#ifdef BOARD_HAS_PSRAM
   const auto psram = HalMemory::getPsramHeap();
   logSerial.printf("LX:MEM heap_free=%u heap_min=%u heap_maxalloc=%u psram_free=%u\n",
                    static_cast<unsigned>(heap.freeBytes), static_cast<unsigned>(heap.minFreeBytes),
                    static_cast<unsigned>(heap.largestBlockBytes), static_cast<unsigned>(psram.freeBytes));
-#else
-  logSerial.printf("LX:MEM heap_free=%u heap_min=%u heap_maxalloc=%u\n", static_cast<unsigned>(heap.freeBytes),
-                   static_cast<unsigned>(heap.minFreeBytes), static_cast<unsigned>(heap.largestBlockBytes));
-#endif
   ok(Verb::Mem);
 }
 
-#if LEXIRISE
 // Bytes of this task's stack never used so far (the loop task runs the TLS handshake and JSON parse).
 unsigned stackFree() { return static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)); }
 
@@ -193,7 +185,6 @@ void lexi(const Command& c) {
   }
   ok(Verb::Lexi);
 }
-#endif
 
 // Round-trips a grid of logical points through the real GfxRenderer::tapToLogical() for the current
 // orientation, proving injected taps land exactly where they're aimed.
@@ -273,11 +264,7 @@ void handle(const Command& c) {
     case Verb::Reboot:
       return reboot();
     case Verb::Lexi:
-#if LEXIRISE
       return lexi(c);
-#else
-      return err("built without LEXIRISE");
-#endif
   }
 }
 

@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "WifiSession.h"
 
 #include <Arduino.h>
@@ -66,7 +64,7 @@ WifiResult WifiSession::ensureUp() {
     LOG_INF(kLogTag, "WiFi failed after %lu ms", millis() - started);
     return WifiResult::Failed;
   }
-  WiFi.setSleep(false);  // modem sleep shows up as HTTP timeouts (KOSync does the same)
+  WiFi.setSleep(false);  // modem sleep shows up as HTTP timeouts
   rememberConnection();
   LOG_INF(kLogTag, "WiFi up in %lu ms (channel %ld)", millis() - started, static_cast<long>(WiFi.channel()));
   return WifiResult::Up;
@@ -120,7 +118,7 @@ void WifiSession::touch() { lease_.used(millis()); }
 
 bool WifiSession::tick(const int idleMin) {
   // Every loop pass the card isn't holding WiFi (LexiriseService::tick), whatever is on screen: a connection the
-  // web server or KOSync made is remembered too. (While the card holds it, the radio is Lexipoint's own, which
+  // web server or OTA made is remembered too. (While the card holds it, the radio is Lexipoint's own, which
   // ensureUp remembers itself.)
   if (watch_.newlyConnected(WiFi.status() == WL_CONNECTED)) rememberConnection();
   if (!lease_.expired(millis(), idleMin)) return false;
@@ -141,5 +139,3 @@ void WifiSession::tearDown() {
 }
 
 }  // namespace lexipoint::net
-
-#endif  // LEXIRISE

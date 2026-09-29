@@ -137,8 +137,8 @@ inline freeink::ui::BitmapRef listIconFor(const UIIcon icon, const int size = 24
 
 // Bottom-anchored Cancel / OK pair for slider dialogs on touch devices, where
 // the physical Back/Confirm buttons (and their auto-hidden hints) may not
-// exist. Callers gate on hasTouch(): button boards keep the hint chrome and
-// need no on-screen pair. Consumes the bottom of the screen's content band.
+// exist. Callers gate on hasTouch(): without touch the hint chrome stays and
+// no on-screen pair is needed. Consumes the bottom of the screen's content band.
 template <typename Screen>
 inline void addDialogCancelOk(Screen& screen, const freeink::ui::ActionId cancelAction,
                               const freeink::ui::ActionId okAction) {

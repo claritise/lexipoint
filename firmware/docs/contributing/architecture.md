@@ -1,6 +1,6 @@
 # Architecture Overview
 
-CrossPoint is firmware for the Xteink X4 (unaffiliated with Xteink), built with PlatformIO targeting the ESP32-C3 microcontroller.
+Lexipoint (built on CrossPoint Reader) is firmware for the Xteink X4 Pro only (unaffiliated with Xteink), built with PlatformIO for its ESP32-S3.
 
 At a high level, it is firmware that uses an activity-driven application architecture loop with persistent settings/state, SD-card-first caching, and a rendering pipeline optimized for e-ink constraints.
 
@@ -8,7 +8,7 @@ At a high level, it is firmware that uses an activity-driven application archite
 
 ```mermaid
 graph TD
-    A[Hardware: ESP32-C3 + SD + E-ink + Buttons] --> B[freeink-sdk]
+    A[Hardware: ESP32-S3 + SD + E-ink + touch + buttons] --> B[freeink-sdk]
     B --> C[lib/hal wrappers]
     C --> D[src/main.cpp runtime loop]
     D --> E[Activities layer]
@@ -83,7 +83,7 @@ flowchart LR
 
 Why caching matters:
 
-- RAM is limited on ESP32-C3, so expensive parsed/layout data is persisted to SD
+- internal RAM is limited (the ESP32-S3's 512 KB), so expensive parsed/layout data is persisted to SD
 - repeat opens/page navigation can reuse cached data instead of full reparsing
 
 ## Reader internals call graph
@@ -156,7 +156,7 @@ Typical persisted areas on SD:
 
 `sections/*.bin` contains rendered pages plus anchor, paragraph, list-item, and
 page-start visible-text-offset lookup tables. The offset table makes reading
-positions content-based: KOReader XPaths resolve to an exact chapter offset,
+positions content-based: saved XPaths (bookmarks) resolve to an exact chapter offset,
 and the current layout derives the corresponding page. For binary cache
 formats, see `docs/file-formats.md`.
 
@@ -168,16 +168,14 @@ Modes:
 
 - STA: join existing Wi-Fi network
 - AP: create hotspot
-- Calibre Wireless: STA flow specialized for Calibre plugin uploads
+- USB Drive: the SD card as a USB drive
 
 Server behavior:
 
 - HTTP server on port 80
 - WebSocket upload server on port 81
-- WebDAV handler on the HTTP server
-- UDP discovery listener for upload clients
 - file operations backed by SD storage
-- browser APIs for file management, settings, fonts, OPDS servers, and saved Wi-Fi networks
+- browser APIs for file management, settings, fonts, and saved Wi-Fi networks
 - activity requests faster loop responsiveness while server is running
 
 Endpoint reference: `docs/webserver-endpoints.md`.

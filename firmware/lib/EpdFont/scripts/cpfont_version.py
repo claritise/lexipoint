@@ -4,9 +4,9 @@
 # (release-fonts.yml) and both Python scripts (fontconvert_sdcard.py,
 # generate-font-manifest.py) read from here.
 #
-# The firmware C++ headers (SdCardFont.h, FontDownloadActivity.h) carry their
-# own copies — those must be bumped manually when the firmware is updated to
-# support a new version.
+# The firmware's SdCardFont.h carries its own copy of CPFONT_VERSION, bumped
+# by hand when the firmware supports a new format. (Lexipoint removed the
+# device's font download, which carried the manifest version, in v0.2 V8.)
 
 # .cpfont binary format version. Bump when the on-disk struct layout changes.
 CPFONT_VERSION = 4

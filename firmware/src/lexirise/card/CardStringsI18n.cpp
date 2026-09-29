@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "CardStringsI18n.h"
 
 #include <I18n.h>
@@ -73,5 +71,3 @@ CardStrings cardStringsFromI18n() {
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

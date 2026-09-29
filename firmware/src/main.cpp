@@ -12,24 +12,19 @@
 #include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <HalSystem.h>
-#include <HalTiltSensor.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <XteinkDetect.h>
 #include <builtinFonts/all.h>
-#if FREEINK_CAP_TOUCH
 #include <esp_sntp.h>
-#endif
 
 #include <cstring>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
-#include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
-#include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
@@ -38,13 +33,11 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/LoadingIcon.h"
+#include "lexirise/LexiriseService.h"
+#include "lexirise/settings/SettingsStore.h"
 #include "platform/UsbSerialJtagHandoff.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
-#if LEXIRISE
-#include "lexirise/LexiriseService.h"         // LEXIPOINT
-#include "lexirise/settings/SettingsStore.h"  // LEXIPOINT
-#endif
 #if LEXIPOINT_DEV_HARNESS
 #include "lexirise/dev/DevHarness.h"  // LEXIPOINT: dev-only USB remote control
 #endif
@@ -156,7 +149,6 @@ enum class BootResume : uint8_t {
 // startDeepSleep() does not return, so a set latch only ends at the wakeup reset.
 static bool deepSleepInProgress = false;
 
-#if FREEINK_CAP_TOUCH
 static bool finishWifiSessionWithoutRestart() {
   if (!BoardConfig::hasTouch()) return false;
 
@@ -170,13 +162,10 @@ static bool finishWifiSessionWithoutRestart() {
   LOG_DBG("MAIN", "WiFi stopped without restart on touch device");
   return true;
 }
-#endif
 
 void silentRestart() {
   if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
-#if FREEINK_CAP_TOUCH
   if (finishWifiSessionWithoutRestart()) return;
-#endif
   silentRebootTarget = SILENT_REBOOT_TARGET_HOME;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
   LOG_DBG("MAIN", "Silent restart (target=home)");
@@ -191,9 +180,7 @@ void silentRestart() {
 
 void silentRestartToReader() {
   if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
-#if FREEINK_CAP_TOUCH
   if (finishWifiSessionWithoutRestart()) return;
-#endif
   silentRebootTarget = SILENT_REBOOT_TARGET_READER;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
   LOG_DBG("MAIN", "Silent restart (target=reader)");
@@ -214,7 +201,7 @@ void restartToHomeAfterStorageHandoff() {
 }
 
 bool handleX4ProFrontlightDoubleClick() {
-  if (!BoardConfig::isX4Pro() || !gpio.wasReleased(HalGPIO::BTN_POWER)) {
+  if (!gpio.wasReleased(HalGPIO::BTN_POWER)) {
     return false;
   }
 
@@ -295,7 +282,6 @@ void enterDeepSleep(bool fromTimeout = false) {
     WiFi.mode(WIFI_OFF);
   }
 
-  halTiltSensor.deepSleep();
   display.deepSleep();
   Storage.prepareForDeepSleep();
   LOG_DBG("MAIN", "Entering deep sleep");
@@ -304,10 +290,8 @@ void enterDeepSleep(bool fromTimeout = false) {
 }
 
 void setupDisplayAndFonts(bool seamless = false) {
-#if !FREEINK_MCU_C3
-  // C3 resolves its controller in HalGPIO::begin() before SPI claims the
-  // display pins. X4 Pro skips that C3-only path, so probe here before
-  // display.begin() selects and initializes its panel driver.
+  // Probe the panel controller (UC8279 or SSD1677) before display.begin()
+  // selects and initializes its panel driver.
   static bool controllerResolved = false;
   if (!controllerResolved) {
     controllerResolved = true;
@@ -315,7 +299,6 @@ void setupDisplayAndFonts(bool seamless = false) {
       LOG_DBG("MAIN", "Panel controller: UltraChip UC81xx variant detected");
     }
   }
-#endif
 
   display.begin(seamless);
   renderer.begin();
@@ -380,7 +363,7 @@ void setup() {
   gpio.begin();
   powerManager.begin();
 #if LEXIPOINT_DEV_HARNESS
-  lexipoint::dev::begin(renderer, display);  // LEXIPOINT
+  lexipoint::dev::begin(renderer, display);
 #endif
 
   const auto wakeupReason = gpio.getWakeupReason();
@@ -390,21 +373,14 @@ void setup() {
   // only SD state survives to the next boot.
   const bool wakeHoldVerified = wakeupReason != HalGPIO::WakeupReason::PowerButton || gpio.verifyPowerButtonWakeup();
 
-  // X4 Pro and X4 Classic both map BTN_UP to GPIO0 — an ESP32-S3 boot strap — so
-  // gate recovery on the non-strap Down key (GPIO7) to avoid a stuck-in-recovery loop.
-  const auto recoveryButton = (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()) ? MappedInputManager::Button::Down
-                                                                                     : MappedInputManager::Button::Up;
-  const bool recoveryFirmwareMode = wakeupReason == HalGPIO::WakeupReason::PowerButton && !BoardConfig::isPaperMono() &&
-                                    mappedInputManager.isPressed(recoveryButton);
+  // The X4 Pro maps BTN_UP to GPIO0 — an ESP32-S3 boot strap — so gate recovery
+  // on the non-strap Down key (GPIO7) to avoid a stuck-in-recovery loop.
+  const bool recoveryFirmwareMode = wakeupReason == HalGPIO::WakeupReason::PowerButton &&
+                                    mappedInputManager.isPressed(MappedInputManager::Button::Down);
 
-  halTiltSensor.begin();
   halClock.begin();
 
-#if FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3
-  LOG_INF("MAIN", "Hardware detect: %s", gpio.deviceIsX3() ? "X3" : "X4");
-#else
   LOG_INF("MAIN", "Device: %s", BoardConfig::ACTIVE.name);
-#endif
 
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
@@ -422,11 +398,10 @@ void setup() {
   const bool isPersistedSleepWake = isSleepWake && !APP_STATE.showBootScreen;
 
   if (recoveryFirmwareMode) {
-    LOG_INF("MAIN", "Recovery firmware mode (%s + POWER held at boot)",
-            (BoardConfig::isX4Pro() || BoardConfig::isX4Classic()) ? "DOWN" : "UP");
+    LOG_INF("MAIN", "Recovery firmware mode (DOWN + POWER held at boot)");
   }
 
-  // Touch boards default the reader menu to the toolbar overlay instead of the
+  // With touch the reader menu defaults to the toolbar overlay instead of the
   // full-screen list. Seeded before the load: fromJson() falls back to the
   // in-memory value only when the file carries no readerMenuStyle key, so a
   // user's saved choice (either style) still wins.
@@ -435,13 +410,7 @@ void setup() {
   }
   SETTINGS.loadFromFile();
   RECENT_BOOKS.loadFromFile();
-  I18N.setLanguage(static_cast<Language>(SETTINGS.language));
-  KOREADER_STORE.loadFromFile();
-  OPDS_STORE.loadFromFile();
-#if LEXIRISE
-  lexipoint::settingsStore().load();  // LEXIPOINT
-#endif
-  UITheme::getInstance().reload();
+  lexipoint::settingsStore().load();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
   // Brightness and warmth are always restored. A normal wake starts with the
@@ -462,21 +431,11 @@ void setup() {
       wakePowerReleasePending = true;
       break;
     case HalGPIO::WakeupReason::AfterUSBPower:
-      // Most devices return to sleep after a USB-powered cold boot.
+      // The X4 Pro stays awake so USB Serial/JTAG remains available after leaving
+      // USB Drive and reconnecting the cable: sleeping here would strand it in a
+      // USB-replug boot loop.
       LOG_DBG("MAIN", "Wakeup reason: After USB Power");
-#if FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_EEGO_A4
-      // X4 Pro must stay awake so USB Serial/JTAG remains available after leaving
-      // USB Drive and reconnecting the cable. Paper Mono has no armable GPIO wake
-      // (its button is behind the PMIC). EEGO A4's post-flash reset reads as
-      // POWERON (native-USB), so a flash would otherwise be misclassified as a
-      // USB-power cold boot and sleep. Sleeping any of these here would strand
-      // the device in a USB-replug boot loop (or sleep right after a flash).
       break;
-#else
-      Storage.prepareForDeepSleep();
-      powerManager.startDeepSleep(gpio);
-      break;
-#endif
     case HalGPIO::WakeupReason::AfterFlash:
       // After flashing, just proceed to boot
     case HalGPIO::WakeupReason::Other:
@@ -487,15 +446,13 @@ void setup() {
   LOG_DBG("MAIN", "Starting CrossPoint version " CROSSPOINT_VERSION);
 
   // Resolve the single boot-presentation decision. Skipping the splash also
-  // skips the panel-clearing pass and the X3 initial-full-sync arming (see
-  // HalDisplay::begin), so the first paint is FAST_REFRESH (~500ms) over the
+  // skips the panel-clearing pass (see HalDisplay::begin), so the first paint is FAST_REFRESH (~500ms) over the
   // retained frame and input dispatches against a visible UI.
   // Only a verified deep-sleep wake may use the one-shot persisted flag.
   // Otherwise a stale flag could suppress the splash on a cold boot.
   const BootResume resume = isSilentReboot         ? BootResume::Silent
                             : isPersistedSleepWake ? BootResume::SplashlessWake
                                                    : BootResume::Splash;
-  bool allowFastInitialReaderRefresh = false;
   bool needsWakeRefresh = false;
 
   setupDisplayAndFonts(resume != BootResume::Splash);
@@ -512,21 +469,9 @@ void setup() {
       APP_STATE.showBootScreen = true;
       APP_STATE.saveToFile();
       if (Storage.exists(SLEEP_FRAME_FILE) && loadSleepFrameBuffer()) {
-        const bool useDifferentialRefresh = gpio.deviceIsX3();
-        if (useDifferentialRefresh) {
-          // begin() clears the X3 controller RAM, so restore the saved frame as
-          // the baseline before replacing the moon with the loading icon.
-          renderer.cleanupGrayscaleWithFrameBuffer();
-        }
-
         const auto pageHeight = renderer.getScreenHeight();
         renderer.drawImage(LoadingIcon, 0, pageHeight - LOADINGICON_HEIGHT, LOADINGICON_WIDTH, LOADINGICON_HEIGHT);
-        if (useDifferentialRefresh) {
-          renderer.displayGrayscaleBase(HalDisplay::FAST_REFRESH);
-          allowFastInitialReaderRefresh = true;
-        } else {
-          renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-        }
+        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
       } else {
         // The first Home/Reader paint is followed by an explicit clean refresh
         // because the panel still physically shows the sleep image.
@@ -567,7 +512,7 @@ void setup() {
     APP_STATE.openEpubPath = "";
     APP_STATE.readerActivityLoadCount++;
     APP_STATE.saveToFile();
-    activityManager.goToReader(path, allowFastInitialReaderRefresh);
+    activityManager.goToReader(path);
   }
 
   if (resume == BootResume::Silent) {
@@ -614,19 +559,13 @@ void loop() {
     return;
   }
 
-  halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
-
-  renderer.setFadingFix(SETTINGS.fadingFix);
-
   if (Serial && millis() - lastMemPrint >= 10000) {
     const auto heap = HalMemory::getInternalHeap();
     LOG_INF("MEM", "Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes", heap.freeBytes,
             heap.totalBytes, heap.minFreeBytes, heap.largestBlockBytes);
-#ifdef BOARD_HAS_PSRAM
     const auto psram = HalMemory::getPsramHeap();
     LOG_INF("MEM", "PSRAM: Free: %zu bytes, Total: %zu bytes, Min Free: %zu bytes, MaxAlloc: %zu bytes",
             psram.freeBytes, psram.totalBytes, psram.minFreeBytes, psram.largestBlockBytes);
-#endif
     lastMemPrint = millis();
   }
 
@@ -653,14 +592,11 @@ void loop() {
   }
 #endif
 
-#if LEXIRISE
   lexipoint::service().tick();  // LEXIPOINT: gives back WiFi a lookup brought up, once idle
-#endif
 
   // Check for any user activity (button press or release) or active background work
   static unsigned long lastActivityTime = millis();
-  if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || halTiltSensor.hadActivity() ||
-      activityManager.preventAutoSleep()
+  if (gpio.wasAnyPressed() || gpio.wasAnyReleased() || gpio.wasTouchActivity() || activityManager.preventAutoSleep()
 #if LEXIPOINT_DEV_HARNESS
       || lexipoint::dev::keepAwake()  // LEXIPOINT: stay awake while driven over USB
 #endif
@@ -707,16 +643,14 @@ void loop() {
     return;
   }
 
-#if FREEINK_CAP_TOUCH
   // A single X4 Pro power click becomes Confirm only after the frontlight
   // double-click window expires without a second click.
   mappedInputManager.setPowerConfirmClickFrame(false);
-  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PWR_CONFIRM && BoardConfig::isX4Pro() &&
-      lastX4ProPowerClickAt != 0 && millis() - lastX4ProPowerClickAt > X4PRO_POWER_DOUBLE_CLICK_MS) {
+  if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PWR_CONFIRM && lastX4ProPowerClickAt != 0 &&
+      millis() - lastX4ProPowerClickAt > X4PRO_POWER_DOUBLE_CLICK_MS) {
     lastX4ProPowerClickAt = 0;
     mappedInputManager.setPowerConfirmClickFrame(true);
   }
-#endif
 
   const unsigned long sleepTimeoutMs = SETTINGS.getSleepTimeoutMs();
   if (sleepTimeoutMs > 0 && millis() - lastActivityTime >= sleepTimeoutMs) {
@@ -743,18 +677,6 @@ void loop() {
     // This should never be hit as `enterDeepSleep` calls esp_deep_sleep_start
     return;
   }
-
-#if FREEINK_DEVICE_PAPERMONO
-  // Paper Mono reports the PMIC power button as a one-tick click, so the held
-  // path above cannot fire. With the default Ignore action, retain the normal
-  // power-button meaning and shut down; explicit alternate bindings still win.
-  if ((SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP ||
-       SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::IGNORE) &&
-      millis() >= allowSleepAt && mappedInputManager.wasReleased(MappedInputManager::Button::Power)) {
-    enterDeepSleep();
-    return;
-  }
-#endif
 
   // Refresh screen when power button is short-pressed with FORCE_REFRESH setting.
   if (SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::FORCE_REFRESH &&

@@ -151,6 +151,71 @@ session.
 | **Met before (C14), the retest** | **pass**: 和子 in 校舎の裏庭にゴミを捨て、理科教室にもどった和子は、… → Context tab: "This book" (this sentence), then **"Met before · [筒井康隆] 時をかける少女"** with the saved sentence ふたりのうしろ姿を見くらべた和子は、また、笑い出しそうになった。, 和子 underlined. The log: `analyze/text` 200 (and the word-level `fast` call), names, `dictionary/lookup` 200, then **one** `GET /v1/vocabulary/{id}` 200 |
 | Stack after the item (V4b) | **pass**: the next analysis still reports 5688 B free (unchanged) |
 
+## v0.2 V8: still owed on the device
+
+V8 (the slimming: `../v0.2/slimming.md` §8 "As built (V8)") is on `lexi/V8`, not yet run on the device. Flash the
+release build (`x4pro-gh_release`) over an SD card last used with the build before V8, so the upgrade is checked too.
+Record the free internal heap and PSRAM on the Home screen and with a book open (the P0 boot-log method) beside the
+numbers before V8 (slimming.md §5 gate 3: nothing may get worse).
+
+- **Boot and sleep (step 2: the board code went):** a cold boot on battery, a power-button wake from sleep, a boot with
+  USB in (stays awake), the frontlight's double click, sleep with "Last screen" (the moon, a half refresh), and the
+  battery latch (unplug USB while asleep: the next press wakes, not a cold boot). The recovery boot (Down + Power).
+- **No button legend anywhere (step 2):** walk every settings screen, the file browser, the library, WiFi (the
+  keyboard's text field as wide as before), the reader menu and its toolbar, word select, the dictionary screen and
+  the percent picker (the side buttons still step it: left down, right up).
+- **The ecosystems are gone (step 3):** the home menu has no OPDS row, File Transfer offers Join Network, Create
+  Hotspot and USB Drive only, the reader menu has no Sync Progress row, Settings → System has no KOReader Sync or OPDS
+  rows, Long-press Menu offers Disabled / Bookmark / Reader Menu (a card whose setting was KOReader Sync shows
+  Disabled). The web settings page has no OPDS card; upload a book from the Files page (the WebSocket upload); run
+  `websmoke.py` against the device.
+- **English only (step 4a):** Settings → System has no Language or Keyboard Layouts row; over an SD card whose UI
+  was set to another language, every screen is in English. The keyboard (a WiFi password, the Lexirise tags, library
+  search) is English QWERTY with no language key; its symbols layer and Shift work.
+- **Hyphenation (step 4b):** with Hyphenation on, an English EPUB still hyphenates; a Japanese and a Chinese EPUB
+  lay out as before.
+- **No bidi (step 4c):** a Japanese and a Chinese EPUB with ruby, an English EPUB and a TXT lay out and look as
+  before; the WiFi password field's cursor follows taps.
+- **Lyra only (step 5c):** Settings → Display has no UI Theme row, nor the web settings page; over an SD card whose
+  theme was Classic, Lyra Extended or RoundedRaff, the home screen, the lists and the Sync Vocabulary row and popup
+  are Lyra's; the card looks as before.
+- **Settings screens (step 5):** Settings → Reader has no Manage Fonts row and Controls no Remap Front Buttons; the
+  Home key and the left-edge swipe still go back. Upload a `.cpfont` family from the web Fonts page: it shows in Font
+  Family.
+- **Always Lexirise (step 7):** the boot and sleep screens say Lexipoint; Settings → Check for updates asks
+  Lexipoint's releases; the web pages carry the Lexirise link; a lookup, a save and the home screen's Sync Vocabulary
+  work (the gate's removal kept their code; the cppcheck rewrites touched the card, the settings, the web API and the
+  mirror).
+- **The caches after the upgrade (R1):** the first open of a book already cached before V8 lays it out again (the
+  section format is 47): time it on a long Japanese or Chinese chapter. A pre-V8 cached Arabic or Hebrew EPUB then
+  draws in logical order with no overlapping or gapped words. The first lookup of a word cached before V8 logs its
+  format-1 lemma bucket removed (`[LXLOOK] ... unreadable: removed`) and misses; the next is a hit.
+- **More after the upgrade (R5):**
+  - A TXT opened before V8 is indexed again on its first open (the TXT page index is version 4).
+  - Change the Lexirise API key (web page) and look up a word cached under the old key: it misses and is fetched
+    again (not the old account's answer). A format-1 bucket from before V8 is removed on its first read.
+  - Side-button page turns in all four orientations, with the side-button layout on Prev/Next and on Next/Prev (the
+    buttons follow the screen in the inverted and counter-clockwise landscape orientations): step 5a rewrote the
+    button mapping.
+  - An EPUB paragraph with `dir="rtl"` or CSS `direction: rtl` and English or Japanese text: its words read left to
+    right, pushed to the right margin (centred if the book centres it), not reversed. A card last used with a V8 dev
+    build from before R5 (R1–R4) may still hold that book's reversed layout under the same format (47): clear the
+    book's cache (Clear Cache) first. Released cards never had it.
+- **More after the upgrade (R8):**
+  - File Transfer → USB Drive mounts the SD card on a computer and ejects cleanly (`HalStorage` lost its `#if`; a
+    `static_assert` now guards the build).
+  - Settings → Check for updates, once a release is published: it finds `lexipoint-<tag>-x4pro.bin` on the latest
+    release (a newer tag) and installs it.
+  - With a card open, change the API key over the web page, then look up the same word again on that card: it's
+    asked again (the log's lookup call), not answered from the card's pending answer.
+- **Recovery without the SPI guide (R2):** can an X4 Pro that won't boot reach the ESP32-S3's ROM download mode
+  (e.g. holding the side button on GPIO0, a boot strap, while resetting or plugging in USB), so `esptool.py` can
+  flash it over USB? Record what works; the user guide's recovery note depends on it.
+- **Leftover files (R1):** on a card that had KOReader sync or OPDS set up, `/.crosspoint/koreader.json` and
+  `/.crosspoint/opds.json` are still there after the upgrade and nothing reads them (the user guide says so).
+- **The settings survive (steps 2–5):** every setting set before the upgrade is kept (compare a few against the old
+  build); the web settings page lists no removed setting.
+
 ## v0.2 V7c: still owed on the device
 
 V7c (the lemma cache and TLS session resumption: `../v0.2/00-overview.md` C21 "As built (V7c)") is on `lexi/V7`, not
@@ -169,6 +234,10 @@ read, write and handshake times. Never run here.
 - **The kept session's heap:** the free internal heap with WiFi up and no connection open, before the first call of a
   boot and after a card closed and its session closed (the difference is the kept `WOLFSSL_SESSION`, ~0.4 KB by `nm`);
   and after leaving the reader (WiFi given back), the same heap as before the first call (R2: dropped then).
+- **The heap during a resumed connection (V7c's carried nit, 2026-09-29):** the free internal heap and the largest free
+  block while a resumed call is open (its `Verified ... resumed` line), against the same call made in full: a resumed
+  connection holds the kept session and the copy wolfSSL makes of it for the handshake, so it may need a few hundred
+  bytes more than a full one; record both.
 - **The largest free block with a session kept (R3):** the internal heap's largest free block after a card closed and its
   session closed (the kept `WOLFSSL_SESSION` in place), against `HttpDownloader::MIN_TLS_MAX_ALLOC` (the TLS
   pre-flight): the next handshake must still pass it.
@@ -177,11 +246,12 @@ read, write and handshake times. Never run here.
   says `resumed` or `full`, never a `Handshake ... failed (resuming)` line.
 - **A refused session:** hard to force; if a `Handshake ... failed (resuming)` line ever shows, the next line must be a
   `full` `Verified` for the same call (the fallback), and the card must not show an error.
-- **A rustls-fronted TLS 1.3 server (R7):** a KOSync or OPDS server behind rustls (32-byte ticket nonces; and one with
+- ~~**A rustls-fronted TLS 1.3 server (R7):** a KOSync or OPDS server behind rustls (32-byte ticket nonces; and one with
   a long ticket lifetime if one can be found): it connects and syncs or lists after its handshake (before
-  `WOLFSSL_TICKET_NONCE_MALLOC`, the read after the handshake failed).
+  `WOLFSSL_TICKET_NONCE_MALLOC`, the read after the handshake failed).~~ (Superseded 2026-09-29: removed in v0.2 V8, `../v0.2/slimming.md` §8.)
 - **The flag's other users** (`HAVE_SESSION_TICKET` reaches every wolfSSL user): an OTA check (Settings, check for
-  updates), a KOSync sync (when one is set up) and a font download each still connect and finish as before.
+  updates) ~~, a KOSync sync (when one is set up) and a font download each~~ still connects and finishes as before.
+  Superseded 2026-09-29: KOSync and the font download were removed in v0.2 V8 (`../v0.2/slimming.md` §8).
 - **The lemma cache:** tap a word (a `miss` line, then its phase B from the network), close the card after its meaning
   shows, tap the same word again (on another page or card): a `hit` line, the meaning at once, and no
   `POST /v1/dictionary/lookup` in the log. Record the miss's read time (what the cache adds to every phase B) and a

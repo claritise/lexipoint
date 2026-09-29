@@ -3,6 +3,9 @@
 // Lexirise settings model and INI (de)serialisation: pure, host-testable (settings.md in the lexipoint
 // repo). Persistence lives in SettingsStore. Tests: test/lexirise_settings.
 
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -22,6 +25,14 @@ std::optional<Language> languageFromCode(std::string_view code);  // languageCod
 // Every language Lexipoint looks up, in settings order: code that spans languages loops over this, so a new
 // language (settings.md §1) is added here and in Settings::language().
 inline constexpr Language kLanguages[] = {Language::Japanese, Language::Chinese};
+
+// A language's index in kLanguages: the slot in an array sized std::size(kLanguages).
+constexpr size_t languageSlot(const Language language) {
+  size_t i = 0;
+  while (i + 1 < std::size(kLanguages) && kLanguages[i] != language) i++;
+  return i;
+}
+static_assert(languageSlot(Language::Japanese) == 0 && languageSlot(Language::Chinese) == 1);
 
 struct LanguageSettings {
   bool enabled = true;
@@ -67,9 +78,8 @@ struct Settings {
   }
   bool hasApiKey() const { return !apiKey.empty(); }
   int enabledLanguageCount() const {
-    int count = 0;
-    for (const Language l : kLanguages) count += language(l).enabled ? 1 : 0;
-    return count;
+    return static_cast<int>(std::count_if(std::begin(kLanguages), std::end(kLanguages),
+                                          [this](const Language l) { return language(l).enabled; }));
   }
   // Whether "Language when a book doesn't say" is what Han-only text uses, so its row shows (settings.md §1):
   // not while Lexirise is on with just one language on, which is the answer then. With Lexirise off only the
@@ -79,9 +89,9 @@ struct Settings {
   // The language Han-only text is read as: the chosen one while it applies, else the one language on.
   Language fallbackLanguage() const {
     if (!defaultLanguageApplies()) {
-      for (const Language l : kLanguages) {
-        if (language(l).enabled) return l;
-      }
+      const auto on = std::find_if(std::begin(kLanguages), std::end(kLanguages),
+                                   [this](const Language l) { return language(l).enabled; });
+      if (on != std::end(kLanguages)) return *on;
     }
     return defaultLanguage;
   }

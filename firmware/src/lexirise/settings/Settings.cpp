@@ -1,10 +1,9 @@
-#if LEXIRISE
-
 #include "Settings.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <iterator>
 
 #include "lexirise/net/Http.h"
 
@@ -114,8 +113,8 @@ class Applier {
   }
 
   void setDefaultLanguage(const Entry& e) {
-    if (const auto language = languageFromCode(e.value)) {
-      s_.defaultLanguage = *language;
+    if (const auto chosen = languageFromCode(e.value)) {
+      s_.defaultLanguage = *chosen;
     } else {
       warn(e);
     }
@@ -217,19 +216,15 @@ bool isKnownSection(std::string_view s) {
 }  // namespace
 
 bool isAllowedWifiIdle(const int minutes) {
-  for (const int allowed : config::kWifiIdleChoicesMin) {
-    if (allowed == minutes) return true;
-  }
-  return false;
+  return std::any_of(std::begin(config::kWifiIdleChoicesMin), std::end(config::kWifiIdleChoicesMin),
+                     [minutes](const int allowed) { return allowed == minutes; });
 }
 
 bool isSafeDictionaryName(const std::string_view name) {
   if (name.empty() || name.size() > config::kMaxDictionaryNameLength) return false;
   if (name == "." || name == "..") return false;
-  for (const char c : name) {
-    if (c == '/' || c == '\\' || static_cast<unsigned char>(c) < 0x20) return false;
-  }
-  return true;
+  return std::none_of(name.begin(), name.end(),
+                      [](const char c) { return c == '/' || c == '\\' || static_cast<unsigned char>(c) < 0x20; });
 }
 
 bool isValidBaseUrl(const std::string_view url) {
@@ -254,10 +249,10 @@ const char* languageCode(const Language language) {
 
 std::optional<Language> languageFromCode(const std::string_view code) {
   const std::string lowered = lower(code);
-  for (const Language language : kLanguages) {
-    if (lowered == languageCode(language)) return language;
-  }
-  return std::nullopt;
+  const auto it = std::find_if(std::begin(kLanguages), std::end(kLanguages),
+                               [&lowered](const Language language) { return lowered == languageCode(language); });
+  if (it == std::end(kLanguages)) return std::nullopt;
+  return *it;
 }
 
 ParseResult parseSettings(std::string_view text) {
@@ -353,10 +348,10 @@ bool isPlausibleApiKey(std::string_view key) {
   const std::string_view prefix = config::kApiKeyPrefix;
   if (key.size() < config::kApiKeyMinLength || key.size() > config::kApiKeyMaxLength) return false;
   if (key.substr(0, prefix.size()) != prefix) return false;
-  for (const char c : key.substr(prefix.size())) {
-    if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-') return false;
-  }
-  return true;
+  const std::string_view rest = key.substr(prefix.size());
+  return std::all_of(rest.begin(), rest.end(), [](const char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '-';
+  });
 }
 
 std::string normaliseTags(std::string_view tags) {
@@ -395,5 +390,3 @@ std::vector<std::string> tagList(std::string_view normalised) {
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

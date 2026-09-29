@@ -36,7 +36,7 @@ class DictionaryDefinitionActivity final : public Activity {
     uint16_t len;
   };
 
-  // Usable body-text area between the header and the button hints.
+  // Usable body-text area between the header and the bottom reserve.
   struct BodyArea {
     int width;
     int height;

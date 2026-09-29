@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LookupCache.h"
 
 #include <Logging.h>
@@ -8,6 +6,8 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
+#include <numeric>
 
 #include "lexirise/util/ByteOrder.h"
 #include "lexirise/util/Crc32.h"
@@ -22,13 +22,16 @@ using bytes::put16;
 using bytes::put32;
 
 constexpr char kMagic[4] = {'L', 'X', 'L', 'K'};
-constexpr uint8_t kVersion = 1;  // the record's fields: a build that keeps others bumps it (an old file is a miss)
+// The header's and the record's fields: a build that keeps others bumps it (an old file is malformed: removed, a miss).
+// 2 (V8): the account.
+constexpr uint8_t kVersion = 2;
 constexpr size_t kAtVersion = 4;
 constexpr size_t kAtLanguage = 5;
 constexpr size_t kAtCount = 6;
 constexpr size_t kAtBytes = 8;
 constexpr size_t kAtCrc = 12;
-constexpr size_t kHeaderBytes = 16;
+constexpr size_t kAtAccount = 16;
+constexpr size_t kHeaderBytes = 20;
 // A record: its length (u16), then the fetch time, rank and frequency (u32 each), the text, word, reading and level
 // (a u16 length and the bytes each), the sense count (u8) and each sense's translation and part of speech (as strings).
 constexpr size_t kLengthBytes = 2;  // a u16 length before a record and before each string
@@ -50,10 +53,11 @@ static_assert(config::kLookupBuckets <= 0x100, "a bucket's name is 2 hex digits"
 size_t stringBytes(const std::string_view s) { return kLengthBytes + s.size(); }
 
 size_t recordBytes(const std::string_view text, const api::LookupResult& e) {
-  size_t n =
+  const size_t fixed =
       kRecordFixedBytes + stringBytes(text) + stringBytes(e.word) + stringBytes(e.reading) + stringBytes(e.level) + 1;
-  for (const api::Sense& s : e.senses) n += stringBytes(s.translation) + stringBytes(s.partOfSpeech);
-  return n;
+  return std::accumulate(e.senses.begin(), e.senses.end(), fixed, [](const size_t n, const api::Sense& s) {
+    return n + stringBytes(s.translation) + stringBytes(s.partOfSpeech);
+  });
 }
 
 void putString(std::string& out, size_t& at, const std::string_view s) {
@@ -128,15 +132,19 @@ std::string bucketPath(const Language language, const std::string_view text) {
   return buffer;
 }
 
-std::string serializeBucket(const std::vector<CachedLookup>& records) {
-  size_t total = 0;
-  for (const CachedLookup& r : records) total += recordBytes(r.text, r.entry);
+uint32_t accountTag(const std::string_view apiKey) { return bytes::Fnv1a().add(apiKey).value(); }
+
+std::string serializeBucket(const std::vector<CachedLookup>& records, const uint32_t account) {
+  const size_t total =
+      std::accumulate(records.begin(), records.end(), size_t{0},
+                      [](const size_t n, const CachedLookup& r) { return n + recordBytes(r.text, r.entry); });
   std::string out(kHeaderBytes + total, '\0');
   std::memcpy(out.data(), kMagic, sizeof(kMagic));
   out[kAtVersion] = static_cast<char>(kVersion);
   out[kAtLanguage] = static_cast<char>(records.empty() ? 0 : static_cast<uint8_t>(records.front().language));
   put16(out, kAtCount, static_cast<uint16_t>(records.size()));
   put32(out, kAtBytes, static_cast<uint32_t>(total));
+  put32(out, kAtAccount, account);
   size_t at = kHeaderBytes;
   for (const CachedLookup& r : records) {
     put16(out, at, static_cast<uint16_t>(recordBytes(r.text, r.entry) - kLengthBytes));
@@ -211,9 +219,14 @@ bool decodeRecord(const std::string_view bytes, size_t at, const size_t end, con
 
 }  // namespace
 
-bool parseBucket(const std::string_view bytes, const Language language, std::vector<CachedLookup>& out) {
+bool parseBucket(const std::string_view bytes, const Language language, std::vector<CachedLookup>& out,
+                 const uint32_t account) {
   const std::optional<size_t> count = checkedCount(bytes, language);
   if (!count) return false;
+  if (get32(bytes, kAtAccount) != account) {  // another account's answers (its translation target): none of ours
+    out.clear();
+    return true;
+  }
   std::vector<CachedLookup> records;
   records.reserve(*count);
   size_t at = kHeaderBytes;
@@ -230,9 +243,10 @@ bool parseBucket(const std::string_view bytes, const Language language, std::vec
 }
 
 BucketFind findInBucket(const std::string_view bytes, const Language language, const std::string_view text,
-                        CachedLookup& out) {
+                        CachedLookup& out, const uint32_t account) {
   const std::optional<size_t> count = checkedCount(bytes, language);
   if (!count) return BucketFind::Malformed;
+  if (get32(bytes, kAtAccount) != account) return BucketFind::Absent;  // another account's: left for its next write
   size_t at = kHeaderBytes;
   size_t match = 0;  // the newest record for the text (one per text, as written: the last)
   size_t matchEnd = 0;
@@ -263,13 +277,13 @@ void removeBad(SettingsFiles& files, const std::string& path) {
 // The bucket's records for a write: a file that doesn't check out is removed (and reads as empty); nullopt when it
 // couldn't be read (an SD error, maybe passing: it isn't overwritten with less).
 std::optional<std::vector<CachedLookup>> readBucket(SettingsFiles& files, const std::string& path,
-                                                    const Language language) {
+                                                    const Language language, const uint32_t account) {
   std::vector<CachedLookup> records;
   std::string bytes;
   const SettingsFiles::ReadStatus status = files.read(path.c_str(), config::kLookupBucketMaxBytes, bytes);
   if (status == SettingsFiles::ReadStatus::Error) return std::nullopt;
   if (status == SettingsFiles::ReadStatus::Missing) return records;
-  if (status == SettingsFiles::ReadStatus::TooLarge || !parseBucket(bytes, language, records)) {
+  if (status == SettingsFiles::ReadStatus::TooLarge || !parseBucket(bytes, language, records, account)) {
     removeBad(files, path);
     records.clear();
   }
@@ -289,7 +303,7 @@ CacheRead LookupCache::read(const Language language, const std::string_view text
     removeBad(files_, path);
   } else if (status == SettingsFiles::ReadStatus::Ok) {
     CachedLookup found;
-    switch (findInBucket(bytes, language, text, found)) {  // only the match is decoded
+    switch (findInBucket(bytes, language, text, found, account())) {  // only the match is decoded
       case BucketFind::Found:
         if (stale(found.fetchedS, wall_ ? wall_() : 0)) {
           result.outcome = CacheRead::Outcome::Stale;
@@ -315,6 +329,7 @@ CacheRead LookupCache::read(const Language language, const std::string_view text
 }
 
 bool LookupCache::write(const std::vector<CachedLookup>& lookups) {
+  const uint32_t tag = account();  // once per write: it reads the settings
   // The answers to keep, grouped by bucket once (each path worked out once), in the order they came within a bucket.
   struct Keep {
     std::string path;
@@ -322,16 +337,21 @@ bool LookupCache::write(const std::vector<CachedLookup>& lookups) {
   };
   std::vector<Keep> keeps;
   keeps.reserve(lookups.size());
+  size_t otherAccount = 0;
   for (size_t i = 0; i < lookups.size(); i++) {
-    if (cacheable(lookups[i].text, lookups[i].entry))
+    if (lookups[i].account && *lookups[i].account != tag) {
+      otherAccount++;  // fetched under the key before this one: not this account's answer
+    } else if (cacheable(lookups[i].text, lookups[i].entry)) {
       keeps.push_back({bucketPath(lookups[i].language, lookups[i].text), i});
+    }
   }
+  if (otherAccount > 0) LOG_INF(kCacheLogTag, "%u answers from another account not written", unsigned(otherAccount));
   std::stable_sort(keeps.begin(), keeps.end(), [](const Keep& a, const Keep& b) { return a.path < b.path; });
   bool ok = true;
   // The folders, made once per write() and language (not once per bucket).
-  bool made[2] = {false, false};
+  bool made[std::size(kLanguages)] = {};
   const auto dirsReady = [&](const Language language) {
-    bool& done = made[language == Language::Chinese ? 1 : 0];
+    bool& done = made[languageSlot(language)];
     if (!done) {
       const std::string dir = std::string(config::kLookupCacheDir) + "/" + std::string(languageDir(language));
       done = files_.ensureDir(config::kSettingsDir) && files_.ensureDir(config::kLookupCacheDir) &&
@@ -344,14 +364,14 @@ bool LookupCache::write(const std::vector<CachedLookup>& lookups) {
     while (last < keeps.size() && keeps[last].path == keeps[first].path) last++;
     const std::string& path = keeps[first].path;
     const Language language = lookups[keeps[first].index].language;  // the path names it
-    std::optional<std::vector<CachedLookup>> read = readBucket(files_, path, language);
-    if (!read) {  // an SD error: the file isn't replaced with less
+    std::optional<std::vector<CachedLookup>> bucket = readBucket(files_, path, language, tag);
+    if (!bucket) {  // an SD error: the file isn't replaced with less
       LOG_ERR(kCacheLogTag, "%s couldn't be read: not written", path.c_str());
       ok = false;
       first = last;
       continue;
     }
-    std::vector<CachedLookup>& records = *read;
+    std::vector<CachedLookup>& records = *bucket;
     for (size_t k = first; k < last; k++) {  // newest last
       const CachedLookup& answer = lookups[keeps[k].index];
       records.erase(
@@ -362,8 +382,9 @@ bool LookupCache::write(const std::vector<CachedLookup>& lookups) {
     }
     first = last;
     // The caps: the oldest go first.
-    size_t bytes = kHeaderBytes;
-    for (const CachedLookup& r : records) bytes += recordBytes(r.text, r.entry);
+    size_t bytes =
+        std::accumulate(records.begin(), records.end(), kHeaderBytes,
+                        [](const size_t n, const CachedLookup& r) { return n + recordBytes(r.text, r.entry); });
     size_t drop = 0;
     while (drop < records.size() &&
            (records.size() - drop > config::kLookupBucketMax || bytes > config::kLookupBucketMaxBytes)) {
@@ -371,7 +392,7 @@ bool LookupCache::write(const std::vector<CachedLookup>& lookups) {
       drop++;
     }
     records.erase(records.begin(), records.begin() + static_cast<std::ptrdiff_t>(drop));
-    if (!dirsReady(language) || !files_.write(path.c_str(), serializeBucket(records))) {
+    if (!dirsReady(language) || !files_.write(path.c_str(), serializeBucket(records, tag))) {
       LOG_ERR(kCacheLogTag, "%s not written", path.c_str());
       ok = false;
     }
@@ -380,5 +401,3 @@ bool LookupCache::write(const std::vector<CachedLookup>& lookups) {
 }
 
 }  // namespace lexipoint::lookup
-
-#endif  // LEXIRISE

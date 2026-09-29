@@ -31,7 +31,7 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
   // floated the track a full bezel-width inside the visible edge.
   tokens.listScrollInset = 0;
   // Screen::header()/status() band height. Without this the SDK's
-  // line-height-derived default applies and fui-drawn headers (OPDS) come out
+  // line-height-derived default applies and fui-drawn headers come out
   // a different height than every GUI.drawHeader band.
   tokens.headerHeight = static_cast<int16_t>(metrics.headerHeight);
   tokens.headerSidePadding = static_cast<int16_t>(metrics.headerSidePadding);
@@ -42,6 +42,5 @@ inline freeink::ui::ThemeTokens uiThemeTokens(const freeink::ui::GfxRendererTarg
   tokens.controlRadius = static_cast<uint8_t>(metrics.controlRadius);
   tokens.sheetRadius = static_cast<uint8_t>(metrics.sheetRadius);
   tokens.capsuleRadius = static_cast<uint8_t>(metrics.capsuleRadius);
-  tokens.bodyText.bold = metrics.listTitleBold;
   return tokens;
 }

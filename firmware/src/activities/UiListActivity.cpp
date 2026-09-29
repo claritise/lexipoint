@@ -122,11 +122,6 @@ void UiListActivity::drawChrome() {
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.headerHeight}, title);
 }
 
-void UiListActivity::drawFooter() {
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-}
-
 void UiListActivity::render(RenderLock&&) {
   renderer.clearScreen();
   drawChrome();

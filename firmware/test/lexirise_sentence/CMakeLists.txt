@@ -10,7 +10,6 @@ add_executable(LexiriseSentenceTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseSentenceTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseSentenceTest PRIVATE
   ${REPO_ROOT}/src

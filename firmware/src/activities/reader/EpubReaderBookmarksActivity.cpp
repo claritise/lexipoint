@@ -195,7 +195,7 @@ void EpubReaderBookmarksActivity::deleteSelectedBookmark() {
 
 void EpubReaderBookmarksActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   // Content: the safe area minus the title band render() paints.
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
@@ -234,13 +234,14 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
 
   const auto pageWidth = renderer.getScreenWidth();
   const auto orientation = renderer.getOrientation();
-  // Landscape orientation: reserve a horizontal gutter for button hints.
+  // Rotated orientations keep the upstream hint gutters (the layout is approved as is,
+  // though no hints are drawn there with touch).
   const bool isLandscapeCw = orientation == GfxRenderer::Orientation::LandscapeClockwise;
   const bool isLandscapeCcw = orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
-  // Inverted portrait: reserve vertical space for hints at the top.
+  // Inverted portrait: the same gutter at the top.
   const bool isPortraitInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
   const int hintGutterWidth = (isLandscapeCw || isLandscapeCcw) ? 40 : 0;
-  // Landscape CW places hints on the left edge; CCW keeps them on the right.
+  // Landscape CW puts the gutter on the left edge; CCW keeps it on the right.
   const int contentX = isLandscapeCw ? hintGutterWidth : 0;
   const int contentWidth = pageWidth - hintGutterWidth;
   const int contentY = isPortraitInverted ? 50 : 0;
@@ -253,10 +254,6 @@ void EpubReaderBookmarksActivity::render(RenderLock&&) {
   renderUi();
 
   if (confirmPopup.processRender(renderer, mappedInput)) return;
-
-  const auto confirmLabel = bookmarks.size() > 0 ? tr(STR_SELECT) : "";
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
 }

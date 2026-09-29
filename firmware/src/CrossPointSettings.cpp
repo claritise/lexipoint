@@ -29,22 +29,6 @@ void copyToField(char* dest, const char* src, const size_t maxLen) {
 
 }  // namespace
 
-void CrossPointSettings::validateFrontButtonMapping(CrossPointSettings& settings) {
-  const uint8_t mapping[] = {settings.frontButtonBack, settings.frontButtonConfirm, settings.frontButtonLeft,
-                             settings.frontButtonRight};
-  for (size_t i = 0; i < 4; i++) {
-    for (size_t j = i + 1; j < 4; j++) {
-      if (mapping[i] == mapping[j]) {
-        settings.frontButtonBack = FRONT_HW_BACK;
-        settings.frontButtonConfirm = FRONT_HW_CONFIRM;
-        settings.frontButtonLeft = FRONT_HW_LEFT;
-        settings.frontButtonRight = FRONT_HW_RIGHT;
-        return;
-      }
-    }
-  }
-}
-
 uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue) {
   switch (legacyValue) {
     case SLEEP_1_MIN:
@@ -66,7 +50,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
 
   for (const auto& info : getSettingsList()) {
     if (!info.key) continue;
-    // Dynamic entries (KOReader etc.) are stored in their own files — skip.
+    // Dynamic entries are saved by hand (below) or in their own files — skip.
     if (!info.valuePtr && !info.stringOffset) continue;
 
     if (info.stringOffset) {
@@ -83,19 +67,12 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
     }
   }
 
-  // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
-  doc["frontButtonBack"] = frontButtonBack;
-  doc["frontButtonConfirm"] = frontButtonConfirm;
-  doc["frontButtonLeft"] = frontButtonLeft;
-  doc["frontButtonRight"] = frontButtonRight;
   // Font family and size — both use dynamic getter/setters in SettingsList (the
   // option lists depend on the SD font registry), so the generic loop skips them.
   doc["fontFamily"] = fontFamily;
   doc["fontSize"] = fontPointSize;
-#if LEXIRISE
   // LEXIPOINT: a dynamic entry in SettingsList (Long-press Menu without Dictionary), so saved here.
   doc["longPressMenuFunction"] = longPressMenuFunction;
-#endif
   // SD card font family name — not in SettingsList, save manually
   if (sdFontFamilyName[0] != '\0') {
     doc["sdFontFamilyName"] = sdFontFamilyName;
@@ -103,16 +80,6 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, save manually
   if (dictionaryName[0] != '\0') {
     doc["dictionaryName"] = dictionaryName;
-  }
-
-  // Language -- managed by LanguageSelectActivity, not in SettingsList.
-  // Stored as ISO code string ("EN", "DE", ...) for stability across enum reorders.
-  doc["language"] = (language < getLanguageCount()) ? LANGUAGE_CODES[language] : "EN";
-
-  // A uint16_t mask, so it does not fit the uint8_t generic loop. Omitted while
-  // unconfigured, so the default keeps following the UI language.
-  if (keyboardLayouts != 0) {
-    doc["keyboardLayouts"] = keyboardLayouts;
   }
 }
 
@@ -124,7 +91,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
 
   for (const auto& info : getSettingsList()) {
     if (!info.key) continue;
-    // Dynamic entries (KOReader etc.) are stored in their own files — skip.
+    // Dynamic entries are loaded by hand (below) or from their own files — skip.
     if (!info.valuePtr && !info.stringOffset) continue;
 
     if (info.stringOffset) {
@@ -189,14 +156,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     sleepTimeoutMinutes = sleepTimeoutEnumToMinutes(legacyValue);
     needsResave = true;
   }
-  // Front button remap — managed by RemapFrontButtons sub-activity, not in SettingsList.
-  frontButtonBack = clamp(doc["frontButtonBack"] | (uint8_t)FRONT_HW_BACK, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_BACK);
-  frontButtonConfirm =
-      clamp(doc["frontButtonConfirm"] | (uint8_t)FRONT_HW_CONFIRM, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_CONFIRM);
-  frontButtonLeft = clamp(doc["frontButtonLeft"] | (uint8_t)FRONT_HW_LEFT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_LEFT);
-  frontButtonRight =
-      clamp(doc["frontButtonRight"] | (uint8_t)FRONT_HW_RIGHT, FRONT_BUTTON_HARDWARE_COUNT, FRONT_HW_RIGHT);
-  validateFrontButtonMapping(s);
 
   // Reader font size — an actual point size since 1.5. Files written by 1.4 and
   // earlier hold the old SMALL/MEDIUM/LARGE/EXTRA_LARGE slot in 0..3; no font is
@@ -209,7 +168,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   }
   fontPointSize = storedFontSize;
 
-#if LEXIRISE
   // LEXIPOINT: Long-press Menu, a dynamic entry (the generic loop skips it); a stored Dictionary (word select's
   // lookup mode, no longer offered) becomes Reader Menu, and the file is rewritten.
   {
@@ -218,7 +176,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     longPressMenuFunction = loaded.value;
     needsResave = needsResave || loaded.resave;
   }
-#endif
   // Font family — uses dynamic getter/setter in SettingsList so the generic loop skips it.
   const uint8_t storedFontFamily = doc["fontFamily"] | (uint8_t)0;
   fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
@@ -236,16 +193,6 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   }
   // Dictionary folder name — uses dynamic getter/setter in SettingsList, load manually
   copyToField(dictionaryName, doc["dictionaryName"] | "", sizeof(dictionaryName));
-
-  // Language -- stored as code string for stability across enum reorders.
-  if (doc["language"].is<const char*>()) {
-    language = static_cast<uint8_t>(I18n::languageFromCode(doc["language"].as<const char*>()));
-  }
-
-  // Absent means unconfigured, which is the default.
-  if (doc["keyboardLayouts"].is<uint16_t>()) {
-    keyboardLayouts = doc["keyboardLayouts"].as<uint16_t>();
-  }
 
   if (needsResave) {
     LOG_DBG("CPS", "Resaving settings to update format");

@@ -1,9 +1,9 @@
 add_executable(LexiriseOtaTest
   ReleaseVersionTest.cpp
+  ReleaseAssetTest.cpp
   ${REPO_ROOT}/src/lexirise/ota/ReleaseVersion.cpp
 )
 
-target_compile_definitions(LexiriseOtaTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseOtaTest PRIVATE
   ${REPO_ROOT}/src

@@ -2798,6 +2798,22 @@ TEST(LiveIgnore, UndoTakesItOffTheList) {
   EXPECT_TRUE(s.rig.api.written.empty());
 }
 
+// V8 R3: before the batch is written, the card reads its own latest change for the word (Ignore, Undo, Ignore again:
+// ignored; then Undo: not), never an older one or the list's.
+TEST(LiveIgnore, TheCardReadsItsLatestChangeBeforeTheWrite) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Saving s;
+  s.source.setIgnoredWords(store);
+  ASSERT_TRUE(s.source.setIgnored(kYomuWord, true));
+  ASSERT_TRUE(s.source.setIgnored(kYomuWord, false));
+  ASSERT_TRUE(s.source.setIgnored(kYomuWord, true));
+  EXPECT_TRUE(s.source.ignored(kYomuWord));
+  ASSERT_TRUE(s.source.setIgnored(kYomuWord, false));
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+  EXPECT_EQ(files.files.count(config::kIgnoredPath), 0u);  // nothing written yet: the card's changes alone
+}
+
 TEST(LiveIgnore, AWordAlreadyIgnoredOnlySaysSo) {
   // On the list from an earlier card: the approved card shows nothing else (no row, no state word).
   lexipoint::fakes::FakeFiles files;
@@ -3419,6 +3435,35 @@ TEST(LiveMirror, ALaterAnalysisDoesntUndoThisCardsWrite) {
   EXPECT_EQ(m.level(11), -1);
 }
 
+// V8 R3: the next sentence has the saved word twice and its answer (from before the save) says neither is saved: both
+// copies take the older copy's saved state, not each other's.
+TEST(LiveSteps, TheSavedWordTwiceInTheNextSentenceKeepsItsLevelInBoth) {
+  TwoSentences rig;
+  constexpr const char* kTwice =
+      R"({"occurrences":[)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":0,"charEnd":3,"entryId":5,"lemmaEntryId":6},)"
+      R"({"word":"雨","isWordLike":true,"charStart":3,"charEnd":4,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":4,"charEnd":7,"entryId":5,"lemmaEntryId":6}]})";
+  rig.model.lines[1].tokens = {"読んだ", "雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kTwice)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {"xteink"}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const Hit fresh{Target::Level, 2, {}};
+  for (const LevelChange& ch : c.tap(&fresh, 1000).changes) source.queue(ch);
+  source.advance(1000 + config::kToastMs);  // the POST
+  const int original = source.startWord();
+  const Level saved = source.savedLevel(original);
+  ASSERT_NE(saved, Level::None);
+  c.step(+1, 5000);
+  while (source.extending()) source.advance(6000);
+  const std::vector<int> same = source.sameWord(original);
+  ASSERT_EQ(same.size(), 3u);
+  for (const int w : same) EXPECT_EQ(source.savedLevel(w), saved) << "word " << w;
+}
+
 TEST(LiveMirror, AnIdleCardSyncsAFewPagesAndTheNextCardGoesOn) {
   Mirrored m;
   // The account grew: a full pass is due again (the mirror is emptied, as on a first sync), 120 words.
@@ -3574,6 +3619,38 @@ TEST(LiveMirror, AFailedWriteIsntTriedAgainOnEveryIdleWindow) {
   EXPECT_NE(idleStep(s, s.now + config::kDeckIdleMs), Idle::Flushed);  // not again on this card
   s.session.flushMirror(/*load=*/false, s.now);                        // the close tries once more
   EXPECT_FALSE(m.store.dirty());
+}
+
+// V8 (V7c's carried nits): a failed mirror write is reported as failed, not as "read or written".
+TEST(LiveMirror, AFailedWriteIsReportedAsFailed) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  m.files.failWriteOf = config::kVocabTmpPathJa;
+  const CardSession::FilesFlushed failed = s.session.flushFiles(/*closing=*/true, s.now);
+  EXPECT_TRUE(failed.mirrorIo);
+  EXPECT_TRUE(failed.mirrorFailed);
+  m.files.failWriteOf.clear();
+  const CardSession::FilesFlushed written = s.session.flushFiles(/*closing=*/true, s.now);
+  EXPECT_TRUE(written.mirrorIo);
+  EXPECT_FALSE(written.mirrorFailed);
+}
+
+// ...and the idle time starts again when the flush ends, not when it started (its SD time isn't idle).
+namespace {
+unsigned long flushClockMs = 0;
+unsigned long flushClock() { return flushClockMs; }
+}  // namespace
+
+TEST(LiveMirror, TheIdleTimeStartsAgainWhenTheFlushEnds) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  const unsigned long start = s.now + config::kDeckIdleMs;
+  constexpr unsigned long kFlushTookMs = 700;
+  flushClockMs = start + kFlushTookMs;  // the clock as the flush ends
+  s.session.flushFiles(/*closing=*/false, start, flushClock);
+  EXPECT_EQ(s.session.idleSinceMs(), start + kFlushTookMs);
+  s.session.flushFiles(/*closing=*/false, start + 1);  // no clock: the step's own time
+  EXPECT_EQ(s.session.idleSinceMs(), start + 1);
 }
 
 TEST(LiveMirror, AnAnalysisThatMatchesTheMirrorLeavesNothingToWrite) {
@@ -3882,7 +3959,16 @@ uint32_t cacheWall() { return cacheWallS; }
 
 struct Cached {
   lexipoint::fakes::FakeFiles files;
-  LookupCache cache{files, cacheWall};
+  LookupCache cache;
+  explicit Cached(const LookupCache::Account account = nullptr) : cache(files, cacheWall, nullptr, account) {}
+};
+
+uint32_t cacheAccountTag = 0;
+uint32_t cacheAccount() { return cacheAccountTag; }
+
+struct CachedForAccount {
+  lexipoint::fakes::FakeFiles files;
+  LookupCache cache{files, cacheWall, nullptr, cacheAccount};
 };
 
 }  // namespace
@@ -3926,13 +4012,60 @@ TEST(LiveLookupCache, TheCloseWritesWhatTheIdleWindowDidnt) {
   EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Hit);
 }
 
+// V8 R4: the API key changes over the web page while the card is open: the answer fetched under the old key isn't
+// written into the new account's buckets (nor the old one's: its tag isn't current).
+TEST(LiveLookupCache, AnAnswerFromBeforeAKeyChangeIsntWritten) {
+  CachedForAccount k;
+  cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_first");
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  ASSERT_EQ(s.source.pendingLookups(), 1u);
+  cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_second");
+  const int writes = k.files.writes;
+  s.session.flushLookups(/*closing=*/true);
+  EXPECT_EQ(s.source.pendingLookups(), 0u);
+  EXPECT_EQ(k.files.writes, writes);
+  EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Miss);
+  cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_first");
+  EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Miss);
+}
+
+// V8 R7: the key changes while the lookup is on the network: the answer is the old key's (taken before the call),
+// so nothing is written for the new account.
+TEST(LiveLookupCache, AKeyChangedDuringTheCallIsntTheAnswersKey) {
+  CachedForAccount k;
+  cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_first");
+  Saving s(/*complete=*/false, {"xteink"}, nullptr, &k.cache);
+  s.rig.api.duringLookup = [] { cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_second"); };
+  s.fetchOne();  // B: the lookup call
+  ASSERT_EQ(s.source.pendingLookups(), 1u);
+  const int writes = k.files.writes;
+  s.session.flushLookups(/*closing=*/true);
+  EXPECT_EQ(k.files.writes, writes);
+  EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Miss);
+}
+
+// V8 R9: under a real account (the key unchanged), the card's answer is written under that account's tag and read
+// back as a hit: the cache fills on the device, where there is always a key.
+TEST(LiveLookupCache, AnAnswerUnderTheCurrentKeyIsWrittenAndHits) {
+  CachedForAccount k;
+  cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_first");
+  Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
+  ASSERT_EQ(s.source.pendingLookups(), 1u);
+  const int writes = k.files.writes;
+  s.session.flushLookups(/*closing=*/true);
+  EXPECT_EQ(s.source.pendingLookups(), 0u);
+  EXPECT_GT(k.files.writes, writes);
+  EXPECT_EQ(k.cache.read(Language::Japanese, "読む").outcome, CacheRead::Outcome::Hit);
+}
+
 TEST(LiveLookupCache, AHitKeepsTheSavedStateFromTheAnalysis) {
   Cached k;
   // 本 looked up on an earlier card: the record holds its meaning only.
   lexipoint::api::LookupResult hon;
   hon.word = "本";
   hon.senses = {lexipoint::api::Sense{"book", "noun"}};
-  ASSERT_TRUE(k.cache.write({lexipoint::lookup::CachedLookup{Language::Japanese, "本", hon, cacheWallS}}));
+  ASSERT_TRUE(
+      k.cache.write({lexipoint::lookup::CachedLookup{Language::Japanese, "本", hon, cacheWallS, std::nullopt}}));
   Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
   s.step(-1);
   s.step(-1);  // 本: saved at 3 in ①'s answer
@@ -3984,8 +4117,9 @@ struct TenWords {
   Cached k;
   std::unique_ptr<LiveSource> source;
   std::unique_ptr<CardController> c;
-  explicit TenWords(const std::vector<std::string>& words = std::vector<std::string>(std::begin(kTen),
-                                                                                     std::end(kTen))) {
+  explicit TenWords(const std::vector<std::string>& words = std::vector<std::string>(std::begin(kTen), std::end(kTen)),
+                    const LookupCache::Account account = nullptr)
+      : k(account) {
     TextLine line;
     line.startsParagraph = true;
     std::string analyze = R"({"occurrences":[)";
@@ -4040,8 +4174,8 @@ TEST(LiveLookupCache, AStaleRecordIsAskedAgainAndReplaced) {
   lexipoint::api::LookupResult old;
   old.word = "読む";
   old.senses = {lexipoint::api::Sense{"an old meaning", "verb"}};
-  ASSERT_TRUE(k.cache.write(
-      {lexipoint::lookup::CachedLookup{Language::Japanese, "読む", old, cacheWallS - config::kLookupMaxAgeS - 1}}));
+  ASSERT_TRUE(k.cache.write({lexipoint::lookup::CachedLookup{Language::Japanese, "読む", old,
+                                                             cacheWallS - config::kLookupMaxAgeS - 1, std::nullopt}}));
   Saving s(/*complete=*/true, {"xteink"}, nullptr, &k.cache);
   EXPECT_EQ(s.rig.api.looked, std::vector<std::string>{"読む"});
   EXPECT_EQ(s.c.currentWord().senses, std::vector<std::string>{"to read"});
@@ -4086,7 +4220,8 @@ TEST(LiveLookupCache, ASavesRetriedLookupCanBeAHit) {
   lexipoint::api::LookupResult yomu;
   yomu.word = "読む";
   yomu.senses = {lexipoint::api::Sense{"to read", "verb"}};
-  ASSERT_TRUE(k.cache.write({lexipoint::lookup::CachedLookup{Language::Japanese, "読む", yomu, cacheWallS}}));
+  ASSERT_TRUE(
+      k.cache.write({lexipoint::lookup::CachedLookup{Language::Japanese, "読む", yomu, cacheWallS, std::nullopt}}));
   s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
   s.level(1);  // L: a save, which needs the translation
   s.drain();
@@ -4128,6 +4263,22 @@ TEST(LiveLookupCache, TheSameWordTwiceOnACardIsLookedUpOnce) {
   EXPECT_EQ(t.api.looked, std::vector<std::string>{"猫"});
   EXPECT_EQ(f.card.senses.size(), 1u);
   EXPECT_EQ(t.source->pendingLookups(), 1u);
+}
+
+// V8 R8: the card's own pending answer is the key's it was fetched under: after the key changes, the same word again
+// on the card is asked again, not given the old account's answer.
+TEST(LiveLookupCache, APendingAnswerFromBeforeAKeyChangeIsntReused) {
+  cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_first");
+  TenWords t({"猫", "と", "猫"}, cacheAccount);
+  t.api.lookupReplies.push_back(t.api.lookupReplies.front());
+  ASSERT_EQ(t.source->advance(), LiveSource::Advance::Changed);  // A
+  t.source->focus(0, 0);
+  ASSERT_EQ(t.source->advance(), LiveSource::Advance::Changed);  // B: a miss, called
+  cacheAccountTag = lexipoint::lookup::accountTag("lx_TEST_second");
+  t.source->focus(2, 0);
+  const LiveSource::Fetched f = t.source->fetch(0);
+  EXPECT_NE(f.cacheRead.outcome, CacheRead::Outcome::Pending);
+  EXPECT_EQ(t.api.looked, (std::vector<std::string>{"猫", "猫"}));
 }
 
 TEST(LiveLookupCache, AClosingFlushWritesBothAndReadsNoMirror) {

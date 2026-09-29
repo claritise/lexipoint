@@ -1,10 +1,9 @@
-"""v0.2 V7b: the home screen's Sync Vocabulary compiles out without Lexirise, and it's the only place WiFi is joined
-for the vocab mirror (the page analysis, the idle pages and the card's probe never join: host-tested in
-test/lexirise_net ServiceTest and test/lexirise_vocab ManualSyncTest). Source checks; the x4pro-lexirise-off build
-in the gate proves the #if blocks compile out."""
+"""v0.2 V7b: the home screen's Sync Vocabulary sits just above Settings with its signed-off strings, and it's the only
+place WiFi is joined for the vocab mirror (the page analysis, the idle pages and the card's probe never join:
+host-tested in test/lexirise_net ServiceTest and test/lexirise_vocab ManualSyncTest). Source checks. (Until v0.2 V8
+it also checked the row compiled out without Lexirise; V8 removed that build: test_lxctl LexiriseIsAlwaysBuilt.)"""
 
 import os
-import re
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -16,32 +15,7 @@ def read(path: str) -> str:
         return f.read()
 
 
-def outside_lexirise(text: str, needle: str) -> list[int]:
-    """Lines holding `needle` that aren't inside an `#if LEXIRISE` block (its #else half counts as outside)."""
-    stack: list[bool] = []  # per open #if: whether its current branch is LEXIRISE-only
-    bad = []
-    for n, line in enumerate(text.splitlines(), 1):
-        s = line.strip()
-        if s.startswith("#if"):
-            stack.append(bool(re.match(r"#if\s+LEXIRISE\b", s)))
-        elif s.startswith("#else") and stack:
-            stack[-1] = False
-        elif s.startswith("#endif") and stack:
-            stack.pop()
-        elif needle in line and not any(stack):
-            bad.append(n)
-    return bad
-
-
-class HomeSyncCompilesOut(unittest.TestCase):
-    def test_every_mention_is_inside_if_lexirise(self):
-        for path in ("src/activities/home/HomeActivity.h", "src/activities/home/HomeActivity.cpp",
-                     "src/activities/ActivityManager.h", "src/activities/HomeMenuItem.h",
-                     "src/activities/home/HomeMenuIndex.h"):
-            text = read(path)
-            for needle in ("VOCAB_SYNC", "vocabSync", "HomeSync", "STR_LEXI_SYNC"):
-                self.assertEqual(outside_lexirise(text, needle), [], f"{needle} outside #if LEXIRISE in {path}")
-
+class HomeSyncRow(unittest.TestCase):
     def test_the_row_sits_just_above_settings(self):
         text = read("src/activities/home/HomeActivity.cpp")
         self.assertIn("menuItems.insert(menuItems.end() - 1, tr(STR_LEXI_SYNC_VOCABULARY));", text)

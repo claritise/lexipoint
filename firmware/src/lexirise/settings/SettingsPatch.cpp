@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "SettingsPatch.h"
 
 #include <cctype>
@@ -77,5 +75,3 @@ PatchResult applyPatch(Settings& settings, const SettingsPatch& patch) {
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

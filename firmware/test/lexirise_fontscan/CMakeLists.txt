@@ -1,11 +1,10 @@
-# LEXIPOINT: FontCacheManager built as the firmware builds it with LEXIRISE (the card's scan limit).
+# LEXIPOINT: FontCacheManager as the firmware builds it (the card's scan limit).
 add_executable(LexiriseFontScanTest
   FontScanTest.cpp
   ${REPO_ROOT}/lib/GfxRenderer/FontCacheManager.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseFontScanTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseFontScanTest PRIVATE
   ${REPO_ROOT}/test/font_cache_manager/stubs

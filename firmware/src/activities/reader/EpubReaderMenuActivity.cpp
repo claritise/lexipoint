@@ -8,9 +8,7 @@
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
 #include "components/UITheme.h"
-#if LEXIRISE
-#include "lexirise/settings/LanguageNames.h"  // LEXIPOINT
-#endif
+#include "lexirise/settings/LanguageNames.h"
 
 namespace fui = freeink::ui;
 
@@ -56,28 +54,21 @@ void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool h
   if (Frontlight.present()) {
     items.push_back({MenuAction::FRONTLIGHT, StrId::STR_FRONTLIGHT});
   }
-#if LEXIRISE
   // LEXIPOINT: no Look Up (word select's lookup mode): a long-press on a word looks it up. Its place holds the
   // book's lookup language.
   items.push_back({MenuAction::LOOKUP_LANGUAGE, StrId::STR_LEXI_BOOK_LANGUAGE});
-#else
-  items.push_back({MenuAction::DICTIONARY, StrId::STR_LOOKUP});
-#endif
   items.push_back({MenuAction::ROTATE_SCREEN, StrId::STR_ORIENTATION});
   items.push_back({MenuAction::AUTO_PAGE_TURN, StrId::STR_AUTO_TURN_PAGES_PER_MIN});
   items.push_back({MenuAction::GO_TO_PERCENT, StrId::STR_GO_TO_PERCENT});
   items.push_back({MenuAction::SCREENSHOT, StrId::STR_SCREENSHOT_BUTTON});
   items.push_back({MenuAction::DISPLAY_QR, StrId::STR_DISPLAY_QR});
   items.push_back({MenuAction::GO_HOME, StrId::STR_GO_HOME_BUTTON});
-  items.push_back({MenuAction::SYNC, StrId::STR_SYNC_PROGRESS});
   items.push_back({MenuAction::DELETE_CACHE, StrId::STR_DELETE_CACHE});
 }
 
-#if LEXIRISE
-StrId EpubReaderMenuActivity::bookLanguageLabel(const std::optional<lexipoint::Language> language) {  // LEXIPOINT
+StrId EpubReaderMenuActivity::bookLanguageLabel(const std::optional<lexipoint::Language> language) {
   return language ? lexipoint::languageName(*language) : StrId::STR_LEXI_BOOK_LANGUAGE_AUTO;
 }
-#endif
 
 void EpubReaderMenuActivity::closeCancelled() {
   ActivityResult result;
@@ -141,12 +132,10 @@ void EpubReaderMenuActivity::activateIndex(const int index) {
     return;
   }
 
-#if LEXIRISE
-  if (selectedAction == MenuAction::LOOKUP_LANGUAGE) {  // LEXIPOINT
+  if (selectedAction == MenuAction::LOOKUP_LANGUAGE) {
     if (bookLanguage.cycle()) requestUpdate();
     return;
   }
-#endif
 
   setResult(MenuResult{static_cast<int>(selectedAction), pendingOrientation, selectedPageTurnOption});
   finish();
@@ -172,7 +161,7 @@ bool EpubReaderMenuActivity::handleButtons() {
 
 void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   // Content: the safe area minus the header band GUI.drawHeader paints.
   screen.setContentMarginFromScreen(fui::Insets{
       static_cast<int16_t>(safe.y + metrics.topPadding + metrics.headerHeight),
@@ -203,12 +192,9 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       menuRowItems[i].value = I18N.get(SETTINGS.screenInverted ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
     } else if (action == MenuAction::FRONTLIGHT) {
       menuRowItems[i].value = I18N.get(Frontlight.isOn() ? StrId::STR_STATE_ON : StrId::STR_STATE_OFF);
-    }
-#if LEXIRISE
-    else if (action == MenuAction::LOOKUP_LANGUAGE) {  // LEXIPOINT
+    } else if (action == MenuAction::LOOKUP_LANGUAGE) {
       menuRowItems[i].value = I18N.get(bookLanguageLabel(bookLanguage.language()));
     }
-#endif
   }
 
   fui::ListProps props;
@@ -227,7 +213,7 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
 
 void EpubReaderMenuActivity::drawChrome() {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect screen = UITheme::getInstance().getScreenSafeArea(renderer);
 
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.

@@ -3,14 +3,6 @@
 #include <EpdFontFamily.h>
 #include <HalDisplay.h>
 
-namespace BidiUtils {
-// Paragraph base direction for the Unicode BiDi algorithm (UAX#9).
-// AUTO: scan text for first strong directional character (P2/P3 rules)
-// LTR:  force left-to-right paragraph embedding level
-// RTL:  force right-to-left paragraph embedding level
-enum class BidiBaseDir : signed char { AUTO = -1, LTR = 0, RTL = 1 };
-}  // namespace BidiUtils
-
 class FontCacheManager;
 class SdCardFont;
 
@@ -45,7 +37,6 @@ class GfxRenderer {
   RenderMode renderMode;
   mutable bool absoluteGrayPlanes = false;
   Orientation orientation;
-  bool fadingFix;
   uint8_t* frameBuffer = nullptr;
   uint16_t panelWidth = HalDisplay::DISPLAY_WIDTH;
   uint16_t panelHeight = HalDisplay::DISPLAY_HEIGHT;
@@ -128,8 +119,7 @@ class GfxRenderer {
   void fillRectImpl(int x, int y, int width, int height) const;
 
  public:
-  explicit GfxRenderer(HalDisplay& halDisplay)
-      : display(halDisplay), renderMode(BW), orientation(Portrait), fadingFix(false) {}
+  explicit GfxRenderer(HalDisplay& halDisplay) : display(halDisplay), renderMode(BW), orientation(Portrait) {}
   ~GfxRenderer() { freeBwBufferChunks(); }
 
   // Setup
@@ -191,9 +181,6 @@ class GfxRenderer {
   void setOrientation(const Orientation o) { orientation = o; }
   Orientation getOrientation() const { return orientation; }
 
-  // Fading fix control
-  void setFadingFix(const bool enabled) { fadingFix = enabled; }
-
   // Screen ops
   int getScreenWidth() const;
   int getScreenHeight() const;
@@ -211,12 +198,11 @@ class GfxRenderer {
   // Non-blocking refresh: starts the waveform and returns so CPU work (e.g.
   // grayscale strip rendering) can overlap the panel's refresh time. The
   // framebuffer must stay untouched until waitRefreshComplete(). Falls back to
-  // a blocking refresh when fadingFix is enabled or the panel lacks deferral
-  // support. See HalDisplay::displayBufferAsync for the baseline contract.
+  // a blocking refresh when the panel lacks deferral support. See HalDisplay::displayBufferAsync for the baseline
+  // contract.
   void displayBufferAsync(HalDisplay::RefreshMode refreshMode = HalDisplay::FAST_REFRESH) const;
   void waitRefreshComplete() const;
-  // True when displayBufferAsync() genuinely overlaps: panel defers and
-  // fadingFix isn't forcing the blocking path. Callers can skip overlap
+  // True when displayBufferAsync() genuinely overlaps (the panel defers). Callers can skip overlap
   // scaffolding (e.g. whole-plane grayscale buffers) when false.
   bool supportsAsyncRefresh() const;
   // True when the display can overlap an ordinary B/W refresh with grayscale
@@ -299,14 +285,11 @@ class GfxRenderer {
   void writeFramebufferRegion(int x, int y, int w, int h, const uint8_t* src);
 
   // Text
-  int getTextWidth(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                   BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
+  int getTextWidth(int fontId, const char* text, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   void drawCenteredText(int fontId, int y, const char* text, bool black = true,
-                        EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                        BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
+                        EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   void drawText(int fontId, int x, int y, const char* text, bool black = true,
-                EpdFontFamily::Style style = EpdFontFamily::REGULAR,
-                BidiUtils::BidiBaseDir baseDir = BidiUtils::BidiBaseDir::AUTO) const;
+                EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   int getSpaceWidth(int fontId, EpdFontFamily::Style style = EpdFontFamily::REGULAR) const;
   /// Returns the total inter-word advance: fp4::toPixel(spaceAdvance + kern(leftCp,' ') + kern(' ',rightCp)).
   /// Using a single snap avoids the +/-1 px rounding error that arises when space advance and kern are
@@ -341,8 +324,8 @@ class GfxRenderer {
   void preconditionGrayscale() const;
   void preconditionGrayscale(int x, int y, int w, int h) const;
   // Display the framebuffer as the base frame for a grayscale overlay that
-  // follows (X3: OEM differential base waveform; others: plain display with
-  // `fallback`).
+  // follows (on the X4 Pro a plain display with `fallback`; the SDK's X3 OEM
+  // waveform path doesn't apply).
   void displayGrayscaleBase(HalDisplay::RefreshMode fallback = HalDisplay::HALF_REFRESH) const;
   bool displayGrayscaleBase(HalDisplay::GrayscaleMode mode,
                             HalDisplay::RefreshMode fallback = HalDisplay::HALF_REFRESH) const;

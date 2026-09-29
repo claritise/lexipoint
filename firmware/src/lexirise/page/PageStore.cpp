@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "PageStore.h"
 
 #include <Logging.h>
@@ -193,5 +191,3 @@ bool PageStore::flush() {
 }
 
 }  // namespace lexipoint::page
-
-#endif  // LEXIRISE

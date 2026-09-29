@@ -1,6 +1,6 @@
 // LEXIPOINT: adds the "Lexirise" link to the nav bar of CrossPoint's own pages, and names the product
-// Lexipoint in their title, heading and footer (D22). Served only by Lexirise builds (/lexirise/nav.js);
-// elsewhere the script 404s and the pages stay as they were. test_rebrand.py pins the base's texts.
+// Lexipoint in their title, heading and footer (D22). Served at /lexirise/nav.js. test_rebrand.py pins the base's
+// texts.
 (function () {
   var TITLE = 'CrossPoint Reader', NAME = 'Lexipoint';
   var FOOTER = 'CrossPoint E-Reader', FOOTER_NAME = 'Lexipoint, built on CrossPoint';

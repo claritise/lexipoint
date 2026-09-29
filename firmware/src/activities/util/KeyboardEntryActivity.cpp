@@ -1,13 +1,12 @@
 #include "KeyboardEntryActivity.h"
 
-#include <BidiUtils.h>
 #include <HalGPIO.h>
 #include <I18n.h>
 
 #include <algorithm>
 #include <cstring>
 
-#include "KeyboardLayoutSet.h"
+#include "KeyboardCursorHit.h"
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -18,113 +17,13 @@ namespace {
 
 constexpr fui::ActionId ACTION_KEY = 1;
 
-// ---------------------------------------------------------------------------
-// URL layers. The SDK builtin layouts have no URL variant (":", "/", ".", the
-// snippet panel), so these are app-defined tables over the same public
-// KeyboardLayout structs. URLs are ASCII, so the letter rows are EN-arranged
-// regardless of UI language.
-// ---------------------------------------------------------------------------
-
-#define UK(label, output, value) \
-  fui::KeyboardKey { label, output, fui::KeyKind::Normal, fui::StateNormal, value, 1, true, nullptr }
-#define UKA(label, output, value, alt) \
-  fui::KeyboardKey { label, output, fui::KeyKind::Normal, fui::StateNormal, value, 1, true, alt }
-#define UKW(label, output, value, units) \
-  fui::KeyboardKey { label, output, fui::KeyKind::Normal, fui::StateNormal, value, units, true, nullptr }
-#define UKS(label, kind, value, units) \
-  fui::KeyboardKey { label, nullptr, kind, fui::StateNormal, value, units, true, nullptr }
-
-constexpr int16_t URL_PANEL_VALUE = -3;  // mirrors KeyboardEntryActivity::URL_PANEL_KEY
-
-const fui::KeyboardKey URL_NUM_ROW[] = {UKA("1", "1", '1', "!"), UKA("2", "2", '2', "@"), UKA("3", "3", '3', "#"),
-                                        UKA("4", "4", '4', "$"), UKA("5", "5", '5', "%"), UKA("6", "6", '6', "^"),
-                                        UKA("7", "7", '7', "&"), UKA("8", "8", '8', "*"), UKA("9", "9", '9', "("),
-                                        UKA("0", "0", '0', ")")};
-
-const fui::KeyboardKey URL_ROW1[] = {UK("q", "q", 'q'), UK("w", "w", 'w'), UK("e", "e", 'e'), UK("r", "r", 'r'),
-                                     UK("t", "t", 't'), UK("y", "y", 'y'), UK("u", "u", 'u'), UK("i", "i", 'i'),
-                                     UK("o", "o", 'o'), UK("p", "p", 'p')};
-const fui::KeyboardKey URL_ROW2[] = {UK("a", "a", 'a'), UK("s", "s", 's'), UK("d", "d", 'd'),
-                                     UK("f", "f", 'f'), UK("g", "g", 'g'), UK("h", "h", 'h'),
-                                     UK("j", "j", 'j'), UK("k", "k", 'k'), UK("l", "l", 'l')};
-const fui::KeyboardKey URL_ROW3[] = {UKS("Shift", fui::KeyKind::Shift, fui::QWERTY_KEY_SHIFT, 2),
-                                     UK("z", "z", 'z'),
-                                     UK("x", "x", 'x'),
-                                     UK("c", "c", 'c'),
-                                     UK("v", "v", 'v'),
-                                     UK("b", "b", 'b'),
-                                     UK("n", "n", 'n'),
-                                     UK("m", "m", 'm'),
-                                     UKS("Del", fui::KeyKind::Delete, fui::QWERTY_KEY_BACKSPACE, 2)};
-// URLs have no spaces, so the URL bottom row spends the space slot on ":",
-// "/", "." and the snippet-panel toggle instead (the legacy keyboard did the
-// same with its "URL" key).
-const fui::KeyboardKey URL_BOTTOM[] = {UKS("?123", fui::KeyKind::Mode, fui::QWERTY_KEY_MODE, 2),
-                                       UK(":", ":", ':'),
-                                       UK("/", "/", '/'),
-                                       UK(".", ".", '.'),
-                                       UKW("URL", nullptr, URL_PANEL_VALUE, 2),
-                                       UKS("OK", fui::KeyKind::Ok, fui::QWERTY_KEY_ENTER, 2)};
-
-const fui::KeyboardKey URL_SHIFT_ROW1[] = {UK("Q", "Q", 'Q'), UK("W", "W", 'W'), UK("E", "E", 'E'), UK("R", "R", 'R'),
-                                           UK("T", "T", 'T'), UK("Y", "Y", 'Y'), UK("U", "U", 'U'), UK("I", "I", 'I'),
-                                           UK("O", "O", 'O'), UK("P", "P", 'P')};
-const fui::KeyboardKey URL_SHIFT_ROW2[] = {UK("A", "A", 'A'), UK("S", "S", 'S'), UK("D", "D", 'D'),
-                                           UK("F", "F", 'F'), UK("G", "G", 'G'), UK("H", "H", 'H'),
-                                           UK("J", "J", 'J'), UK("K", "K", 'K'), UK("L", "L", 'L')};
-const fui::KeyboardKey URL_SHIFT_ROW3[] = {UKS("Shift", fui::KeyKind::Shift, fui::QWERTY_KEY_SHIFT, 2),
-                                           UK("Z", "Z", 'Z'),
-                                           UK("X", "X", 'X'),
-                                           UK("C", "C", 'C'),
-                                           UK("V", "V", 'V'),
-                                           UK("B", "B", 'B'),
-                                           UK("N", "N", 'N'),
-                                           UK("M", "M", 'M'),
-                                           UKS("Del", fui::KeyKind::Delete, fui::QWERTY_KEY_BACKSPACE, 2)};
-
-// Snippet keys: multi-character outputs, stable ids above the localized-key
-// range so they never collide with layout key ids.
-const fui::KeyboardKey URL_SNIP_ROW1[] = {UK("https://", "https://", 2001), UK("www.", "www.", 2002),
-                                          UK(".com", ".com", 2003)};
-const fui::KeyboardKey URL_SNIP_ROW2[] = {UK("http://", "http://", 2004), UK("192.168.", "192.168.", 2005),
-                                          UK(".org", ".org", 2006)};
-const fui::KeyboardKey URL_SNIP_ROW3[] = {UK("/opds", "/opds", 2007), UK(":8080", ":8080", 2008),
-                                          UK(".net", ".net", 2009)};
-const fui::KeyboardKey URL_SNIP_BOTTOM[] = {UKS("abc", fui::KeyKind::Mode, fui::QWERTY_KEY_MODE, 2),
-                                            UKW("URL", nullptr, URL_PANEL_VALUE, 2),
-                                            UKS("Del", fui::KeyKind::Delete, fui::QWERTY_KEY_BACKSPACE, 2),
-                                            UKS("OK", fui::KeyKind::Ok, fui::QWERTY_KEY_ENTER, 2)};
-
-#undef UK
-#undef UKA
-#undef UKW
-#undef UKS
-
-const fui::KeyboardRow URL_ROWS[] = {
-    {URL_NUM_ROW, 10, 0}, {URL_ROW1, 10, 0}, {URL_ROW2, 9, 1}, {URL_ROW3, 9, 0}, {URL_BOTTOM, 6, 0}};
-const fui::KeyboardRow URL_SHIFT_ROWS[] = {
-    {URL_NUM_ROW, 10, 0}, {URL_SHIFT_ROW1, 10, 0}, {URL_SHIFT_ROW2, 9, 1}, {URL_SHIFT_ROW3, 9, 0}, {URL_BOTTOM, 6, 0}};
-const fui::KeyboardRow URL_SNIP_ROWS[] = {
-    {URL_SNIP_ROW1, 3, 0}, {URL_SNIP_ROW2, 3, 0}, {URL_SNIP_ROW3, 3, 0}, {URL_SNIP_BOTTOM, 4, 0}};
-
-const fui::KeyboardLayout URL_LAYOUT{URL_ROWS, 5};
-const fui::KeyboardLayout URL_SHIFT_LAYOUT{URL_SHIFT_ROWS, 5};
-const fui::KeyboardLayout URL_SNIPPET_LAYOUT{URL_SNIP_ROWS, 4};
-
 }  // namespace
 
 void KeyboardEntryActivity::onEnter() {
   Activity::onEnter();
   cursorPos = text.length();
-  // URL layers are EN-arranged app tables; everything else opens on the UI
-  // language's layout, or on an enabled one if the user switched that off.
-  layoutId = inputType == InputType::Url ? fui::KeyboardLayoutId::QwertyEn : keyboard_layouts::startingLayout();
-  // The key only earns its slot in the bottom row with somewhere to go.
-  const uint16_t enabledLayouts = keyboard_layouts::enabled();
-  showLangKey = (enabledLayouts & (enabledLayouts - 1)) != 0;
   shifted = false;
   symbols = false;
-  urlPanel = false;
   cursorMode = false;
   togglePos = false;
   passwordVisible = false;
@@ -146,14 +45,7 @@ void KeyboardEntryActivity::onEnter() {
 
 void KeyboardEntryActivity::onExit() { Activity::onExit(); }
 
-const fui::KeyboardLayout& KeyboardEntryActivity::currentLayout() const {
-  if (symbols) return fui::builtinKeyboardLayout(layoutId, shifted, true);
-  if (inputType == InputType::Url) {
-    if (urlPanel) return URL_SNIPPET_LAYOUT;
-    return shifted ? URL_SHIFT_LAYOUT : URL_LAYOUT;
-  }
-  return fui::builtinKeyboardLayout(layoutId, shifted, false, /*numberRow=*/true, showLangKey);
-}
+const fui::KeyboardLayout& KeyboardEntryActivity::currentLayout() const { return keyboardLayer(shifted, symbols); }
 
 const fui::KeyboardKey* KeyboardEntryActivity::selectedKey() const {
   const fui::KeyboardLayout& layout = currentLayout();
@@ -265,34 +157,7 @@ bool KeyboardEntryActivity::activateValue(const int16_t value, const bool longPr
     case fui::QWERTY_KEY_MODE:
       delPressCount = 0;
       hintVisible = false;
-      if (urlPanel) {
-        urlPanel = false;
-      } else {
-        symbols = !symbols;
-        shifted = false;
-      }
-      clampSelection();
-      return true;
-    case fui::QWERTY_KEY_LANG: {
-      delPressCount = 0;
-      hintVisible = false;
-      const fui::KeyboardLayoutId nextId = keyboard_layouts::next(layoutId);
-      // The non-Latin tables draw the key even with one layout enabled; a
-      // full-screen e-ink repaint for an unchanged keyboard costs a second.
-      if (nextId == layoutId) return false;
-      layoutId = nextId;
-      // Shift is per-layer: carrying it across would strand the new layout in
-      // upper case. Row widths differ between scripts (Cyrillic runs 12/11/11
-      // against Latin's 10/9/9), so the selection has to be re-clamped.
-      shifted = false;
-      clampSelection();
-      return true;
-    }
-    case URL_PANEL_KEY:
-      delPressCount = 0;
-      hintVisible = false;
-      urlPanel = !urlPanel;
-      symbols = false;
+      symbols = !symbols;
       shifted = false;
       clampSelection();
       return true;
@@ -378,15 +243,6 @@ int KeyboardEntryActivity::measureRange(std::string& s, const int start, const i
   return width;
 }
 
-bool KeyboardEntryActivity::rangeIsRtl(std::string& s, const int start, const int end) const {
-  if (end <= start) return false;
-  const char saved = s[end];
-  s[end] = '\0';
-  const bool isRtl = BidiUtils::detectParagraphLevel(s.c_str() + start, 0, end - start) != 0;
-  s[end] = saved;
-  return isRtl;
-}
-
 int KeyboardEntryActivity::lineBreakEnd(std::string& s, const int start, const int maxWidth) const {
   const int len = static_cast<int>(s.length());
   if (measureRange(s, start, len) <= maxWidth) return len;
@@ -426,10 +282,7 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
   const int inputStartY = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing +
                           metrics.verticalSpacing * 4 + metrics.keyboardVerticalOffset;
 
-  int availableWidth = pageWidth;
-  if (gpio.deviceIsX3()) {
-    availableWidth -= 2 * metrics.sideButtonHintsWidth;
-  }
+  const int availableWidth = pageWidth;
   const int effectiveMargin = (pageWidth - availableWidth * metrics.keyboardTextFieldWidthPercent / 100) / 2;
   const int toggleGap = inputType == InputType::Password ? 4 : 0;
   const int toggleReserve = inputType == InputType::Password ? std::max(renderer.getTextWidth(UI_12_FONT_ID, "[abc]"),
@@ -452,37 +305,16 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
     const int lineEndIdx = lineBreakEnd(displayText, lineStartIdx, maxLineWidth);
     const int textWidth = measureRange(displayText, lineStartIdx, lineEndIdx);
     const int lineStartX = centerText ? effectiveMargin + (maxLineWidth - textWidth) / 2 : effectiveMargin;
-    const bool isRtl = rangeIsRtl(displayText, lineStartIdx, lineEndIdx);
     lastLineStartIdx = lineStartIdx;
     lastLineEndIdx = lineEndIdx;
     lastLineStartX = lineStartX;
     lastLineWidth = textWidth;
 
     if (y >= lineY - metrics.verticalSpacing && y < lineY + lineHeight + metrics.verticalSpacing) {
-      if (x <= lineStartX) {
-        position = static_cast<size_t>(isRtl ? lineEndIdx : lineStartIdx);
-        return true;
-      }
-      if (x >= lineStartX + textWidth) {
-        position = static_cast<size_t>(isRtl ? lineStartIdx : lineEndIdx);
-        return true;
-      }
-
-      int previousWidth = 0;
-      for (int i = lineStartIdx; i < lineEndIdx;) {
-        const int next = static_cast<int>(utf8Next(displayText, static_cast<size_t>(i)));
-        const int nextWidth = measureRange(displayText, lineStartIdx, next);
-        const int halfAdvance = (nextWidth - previousWidth) / 2;
-        const int midpoint =
-            isRtl ? lineStartX + textWidth - previousWidth - halfAdvance : lineStartX + previousWidth + halfAdvance;
-        if ((isRtl && x >= midpoint) || (!isRtl && x < midpoint)) {
-          position = static_cast<size_t>(i);
-          return true;
-        }
-        previousWidth = nextWidth;
-        i = next;
-      }
-      position = static_cast<size_t>(lineEndIdx);
+      position = cursorInLine(
+          x, lineStartX, textWidth, static_cast<size_t>(lineStartIdx), static_cast<size_t>(lineEndIdx),
+          [&displayText](const size_t i) { return utf8Next(displayText, i); },
+          [&](const size_t i) { return measureRange(displayText, lineStartIdx, static_cast<int>(i)); });
       return true;
     }
 
@@ -497,9 +329,8 @@ bool KeyboardEntryActivity::cursorPositionFromPoint(const int x, const int y, si
   const int underlineBottom = lineY + lineHeight + metrics.verticalSpacing + 8;
   if (y >= inputStartY - metrics.verticalSpacing && y < underlineBottom && x >= effectiveMargin &&
       x < effectiveMargin + maxLineWidth + toggleReserve) {
-    const bool isRtl = rangeIsRtl(displayText, lastLineStartIdx, lastLineEndIdx);
     const bool insideText = x < lastLineStartX + lastLineWidth;
-    position = static_cast<size_t>(insideText == isRtl ? lastLineEndIdx : lastLineStartIdx);
+    position = static_cast<size_t>(insideText ? lastLineStartIdx : lastLineEndIdx);
     return true;
   }
 
@@ -733,10 +564,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   std::string displayText = displayTextForCurrentState();
 
   const bool isPassword = (inputType == InputType::Password);
-  int availableWidth = pageWidth;
-  if (gpio.deviceIsX3()) {
-    availableWidth -= 2 * metrics.sideButtonHintsWidth;
-  }
+  const int availableWidth = pageWidth;
   const int effectiveMargin = (pageWidth - availableWidth * metrics.keyboardTextFieldWidthPercent / 100) / 2;
   const int toggleGap = isPassword ? 4 : 0;
   const int toggleReserve = isPassword ? std::max(renderer.getTextWidth(UI_12_FONT_ID, "[abc]"),
@@ -775,7 +603,6 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     const std::string lineText = displayText.substr(lineStartIdx, lineEndIdx - lineStartIdx);
     textWidth = renderer.getTextAdvanceX(UI_12_FONT_ID, lineText.c_str(), EpdFontFamily::REGULAR);
     {
-      const bool isRtl = rangeIsRtl(displayText, lineStartIdx, lineEndIdx);
       const int lineStartX = centerText ? effectiveMargin + (maxLineWidth - textWidth) / 2 : effectiveMargin;
       const bool isLastLine = (lineEndIdx == static_cast<int>(displayText.length()));
       bool isCursorLine = false;
@@ -796,12 +623,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
           int charAdvance = renderer.getTextAdvanceX(UI_12_FONT_ID, displayCursorChar, EpdFontFamily::REGULAR);
           kernOffset = throughCursorWidth - beforeWidth - charAdvance;
         }
-        if (isRtl) {
-          const int logicalWidth = cursorMode && cursorCharBytes > 0 ? throughCursorWidth : beforeWidth;
-          cursorPixelX = lineStartX + textWidth - logicalWidth;
-        } else {
-          cursorPixelX = lineStartX + beforeWidth + kernOffset;
-        }
+        cursorPixelX = lineStartX + beforeWidth + kernOffset;
         cursorLineY = inputStartY + inputHeight;
         cursorDrawn = true;
         isCursorLine = true;
@@ -905,12 +727,10 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   int tipCount = 0;
   if (cursorMode) {
     tipCount = 1;
-  } else if (urlPanel) {
-    tipCount = 1 + (!text.empty() ? 1 : 0);
   } else if (symbols) {
     tipCount = !text.empty() ? 1 : 0;
   } else {
-    tipCount = 1 + (inputType == InputType::Url ? 1 : 0) + (!text.empty() ? 1 : 0);
+    tipCount = 1 + (!text.empty() ? 1 : 0);
   }
 
   if (tipCount > 0) {
@@ -919,31 +739,13 @@ void KeyboardEntryActivity::render(RenderLock&&) {
     y += tipsLh;
     if (cursorMode) {
       drawTip(tr(STR_KB_HINT_RETURN_KEYBOARD), y);
-    } else if (urlPanel) {
-      drawTip(tr(STR_KB_HINT_EXIT_URL_MODE), y);
-      y += tipsLh;
-      if (!text.empty()) {
-        drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
-      }
     } else if (symbols) {
       if (!text.empty()) {
         drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
       }
     } else {
-      const char* altCharTip;
-      if (inputType == InputType::Url) {
-        altCharTip = tr(STR_KB_HINT_SECONDARY_CHAR);
-      } else if (shifted) {
-        altCharTip = tr(STR_KB_HINT_LOWER_SECONDARY);
-      } else {
-        altCharTip = tr(STR_KB_HINT_UPPER_SECONDARY);
-      }
-      drawTip(altCharTip, y);
+      drawTip(shifted ? tr(STR_KB_HINT_LOWER_SECONDARY) : tr(STR_KB_HINT_UPPER_SECONDARY), y);
       y += tipsLh;
-      if (inputType == InputType::Url) {
-        drawTip(tr(STR_KB_HINT_URL_SNIPPETS), y);
-        y += tipsLh;
-      }
       if (!text.empty()) {
         drawTip(tr(STR_KB_HINT_CLEAR_TEXT), y);
       }
@@ -962,7 +764,7 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   target.setFont(fui::GfxRendererTarget::FONT_BODY, UI_12_FONT_ID);
   const fui::DeviceContext device = target.deviceContext();
   const fui::InputSnapshot noInput{};
-  fui::Frame<56> frame(target, device, noInput, interactions);
+  fui::Frame<kKeyboardInteractions> frame(target, device, noInput, interactions);
 
   fui::KeyboardProps props;
   const fui::KeyboardLayout& layout = currentLayout();
@@ -970,10 +772,8 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.keyAction = ACTION_KEY;  // one action id; loop() dispatches on key value
   props.okLabel = tr(STR_OK_BUTTON);
   props.shiftLabel = tr(STR_KEY_SHIFT);
-  // Match the label to the layer the mode key leads back from: the symbols
-  // layer and the URL snippet panel both label it "abc" in the static tables.
-  props.modeLabel =
-      (symbols || (inputType == InputType::Url && urlPanel)) ? tr(STR_KEY_MODE_ABC) : tr(STR_KEY_MODE_SYMBOLS);
+  // Match the label to the layer the mode key leads back from.
+  props.modeLabel = symbols ? tr(STR_KEY_MODE_ABC) : tr(STR_KEY_MODE_SYMBOLS);
   props.inputMask = static_cast<uint16_t>(fui::InputTouch | fui::InputLongPress);
   props.selectedIndex = cursorMode ? -1 : static_cast<int16_t>(selectedLogicalIndex());
   props.labelText.font = fui::GfxRendererTarget::FONT_BODY;
@@ -981,17 +781,13 @@ void KeyboardEntryActivity::render(RenderLock&&) {
   props.gap = static_cast<int16_t>(metrics.keyboardKeySpacing);
   props.padding = fui::Insets{0, 0, 0, 0};
   // Fingers land low on the bottom row (occlusion) and there is no key below
-  // to catch the miss — extend its hit band down to the button hints bar.
+  // to catch the miss — extend its hit band down to the bottom reserve (the
+  // screen edge, as buttonHintsHeight is 0).
   const int hintsTop = renderer.getScreenHeight() - metrics.buttonHintsHeight;
   props.bottomHitOverflow = static_cast<int16_t>(std::max(0, hintsTop - (kbRect.y + kbRect.height)));
   fui::keyboard(frame, kbRect, props);
   interactions.publish();
   interactionsReady = true;
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
-  GUI.drawSideButtonHints(renderer, ">", "<");
 
   renderer.displayBuffer();
 }

@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "Requests.h"
 
 #include "lexirise/LexiriseConfig.h"
@@ -66,11 +64,9 @@ std::optional<net::Request> vocabularyItem(const net::Method method, const std::
 
 bool isPlainId(const std::string_view id, const size_t maxBytes) {
   if (id.empty() || id.size() > maxBytes) return false;
-  for (const char c : id) {
-    const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_';
-    if (!ok) return false;
-  }
-  return true;
+  return std::all_of(id.begin(), id.end(), [](const char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_';
+  });
 }
 
 net::Request saveRequest(const SaveWord& word) {
@@ -151,5 +147,3 @@ std::string userAgent(const std::string_view crossPointVersion) {
 }
 
 }  // namespace lexipoint::api
-
-#endif  // LEXIRISE

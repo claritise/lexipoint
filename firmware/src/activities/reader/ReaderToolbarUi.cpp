@@ -256,8 +256,8 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     pageIndicatorRect_ = line;
   }
 
-  // Switcher row along the sheet's bottom edge (above the button-hint row on
-  // button boards); the list takes what is left.
+  // Switcher row along the sheet's bottom edge (above bottomReserve); the list
+  // takes what is left.
   screen.spacer(static_cast<int16_t>(tokens.spaceSm + std::max(0, model_.bottomReserve)), fui::LayoutAnchor::Bottom);
   buildToolRow(screen, fui::LayoutAnchor::Bottom, tokens.spaceLg);  // full-width band
   screen.spacer(tokens.spaceSm, fui::LayoutAnchor::Bottom);

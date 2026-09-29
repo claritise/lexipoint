@@ -30,21 +30,12 @@ class MappedInputManager {
   };
   enum class SwipeDir { None, Left, Right, Up, Down };
 
-  struct Labels {
-    const char* btn1;
-    const char* btn2;
-    const char* btn3;
-    const char* btn4;
-  };
-
   MappedInputManager(HalGPIO& gpio, const GfxRenderer& renderer) : gpio(gpio), renderer(renderer) {}
 
   void update() const;
-#if FREEINK_CAP_TOUCH
   // X4 Pro delays a single power click until its frontlight double-click window
   // expires. The main loop supplies that one-frame event here.
   void setPowerConfirmClickFrame(const bool clicked) { powerConfirmClickFrame = clicked; }
-#endif
   bool wasPressed(Button button) const;
   bool wasReleased(Button button) const;
   // One-shot threshold event while the button is down; consumes its release.
@@ -61,7 +52,6 @@ class MappedInputManager {
   // the long-press opened. The SDK owns that latch and self-clears it once the
   // contact ends.
   bool wasScreenLongPress(int& x, int& y) const;
-#if LEXIRISE
   // LEXIPOINT: the same long-press (at its touch-down point) without consuming it, so a caller can
   // decide whether it's theirs before taking it with wasScreenLongPress().
   bool peekScreenLongPress(int& x, int& y) const;
@@ -70,7 +60,6 @@ class MappedInputManager {
   bool peekSwipe(int& startX, int& startY, int& endX, int& endY) const {
     return decodeSwipe(startX, startY, endX, endY);
   }
-#endif
   bool isScreenTouchHeld(int& x, int& y) const;
   // Raw release edge, also true when the contact ended in a swipe or drag-off
   // (which wasScreenTapped never reports). InputSnapshot builders forward it
@@ -94,8 +83,8 @@ class MappedInputManager {
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;
-  // Home-key boards use a short Home-key tap to exit; their bottom-edge swipe
-  // is intentionally unused. Other boards retain the bottom-edge Home gesture.
+  // With a Home key a short tap exits and the bottom-edge swipe is unused;
+  // without one (BoardConfig::hasHomeKey()) the swipe is the Home gesture.
   // The reader menu remains on its existing top-edge gesture and middle tap.
   bool wasHomeGesture() const;
   // A Home-key hold runs the configured long-press action in the reader.
@@ -113,16 +102,9 @@ class MappedInputManager {
   bool wasAnyReleased() const;
   unsigned long getHeldTime() const;
   const GfxRenderer& getRenderer() const { return renderer; }
-  Labels mapLabels(const char* back, const char* confirm, const char* previous, const char* next) const;
-  // Maps four screen-direction labels onto the two physical front-button roles
-  // using the same live-orientation transform as ScreenLeft/Right/Up/Down.
-  Labels mapDirectionalLabels(const char* back, const char* confirm, const char* left, const char* right,
-                              const char* up, const char* down) const;
-  // Returns the raw front button index that was pressed this frame (or -1 if none).
-  int getPressedFrontButton() const;
 
-  // True when the control axis is flipped relative to the physical buttons: always on touch boards,
-  // or when button-only boards opt in, while the screen is currently INVERTED / LANDSCAPE_CCW.
+  // True when the control axis is flipped relative to the physical buttons: with touch, while the
+  // screen is currently INVERTED / LANDSCAPE_CCW.
   [[nodiscard]] bool isNavDirectionSwapped() const;
 
  private:
@@ -135,7 +117,6 @@ class MappedInputManager {
   const GfxRenderer& renderer;
 
   Button mapScreenDirection(Button button) const;
-  Labels mapFrontLabels(const char* back, const char* confirm, const char* left, const char* right) const;
   bool mapButton(Button button, bool (HalGPIO::*fn)(uint8_t) const) const;
   // SDK edge classification (fui::edgeSwipe) + the shared decode/held-time
   // bookkeeping; the wrappers below give each edge its board meaning.
@@ -144,9 +125,7 @@ class MappedInputManager {
   bool wasBottomEdgeUpSwipe() const;
   // Fetch the pending swipe (if any) and map both endpoints to logical screen coords
   bool decodeSwipe(int& sx, int& sy, int& ex, int& ey) const;
-#if FREEINK_CAP_TOUCH
   bool wasPowerConfirmClick() const;
-#endif
   void rememberTouchHeldTime() const;
   void suppressNextRelease(Button button) const;
 
@@ -155,7 +134,5 @@ class MappedInputManager {
   mutable unsigned long touchHeldOverrideAt = 0;
   mutable uint16_t longPressFiredButtons = 0;
   mutable uint16_t suppressedReleaseButtons = 0;
-#if FREEINK_CAP_TOUCH
   bool powerConfirmClickFrame = false;
-#endif
 };

@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LexiriseService.h"
 
 #include <Logging.h>
@@ -147,12 +145,10 @@ void LexiriseService::onActivityChanged(const bool reading) {
 
 bool LexiriseService::releaseWifi() {
   closeSession();
-  // The kept resumption session (V7c) goes with the radio: leaving reading (OTA, fonts, KOSync next need the internal
-  // RAM) or a home sync's end. The radio's idle teardown while reading keeps it (the next card resumes).
+  // The kept resumption session (V7c) goes with the radio: leaving reading (OTA next needs the internal RAM)
+  // or a home sync's end. The radio's idle teardown while reading keeps it (the next card resumes).
   client_.forgetSession();
   return wifi_.release();
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

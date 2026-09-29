@@ -16,6 +16,8 @@ class ReleaseJsonParser {
   void feed(const char* data, size_t len);
 
   // Release-asset filename to match (default "firmware.bin").
+  // The asset name it matches, at most this many bytes with the terminator (OtaUpdater checks its own fits).
+  static constexpr size_t kFirmwareAssetNameBytes = 48;
   void setFirmwareAssetName(const char* name);
 
   bool foundTag() const;
@@ -69,5 +71,5 @@ class ReleaseJsonParser {
   char currentAssetUrl[512];
   size_t currentAssetSize;
 
-  char firmwareAssetName[48];
+  char firmwareAssetName[kFirmwareAssetNameBytes];
 };

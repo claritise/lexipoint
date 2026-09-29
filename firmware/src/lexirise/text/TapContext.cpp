@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "TapContext.h"
 
 namespace lexipoint::text {
@@ -44,5 +42,3 @@ TapContext describeNextSentence(const PageModel& page, const TapContext& current
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE

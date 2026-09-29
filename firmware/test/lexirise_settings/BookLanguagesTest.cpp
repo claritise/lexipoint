@@ -71,6 +71,25 @@ TEST(BookLanguages, TheOldestAreForgottenPastTheLimits) {
   EXPECT_EQ(longPaths.back().path, "/39" + tail);  // the newest always stays
 }
 
+// V8 R3: the byte cap is inclusive. Each line is "ja=<path>\n", so two paths of kBookLanguagesMaxBytes / 2 - 4 bytes
+// fill it exactly and both stay; one byte more and the oldest goes.
+TEST(BookLanguages, AFileExactlyAtTheByteCapKeepsEveryBook) {
+  const size_t pathBytes = config::kBookLanguagesMaxBytes / 2 - 4;
+  const std::string a = "/a" + std::string(pathBytes - 2, 'x');
+  const std::string b = "/b" + std::string(pathBytes - 2, 'x');
+  BookLanguageList atCap;
+  setBookLanguageIn(atCap, a, Language::Japanese);
+  setBookLanguageIn(atCap, b, Language::Japanese);
+  ASSERT_EQ(serializeBookLanguages(atCap).size(), config::kBookLanguagesMaxBytes);
+  EXPECT_EQ(atCap.size(), 2u);
+
+  BookLanguageList over;
+  setBookLanguageIn(over, a, Language::Japanese);
+  setBookLanguageIn(over, b + "x", Language::Japanese);
+  ASSERT_EQ(over.size(), 1u);
+  EXPECT_EQ(over.front().path, b + "x");  // the oldest went
+}
+
 TEST(BookLanguages, TheMenuCyclesAutoJapaneseChinese) {
   // Auto, then kLanguages in settings order: a new language joins the cycle by being added there.
   std::optional<Language> choice;

@@ -4,6 +4,7 @@ broken on its own, makes its check fail. Run: python3 -m unittest test_websmoke"
 import http.server
 import json
 import os
+import re
 import sys
 import threading
 import unittest
@@ -66,8 +67,13 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
             return self._send(200, json.dumps(names))
         if url.path in ("/api/files", "/download"):
             return self._send(403 if self._hidden(q.get("path", [""])[0]) else 404)
-        if url.path.startswith("/.") or url.path.upper().startswith("/LEXIRI~1"):
-            return self._send(200 if "dav" in self.broken else 403, "api_key=x" if "dav" in self.broken else "")
+        if url.path == "/api/settings":
+            keys = ["sleepScreen", "fontFamily"] + (["uiTheme"] if "settings" in self.broken else [])
+            return self._send(200, json.dumps([{"key": k} for k in keys]), "application/json")
+        if url.path == "/api/opds" and "opds" in self.broken:
+            return self._send(200, "[]", "application/json")
+        if "dav" in self.broken and (url.path.startswith("/.") or url.path.upper().startswith("/LEXIRI~1")):
+            return self._send(200, "api_key=x")  # a WebDAV-style file server
         return self._send(404)
 
     def do_POST(self):
@@ -75,6 +81,10 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
         if url.path.startswith("/api/lexirise"):
             self._form()
             return self._send(200 if self._api_allowed() else 403)
+        if url.path == "/api/settings":
+            sent = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode())
+            applied = len(sent) if "apply" in self.broken else 0
+            return self._send(200, f"Applied {applied} setting(s)")
         f = self._form()
         if url.path == "/rename":
             return self._send(403 if self._hidden(f["path"][0]) else 404)
@@ -85,11 +95,10 @@ class FakeDevice(http.server.BaseHTTPRequestHandler):
             return self._send(500, f"{f['path'][0]} (system file); " if hidden else "not found")
         return self._send(404)
 
-    def do_PROPFIND(self):
-        if "dav" in self.broken or ("shortname" in self.broken and "~" in self.path) or (
-                "spaces" in self.broken and "%20" in self.path):
+    def do_PROPFIND(self):  # no WebDAV (v0.2 V8): "dav" broken is one answering
+        if "dav" in self.broken:
             return self._send(207, "<d:href>/.lexirise/config.ini</d:href>")
-        return self._send(403)
+        return self._send(404)
 
 
 class WebSmoke(unittest.TestCase):
@@ -120,17 +129,31 @@ class WebSmoke(unittest.TestCase):
                       "move into hidden folder refused", "hidden delete refused", "short-name download refused",
                       "short-name folder not listed", "leading-space download refused",
                       "plus-space download refused"},
-            "shortname": {"short-name download refused", "short-name folder not listed",
-                          "WebDAV short-name PROPFIND refused"},
-            "spaces": {"leading-space download refused", "plus-space download refused",
-                       "leading-space PROPFIND refused"},
-            "dav": {"WebDAV PROPFIND refused", "WebDAV GET refused", "WebDAV short-name PROPFIND refused",
-                    "leading-space PROPFIND refused"},
+            "shortname": {"short-name download refused", "short-name folder not listed"},
+            "spaces": {"leading-space download refused", "plus-space download refused"},
+            "dav": {"PROPFIND lists nothing", "leading-space PROPFIND lists nothing",
+                    "short-name PROPFIND lists nothing", "direct GET serves nothing"},
+            "settings": {"settings list no removed setting"},
+            "apply": {"removed settings aren't applied"},
+            "opds": {"no OPDS API"},
         }
         for guard, should_fail in expectations.items():
             FakeDevice.broken = {guard}
             failed = {n for n, ok in self.results().items() if not ok}
             self.assertEqual(failed, should_fail, guard)
+
+
+class RemovedKeys(unittest.TestCase):
+    def test_the_smoke_knows_every_removed_setting(self):
+        # The same keys as test/settings_upgrade's kRemovedKeys, the list of what V8 removed.
+        path = os.path.join(os.path.dirname(__file__), "..", "..", "test", "settings_upgrade", "SettingsUpgradeTest.cpp")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        block = text[text.index("kRemovedKeys = {"):]
+        block = block[:block.index("};")]
+        keys = set(re.findall(r'^\s*"([A-Za-z]+)",', block, re.M))
+        self.assertTrue(keys)
+        self.assertEqual(set(websmoke.REMOVED_KEYS), keys)
 
 
 if __name__ == "__main__":

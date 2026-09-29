@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "PageModelAdapter.h"
 
 #include <Epub/Page.h>
@@ -68,5 +66,3 @@ PageModel buildPageModel(const Page& page, const MeasureText& measure, const int
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE

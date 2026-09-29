@@ -206,7 +206,8 @@ Several global rules in `01-build-order.md` exist only to keep rebases cheap:
 
 - **Follow-up M2 is now part of the v0.2 slimming** (`../v0.2/slimming.md`, approved 2026-09-25), which does
   the cleanup below together with the feature cuts. Kept here for the reasoning:
-- **Follow-up M2, cleanup:** decide whether the `LEXIRISE` gate and markers stay. They still
+- **Follow-up M2, cleanup** (done in V8, `../v0.2/slimming.md` §8: the gate went, the markers stayed; the
+  device profile is still not wanted): decide whether the `LEXIRISE` gate and markers stay. They still
   show which base files we edited, which will matter for fascia coverage (§8). Delete code for devices
   without touch that no env builds any more: the X3/X4 key maps in `MappedInputManager`, the button-legend UI,
   and the C3-only paths. Pull X4 Pro constants (480×800 panel, thumb zones, the Home pad, UC8279 refresh
@@ -271,9 +272,11 @@ Built as §4 says, with these additions and differences (the ledger's M row has 
   said: `54337e6` is only the last commit shared with CrossPoint's `master`. `NOTICE` and D21 say `a1ceb633`.
 - **The Lexirise-off build** is its own env, `x4pro-lexirise-off` (CI only). The four X4 Pro envs share one
   `[x4pro_board]` section, and a test checks the Lexirise-off env is the release env minus `[lexirise]`.
+  (Superseded 2026-09-29: v0.2 V8 removed the `LEXIRISE` gate and this env, `../v0.2/slimming.md` §8.)
 - **cppcheck on `x4pro`** checked Lexipoint's code for the first time: two findings fixed, two false positives
   suppressed inline, and the style-only hints (`useStlAlgorithm`, `shadowFunction`, `variableScope`)
-  suppressed for `src/lexirise/` only. Rewriting those 27 raw loops is left for later.
+  suppressed for `src/lexirise/` only. ~~Rewriting those 27 raw loops is left for later.~~ (Superseded
+  2026-09-29: v0.2 V8 rewrote them and dropped the suppressions, `../v0.2/slimming.md` §8.)
 - **What users see (step 8)** also covers the hotspot's name (`Lexipoint`), `http://lexipoint.local/` (File
   Transfer and calibre), the name routers list (`Lexipoint-<MAC>`), and the USB device name
   (`Lexipoint_X4_Pro`). The web pages' title, heading and footer are renamed by `LexiriseNav.js`, which

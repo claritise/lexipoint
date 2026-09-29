@@ -10,25 +10,20 @@
 #include <algorithm>
 
 #include "CrossPointSettings.h"
-#include "OpdsServerStore.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
-#include "browser/OpdsBookBrowserActivity.h"
 #include "home/CrashActivity.h"
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
+#include "lexirise/LexiriseService.h"
 #include "library/LibraryListActivity.h"
 #include "network/CrossPointWebServerActivity.h"
 #include "network/UsbDriveActivity.h"
 #include "reader/ReaderActivity.h"
-#include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsActivity.h"
 #include "util/BmpViewerActivity.h"
 #include "util/FrontlightPanelActivity.h"
 #include "util/FullScreenMessageActivity.h"
-#if LEXIRISE
-#include "lexirise/LexiriseService.h"  // LEXIPOINT
-#endif
 
 static portMUX_TYPE activityManagerSpinlock = portMUX_INITIALIZER_UNLOCKED;
 
@@ -149,14 +144,12 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
-#if LEXIRISE
         // LEXIPOINT: popped out of reading: give Lexipoint's WiFi back before the result handler runs
         // (it may start the next activity). Not under the render lock: that's a WiFi teardown.
         if (!isReaderActivity()) {
           lock.unlock();
           lexipoint::service().onActivityChanged(false);
         }
-#endif
         // Handle result if necessary
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
@@ -198,10 +191,8 @@ void ActivityManager::loop() {
       currentActivity = std::move(pendingActivity);
 
       lock.unlock();  // onEnter may acquire its own lock
-#if LEXIRISE
       // LEXIPOINT: before onEnter, so an activity leaving reading starts with Lexipoint's WiFi given back.
       lexipoint::service().onActivityChanged(isReaderActivity());
-#endif
       currentActivity->onEnter();
 
       // onEnter may request another pending action, we will handle it in the next loop iteration
@@ -236,9 +227,7 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
   } else {
     // No current activity, safe to launch immediately
     currentActivity = std::move(newActivity);
-#if LEXIRISE
     lexipoint::service().onActivityChanged(isReaderActivity());  // LEXIPOINT: before onEnter, as above
-#endif
     currentActivity->onEnter();
   }
 }
@@ -248,16 +237,12 @@ void ActivityManager::goToFileTransfer() {
 }
 
 void ActivityManager::goToUsbDrive() {
-#if FREEINK_CAP_USB_MSC
   auto activity = makeUniqueNoThrow<UsbDriveActivity>(renderer, mappedInput);
   if (!activity) {
     LOG_ERR("ACT", "OOM: USB Drive activity");
     return;
   }
   replaceActivity(std::move(activity));
-#else
-  LOG_ERR("ACT", "USB Drive requested in a build without USB Drive capability");
-#endif
 }
 
 void ActivityManager::goToSettings() { replaceActivity(std::make_unique<SettingsActivity>(renderer, mappedInput)); }
@@ -275,17 +260,7 @@ void ActivityManager::goToLibrary() {
   replaceActivity(std::move(activity));
 }
 
-void ActivityManager::goToBrowser() {
-  const auto& servers = OPDS_STORE.getServers();
-  // Skip the server picker when there's only one server configured
-  if (servers.size() == 1) {
-    replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, servers[0]));
-  } else {
-    replaceActivity(std::make_unique<OpdsServerListActivity>(renderer, mappedInput, true));
-  }
-}
-
-void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {
+void ActivityManager::goToReader(std::string path) {
   if (path.empty()) {
     goToFileBrowser("/");
     return;
@@ -301,7 +276,7 @@ void ActivityManager::goToReader(std::string path, const bool allowFastInitialRe
     return;
   }
 
-  auto activity = ReaderActivity::create(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
+  auto activity = ReaderActivity::create(renderer, mappedInput, std::move(path));
   if (activity) {
     replaceActivity(std::move(activity));
   }
@@ -325,8 +300,6 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::FILE_BROWSER;
     } else if (activityName == "Library") {
       initialMenuItem = HomeMenuItem::LIBRARY;
-    } else if (activityName == "OpdsBookBrowser") {
-      initialMenuItem = HomeMenuItem::OPDS_BROWSER;
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
     } else if (activityName == "Settings") {

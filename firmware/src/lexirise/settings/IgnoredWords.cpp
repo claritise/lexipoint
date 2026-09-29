@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "IgnoredWords.h"
 
 #include <Logging.h>
@@ -7,6 +5,7 @@
 #include <algorithm>
 #include <charconv>
 #include <limits>
+#include <numeric>
 
 namespace lexipoint {
 namespace {
@@ -165,9 +164,11 @@ IgnoredWords parseIgnored(const std::string_view text) {
 
 std::string serializeIgnored(const IgnoredWords& list) {
   // Exactly the file's size, reserved once: no worst-case block (a full list's ~12 KB, not the cap's 20 KB).
-  size_t size = 0;
-  for (const uint64_t id : list.ids_) size += kIdLineFixedBytes + digitsOf(static_cast<uint32_t>(id));
-  for (const auto& t : list.texts_) size += kTextLineFixedBytes + t.text.size();
+  size_t size = std::accumulate(list.ids_.begin(), list.ids_.end(), size_t{0}, [](const size_t n, const uint64_t id) {
+    return n + kIdLineFixedBytes + digitsOf(static_cast<uint32_t>(id));
+  });
+  size = std::accumulate(list.texts_.begin(), list.texts_.end(), size,
+                         [](const size_t n, const auto& t) { return n + kTextLineFixedBytes + t.text.size(); });
   std::string text;
   text.reserve(size);
   for (const uint64_t id : list.ids_) {
@@ -262,5 +263,3 @@ IgnoredWordStore::Write IgnoredWordStore::write(const IgnoredKey& key, const boo
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

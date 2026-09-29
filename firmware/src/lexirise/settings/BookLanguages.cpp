@@ -1,11 +1,10 @@
-#if LEXIRISE
-
 #include "BookLanguages.h"
 
 #include <Logging.h>
 
 #include <algorithm>
 #include <iterator>
+#include <numeric>
 
 namespace lexipoint {
 namespace {
@@ -17,10 +16,9 @@ bool isLinePath(const std::string_view path) {
 }
 
 size_t serializedSize(const BookLanguageList& list) {
-  size_t size = 0;
-  for (const auto& entry : list)
-    size += std::string_view(languageCode(entry.language)).size() + 1 + entry.path.size() + 1;
-  return size;
+  return std::accumulate(list.begin(), list.end(), size_t{0}, [](const size_t size, const auto& entry) {
+    return size + std::string_view(languageCode(entry.language)).size() + 1 + entry.path.size() + 1;
+  });
 }
 
 }  // namespace
@@ -147,5 +145,3 @@ bool BookLanguageRow::cycle() {
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

@@ -8,7 +8,6 @@ add_executable(LexiriseKanaTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseKanaTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseKanaTest PRIVATE
   ${REPO_ROOT}/src

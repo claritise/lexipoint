@@ -10,9 +10,10 @@
 #include "esp_private/esp_cpu_internal.h"
 #include "esp_private/esp_system_attr.h"
 #include "esp_private/panic_internal.h"
-#if !__riscv
-#include <xtensa_context.h>  // XtExcFrame for the stack capture below
+#ifdef __riscv
+#error "LEXIPOINT (v0.2 V8): the X4 Pro only (ESP32-S3, Xtensa); the C3's RISC-V path went"
 #endif
+#include <xtensa_context.h>  // XtExcFrame for the stack capture below
 
 #define MAX_PANIC_STACK_DEPTH 32
 #define PANIC_CAPTURE_MAGIC 0x50414E49u
@@ -55,11 +56,7 @@ void IRAM_ATTR __wrap_panic_print_backtrace(const void* frame, int core) {
   // Stack window dump, mirroring components/esp_system/port/arch/*/panic_arch.c.
   // Hardware exceptions never reach __wrap_panic_abort, so on both
   // architectures this dump is the only diagnostic a crash leaves on-device.
-#if __riscv
-  const uint32_t sp = (uint32_t)((RvExcFrame*)frame)->sp;
-#else
   const uint32_t sp = (uint32_t)((XtExcFrame*)frame)->a1;
-#endif
   constexpr uint32_t captureBytes = 1024;
   if (!esp_stack_ptr_is_sane(sp) || sp > UINT32_MAX - captureBytes ||
       !esp_ptr_in_dram(reinterpret_cast<const void*>(sp + captureBytes - 1))) {

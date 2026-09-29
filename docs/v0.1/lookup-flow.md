@@ -349,10 +349,10 @@ action); with no key and no offline dictionary, a slow tap still opens the menu 
 claritise (2026-09-25), after word select ("lookup mode", which a Home-pad hold set to Dictionary opened)
 left a highlight behind and was hard to leave: "maybe we should get rid of lookup mode since we have hold to
 look up". With LEXIRISE: the reader menu has no **Look Up** row (its place holds **Lookup language**; the
-`DICTIONARY` action stays for Lexirise-off builds), and Settings → Controls → **Long-press Menu** doesn't offer
+`DICTIONARY` action stays for Lexirise-off builds; superseded 2026-09-29: no such build since v0.2 V8), and Settings → Controls → **Long-press Menu** doesn't offer
 **Dictionary** (`settings/LongPressMenu.h`: the setting keeps the base's stored values, so its file stays
-compatible; the screens show KOReader Sync / Disabled / Bookmark / Reader Menu (Reader Menu with a Home key
-only), a `DynamicEnum` saved by `CrossPointSettings::toJson`/`fromJson`; a stored Dictionary loads as Reader
+compatible; the screens show ~~KOReader Sync /~~ Disabled / Bookmark / Reader Menu (Reader Menu with a Home key
+only; superseded 2026-09-29: KOReader Sync removed in v0.2 V8, a stored one loads as Disabled, `../v0.2/slimming.md` §8), a `DynamicEnum` saved by `CrossPointSettings::toJson`/`fromJson`; a stored Dictionary loads as Reader
 Menu, or Disabled without a Home key, and the file is rewritten). Word select itself stays: a long-press
 lookup runs in it, with its highlight only under the card. Tests: `LongPressMenuTest`. Device check owed: a
 reader that had Long-press Menu = Dictionary shows Reader Menu after the update and a Home-pad hold opens the

@@ -19,12 +19,13 @@ CrossPoint has **one settings list** (`src/SettingsList.h`, `getSettingsList()`)
 KOReader sync is the precedent. Its credentials are `DynamicString` entries backed by a store
 (`KOREADER_STORE`), and the device reaches them through an `ACTION` row that opens
 `KOReaderSettingsActivity` (a `UiListActivity`). **Lexirise copies that pattern exactly**, so it looks
-and behaves like the rest of Settings, with no new UI components.
+and behaves like the rest of Settings, with no new UI components. (2026-09-29: KOReader sync itself was removed in
+v0.2 V8, `../v0.2/slimming.md` §8; the pattern Lexirise copied stays.)
 
 | Piece | What it is |
 |---|---|
 | `LexiriseSettings` store (`src/lexirise/LexiriseSettings.{h,cpp}`) | Owns `/.lexirise/config.ini`. It loads at boot and saves **atomically** (write `config.ini.tmp`, then rename). It replaces the separate `LexiriseConfig` reader and `state.ini`: **one file holds everything**, including the kana/romaji choice |
-| Device entry | System tab → **`Lexirise`** row (`SettingType::ACTION`, new `SettingAction::Lexirise`) → `LexiriseSettingsActivity` (`UiListActivity`), same as `KOReaderSync` |
+| Device entry | System tab → **`Lexirise`** row (`SettingType::ACTION`, new `SettingAction::Lexirise`) → `LexiriseSettingsActivity` (`UiListActivity`), same as ~~`KOReaderSync`~~ (superseded 2026-09-29: KOReader Sync went in v0.2 V8) the other System rows |
 | **Web page (revised 2026-09-24, claritise)** | **Its own page in the web UI menu: Home · Files · Fonts · Settings · Lexirise.** It's served by the same web server used to upload books (file transfer / network mode), and it's where the API key is pasted. It's modelled on the Fonts page (`FontsPage.html` + `/api/fonts*`): `LexirisePage.html` at `/lexirise`, plus `/api/lexirise` (GET: masked settings and status; POST: save) and `/api/lexirise/test` (POST: runs `/v1/me`). **Lexirise entries are not added to the generic Settings page**, so there's one place for them, and no `SettingsList.h` web entries |
 | Hooks in base files | `SettingsList.h` (the one ACTION row), `SettingsActivity.{h,cpp}` (the `SettingAction` value and its dispatch), `CrossPointWebServer.cpp` (register the `/lexirise` routes, delegating to `src/lexirise/LexiriseWeb.cpp`), **one `Lexirise` link in the menu of each of the 4 existing pages** (`HomePage`, `FilesPage`, `FontsPage`, `SettingsPage`), and `I18n` strings. All marked `// LEXIPOINT:` / `<!-- LEXIPOINT -->` (`firmware-base.md` §3) |
 
@@ -144,7 +145,8 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
 `UiListActivity`, as `KOReaderSettingsActivity`).
 
 - **The row** is appended in `SettingsActivity.cpp` with the other device-only ACTION rows (`WiFi Networks`,
-  `KOReader Sync`, …), right after `KOReader Sync`. CrossPoint builds those there, not in `SettingsList.h`.
+  ~~`KOReader Sync`,~~ …), right after ~~`KOReader Sync`~~ `WiFi Networks` (superseded 2026-09-29, v0.2 V8: KOReader
+  Sync was removed). CrossPoint builds those there, not in `SettingsList.h`.
 - **Groups** are the list's stock section headings (`ListItem::sectionHeading`, as the library list uses
   them): Account, Japanese, Chinese (Simplified), General. The hiding rules are §1's.
 - **Every edit is a `SettingsPatch`** through `applyPatch`, the web page's own validation, then
@@ -212,12 +214,13 @@ makes; tests `test/lexirise_settings/SettingsScreenTest.cpp`) and `LexiriseSetti
   doesn't start with a dot. A dot name's short name always carries a `~N` tail, so any segment with a
   `~` is looked up on the card and refused if its real name is hidden (or exists but can't be read).
   A `~` name that doesn't exist is allowed (it can't be an alias), and ordinary `~` names like
-  `Tolkien ~ The Hobbit.epub` keep working. This applies to the file manager and to WebDAV (which only
-  checked typed names, and whose `PROPFIND` listed hidden folders), and it also closes the same hole
+  `Tolkien ~ The Hobbit.epub` keep working. This applies to the file manager ~~and to WebDAV (which only
+  checked typed names, and whose `PROPFIND` listed hidden folders)~~ (superseded 2026-09-29, v0.2 V8: WebDAV was
+  removed), and it also closes the same hole
   for the base's `/.crosspoint` (saved WiFi passwords). `websmoke.py` probes it.
   **As SdFat opens it** (P1 review round 4): SdFat skips a segment's leading spaces and trims trailing
   dots/spaces, so `/ .lexirise` *is* `/.lexirise`. Paths and newly created names (mkdir, rename, move,
-  upload, WebDAV) are checked after that same trimming, so a hidden folder can neither be reached nor
+  upload~~, WebDAV~~) are checked after that same trimming, so a hidden folder can neither be reached nor
   planted (a planted `/.lexirise/config.ini` with its own `base_url` would otherwise receive the key the
   user pastes next).
 - **The key card says where the key goes** whenever `base_url` isn't Lexirise's own server.
@@ -336,13 +339,19 @@ base_url=https://api.lexirise.app
   Lexirise, asked again when missing).
 - **The lemma cache** (v0.2 V7c, C21; no setting): phase B's `dictionary/lookup` answers as the card keeps them,
   `/.lexirise/lookups/<ja|zh>/<nn>.bin` (`<nn>`: the text's FNV-1a 32 modulo `config::kLookupBuckets`, 2 hex digits),
-  `lookup/LookupCache`. **Binary**, little-endian: a 16-byte header (`LXLK`, version 1 (u8), the language (u8), the count
-  (u16), the records' bytes (u32), a CRC-32 of the records), then each record: its length after the field (u16), when
+  `lookup/LookupCache`. **Binary**, little-endian: ~~a 16-byte header (`LXLK`, version 1 (u8), the language (u8), the count
+  (u16), the records' bytes (u32), a CRC-32 of the records)~~ (superseded 2026-09-29, v0.2 V8: format 2) a 20-byte
+  header (`LXLK`, version 2 (u8), the language (u8), the count (u16), the records' bytes (u32), a CRC-32 of the
+  records, and the account's tag (u32: FNV-1a 32 of the API key, `lookup::accountTag`; the key itself is never
+  written)), then each record: its length after the field (u16), when
   it was fetched (u32 s since the epoch), the rank (u32), the frequency's float bits (u32), then as u16-length strings
   the text looked up, the word, the reading and the level, the sense count (u8) and each sense's translation and part
   of speech (strings). Oldest first, at most `config::kLookupBucketMax` records and `kLookupBucketMaxBytes`; a record
   over `kLookupRecordMaxBytes` isn't kept. No saved state in it. Written plainly (regenerable); a file that doesn't
-  check out is removed. Nothing in it is the user's own (it's all from Lexirise, asked again when missing or older than
+  check out is removed (so is a format-1 file from before V8). A bucket written under another API key (another
+  account, whose translation target may differ) reads as empty, and its next write drops the other key's answers. An
+  answer keeps the key it was fetched under until it's written (V8 R4): one fetched before the key changed (over the
+  web page, with a card open) is dropped, not written as the new account's. Nothing in it is the user's own (it's all from Lexirise, asked again when missing or older than
   `config::kLookupMaxAgeS`).
 - **`reading` lives in `[ja]`** (it moved from `state.ini`, which is dropped).
 - Unknown keys are **kept** on rewrite, so a newer firmware's settings survive a downgrade.

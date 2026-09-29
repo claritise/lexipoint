@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 // SD card adapter for the stores (SafeFile.h), and the device-wide store instances.
 
 #include <HalStorage.h>
@@ -99,7 +97,8 @@ vocab::VocabStore& vocab::vocabStore() {
 }
 
 lookup::LookupCache& lookup::lookupCache() {
-  static LookupCache cache(halFiles(), timing::epochNowS, millis);
+  static LookupCache cache(halFiles(), timing::epochNowS, millis,
+                           [] { return lookup::accountTag(settingsStore().snapshot().apiKey); });
   return cache;
 }
 
@@ -109,5 +108,3 @@ page::PageStore& page::pageStore() {
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

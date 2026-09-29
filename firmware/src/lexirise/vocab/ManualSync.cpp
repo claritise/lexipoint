@@ -1,10 +1,9 @@
-#if LEXIRISE
-
 #include "ManualSync.h"
 
 #include <Logging.h>
 
 #include <algorithm>
+#include <iterator>
 
 #include "lexirise/api/RequestWindow.h"
 
@@ -25,9 +24,8 @@ ManualSync::ManualSync(VocabStore& store, api::LexiriseApi& api, const Join join
                        const WallClock wall, const Blocked blocked, const KeyUse keyUse)
     : store_(store), api_(api), join_(join), wall_(wall), blocked_(blocked), keyUse_(keyUse) {
   languages_.reserve(std::size(kLanguages));
-  for (const Language l : kLanguages) {
-    if (settings.language(l).enabled) languages_.push_back(l);
-  }
+  std::copy_if(std::begin(kLanguages), std::end(kLanguages), std::back_inserter(languages_),
+               [&settings](const Language l) { return settings.language(l).enabled; });
 }
 
 ManualSync::Result ManualSync::finish(const Result r) {
@@ -65,11 +63,11 @@ ManualSync::Result ManualSync::step(const unsigned long nowMs, const uint32_t ep
       error_ = refused;  // a 429's wait or a rejected key: no radio, the card's words for it
       return finish(Result::Failed);
     }
-    const api::ApiError joined = join_ ? join_() : api::ApiError::None;
-    joined_ = joined == api::ApiError::None && join_ != nullptr;
-    if (joined == api::ApiError::NoWifi || joined == api::ApiError::NoWifiSaved) return finish(Result::NoWifi);
-    if (joined != api::ApiError::None) {
-      error_ = joined;
+    const api::ApiError joinError = join_ ? join_() : api::ApiError::None;
+    joined_ = joinError == api::ApiError::None && join_ != nullptr;
+    if (joinError == api::ApiError::NoWifi || joinError == api::ApiError::NoWifiSaved) return finish(Result::NoWifi);
+    if (joinError != api::ApiError::None) {
+      error_ = joinError;
       return finish(Result::Failed);
     }
     for (const Language l : languages_) store_.load(l);  // SD I/O: read once per boot
@@ -90,7 +88,9 @@ ManualSync::Result ManualSync::step(const unsigned long nowMs, const uint32_t ep
     pages_ += call.sent ? 1 : 0;
     const uint32_t readS = wall_ ? wall_() : 0;  // after the call: it may have set the clock
     const PageApplied applied = store_.apply(call, nowMs, readS != 0 ? readS : epochS);
+    // An entry changed on two pages (or twice on one) counts once.
     for (const uint32_t id : applied.changedEntries) {
+      // cppcheck-suppress useStlAlgorithm ; copy_if into changed_ would read changed_ as it grows: plainer as a loop
       if (std::find(changed_.begin(), changed_.end(), id) == changed_.end()) changed_.push_back(id);
     }
     if (call.cancelled) return finish(Result::Stopped);
@@ -117,5 +117,3 @@ unsigned ManualSync::percent() {
 }
 
 }  // namespace lexipoint::vocab
-
-#endif  // LEXIRISE

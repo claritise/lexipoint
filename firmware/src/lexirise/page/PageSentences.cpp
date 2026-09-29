@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "PageSentences.h"
 
 #include <Logging.h>
@@ -99,5 +97,3 @@ void applyMirrorStates(api::AnalyzeResult& sentence, const Language language, co
 }
 
 }  // namespace lexipoint::page
-
-#endif  // LEXIRISE

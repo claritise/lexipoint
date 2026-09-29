@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "ReaderScene.h"
 
 #include <Utf8.h>
@@ -102,5 +100,3 @@ PageScene readerScene(const ReaderPage& page, const text::BuiltSentence& sentenc
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

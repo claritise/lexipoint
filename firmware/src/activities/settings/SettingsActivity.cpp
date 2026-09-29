@@ -11,15 +11,9 @@
 #include <cstdio>
 #include <cstring>
 
-#include "ButtonRemapActivity.h"
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
-#include "FontDownloadActivity.h"
-#include "KOReaderSettingsActivity.h"
-#include "KeyboardLayoutsActivity.h"
-#include "LanguageSelectActivity.h"
 #include "MappedInputManager.h"
-#include "OpdsServerListActivity.h"
 #include "OtaUpdateActivity.h"
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
@@ -31,10 +25,8 @@
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
-#if LEXIRISE
-#include "lexirise/settings/LexiriseSettingsActivity.h"  // LEXIPOINT
-#endif
 #include "fontIds.h"
+#include "lexirise/settings/LexiriseSettingsActivity.h"
 
 namespace fui = freeink::ui;
 
@@ -59,12 +51,6 @@ void SettingsActivity::rebuildSettingsLists() {
   for (const auto& setting : getSettingsList(&sdFontSystem.registry(), &dictionaries)) {
     if (setting.category == StrId::STR_NONE_OPT) continue;
     if (setting.category == StrId::STR_CAT_DISPLAY) {
-      // The sunlight fading fix is a grayscale-waveform compensation that does
-      // not apply on the X4 Pro / X4 Classic (plain OTP waveform, same panels).
-      if (setting.valuePtr == &CrossPointSettings::fadingFix &&
-          (BoardConfig::isX4Pro() || BoardConfig::isX4Classic())) {
-        continue;
-      }
       displaySettings.push_back(setting);
     } else if (setting.category == StrId::STR_CAT_READER) {
       // Settings merged into "Text Settings"
@@ -83,28 +69,16 @@ void SettingsActivity::rebuildSettingsLists() {
   }
 
   // Append device-only ACTION items
-  if (!BoardConfig::hasTouch()) {
-    controlsSettings.insert(controlsSettings.begin(),
-                            SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
-  }
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
-#if LEXIRISE
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_LEXIRISE, SettingAction::Lexirise));  // LEXIPOINT
-#endif
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_LEXIRISE, SettingAction::Lexirise));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_LIBRARY_REBUILD, SettingAction::RebuildLibraryIndex));
-  // OTA fetches this board's own release asset (see OtaUpdater); boards whose
-  // asset isn't published yet just report no update available.
+  // OTA fetches lexipoint-<tag>-x4pro.bin from Lexipoint's latest release (OtaUpdater,
+  // lexirise/ota/ReleaseAsset.h); a release without it reports no update.
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_KEYBOARD_LAYOUTS, SettingAction::KeyboardLayouts));
   readerSettings.insert(readerSettings.begin(),
                         SettingInfo::Action(StrId::STR_TEXT_SETTINGS, SettingAction::TextSettings));
-  readerSettings.insert(readerSettings.begin() + 1,
-                        SettingInfo::Action(StrId::STR_MANAGE_FONTS, SettingAction::DownloadFonts));
   readerSettings.push_back(SettingInfo::Action(StrId::STR_CUSTOMISE_STATUS_BAR, SettingAction::CustomiseStatusBar));
 
   // Update currentSettings pointer and count for the active category
@@ -203,24 +177,6 @@ void SettingsActivity::activateIndex(const int index) {
   }
 }
 
-void SettingsActivity::onExit() {
-  Activity::onExit();
-
-  UITheme::getInstance().reload();  // Re-apply theme in case it was changed
-}
-
-void SettingsActivity::applyUiSettingChange(uint8_t CrossPointSettings::* valuePtr) {
-  // Theme changes take effect immediately, on this screen — reload the theme
-  // and re-derive the app's tokens so the very next repaint is in the new look.
-  if (valuePtr != &CrossPointSettings::uiTheme) {
-    return;
-  }
-  UITheme::getInstance().reload();
-  // Re-derive the shared tokens for the new look; the gate stays closed until
-  // the repaint that rebuilds the interaction table in the new layout.
-  resetUi();
-}
-
 bool SettingsActivity::handleCustomInput() {
   return optionPopup.handleInput(mappedInput, [this] { requestUpdate(); });
 }
@@ -290,7 +246,6 @@ void SettingsActivity::toggleCurrentSetting() {
                          syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
                          SETTINGS.saveToFile();
                          rebuildSettingsLists();
-                         applyUiSettingChange(valuePtr);
                        });
       requestUpdate();
       return;
@@ -330,23 +285,12 @@ void SettingsActivity::toggleCurrentSetting() {
     auto resultHandler = [this](const ActivityResult&) { SETTINGS.saveToFile(); };
 
     switch (setting.action) {
-      case SettingAction::RemapFrontButtons:
-        startActivityForResult(std::make_unique<ButtonRemapActivity>(renderer, mappedInput), resultHandler);
-        break;
       case SettingAction::CustomiseStatusBar:
         startActivityForResult(std::make_unique<StatusBarSettingsActivity>(renderer, mappedInput), resultHandler);
         break;
-      case SettingAction::KOReaderSync:
-        startActivityForResult(std::make_unique<KOReaderSettingsActivity>(renderer, mappedInput), resultHandler);
-        break;
-#if LEXIRISE
-      case SettingAction::Lexirise:  // LEXIPOINT
+      case SettingAction::Lexirise:
         startActivityForResult(std::make_unique<lexipoint::LexiriseSettingsActivity>(renderer, mappedInput),
                                resultHandler);
-        break;
-#endif
-      case SettingAction::OPDSBrowser:
-        startActivityForResult(std::make_unique<OpdsServerListActivity>(renderer, mappedInput), resultHandler);
         break;
       case SettingAction::Network:
         startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput, false), resultHandler);
@@ -363,13 +307,6 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::SdFirmwareUpdate:
         startActivityForResult(std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInput), resultHandler);
         break;
-      case SettingAction::DownloadFonts:
-        startActivityForResult(std::make_unique<FontDownloadActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 SETTINGS.saveToFile();
-                                 rebuildSettingsLists();
-                               });
-        break;
       case SettingAction::TextSettings:
         startActivityForResult(std::make_unique<TextSettingsActivity>(renderer, mappedInput, &sdFontSystem.registry(),
                                                                       TextSettingsActivity::Tab::Family),
@@ -377,23 +314,6 @@ void SettingsActivity::toggleCurrentSetting() {
                                  // TextSettingsActivity saves on each change; no save needed here.
                                  rebuildSettingsLists();
                                });
-        break;
-      case SettingAction::Language:
-        // Row labels are translated once in rebuildRowItems() and don't
-        // re-run on Pop (see ActivityManager::loop()), so a language switch
-        // needs an explicit rebuild here rather than the generic resultHandler.
-        startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput),
-                               [this](const ActivityResult&) {
-                                 SETTINGS.saveToFile();
-                                 rebuildSettingsLists();
-                               });
-        break;
-      case SettingAction::KeyboardLayouts:
-        if (auto activity = makeUniqueNoThrow<KeyboardLayoutsActivity>(renderer, mappedInput)) {
-          startActivityForResult(std::move(activity), nullptr);
-        } else {
-          LOG_ERR("SETTINGS", "OOM: KeyboardLayoutsActivity");
-        }
         break;
       case SettingAction::None:
         // Do nothing
@@ -407,7 +327,6 @@ void SettingsActivity::toggleCurrentSetting() {
   syncQuickResumeTimeoutForSleepScreen(sleepScreenChanged, quickResumeTimeoutChanged);
   SETTINGS.saveToFile();
   rebuildSettingsLists();
-  applyUiSettingChange(setting.valuePtr);
   activeNav().selected = std::min(ringPos(), settingsCount);
 }
 
@@ -510,7 +429,7 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
 
 void SettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  // Content below the GUI.drawHeader band, above the button hints.
+  // Content below the GUI.drawHeader band, above the bottom reserve.
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
 
@@ -554,21 +473,11 @@ void SettingsActivity::render(RenderLock&&) {
 
   // Header via GUI.drawHeader (already FreeInkUI-themed) for the battery
   // indicator; the rest of the screen renders through the app.
-  // Version rides in the header's trailing label slot: the footer position
-  // conflicts with button hints on non-touch devices.
+  // Version rides in the header's trailing label slot.
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_SETTINGS_TITLE),
                  CROSSPOINT_VERSION);
 
   renderUi();
-
-  const int ring = ringPos();
-  const auto confirmLabel =
-      (ring == 0) ? I18N.get(categoryNames[(selectedCategoryIndex + 1) % categoryCount])
-                  : (ring > 0 && (*currentSettings)[ring - 1].nameId == StrId::STR_TIME_TO_SLEEP ? tr(STR_SELECT)
-                                                                                                 : tr(STR_TOGGLE));
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   // Always use standard refresh for settings screen
   renderer.displayBuffer();

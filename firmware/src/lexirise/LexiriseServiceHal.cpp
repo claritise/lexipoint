@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 // The device's LexiriseService: the SD settings store, real WiFi, verified TLS, millis().
 
 #include <Arduino.h>
@@ -24,5 +22,3 @@ LexiriseService& service() {
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

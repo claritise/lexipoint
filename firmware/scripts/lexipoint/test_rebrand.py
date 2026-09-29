@@ -136,15 +136,14 @@ class NetworkNames(unittest.TestCase):
 
     USES = {
         "src/activities/network/CrossPointWebServerActivity.cpp": ("kHotspotSsid", "kMdnsHostname"),
-        "src/activities/network/CalibreConnectActivity.cpp": ("kMdnsHostname",),
         "src/activities/network/WifiSelectionActivity.cpp": ("kDhcpHostnamePrefix",),
     }
 
-    def test_the_base_files_use_the_config_names_in_lexirise_builds(self):
+    def test_the_base_files_use_the_config_names(self):
         for path, names in self.USES.items():
             text = read(os.path.join(FIRMWARE, path))
             for name in names:
-                self.assertRegex(text, r"#if LEXIRISE[^#]*lexipoint::config::" + name, f"{path}: {name}")
+                self.assertIn("lexipoint::config::" + name, text, f"{path}: {name}")
 
     def test_the_names_say_lexipoint(self):
         config = read(os.path.join(FIRMWARE, "src/lexirise/LexiriseConfig.h"))

@@ -35,7 +35,6 @@ add_executable(LexiriseNetTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseNetTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseNetTest PRIVATE
   ${REPO_ROOT}/src

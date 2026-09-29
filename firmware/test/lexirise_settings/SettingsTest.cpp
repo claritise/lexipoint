@@ -156,10 +156,12 @@ TEST(Settings, MaskShowsOnlyTheTail) {
 
 TEST(Settings, KeyShape) {
   EXPECT_TRUE(isPlausibleApiKey(kKey));
+  EXPECT_TRUE(isPlausibleApiKey(kKey.substr(0, kKey.size() - 2) + "-_"));  // '-' and '_' are key characters
   EXPECT_FALSE(isPlausibleApiKey("lx_short"));
   EXPECT_FALSE(isPlausibleApiKey("xx_" + kKey.substr(3)));
   EXPECT_FALSE(isPlausibleApiKey(kKey + " "));
   EXPECT_FALSE(isPlausibleApiKey(kKey + "\""));
+  EXPECT_FALSE(isPlausibleApiKey(kKey.substr(0, kKey.size() - 1) + "."));  // '.' is next to '-' but no key character
   EXPECT_FALSE(isPlausibleApiKey(std::string(200, 'a')));
 }
 

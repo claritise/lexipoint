@@ -2,7 +2,6 @@
 
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
-#include <HalGPIO.h>
 #include <Logging.h>
 
 #include <algorithm>
@@ -10,96 +9,19 @@
 
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
-#include "components/themes/BaseTheme.h"
-#include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
-#include "components/themes/roundedraff/RoundedRaffTheme.h"
 
 UITheme UITheme::instance;
 
-UITheme::UITheme() {
-  auto themeType = static_cast<CrossPointSettings::UI_THEME>(SETTINGS.uiTheme);
-  setTheme(themeType);
-}
+// LEXIPOINT (v0.2 V8, claritise 2026-09-29: "Keep Lyra"): Lyra is the one theme; the others and the setting went.
+UITheme::UITheme() : currentMetrics(&LyraMetrics::values), currentTheme(std::make_unique<LyraTheme>()) {}
 
-void UITheme::reload() {
-  auto themeType = static_cast<CrossPointSettings::UI_THEME>(SETTINGS.uiTheme);
-  setTheme(themeType);
-}
+const ThemeMetrics& UITheme::getMetrics() const { return *currentMetrics; }
 
-void UITheme::setTheme(CrossPointSettings::UI_THEME type) {
-  switch (type) {
-    case CrossPointSettings::UI_THEME::CLASSIC:
-      LOG_DBG("UI", "Using Classic theme");
-      currentTheme = std::make_unique<BaseTheme>();
-      currentMetrics = &BaseMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::LYRA:
-      LOG_DBG("UI", "Using Lyra theme");
-      currentTheme = std::make_unique<LyraTheme>();
-      currentMetrics = &LyraMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::ROUNDEDRAFF:
-      LOG_DBG("UI", "Using RoundedRaff theme");
-      currentTheme = std::make_unique<RoundedRaffTheme>();
-      currentMetrics = &RoundedRaffMetrics::values;
-      break;
-    case CrossPointSettings::UI_THEME::LYRA_3_COVERS:
-      LOG_DBG("UI", "Using Lyra 3 Covers theme");
-      currentTheme = std::make_unique<Lyra3CoversTheme>();
-      currentMetrics = &Lyra3CoversMetrics::values;
-      break;
-  }
-  metricsValid = false;
-}
-
-const ThemeMetrics& UITheme::getMetrics() const {
-  // hasTouch() can flip once touch init completes after static construction, so the
-  // cached copy is refreshed when the flag differs instead of copying the struct per call.
-  const bool touch = gpio.hasTouch();
-  if (!metricsValid || touch != metricsForTouch) {
-    adjustedMetrics = *currentMetrics;
-    if (touch) {
-      adjustedMetrics.buttonHintsHeight = 0;
-    }
-    metricsForTouch = touch;
-    metricsValid = true;
-  }
-  return adjustedMetrics;
-}
-
-// Screen area excluding the button hints
-Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer, bool hasFrontButtonHints, bool hasSideButtonHints) {
-  auto orientation = renderer.getOrientation();
-  const int screenWidth = renderer.getScreenWidth();
-  const int screenHeight = renderer.getScreenHeight();
-  Rect safeArea = Rect{0, 0, screenWidth, screenHeight};
-  const ThemeMetrics metrics = getMetrics();
-  switch (orientation) {
-    case GfxRenderer::Orientation::Portrait:
-      if (hasFrontButtonHints) {
-        safeArea.height -= metrics.buttonHintsHeight;
-      }
-      break;
-    case GfxRenderer::Orientation::LandscapeClockwise:
-      if (hasFrontButtonHints) {
-        safeArea.x += metrics.buttonHintsHeight;
-        safeArea.width -= metrics.buttonHintsHeight;
-      }
-      break;
-    case GfxRenderer::Orientation::PortraitInverted:
-      if (hasFrontButtonHints) {
-        safeArea.y += metrics.buttonHintsHeight;
-        safeArea.height -= metrics.buttonHintsHeight;
-      }
-      break;
-    case GfxRenderer::Orientation::LandscapeCounterClockwise:
-      if (hasFrontButtonHints) {
-        safeArea.width -= metrics.buttonHintsHeight;
-      }
-      break;
-  }
-  return safeArea;
+// LEXIPOINT (v0.2 V8): the whole screen. No button legend is drawn, so no band is kept for one (the themes'
+// buttonHintsHeight is 0); CrossPoint took the legend's band off the side the front buttons were on.
+Rect UITheme::getScreenSafeArea(const GfxRenderer& renderer) {
+  return Rect{0, 0, renderer.getScreenWidth(), renderer.getScreenHeight()};
 }
 
 std::string UITheme::getCoverThumbPath(std::string coverBmpPath, int coverHeight) {

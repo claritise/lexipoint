@@ -47,6 +47,7 @@ TEST(HttpBaseUrl, RejectsEverythingElse) {
     EXPECT_FALSE(parseBaseUrl(bad, e)) << bad;
   }
   EXPECT_FALSE(parseBaseUrl("https://" + std::string(config::kMaxBaseUrlLength, 'a'), e));
+  EXPECT_FALSE(parseBaseUrl("https://host/a\x7F", e));  // DEL in the path
 }
 
 TEST(HttpRequest, SerialisesGetWithoutBodyHeaders) {

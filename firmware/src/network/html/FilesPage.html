@@ -1642,19 +1642,6 @@
               </label>
             </div>
           </div>
-          <!-- Target Device -->
-          <div class="advanced-setting-row" id="deviceSettingRow">
-            <div class="setting-title">📱 Target Device</div>
-            <div class="setting-controls">
-              <div class="rotation-buttons">
-                <button class="rotation-btn device-btn active" data-value="auto" onclick="setDeviceTarget('auto')">
-                  <span id="deviceAutoLabel">Auto</span>
-                </button>
-                <button class="rotation-btn device-btn" data-value="X4" onclick="setDeviceTarget('X4')">X4</button>
-                <button class="rotation-btn device-btn" data-value="X3" onclick="setDeviceTarget('X3')">X3</button>
-              </div>
-            </div>
-          </div>
           <!-- Rotation Direction -->
           <div class="advanced-setting-row" id="rotationSettingRow">
             <div class="setting-title">↻ Rotation Direction</div>
@@ -3300,9 +3287,9 @@ const WS_CHUNK_SIZE = 4096; // 4KB chunks - smaller for ESP32 stability
 // ============================================================================
 
 // Device profiles (short edge × long edge in portrait orientation)
+// LEXIPOINT (v0.2 V8): the X4 Pro's panel only (the X3 profile and the Target Device row went with the other boards).
 const DEVICE_PROFILES = {
-  X4: { width: 480, height: 800, label: 'X4' },
-  X3: { width: 528, height: 792, label: 'X3' },
+  X4: { width: 480, height: 800, label: 'X4 Pro' },
 };
 
 // Default conversion settings
@@ -3324,9 +3311,6 @@ const MIN_CROP_DIMENSION = 240;
 // Note: Overlap is now always centered distribution (min 5%)
 
 // Dynamic conversion settings (updated by UI)
-let DEVICE_TARGET = 'auto';      // 'auto' | 'X4' | 'X3'
-let DETECTED_DEVICE = null;      // populated from /api/status
-let ACTIVE_DEVICE = DEFAULT_DEVICE;
 let MAX_WIDTH = DEFAULT_MAX_WIDTH;
 let MAX_HEIGHT = DEFAULT_MAX_HEIGHT;
 let JPEG_QUALITY = DEFAULT_JPEG_QUALITY;
@@ -3340,7 +3324,6 @@ const DEFAULT_UPLOAD_SETTINGS = Object.freeze({
   renameFromMetadata: false,
   quality: DEFAULT_JPEG_QUALITY,
   autoCrop: DEFAULT_ENABLE_AUTO_CROP,
-  deviceTarget: 'auto',
   handedness: 'right',
   overlap: 5,
   exportLog: false
@@ -3353,7 +3336,6 @@ function getCurrentUploadSettings() {
     renameFromMetadata: !!document.getElementById('renameFromMetadataToggle')?.checked,
     quality: parseInt(document.getElementById('qualitySlider')?.value || JPEG_QUALITY, 10),
     autoCrop: !!document.getElementById('autoCropToggle')?.checked,
-    deviceTarget: DEVICE_TARGET,
     handedness: HANDEDNESS,
     overlap: OVERLAP_PERCENT,
     exportLog: !!document.getElementById('export-log-checkbox')?.checked
@@ -3371,7 +3353,7 @@ function applyUploadSettings(settings = {}) {
     document.getElementById('rememberUploadSettings').checked = !!settings.rememberSettings;
 
     setQualityPreset(Math.max(1, Math.min(95, parseInt(merged.quality, 10) || DEFAULT_JPEG_QUALITY)));
-    setDeviceTarget(['auto', 'X3', 'X4'].includes(merged.deviceTarget) ? merged.deviceTarget : 'auto');
+    applyDeviceProfile();  // a saved deviceTarget (before v0.2 V8) is ignored: one profile
     setHandedness(merged.handedness === 'left' ? 'left' : 'right');
     setOverlap([5, 10, 15].includes(Number(merged.overlap)) ? Number(merged.overlap) : 5);
     toggleConvertOptions();
@@ -3433,34 +3415,21 @@ async function fetchVersion() {
     if (response.ok) {
       const data = await response.json();
       crosspointVersion = data.version || 'Unknown';
-      if (data.device === 'X3' || data.device === 'X4') {
-        DETECTED_DEVICE = data.device;
-        applyDeviceTarget();
-      }
     }
   } catch (e) {
     console.error('Failed to fetch version:', e);
   }
 }
 
-// Resolve DEVICE_TARGET ('auto' | 'X4' | 'X3') to a concrete profile and update UI.
-function applyDeviceTarget() {
-  const resolved = DEVICE_TARGET === 'auto' ? (DETECTED_DEVICE || DEFAULT_DEVICE) : DEVICE_TARGET;
-  const profile = DEVICE_PROFILES[resolved] || DEVICE_PROFILES[DEFAULT_DEVICE];
-  ACTIVE_DEVICE = resolved;
+// The X4 Pro's profile (the only one since v0.2 V8): the conversion's size limits and the summary.
+function applyDeviceProfile() {
+  const profile = DEVICE_PROFILES[DEFAULT_DEVICE];
   MAX_WIDTH = profile.width;
   MAX_HEIGHT = profile.height;
 
   const summary = document.getElementById('convertSizeSummary');
   if (summary) {
     summary.textContent = `📏 Max ${profile.width}×${profile.height}px`;
-  }
-  document.querySelectorAll('.device-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.value === DEVICE_TARGET);
-  });
-  const autoLabel = document.getElementById('deviceAutoLabel');
-  if (autoLabel) {
-    autoLabel.textContent = DETECTED_DEVICE ? `Auto (${DETECTED_DEVICE})` : 'Auto';
   }
 
   // Recompute picker classification with new dimensions, then refresh grid.
@@ -3475,12 +3444,6 @@ function applyDeviceTarget() {
       renderImageGrid();
     }
   }
-}
-
-function setDeviceTarget(value) {
-  DEVICE_TARGET = value;
-  applyDeviceTarget();
-  updateUploadSettingsPersistence();
 }
 
 // Batch logging system for multiple files
@@ -6183,6 +6146,6 @@ function retryAllFailedUploads() {
   }
   hydrate();
 </script>
-<script src="/lexirise/nav.js" defer></script><!-- LEXIPOINT: Lexirise link, Lexirise builds only -->
+<script src="/lexirise/nav.js" defer></script><!-- LEXIPOINT: the Lexirise link and the product's name -->
 </body>
 </html>

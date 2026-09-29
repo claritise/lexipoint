@@ -1,8 +1,8 @@
 // LigatureGuardTest — font GSUB ligatures must not re-process Arabic text.
 //
-// Arabic contextual joining (including Lam-Alef) is resolved at render time by
-// do_shape() in MiniBidi, which emits Arabic presentation forms in visual
-// order. A font's GSUB ligature table (extracted from the source font) also
+// Arabic presentation forms that arrive already shaped in the text (LEXIPOINT:
+// nothing shapes at render time since v0.2 V8 removed MiniBidi's do_shape()) must
+// stay as they are. A font's GSUB ligature table (extracted from the source font) also
 // carries Lam-Alef pairs keyed on those presentation forms, e.g.
 //   FEDF (lam-initial) + FE8E (alef-final) -> FEFB (lam-alef isolated)
 // If EpdFont::getLigature() ran that pair over already-shaped text, a normal

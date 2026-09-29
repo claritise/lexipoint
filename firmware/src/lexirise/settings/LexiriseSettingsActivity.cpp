@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LexiriseSettingsActivity.h"
 
 #include <GfxRenderer.h>
@@ -30,7 +28,7 @@ constexpr const char* kLogTag = "LXSET";
 // Room for the tag list as settings.md §1 allows it (normaliseTags caps it anyway).
 constexpr size_t kTagsMaxInput = config::kMaxTags * (config::kMaxTagLength + 1);
 constexpr size_t kMinutesValueBytes = 32;  // "%d min" in any translation
-constexpr int16_t kValueInset = 8;         // air between the value and the row edge, as KOReaderSettingsActivity
+constexpr int16_t kValueInset = 8;         // air between the value and the row edge
 
 StrId headingFor(const Group group) {
   switch (group) {
@@ -299,7 +297,7 @@ std::string LexiriseSettingsActivity::valueFor(const Row row, const Settings& se
 
 void LexiriseSettingsActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  // Content below the GUI.drawHeader band, above the button hints (as KOReaderSettingsActivity).
+  // Content below the GUI.drawHeader band.
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
                                                 static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
@@ -334,7 +332,7 @@ void LexiriseSettingsActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
   props.valueInset = kValueInset;
-  // Label at the value's font size, up to 2 lines (as KOReaderSettingsActivity).
+  // Label at the value's font size, up to 2 lines.
   props.labelText = screen.theme().smallText;
   props.labelText.maxLines = 2;
   syncListViewport(screen, props);
@@ -342,5 +340,3 @@ void LexiriseSettingsActivity::buildScreen(UiScreen& screen) {
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

@@ -21,7 +21,6 @@ add_executable(LexiriseLookupTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseLookupTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseLookupTest PRIVATE
   ${REPO_ROOT}/src

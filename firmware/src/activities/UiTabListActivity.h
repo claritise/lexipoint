@@ -56,8 +56,7 @@ class UiTabListActivity : public UiListActivity {
   void moveRingTo(int ringIndex);
 
   // --- screen helpers --------------------------------------------------------
-  // The shared tab band: theme-driven pill treatment (label-hugging Lyra vs
-  // full-slot RoundedRaff), Lyra focused band wash, always-on divider.
+  // The shared tab band: Lyra's label-hugging pill, focused band wash and always-on divider.
   void buildTabBar(UiScreen& screen);
   // Ring-aware counterpart of syncListViewport: measures rows, applies the
   // one-shot follow to the remembered row, clamps, and writes

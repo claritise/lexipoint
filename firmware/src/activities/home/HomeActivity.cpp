@@ -8,11 +8,9 @@
 #include <HalGPIO.h>
 #include <HalStorage.h>
 #include <I18n.h>
+#include <Memory.h>
 #include <Utf8.h>
 #include <Xtc.h>
-#if LEXIRISE
-#include <Memory.h>  // LEXIPOINT
-#endif
 
 #include <algorithm>
 #include <cstring>
@@ -21,26 +19,18 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
-#include "OpdsServerStore.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#if LEXIRISE
-#include "lexirise/input/InputAbort.h"  // LEXIPOINT
-#include "lexirise/vocab/ManualSync.h"  // LEXIPOINT
-#endif
+#include "lexirise/input/InputAbort.h"
+#include "lexirise/vocab/ManualSync.h"
 
 int HomeActivity::getMenuItemCount() const {
   int count = 4;  // File Browser, Library, File transfer, Settings
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
-  if (hasOpdsServers) {
-    count++;
-  }
-#if LEXIRISE
-  if (hasVocabSync) count++;  // LEXIPOINT
-#endif
+  if (hasVocabSync) count++;
   return count;
 }
 
@@ -124,22 +114,13 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 void HomeActivity::onEnter() {
   Activity::onEnter();
 
-  hasOpdsServers = OPDS_STORE.hasServers();
-#if LEXIRISE
-  hasVocabSync = lexipoint::vocab::homeSyncRowShown();  // LEXIPOINT
-#endif
+  hasVocabSync = lexipoint::vocab::homeSyncRowShown();
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
 
   const auto base = static_cast<int>(recentBooks.size());
-#if LEXIRISE
-  const bool vocabRow = hasVocabSync;  // LEXIPOINT
-#else
-  const bool vocabRow = false;
-#endif
-  selectorIndex =
-      initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers, vocabRow);
+  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasVocabSync);
 
   // Trigger first update
   requestUpdate();
@@ -188,7 +169,6 @@ void HomeActivity::freeCoverBuffer() {
   coverBufferStored = false;
 }
 
-#if LEXIRISE
 // LEXIPOINT: Sync Vocabulary under way (v0.2 V7b): any input stops it; otherwise one step per pass once its popup is
 // on screen; its result stays up config::kVocabSyncResultMs, then the menu is drawn again.
 void HomeActivity::loopVocabSync() {
@@ -227,15 +207,12 @@ void HomeActivity::loopVocabSync() {
     requestUpdate();
   }
 }
-#endif
 
 void HomeActivity::loop() {
-#if LEXIRISE
-  if (vocabSync) {  // LEXIPOINT
+  if (vocabSync) {
     loopVocabSync();
     return;
   }
-#endif
   const int menuCount = getMenuItemCount();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
@@ -245,20 +222,12 @@ void HomeActivity::loop() {
       return;
     }
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-#if LEXIRISE
-    const bool vocabRow = hasVocabSync;  // LEXIPOINT
-#else
-    const bool vocabRow = false;
-#endif
-    switch (indexToMenuItem(menuIndex, hasOpdsServers, vocabRow)) {
+    switch (indexToMenuItem(menuIndex, hasVocabSync)) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
       case HomeMenuItem::LIBRARY:
         onLibraryOpen();
-        break;
-      case HomeMenuItem::OPDS_BROWSER:
-        onOpdsBrowserOpen();
         break;
       case HomeMenuItem::FILE_TRANSFER:
         onFileTransferOpen();
@@ -266,9 +235,7 @@ void HomeActivity::loop() {
       case HomeMenuItem::SETTINGS_MENU:
         onSettingsOpen();
         break;
-#if LEXIRISE
-      case HomeMenuItem::VOCAB_SYNC:  // LEXIPOINT
-      {
+      case HomeMenuItem::VOCAB_SYNC: {
         vocabSyncFlow = {};
         auto sync = makeUniqueNoThrow<lexipoint::vocab::HomeSync>();
         if (sync && !sync->ok()) sync.reset();
@@ -278,7 +245,6 @@ void HomeActivity::loop() {
       }
         requestUpdate();
         break;
-#endif
       default:
         break;
     }
@@ -338,8 +304,8 @@ void HomeActivity::loop() {
   const int renderedMenuCount =
       menuCount - (metrics.homeContinueReadingInMenu ? 0 : static_cast<int>(recentBooks.size()));
   int menuRow = -1;
-  // Row height from the theme, not the metrics table: RoundedRaff draws
-  // font-derived rows and the touch grid must match the visuals exactly.
+  // Row height from the theme, not the metrics table: the touch grid must match
+  // the visuals exactly.
   const int menuRowHeight = GUI.getMenuRowHeight(renderer);
   const auto menuTouch = mappedInput.rowTouch(menuRow, menuTop, menuRowHeight + metrics.menuSpacing, renderedMenuCount,
                                               0, INT32_MAX, menuRowHeight);
@@ -373,7 +339,7 @@ void HomeActivity::render(RenderLock&&) {
 
   // Band spans topPadding..homeTopPadding: the cover tile starts at the fixed
   // homeTopPadding, so the height must shrink by topPadding or the band (and a
-  // centered title, e.g. RoundedRaff's book title) sinks into the tile.
+  // centered title) sinks into the tile.
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding},
                  metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
 
@@ -394,16 +360,10 @@ void HomeActivity::render(RenderLock&&) {
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Library, Transfer, Settings};
 
-  if (hasOpdsServers) {
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Blocks);
-  }
-#if LEXIRISE
   if (hasVocabSync) {  // LEXIPOINT: just above Settings (claritise, 2026-09-28)
     menuItems.insert(menuItems.end() - 1, tr(STR_LEXI_SYNC_VOCABULARY));
     menuIcons.insert(menuIcons.end() - 1, Wifi);
   }
-#endif
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
     // Insert Continue Reading at the top if enabled in theme
@@ -421,15 +381,10 @@ void HomeActivity::render(RenderLock&&) {
       [&menuItems](int index) { return std::string(menuItems[index]); },
       [&menuIcons](int index) { return menuIcons[index]; });
 
-  const auto labels = mappedInput.mapLabels(recentBooks.empty() ? "" : tr(STR_RESUME), tr(STR_SELECT), tr(STR_DIR_UP),
-                                            tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-#if LEXIRISE
   if (vocabSync) {  // LEXIPOINT: its popup over the menu (the menu drawn first: a narrower result leaves no trace)
     vocabSync->draw(renderer);
     vocabSyncDrawn = true;
   }
-#endif
 
   renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
 
@@ -451,5 +406,3 @@ void HomeActivity::onLibraryOpen() { activityManager.goToLibrary(); }
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
-
-void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }

@@ -1,7 +1,7 @@
-#if LEXIRISE
-
 #include "WholeWords.h"
 
+#include <algorithm>
+#include <iterator>
 #include <set>
 #include <vector>
 
@@ -40,7 +40,8 @@ api::AnalyzeResult wholeWords(const api::AnalyzeResult& refined, api::AnalyzeRes
       merged.push_back(*pieces.front());  // the same token: the refined one has the lemma
     } else if (!pieces.empty() && !ranked) {
       // Cut up, but not a dictionary word Lexirise knows (一日中雨): the refined pieces are the better split.
-      for (const api::Occurrence* piece : pieces) merged.push_back(*piece);
+      std::transform(pieces.begin(), pieces.end(), std::back_inserter(merged),
+                     [](const api::Occurrence* piece) { return *piece; });
     } else {
       merged.push_back(word);  // a ranked whole word (深深, 一边, 小さな), or pieces that don't tile it
     }
@@ -58,5 +59,3 @@ api::AnalyzeResult wholeWords(const api::AnalyzeResult& refined, api::AnalyzeRes
 }
 
 }  // namespace lexipoint::lookup
-
-#endif  // LEXIRISE

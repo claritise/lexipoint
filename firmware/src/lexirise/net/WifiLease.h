@@ -9,9 +9,9 @@
 //     is somebody else's and is left alone.
 //   - WiFi Lexipoint brought up is its own (the lease) until it idles out, or until the screen
 //     leaves reading (no reader activity on screen or under it). ActivityManager reports that before
-//     the next activity's onEnter, so any other activity (KOSync, the web server, OTA, ...) starts
+//     the next activity's onEnter, so any other activity (the web server, OTA, ...) starts
 //     with the radio off and brings WiFi up itself: Lexipoint never turns WiFi off under it. This
-//     relies on nothing that uses WiFi being pushed over the reader (KOSync replaces it).
+//     relies on nothing that uses WiFi being pushed over the reader.
 
 #include "lexirise/LexiriseConfig.h"
 

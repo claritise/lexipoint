@@ -21,43 +21,27 @@ void MappedInputManager::update() const {
 }
 
 bool MappedInputManager::isNavDirectionSwapped() const {
-  // Touch boards always follow the rendered orientation; button-only boards keep the user toggle.
-  // Home and settings render in portrait, so neither path swaps them.
+  // With touch the controls follow the rendered orientation. Home and settings render in portrait, so they never
+  // swap. A touch controller that failed to start leaves the side buttons unswapped, as before V8 (no button-board
+  // toggle any more: it was off).
   const auto orientation = renderer.getOrientation();
-  return (gpio.hasTouch() || SETTINGS.frontButtonFollowOrientation) &&
+  return gpio.hasTouch() &&
          (orientation == GfxRenderer::PortraitInverted || orientation == GfxRenderer::LandscapeCounterClockwise);
 }
 
 MappedInputManager::Button MappedInputManager::mapScreenDirection(const Button button) const {
-  // Rows follow GfxRenderer::Orientation's declared order.
-  static constexpr Button directions[][4] = {
-      {Button::Left, Button::Right, Button::Up, Button::Down},
-      {Button::Down, Button::Up, Button::Left, Button::Right},
-      {Button::Right, Button::Left, Button::Down, Button::Up},
-      {Button::Up, Button::Down, Button::Right, Button::Left},
-  };
-
-  uint8_t direction = 0;
   switch (button) {
     case Button::ScreenLeft:
-      direction = 0;
-      break;
+      return Button::Left;
     case Button::ScreenRight:
-      direction = 1;
-      break;
+      return Button::Right;
     case Button::ScreenUp:
-      direction = 2;
-      break;
+      return Button::Up;
     case Button::ScreenDown:
-      direction = 3;
-      break;
+      return Button::Down;
     default:
       return button;
   }
-
-  const uint8_t orientation =
-      SETTINGS.frontButtonFollowOrientation ? static_cast<uint8_t>(renderer.getOrientation()) : 0;
-  return directions[orientation][direction];
 }
 
 bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
@@ -65,17 +49,13 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
 
   switch (button) {
     case Button::Back:
-      // Logical Back maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonBack);
+      return (gpio.*fn)(HalGPIO::BTN_BACK);
     case Button::Confirm:
-      // Logical Confirm maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonConfirm);
+      return (gpio.*fn)(HalGPIO::BTN_CONFIRM);
     case Button::Left:
-      // Logical Left maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonLeft);
+      return (gpio.*fn)(HalGPIO::BTN_LEFT);
     case Button::Right:
-      // Logical Right maps to user-configured front button.
-      return (gpio.*fn)(SETTINGS.frontButtonRight);
+      return (gpio.*fn)(HalGPIO::BTN_RIGHT);
     case Button::Up:
       // Side buttons remain fixed for Up/Down.
       return (gpio.*fn)(HalGPIO::BTN_UP);
@@ -83,7 +63,7 @@ bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint
       // Side buttons remain fixed for Up/Down.
       return (gpio.*fn)(HalGPIO::BTN_DOWN);
     case Button::Power:
-      // Power button bypasses remapping.
+      // Power maps straight to its button.
       return (gpio.*fn)(HalGPIO::BTN_POWER);
     case Button::PageBack:
       // Reader page navigation uses side buttons and can be swapped via settings.
@@ -169,15 +149,13 @@ bool MappedInputManager::wasScreenLongPress(int& x, int& y) const {
   return true;
 }
 
-#if LEXIRISE
-bool MappedInputManager::peekScreenLongPress(int& x, int& y) const {  // LEXIPOINT
+bool MappedInputManager::peekScreenLongPress(int& x, int& y) const {
   float nx = 0.0f;
   float ny = 0.0f;
   if (!gpio.wasTouchLongPress(nx, ny)) return false;
   renderer.tapToLogical(nx, ny, x, y);
   return true;
 }
-#endif
 
 bool MappedInputManager::isScreenTouchHeld(int& x, int& y) const {
   // Live contact position while the finger is down (no tap-slop gate) — drag tracking.
@@ -266,8 +244,8 @@ MappedInputManager::SwipeDir MappedInputManager::wasSwipe() const {
 }
 
 // Edge classification (which swipe counts as an edge gesture) lives in the
-// SDK; only the MEANING of each edge — back, menu, home, light panel, and the
-// home-key remap — is decided here.
+// SDK; only the MEANING of each edge — back, menu, home and the light panel —
+// is decided here.
 bool MappedInputManager::wasEdgeSwipe(const freeink::ui::ScreenEdge edge) const {
   int sx = 0;
   int sy = 0;
@@ -305,29 +283,22 @@ bool MappedInputManager::wasLightPanelGesture() const {
   return Frontlight.present() && wasTopEdgeDownSwipe();
 }
 
-#if FREEINK_CAP_TOUCH
 bool MappedInputManager::wasPowerConfirmClick() const {
   if (!gpio.hasTouch() || SETTINGS.shortPwrBtn != CrossPointSettings::SHORT_PWRBTN::PWR_CONFIRM) return false;
   // Wait out the X4 Pro's frontlight double-click window before treating its
-  // first release as Confirm. Other touch boards can use the release directly.
-  if (BoardConfig::isX4Pro()) return powerConfirmClickFrame;
-  return gpio.wasReleased(HalGPIO::BTN_POWER) && gpio.getPowerButtonHeldTime() <= SETTINGS.getPowerButtonDuration();
+  // first release as Confirm.
+  return powerConfirmClickFrame;
 }
-#endif
 
 bool MappedInputManager::wasPressed(const Button button) const {
   if (button == Button::Back && wasBackGesture()) return true;
-#if FREEINK_CAP_TOUCH
   if (button == Button::Confirm && wasPowerConfirmClick()) return true;
-#endif
   return mapButton(button, &HalGPIO::wasPressed);
 }
 
 bool MappedInputManager::wasReleased(const Button button) const {
   if (button == Button::Back && wasBackGesture()) return true;
-#if FREEINK_CAP_TOUCH
   if (button == Button::Confirm && wasPowerConfirmClick()) return true;
-#endif
   return mapButton(button, &HalGPIO::wasReleased);
 }
 
@@ -369,69 +340,4 @@ unsigned long MappedInputManager::getHeldTime() const {
   }
   touchHeldOverrideValid = false;
   return gpio.getHeldTime();
-}
-
-MappedInputManager::Labels MappedInputManager::mapLabels(const char* back, const char* confirm, const char* previous,
-                                                         const char* next) const {
-  // Swap previous/next labels to match the page turn direction swap in INVERTED and LANDSCAPE_CCW.
-  const bool swapLabels = isNavDirectionSwapped();
-  const char* leftLabel = swapLabels ? next : previous;
-  const char* rightLabel = swapLabels ? previous : next;
-
-  return mapFrontLabels(back, confirm, leftLabel, rightLabel);
-}
-
-MappedInputManager::Labels MappedInputManager::mapDirectionalLabels(const char* back, const char* confirm,
-                                                                    const char* left, const char* right, const char* up,
-                                                                    const char* down) const {
-  const auto labelForButton = [&](const Button rawButton) {
-    if (mapScreenDirection(Button::ScreenLeft) == rawButton) return left;
-    if (mapScreenDirection(Button::ScreenRight) == rawButton) return right;
-    if (mapScreenDirection(Button::ScreenUp) == rawButton) return up;
-    if (mapScreenDirection(Button::ScreenDown) == rawButton) return down;
-    return "";
-  };
-  return mapFrontLabels(back, confirm, labelForButton(Button::Left), labelForButton(Button::Right));
-}
-
-MappedInputManager::Labels MappedInputManager::mapFrontLabels(const char* back, const char* confirm, const char* left,
-                                                              const char* right) const {
-  // Build the label order based on the configured hardware mapping.
-  auto labelForHardware = [&](uint8_t hw) -> const char* {
-    // Compare against configured logical roles and return the matching label.
-    if (hw == SETTINGS.frontButtonBack) {
-      return back;
-    }
-    if (hw == SETTINGS.frontButtonConfirm) {
-      return confirm;
-    }
-    if (hw == SETTINGS.frontButtonLeft) {
-      return left;
-    }
-    if (hw == SETTINGS.frontButtonRight) {
-      return right;
-    }
-    return "";
-  };
-
-  return {labelForHardware(HalGPIO::BTN_BACK), labelForHardware(HalGPIO::BTN_CONFIRM),
-          labelForHardware(HalGPIO::BTN_LEFT), labelForHardware(HalGPIO::BTN_RIGHT)};
-}
-
-int MappedInputManager::getPressedFrontButton() const {
-  // Scan the raw front buttons in hardware order.
-  // This bypasses remapping so the remap activity can capture physical presses.
-  if (gpio.wasPressed(HalGPIO::BTN_BACK)) {
-    return HalGPIO::BTN_BACK;
-  }
-  if (gpio.wasPressed(HalGPIO::BTN_CONFIRM)) {
-    return HalGPIO::BTN_CONFIRM;
-  }
-  if (gpio.wasPressed(HalGPIO::BTN_LEFT)) {
-    return HalGPIO::BTN_LEFT;
-  }
-  if (gpio.wasPressed(HalGPIO::BTN_RIGHT)) {
-    return HalGPIO::BTN_RIGHT;
-  }
-  return -1;
 }

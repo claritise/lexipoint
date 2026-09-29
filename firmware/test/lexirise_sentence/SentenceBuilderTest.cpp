@@ -583,3 +583,12 @@ TEST(PageText, APageWithoutTextHasNone) {
   page.lines.push_back(TextLine{{"\xE3\x80\x80"}, true});  // an ideographic space alone
   EXPECT_FALSE(lexipoint::text::buildPageText(page, Script::Japanese));
 }
+
+// V8 R2: a tapped token whose first piece is only punctuation (the end of one sentence) centres on its piece with a
+// letter (the start of the next), not on the punctuation.
+TEST(SentenceJa, ATokenMixingPunctuationAndLettersCentresOnItsLetters) {
+  const PageModel page{{{{"前", "だ", "。「彼", "は", "来", "た", "。"}, true}}};
+  const auto s = buildSentence(page, {0, 2}, Script::Japanese);
+  ASSERT_TRUE(s.has_value());
+  EXPECT_EQ(s->text, "「彼は来た。");
+}

@@ -45,7 +45,6 @@ add_executable(LexiriseCardTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseCardTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseCardTest PRIVATE
   ${REPO_ROOT}/src
@@ -75,7 +74,6 @@ add_executable(LexiriseCardRender
   ${REPO_ROOT}/lib/EpdFont/EpdFont.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
-target_compile_definitions(LexiriseCardRender PRIVATE LEXIRISE=1)
 target_include_directories(LexiriseCardRender PRIVATE
   ${REPO_ROOT}/src
   ${REPO_ROOT}/lib/EpdFont

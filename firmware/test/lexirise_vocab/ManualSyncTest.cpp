@@ -108,6 +108,25 @@ TEST(HomeSync, AChangeInTheAppIsCounted) {
   EXPECT_EQ(r.store.find(Language::Japanese, 504)->proficiency, 4);
 }
 
+// V8 R1: an entry changed again while the run goes on (seen new on the full pass's first page, then changed on the
+// incremental probe) is one word changed, not two.
+TEST(HomeSync, AWordChangedOnTwoPagesOfOneRunCountsOnce) {
+  Rig r;
+  int served = 0;
+  r.api.vocabServer = [&r, &served](const lexipoint::net::Request& request) {
+    const auto answer = r.lexirise.answer(request);
+    if (++served == 1) {  // after the first page: the newest word (on it) changes in the app
+      r.lexirise.items.back().proficiency = 4;
+      r.lexirise.items.back().updatedMs = kSept2026Ms + 900000;
+    }
+    return answer;
+  };
+  ManualSync sync(r.store, r.api, joinOk, japaneseOnly());
+  EXPECT_EQ(r.run(sync), ManualSync::Result::Synced);
+  EXPECT_EQ(sync.changed(), 120u);
+  EXPECT_EQ(r.store.find(Language::Japanese, 620)->proficiency, 4);  // the probe applied the change
+}
+
 TEST(HomeSync, NoWifiEndsItWithoutAPage) {
   Rig r;
   ManualSync sync(r.store, r.api, joinFails, japaneseOnly());

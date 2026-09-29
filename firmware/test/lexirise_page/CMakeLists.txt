@@ -27,7 +27,6 @@ add_executable(LexirisePageTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexirisePageTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexirisePageTest PRIVATE
   ${REPO_ROOT}/src

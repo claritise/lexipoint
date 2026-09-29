@@ -147,7 +147,7 @@ class LexiCommands(unittest.TestCase):
             self.assertEqual(dev.written, sent)
 
     def test_collect_raises_on_error(self):
-        h = lxctl.Harness(FakeSerial(b"LX:ERR built without LEXIRISE\n"))
+        h = lxctl.Harness(FakeSerial(b"LX:ERR unknown command\n"))
         with self.assertRaises(RuntimeError):
             h.collect("LEXI ME", "LX:LEXI", 1.0)
 
@@ -353,7 +353,7 @@ class CardSmoke(unittest.TestCase):
         for name, state in self.goldens():
             self.assertTrue(lxctl.card_state_commands(state, name.split("-")[0], "-low" in name)[0].endswith("KANA"))
 
-LEXIRISE_FLAG = re.compile(r"-D\s*LEXIRISE=1\b")
+LEXIRISE_FLAG = re.compile(r"-D\s*LEXIRISE\b")
 
 
 class FakeGestureHarness:
@@ -743,38 +743,35 @@ class ReleaseVersioning(unittest.TestCase):
             self.assertIn("api.github.com/repos/claritise/lexipoint/releases/latest", f.read())
 
 
-class X4ProEnvsBuildLexirise(unittest.TestCase):
-    def test_every_x4pro_env_has_lexirise(self):
+class LexiriseIsAlwaysBuilt(unittest.TestCase):
+    """v0.2 V8 removed the LEXIRISE gate and the Lexirise-off build (slimming.md §2): every X4 Pro env carries
+    [lexirise]'s flags (the TLS suites, session resumption, the product version) and nothing defines LEXIRISE."""
+
+    def test_every_x4pro_env_has_the_lexirise_flags(self):
         with open(os.path.join(REPO, "platformio.ini")) as f:
             cfg = load_ini(f.read())
-        # Every one but the Lexirise-off build, which proves the hooks compile out.
-        x4pro = [s for s in cfg.sections() if s.startswith("env:x4pro") and s != "env:x4pro-lexirise-off"]
-        self.assertGreaterEqual(len(x4pro), 3)  # dev, release, release candidate
-        self.assertNotRegex(resolved_build_flags("env:x4pro-lexirise-off", cfg), LEXIRISE_FLAG)
+        x4pro = [s for s in cfg.sections() if s.startswith("env:x4pro")]
+        self.assertEqual(sorted(x4pro), ["env:x4pro", "env:x4pro-gh_release", "env:x4pro-gh_release_rc"])
+        lexirise = {line.split(";")[0].strip() for line in _expand(cfg.get("lexirise", "build_flags"), cfg).splitlines()}
+        lexirise.discard("")
+        self.assertTrue(lexirise)
         for env in x4pro:
-            self.assertRegex(resolved_build_flags(env, cfg), LEXIRISE_FLAG, env)
+            flags = resolved_build_flags(env, cfg)
+            self.assertNotRegex(flags, LEXIRISE_FLAG, env)
+            for flag in lexirise:
+                self.assertIn(flag, flags, env)
 
-
-class LexiriseOffIsTheReleaseBuildWithoutLexirise(unittest.TestCase):
-    """x4pro-lexirise-off proves the LEXIRISE hooks compile out only while it is the release build minus [lexirise].
-    Resolved by this file's model of PlatformIO (`extends`, `${section.key}`), not pio itself: the script tests
-    need no pio. M checked the model against `pio project config` when it made [x4pro_board]."""
-
-    @staticmethod
-    def flag_set(text: str) -> set[str]:
-        lines = (line.split(";")[0].strip() for line in text.splitlines())
-        return {line for line in lines if line and not line.startswith("-DCROSSPOINT_VERSION=")}
-
-    def test_it_matches_the_release_build(self):
-        with open(os.path.join(REPO, "platformio.ini")) as f:
-            cfg = load_ini(f.read())
-        release = self.flag_set(resolved_build_flags("env:x4pro-gh_release", cfg))
-        off = self.flag_set(resolved_build_flags("env:x4pro-lexirise-off", cfg))
-        lexirise = self.flag_set(_expand(cfg.get("lexirise", "build_flags"), cfg))
-        self.assertTrue(lexirise and lexirise <= release)
-        self.assertEqual(off, release - lexirise)
-        # The board keys come from the same sections.
-        self.assertEqual(cfg.get("env:x4pro-lexirise-off", "extends"), cfg.get("env:x4pro-gh_release", "extends"))
+    def test_no_source_is_gated_on_lexirise(self):
+        gate = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif)\b.*\bLEXIRISE\b", re.M)
+        for top in ("src", "lib", "test"):
+            for root, dirs, files in os.walk(os.path.join(REPO, top)):
+                dirs[:] = [d for d in dirs if d not in ("_deps", "build")]
+                for name in files:
+                    if not name.endswith((".cpp", ".h", ".c", ".txt")):
+                        continue
+                    path = os.path.join(root, name)
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        self.assertIsNone(gate.search(f.read()), os.path.relpath(path, REPO))
 
 
 HARNESS_FLAG = re.compile(r"-D\s*LEXIPOINT_DEV_HARNESS\b")

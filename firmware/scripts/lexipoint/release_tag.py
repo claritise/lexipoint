@@ -25,7 +25,7 @@ RC_SUFFIX = "-rc"
 # The release asset: <ASSET_PREFIX><tag>-x4pro.bin (LexiriseConfig.h kReleaseAssetPrefix, publish_release.py).
 ASSET_PREFIX = "lexipoint-"
 # The OTA updater keeps a tag in ReleaseJsonParser's 32-byte buffer and names the asset in a 48-byte one
-# (OtaUpdater.cpp assetName): 48 - len("lexipoint--x4pro.bin") - 1.
+# (lexirise/ota/ReleaseAsset.h releaseAssetName, LexiriseConfig.h kReleaseAssetNameBytes): 48 - len("lexipoint--x4pro.bin") - 1.
 ASSET_NAME_BYTES = 48
 MAX_TAG_LENGTH = ASSET_NAME_BYTES - len(f"{ASSET_PREFIX}-x4pro.bin") - 1
 RELEASE_LIST_LIMIT = 100  # publish_release.py's `gh release list --limit`: plenty for Lexipoint's releases

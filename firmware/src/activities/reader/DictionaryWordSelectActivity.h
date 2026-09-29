@@ -4,23 +4,20 @@
 #include <I18n.h>
 
 #include <memory>
-#include <vector>
-
-#include "activities/Activity.h"
-#include "util/Dictionary.h"
-#if LEXIRISE
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "lexirise/card/ReaderScene.h"       // LEXIPOINT
-#include "lexirise/card/WordSelectFlow.h"    // LEXIPOINT
-#include "lexirise/lookup/Fallback.h"        // LEXIPOINT
-#include "lexirise/lookup/StarDictChoice.h"  // LEXIPOINT
-#include "lexirise/text/BookLanguage.h"      // LEXIPOINT
-#include "lexirise/text/SentenceBuilder.h"   // LEXIPOINT
-#include "lexirise/text/TapContext.h"        // LEXIPOINT
-#endif
+#include "activities/Activity.h"
+#include "lexirise/card/ReaderScene.h"
+#include "lexirise/card/WordSelectFlow.h"
+#include "lexirise/lookup/Fallback.h"
+#include "lexirise/lookup/StarDictChoice.h"
+#include "lexirise/text/BookLanguage.h"
+#include "lexirise/text/SentenceBuilder.h"
+#include "lexirise/text/TapContext.h"
+#include "util/Dictionary.h"
 
 // Word selection over the current reader page: Left/Right step through words
 // in reading order, Up/Down jump rows, Confirm looks the word up and opens
@@ -39,7 +36,6 @@ class DictionaryWordSelectActivity final : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
 
-#if LEXIRISE
   // LEXIPOINT: the book's language inputs (lookup::bookLanguageFor), so a tap can pick its language, and its
   // title and path, for the book tag on its saves.
   void setBook(const lexipoint::text::BookLanguage& bookLanguage, std::string title, std::string path) {
@@ -58,7 +54,6 @@ class DictionaryWordSelectActivity final : public Activity {
   // setInitialTouch() would find one: the reader takes a long-press only then, so one anywhere else stays
   // CrossPoint's (its lift is a tap: the menu, a page turn). Call with the render lock held.
   static bool pressOnWord(GfxRenderer& renderer, const Page& page, int marginLeft, int marginTop, int x, int y);
-#endif
 
  private:
   // Screen box of one selectable word. `text` points into the owned Page's
@@ -70,10 +65,8 @@ class DictionaryWordSelectActivity final : public Activity {
     uint16_t row;
     const char* text;
     EpdFontFamily::Style style;
-#if LEXIRISE
     uint16_t line;   // LEXIPOINT: index among the page's text lines (lexipoint::text::PageModel)
     uint16_t token;  // LEXIPOINT: index in that line's block, counting every token
-#endif
   };
 
   enum class Popup : uint8_t { None, Busy, NotFound, Error };
@@ -85,7 +78,6 @@ class DictionaryWordSelectActivity final : public Activity {
   void performLookup();
   void runStarDict();  // LEXIPOINT: performLookup's StarDict half (the Lexirise card hands back to it)
   bool drawHighlightWithSnapshot();
-  void drawHints() const;
 
   std::unique_ptr<Page> page;
   const int marginLeft;
@@ -94,14 +86,13 @@ class DictionaryWordSelectActivity final : public Activity {
   int lineHeight = 0;
 
   std::vector<WordBox> words;
-#if LEXIRISE
-  std::optional<lexipoint::text::BookLanguage> book;  // LEXIPOINT
-  std::string bookTitle;                              // LEXIPOINT: setBook()
-  std::string bookPath;                               // LEXIPOINT
-  lexipoint::text::PageModel pageModel;               // LEXIPOINT: built in extractWords()
-  lexipoint::card::ReaderPage readerPage;             // LEXIPOINT: the same page, as drawn (the live card)
-  int spineIndex = -1;                                // LEXIPOINT: setSpine() (-1: not known, no page analysis)
-  int initialTouchX = -1;                             // LEXIPOINT: setInitialTouch()
+  std::optional<lexipoint::text::BookLanguage> book;
+  std::string bookTitle;  // LEXIPOINT: setBook()
+  std::string bookPath;
+  lexipoint::text::PageModel pageModel;    // LEXIPOINT: built in extractWords()
+  lexipoint::card::ReaderPage readerPage;  // LEXIPOINT: the same page, as drawn (the live card)
+  int spineIndex = -1;                     // LEXIPOINT: setSpine() (-1: not known, no page analysis)
+  int initialTouchX = -1;                  // LEXIPOINT: setInitialTouch()
   int initialTouchY = -1;
   bool lookupPending = false;  // LEXIPOINT: the long-press lookup runs on the first loop()
   bool touchEntry = false;     // LEXIPOINT: a long-press on a word opened this: its answer closes to the reader
@@ -111,8 +102,8 @@ class DictionaryWordSelectActivity final : public Activity {
   std::optional<lexipoint::card::AfterPopup> afterPopup;
   bool starDictPending = false;  // LEXIPOINT: Lexirise had no answer: StarDict runs on the next loop()
   bool starDictOffline = false;  // LEXIPOINT: its answer carries the `offline` mark
-  void fallBack(lexipoint::lookup::Fallback fallback);           // LEXIPOINT: the notice, then StarDict
-  static StrId noticeString(lexipoint::lookup::Notice notice);   // LEXIPOINT
+  void fallBack(lexipoint::lookup::Fallback fallback);  // LEXIPOINT: the notice, then StarDict
+  static StrId noticeString(lexipoint::lookup::Notice notice);
   bool starDictSet() const { return !starDict.folder.empty(); }  // LEXIPOINT: for the selected word
   // LEXIPOINT: the selected word's sentence and language; nullopt without a book or a word.
   std::optional<lexipoint::text::TapContext> describeSelected(const lexipoint::Settings& settings) const;
@@ -120,15 +111,13 @@ class DictionaryWordSelectActivity final : public Activity {
   std::optional<lexipoint::lookup::StarDictChoice> dictOpened;  // LEXIPOINT: what `dict` was opened for
   // LEXIPOINT: false when Lexirise isn't asked about this word.
   bool openLexiriseCard(lexipoint::text::TapContext context, const lexipoint::Settings& settings);
-  void showLookupPopup(Popup kind, StrId message);  // LEXIPOINT
+  void showLookupPopup(Popup kind, StrId message);
   bool starDictLookup(std::string& definition, std::string& headword, Dictionary::LookupResult* result);
-#endif
   int selected = 0;
   uint16_t rowCount = 0;
   unsigned long lastHorizontalMoveTime = 0;
 
   Dictionary dict;
-  bool dictOpenAttempted = false;
   bool dictOpenOk = false;
   bool dictNeedsIndex = false;
 

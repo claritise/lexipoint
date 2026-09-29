@@ -1,6 +1,5 @@
 #include "TextBlock.h"
 
-#include <BidiUtils.h>
 #include <GfxRenderer.h>
 #include <Logging.h>
 #include <Memory.h>
@@ -140,7 +139,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
   struct RubyDrawInfo {
     int x;
     std::string text;
-    BidiUtils::BidiBaseDir baseDir;
   };
   const bool blockHasRuby = hasRuby();
   std::vector<RubyDrawInfo> rubies;
@@ -158,9 +156,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
         }
         const int rubyWidth = renderer.getTextAdvanceX(fontId, rubyTexts[i].c_str(), EpdFontFamily::SUP);
         const int leaderWordX = xposArr[i] + x;
-        const auto baseDir =
-            static_cast<BidiUtils::BidiBaseDir>(BidiUtils::detectParagraphLevel(wordText(i), blockStyle.isRtl ? 1 : 0));
-        rubies[i] = {leaderWordX - (rubyWidth - groupActualWidth) / 2, rubyTexts[i], baseDir};
+        rubies[i] = {leaderWordX - (rubyWidth - groupActualWidth) / 2, rubyTexts[i]};
         i += groupWordCount - 1;
       }
     }
@@ -206,8 +202,6 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
     const char* word = wordText(i);
     const int wordX = xposArr[i] + x;
     const EpdFontFamily::Style currentStyle = wordStyle(i);
-    const auto baseDir =
-        static_cast<BidiUtils::BidiBaseDir>(BidiUtils::detectParagraphLevel(word, blockStyle.isRtl ? 1 : 0));
     const uint8_t boundary = focusBoundary(i);
 
     // SUP/SUB shift the baseline passed to drawText; the glyph is also scaled 50% inside
@@ -237,19 +231,18 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
           std::min<size_t>({static_cast<size_t>(boundary), static_cast<size_t>(wordTextLen(i)), sizeof(boldBuf) - 1});
       memcpy(boldBuf, word, boldLen);
       boldBuf[boldLen] = '\0';
-      renderer.drawText(fontId, drawX, wordY, boldBuf, true, boldStyle, baseDir);
+      renderer.drawText(fontId, drawX, wordY, boldBuf, true, boldStyle);
       const int suffixX = drawX + focusSuffixXArr[i];
-      renderer.drawText(fontId, suffixX, wordY, word + boldLen, true, currentStyle, baseDir);
+      renderer.drawText(fontId, suffixX, wordY, word + boldLen, true, currentStyle);
     } else {
-      renderer.drawText(fontId, drawX, wordY, word, true, currentStyle, baseDir);
+      renderer.drawText(fontId, drawX, wordY, word, true, currentStyle);
     }
 
     // Horizontal ruby text rendering
     if (blockHasRuby && i < rubyTexts.size() && !rubyTexts[i].empty() &&
         (wordStyle(i) & EpdFontFamily::RUBY_CONTINUE) == 0) {
       const int rubyY = wordY - ascender;
-      renderer.drawText(fontId, rubies[i].x, rubyY, rubies[i].text.c_str(), true, EpdFontFamily::SUP,
-                        rubies[i].baseDir);
+      renderer.drawText(fontId, rubies[i].x, rubyY, rubies[i].text.c_str(), true, EpdFontFamily::SUP);
     }
 
     if (scanning) {
@@ -258,7 +251,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
 
     if (EpdFontFamily::hasTextDecoration(currentStyle)) {
       int lineStartX = drawX;
-      int lineWidth = renderer.getTextWidth(fontId, word, currentStyle, baseDir);
+      int lineWidth = renderer.getTextWidth(fontId, word, currentStyle);
 
       if ((currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
         lineWidth = (lineWidth + 1) / 2;
@@ -269,7 +262,7 @@ void TextBlock::render(const GfxRenderer& renderer, const int fontId, const int 
           static_cast<uint8_t>(word[2]) == 0x83) {
         const char* visibleText = word + 3;
         lineStartX += renderer.getTextAdvanceX(fontId, "\xe2\x80\x83", currentStyle);
-        lineWidth = renderer.getTextWidth(fontId, visibleText, currentStyle, baseDir);
+        lineWidth = renderer.getTextWidth(fontId, visibleText, currentStyle);
         if ((currentStyle & (EpdFontFamily::SUP | EpdFontFamily::SUB)) != 0) {
           lineWidth = (lineWidth + 1) / 2;
         }

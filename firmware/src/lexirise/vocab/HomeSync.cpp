@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "HomeSync.h"
 
 #include <GfxRenderer.h>
@@ -121,5 +119,3 @@ void HomeSync::draw(const GfxRenderer& renderer) const {
 }
 
 }  // namespace lexipoint::vocab
-
-#endif  // LEXIRISE

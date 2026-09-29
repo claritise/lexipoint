@@ -77,8 +77,8 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
   "As built (V7c)").
 - **The web page never blocks on the network:** a key check is queued (`requestKeyCheck`) and run by
   `LexiriseService::tick()` from the main loop, off `WebServer::handleClient`'s stack; the page polls.
-- **wolfSSL scope:** the SHA-384/P-384 flags (and V7c's `HAVE_SESSION_TICKET`) apply to every wolfSSL user in the X4 Pro builds. OTA,
-  OPDS, KOSync and font downloads now also offer those suites; P1's on-device list re-tests them. **V7c:** with
+- **wolfSSL scope:** the SHA-384/P-384 flags (and V7c's `HAVE_SESSION_TICKET`) apply to every wolfSSL user in the X4 Pro builds. OTA~~,
+  OPDS, KOSync and font downloads~~ now also offer~~s~~ those suites (superseded 2026-09-29, v0.2 V8: KOReader sync, OPDS and the font download were removed; OTA is the only other wolfSSL user, `../v0.2/slimming.md` §8); P1's on-device list re-tests them. **V7c:** with
   `HAVE_SESSION_TICKET` every one of them parses a TLS 1.3 server's NewSessionTickets after its handshake (none resumes:
   `SecureClient` never offers a session). Two ways that could fail a connection, found in wolfSSL 5.7.2's `tls13.c`:
   a ticket nonce longer than 8 bytes (rustls sends 32) failed the read with "Nonce length not supported", so
@@ -86,7 +86,8 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
   ticket replaces it); and a ticket lifetime over 7 days (604,800 s, TLS 1.3's cap) fails with `SERVER_HINT_ERROR`,
   which no compliant server sends. Also new with the flag (R8): a ticket too large for the heap left fails with
   `MEMORY_E`, and one read while the millisecond clock reads 0 with `GETTIME_ERROR`; and every connection's heap
-  `WOLFSSL_SESSION` is 192 bytes larger (the ticket buffer), OTA, KOSync, OPDS and fonts included. Device checks:
+  `WOLFSSL_SESSION` is 192 bytes larger (the ticket buffer), OTA~~, KOSync, OPDS and fonts~~ included (superseded
+  2026-09-29, v0.2 V8: those were removed). Device checks:
   `device-checks.md` "v0.2 V7c".
 - **Clock source:** NTP only for now. Seeding the system clock from the RTC (so a network that blocks
   NTP still works, and the first call after boot skips the wait) needs a HalClock date accessor, a

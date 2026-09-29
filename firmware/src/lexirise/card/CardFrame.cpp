@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "CardFrame.h"
 
 #include "CardLayout.h"
@@ -27,5 +25,3 @@ Frame composeFrame(const CardController& controller, const TextMetrics& metrics,
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

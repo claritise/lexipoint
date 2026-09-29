@@ -1,6 +1,5 @@
 #include "GfxRenderer.h"
 
-#include <BidiUtils.h>
 #include <BoardConfig.h>
 #include <BuildScratch.h>
 #include <FontDecompressor.h>
@@ -12,9 +11,7 @@
 #include <algorithm>
 
 #include "FontCacheManager.h"
-#if LEXIRISE
-#include "RefreshStrength.h"  // LEXIPOINT
-#endif
+#include "RefreshStrength.h"
 
 namespace {
 
@@ -24,40 +21,6 @@ namespace {
  */
 uint8_t resolveSdCardStyle(const SdCardFont& font, const EpdFontFamily::Style style) {
   return font.resolveStyle(static_cast<uint8_t>(style));
-}
-}  // namespace
-
-namespace {
-const char* resolveVisualText(const char* text, std::string& visualBuffer, BidiUtils::BidiBaseDir baseDir);
-
-// Appends the shaped visual form of every RTL token in `text` to `shapedOut`.
-// getTextAdvanceX() measures the bidi-reordered, Arabic-shaped codepoint stream,
-// so the SD advance table must be warmed with the presentation forms as well as
-// the logical codepoints — otherwise every RTL word measurement misses the fast
-// path and falls through to onGlyphMiss(), which opens the .cpfont and reads
-// glyph metadata + bitmap into the 8-slot overflow ring, once per glyph.
-// Tokens without RTL lead bytes (0xD6-0xDB) are skipped with a byte scan, so
-// pure-LTR text pays almost nothing.
-void appendShapedRtlTokens(const char* text, std::string& shapedOut) {
-  const auto isBreak = [](const char c) { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; };
-  std::string token;
-  std::string visual;
-  const char* p = text;
-  while (*p) {
-    while (*p && isBreak(*p)) ++p;
-    const char* start = p;
-    bool hasRtlBytes = false;
-    while (*p && !isBreak(*p)) {
-      const auto b = static_cast<unsigned char>(*p);
-      hasRtlBytes = hasRtlBytes || (b >= 0xD6 && b <= 0xDB);
-      ++p;
-    }
-    if (!hasRtlBytes) continue;
-    token.assign(start, p - start);
-    if (BidiUtils::applyBidiVisual(token.c_str(), visual, static_cast<int>(BidiUtils::BidiBaseDir::AUTO))) {
-      shapedOut += visual;
-    }
-  }
 }
 }  // namespace
 
@@ -92,9 +55,7 @@ const uint8_t* GfxRenderer::getGlyphBitmap(const EpdFontData* fontData, const Ep
 void GfxRenderer::ensureSdCardFontReady(int fontId, const char* utf8Text, uint8_t styleMask) const {
   auto it = sdCardFonts_.find(fontId);
   if (it != sdCardFonts_.end()) {
-    std::string shaped;
-    appendShapedRtlTokens(utf8Text, shaped);
-    int missed = it->second->buildAdvanceTable(utf8Text, styleMask, shaped.empty() ? nullptr : shaped.c_str());
+    int missed = it->second->buildAdvanceTable(utf8Text, styleMask);
     if (missed > 0) {
       LOG_DBG("GFX", "ensureSdCardFontReady: %d glyph(s) not found", missed);
     }
@@ -108,12 +69,7 @@ void GfxRenderer::ensureSdCardFontReady(int fontId, const std::deque<std::string
     // Augment the persistent advance-only table for layout measurement.
     // The table survives across paragraphs/sections (capped per font), so
     // repeated indexing of the same SD font amortizes glyph-metric SD reads.
-    std::string shaped;
-    for (const auto& w : words) {
-      appendShapedRtlTokens(w.c_str(), shaped);
-    }
-    int missed =
-        it->second->buildAdvanceTable(words, includeHyphen, styleMask, shaped.empty() ? nullptr : shaped.c_str());
+    int missed = it->second->buildAdvanceTable(words, includeHyphen, styleMask);
     if (missed > 0) {
       LOG_DBG("GFX", "ensureSdCardFontReady: %d glyph(s) not found", missed);
     }
@@ -598,8 +554,7 @@ void GfxRenderer::drawPixel(const int x, const int y, const bool state) const {
   }
 }
 
-int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontFamily::Style style,
-                              const BidiUtils::BidiBaseDir baseDir) const {
+int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontFamily::Style style) const {
   if (text == nullptr || *text == '\0') {
     return 0;
   }
@@ -613,29 +568,26 @@ int GfxRenderer::getTextWidth(const int fontId, const char* text, const EpdFontF
     return 0;
   }
 
-  std::string visual;
-  const char* renderedText = resolveVisualText(text, visual, baseDir);
-
   // Redirected to the SD fallback: batch-load the string's glyphs so the
   // per-codepoint measurement loop below doesn't fault them in one SD read
   // at a time (#2725).
   if (resolvedFontId != fontId) {
-    ensureSdGlyphsResident(resolvedFontId, renderedText, style, true);
+    ensureSdGlyphsResident(resolvedFontId, text, style, true);
   }
 
   int w = 0, h = 0;
-  fontIt->second.getTextDimensions(renderedText, &w, &h, style);
+  fontIt->second.getTextDimensions(text, &w, &h, style);
   return w;
 }
 
 void GfxRenderer::drawCenteredText(const int fontId, const int y, const char* text, const bool black,
-                                   const EpdFontFamily::Style style, const BidiUtils::BidiBaseDir baseDir) const {
-  const int x = (getScreenWidth() - getTextWidth(fontId, text, style, baseDir)) / 2;
-  drawText(fontId, x, y, text, black, style, baseDir);
+                                   const EpdFontFamily::Style style) const {
+  const int x = (getScreenWidth() - getTextWidth(fontId, text, style)) / 2;
+  drawText(fontId, x, y, text, black, style);
 }
 
 void GfxRenderer::drawText(const int fontId, const int x, const int y, const char* text, const bool black,
-                           const EpdFontFamily::Style style, const BidiUtils::BidiBaseDir baseDir) const {
+                           const EpdFontFamily::Style style) const {
   // cannot draw a NULL / empty string
   if (text == nullptr || *text == '\0') {
     return;
@@ -644,9 +596,7 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   // Route CJK-bearing strings to the fallback font when the requested font
   // lacks the glyphs (e.g. Chinese book titles drawn with a Latin UI font).
   const int resolvedFontId = resolveTextFontId(fontId, text, style);
-
-  std::string visual;
-  const char* renderedText = resolveVisualText(text, visual, baseDir);
+  const char* renderedText = text;
 
   // Baseline from the resolved font; when the string was redirected to the
   // fallback, the caller positioned this line with the REQUESTED font's
@@ -685,14 +635,10 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
   uint32_t cp;
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&textCursor)))) {
-    // RTL vowel marks (Hebrew niqqud, Arabic harakat) ride the combining-mark
-    // path: zero-advance overlays on the preceding base glyph (applyBidiVisual
-    // emits base-then-marks per UAX#9 L3). anchorFor pins position-sensitive
-    // niqqud (dagesh, shin/sin dots, holam) to their spot on the base; other
-    // marks stay centered, raised above the base or (kasra) at their
-    // font-native position. Fonts without their glyphs — the built-ins — miss
-    // the getGlyph lookup and skip them, as before.
-    if (utf8IsCombiningMark(cp) || BidiUtils::isTransparentMark(cp)) {
+    // Combining marks are zero-advance overlays on the preceding base glyph;
+    // anchorFor pins position-sensitive marks to their spot on the base. Fonts
+    // without their glyphs miss the getGlyph lookup and skip them.
+    if (utf8IsCombiningMark(cp)) {
       const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
       if (!combiningGlyph) continue;
       const auto anchor = combiningMark::anchorFor(cp);
@@ -737,32 +683,6 @@ void GfxRenderer::drawText(const int fontId, const int x, const int y, const cha
     prevCp = cp;
   }
 }
-
-namespace {
-const char* resolveVisualText(const char* text, std::string& visualBuffer, const BidiUtils::BidiBaseDir baseDir) {
-  if (!text || *text == '\0') return text;
-
-  if (baseDir != BidiUtils::BidiBaseDir::RTL) {
-    // Byte-level scan: skip BiDi when no RTL script lead bytes are present.
-    // Hebrew UTF-8 lead bytes: 0xD6-0xD7; Arabic/Syriac: 0xD8-0xDB.
-    // This covers all RTL content without false negatives and avoids triggering
-    // the full UAX#9 algorithm for Latin-extended, em-dashes, accented text, etc.
-    bool hasRtlBytes = false;
-    for (const unsigned char* q = reinterpret_cast<const unsigned char*>(text); *q; ++q) {
-      if (*q >= 0xD6 && *q <= 0xDB) {
-        hasRtlBytes = true;
-        break;
-      }
-    }
-    if (!hasRtlBytes) return text;
-  }
-
-  if (BidiUtils::applyBidiVisual(text, visualBuffer, static_cast<int>(baseDir)) && !visualBuffer.empty()) {
-    return visualBuffer.c_str();
-  }
-  return text;
-}
-}  // namespace
 
 void GfxRenderer::drawLine(int x1, int y1, int x2, int y2, const bool state) const {
   if (fontCacheManager_ && fontCacheManager_->isScanning()) return;
@@ -1691,41 +1611,29 @@ void GfxRenderer::invertScreen() const {
 HalDisplay::RefreshMode GfxRenderer::applyPromotedRefresh(const HalDisplay::RefreshMode refreshMode) const {
   if (!promotedRefreshPending_) return refreshMode;
   promotedRefreshPending_ = false;
-#if LEXIRISE
   // LEXIPOINT: a promotion never weakens the refresh asked for (the Lexirise card's half refresh on
   // dismiss must not turn the reader's due full refresh into a half one).
   return strongerRefresh(refreshMode, promotedRefresh_, HalDisplay::FULL_REFRESH, HalDisplay::HALF_REFRESH);
-#else
-  return promotedRefresh_;
-#endif
 }
 
 void GfxRenderer::displayBuffer(HalDisplay::RefreshMode refreshMode) const {
   auto elapsed = millis() - start_ms;
   LOG_DBG("GFX", "Time = %lu ms from clearScreen to displayBuffer", elapsed);
   refreshMode = applyPromotedRefresh(refreshMode);
-  display.displayBuffer(refreshMode, fadingFix);
+  display.displayBuffer(refreshMode);
 }
 
 void GfxRenderer::displayBufferAsync(HalDisplay::RefreshMode refreshMode) const {
   refreshMode = applyPromotedRefresh(refreshMode);
-  // The async path has no turn-off-screen hook, which the sunlight fading fix
-  // relies on; keep those users on the blocking path.
-  if (fadingFix) {
-    display.displayBuffer(refreshMode, fadingFix);
-    return;
-  }
   display.displayBufferAsync(refreshMode);
 }
 
 void GfxRenderer::waitRefreshComplete() const { display.waitRefreshComplete(); }
 
-bool GfxRenderer::supportsAsyncRefresh() const { return !fadingFix && display.supportsAsyncRefresh(); }
+bool GfxRenderer::supportsAsyncRefresh() const { return display.supportsAsyncRefresh(); }
 
 HalDisplay::GrayscaleCapabilities GfxRenderer::grayscaleCapabilities(HalDisplay::GrayscaleMode mode) const {
-  auto caps = display.grayscaleCapabilities(mode);
-  if (fadingFix) caps.asyncBase = false;
-  return caps;
+  return display.grayscaleCapabilities(mode);
 }
 
 bool GfxRenderer::supportsAsyncGrayscaleBase() const { return grayscaleCapabilities().asyncBase; }
@@ -2042,14 +1950,6 @@ int GfxRenderer::getKerning(const int fontId, const uint32_t leftCp, const uint3
 int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFamily::Style style) const {
   // Match the font drawText would use for CJK-bearing strings (see resolveTextFontId).
   const int resolvedFontId = resolveTextFontId(fontId, text, style);
-  // Measure the exact codepoint stream drawText renders: bidi-reordered and
-  // Arabic-shaped (contextual presentation forms, Lam-Alef collapse).
-  // Measuring the raw logical text counts the Alef a ligature absorbs and
-  // uses base-letter advances instead of presentation-form advances, so RTL
-  // lines come out wider than they draw — uneven word gaps and a ragged
-  // right margin.
-  std::string visual;
-  text = resolveVisualText(text, visual, BidiUtils::BidiBaseDir::AUTO);
 
   // Advance table fast-path for SD card fonts during layout.
   // No kerning/ligature lookup — consistent with previous metadataOnly behavior
@@ -2066,10 +1966,6 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
     }
     const auto& font = fontIt->second;
     while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
-      // RTL vowel marks (niqqud/harakat) are zero-advance overlays in drawText — no width.
-      if (BidiUtils::isTransparentMark(cp)) {
-        continue;
-      }
       int32_t advFP = sdIt->second->getAdvance(cp, styleIdx);
       if (advFP == 0 && !utf8IsCombiningMark(cp)) {
         const EpdGlyph* glyph = font.getGlyph(cp, style);
@@ -2092,10 +1988,6 @@ int GfxRenderer::getTextAdvanceX(const int fontId, const char* text, EpdFontFami
   int32_t prevAdvanceFP = 0;  // 12.4 fixed-point: prev glyph's advance + next kern for snap
   const auto& font = fontIt->second;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    // RTL vowel marks (niqqud/harakat) are zero-advance overlays in drawText — no width.
-    if (BidiUtils::isTransparentMark(cp)) {
-      continue;
-    }
     if (utf8IsCombiningMark(cp)) {
       continue;
     }
@@ -2183,14 +2075,10 @@ void GfxRenderer::drawTextRotated90CW(const int fontId, const int x, const int y
   uint32_t cp;
   uint32_t prevCp = 0;
   while ((cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text)))) {
-    // RTL vowel marks (Hebrew niqqud, Arabic harakat) ride the combining-mark
-    // path: zero-advance overlays on the preceding base glyph (applyBidiVisual
-    // emits base-then-marks per UAX#9 L3). anchorFor pins position-sensitive
-    // niqqud (dagesh, shin/sin dots, holam) to their spot on the base; other
-    // marks stay centered, raised above the base or (kasra) at their
-    // font-native position. Fonts without their glyphs — the built-ins — miss
-    // the getGlyph lookup and skip them, as before.
-    if (utf8IsCombiningMark(cp) || BidiUtils::isTransparentMark(cp)) {
+    // Combining marks are zero-advance overlays on the preceding base glyph;
+    // anchorFor pins position-sensitive marks to their spot on the base. Fonts
+    // without their glyphs miss the getGlyph lookup and skip them.
+    if (utf8IsCombiningMark(cp)) {
       const EpdGlyph* combiningGlyph = font.getGlyph(cp, style);
       if (!combiningGlyph) continue;
       const auto anchor = combiningMark::anchorFor(cp);
@@ -2233,12 +2121,12 @@ size_t GfxRenderer::getBufferSize() const { return frameBufferSize; }
 
 void GfxRenderer::displayGrayscaleBase(HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
-  display.displayGrayscaleBase(fallback, fadingFix);
+  display.displayGrayscaleBase(fallback);
 }
 
 bool GfxRenderer::displayGrayscaleBase(HalDisplay::GrayscaleMode mode, HalDisplay::RefreshMode fallback) const {
   absoluteGrayPlanes = false;
-  if (!display.displayGrayscaleBase(mode, fallback, fadingFix)) return false;
+  if (!display.displayGrayscaleBase(mode, fallback)) return false;
   absoluteGrayPlanes = mode != HalDisplay::GrayscaleMode::Overlay;
   return true;
 }
@@ -2268,7 +2156,7 @@ void GfxRenderer::copyGrayscaleLsbBuffers() const { display.copyGrayscaleLsbBuff
 void GfxRenderer::copyGrayscaleMsbBuffers() const { display.copyGrayscaleMsbBuffers(frameBuffer); }
 
 void GfxRenderer::displayGrayBuffer() const {
-  display.displayGrayBuffer(fadingFix);
+  display.displayGrayBuffer();
   absoluteGrayPlanes = false;
 }
 

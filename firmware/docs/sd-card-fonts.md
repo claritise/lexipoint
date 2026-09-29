@@ -5,23 +5,16 @@ with extended Unicode coverage (CJK, Cyrillic, Greek, etc.).
 
 ## Installing Fonts
 
-There are three ways to install fonts:
+There are two ways to install fonts (Lexipoint removed the device's font download in v0.2 V8):
 
-### Option 1: Download from device (recommended)
-
-1. Connect your CrossPoint reader to Wi-Fi
-2. Go to **Settings > Reader > Manage Fonts**
-3. Browse available font families and tap to download
-4. Downloaded fonts appear immediately in **Settings > Reader > Font Family**
-
-### Option 2: Upload via web browser
+### Option 1: Upload via web browser
 
 1. Start **File Transfer** and connect through **Join Network** or **Create Hotspot**
 2. Open the web interface URL shown on the reader
 3. Navigate to the **Fonts** tab
 4. Upload `.cpfont` files using the upload form
 
-### Option 3: Manual SD card copy
+### Option 2: Manual SD card copy
 
 1. Download font files from the
    [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts)
@@ -149,7 +142,7 @@ To convert your own TrueType/OpenType fonts:
 | `greek` | Greek + Extended Greek |
 | `cyrillic` | Cyrillic + Supplement |
 | `hebrew` | Hebrew + Alphabetic Presentation Forms |
-| `arabic` | Arabic + Supplement + Extended-A + Presentation Forms A/B (RTL, contextual shaping) |
+| `arabic` | Arabic + Supplement + Extended-A + Presentation Forms A/B (drawn unshaped, in logical order, since Lexipoint v0.2 V8) |
 | `georgian` | Georgian + Georgian Supplement |
 | `armenian` | Armenian |
 | `ethiopic` | Ethiopic + Extended |

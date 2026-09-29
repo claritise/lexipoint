@@ -1,6 +1,6 @@
 # Touch and UI Development
 
-CrossPoint runs on touch devices (Seeed Sticky, M5Paper, M5Stack PaperMono, LilyGo T5, Xteink X4 Pro) alongside the button-only Xteink X3/X4. Every screen must work with both input styles.
+Lexipoint runs on the Xteink X4 Pro only (touch plus side and front buttons). Screens are touch-first; the side buttons still step lists and pages.
 
 **There is one supported way to build a new screen: FreeInkUI, hosted through the firmware base classes below.** Touch hit-testing, tap highlighting, long-press, swipe scrolling, and button focus navigation all come from the shared stack; you never hand-roll coordinate math.
 
@@ -12,7 +12,7 @@ The old bridge helpers (`rowTouch`, `colTouch`, `wasTapInRect`, manual rect `con
 
 | Your screen is... | Use | In-tree reference |
 |---|---|---|
-| A single list of rows | subclass `UiListActivity` | [`LanguageSelectActivity`](../../src/activities/settings/LanguageSelectActivity.cpp) (minimal), [`RecentBooksActivity`](../../src/activities/home/RecentBooksActivity.cpp) (long-press) |
+| A single list of rows | subclass `UiListActivity` | [`NetworkModeSelectionActivity`](../../src/activities/network/NetworkModeSelectionActivity.cpp) (minimal) |
 | Tabbed lists | subclass `UiTabListActivity` | [`SettingsActivity`](../../src/activities/settings/SettingsActivity.cpp) |
 | Custom FUI layout (sliders, prompts, state machines) | inherit `UiAppHost` directly | [`EpubReaderPercentSelectionActivity`](../../src/activities/reader/EpubReaderPercentSelectionActivity.cpp), [`WifiSelectionActivity`](../../src/activities/network/WifiSelectionActivity.cpp) |
 | A modal picker or confirm inside a legacy activity | `OptionPopup` (or push `ConfirmationActivity`) | [`OtaUpdateActivity`](../../src/activities/settings/OtaUpdateActivity.cpp) |
@@ -74,7 +74,7 @@ class MyListActivity final : public UiListActivity {
 };
 ```
 
-See [`FileBrowserActivity`](../../src/activities/home/FileBrowserActivity.cpp)'s `rebuildRowItems()` for this pattern applied to a directory listing that can run into the hundreds of entries, and `LanguageSelectActivity.cpp` for the rest of the skeleton (content-margin math, footer, etc.) — note that file still builds its row vector locally inside `buildScreen()`; match `FileBrowserActivity`, not that file, for the row cache. Optional overrides: `onRowLongPress(index)`, `drawFooter()`, `handleButtons()` for extra physical-button handling, and `ACTION_USER`-and-up action ids for non-row elements (register handlers in `onEnter` after the base's).
+See [`FileBrowserActivity`](../../src/activities/home/FileBrowserActivity.cpp)'s `rebuildRowItems()` for this pattern applied to a directory listing that can run into the hundreds of entries, and `NetworkModeSelectionActivity.cpp` for the rest of the skeleton (content-margin math, rows built once in the constructor). Optional overrides: `onRowLongPress(index)`, `drawFooter()`, `handleButtons()` for extra physical-button handling, and `ACTION_USER`-and-up action ids for non-row elements (register handlers in `onEnter` after the base's).
 
 ### Rules that apply to every FUI screen
 
@@ -82,7 +82,7 @@ See [`FileBrowserActivity`](../../src/activities/home/FileBrowserActivity.cpp)'s
 - Handlers that leave the current screen call `app.clearTapFlash()` first.
 - Theme tokens are shared and bound by `resetUi()`; never call `app.setTheme` yourself. Metrics flow from the active UITheme through [`UIThemeTokens.h`](../../src/components/UIThemeTokens.h), including the per-board bezel insets that keep scrollbars visible.
 - `TextStyle.maxLines` defaults to 1 and truncates with an ellipsis. Set `maxLines` explicitly on any dialog headline or message that can wrap.
-- Everything stays allocation-free in steady state. A local `std::vector` inside `buildScreen()` is **not** allocation-free even with `reserve()` first: it starts at zero capacity on every call, `reserve()` allocates, and the destructor frees that storage before the call returns — real allocator work and fragmentation risk on every repaint (cursor move, tap flash, ...), not just on data changes. Build `ListItem` rows into activity-owned storage instead, reserved once when the underlying data loads (`onEnter()`/a `load*()` — see the skeleton above and `FileBrowserActivity::rebuildRowItems()`), and reused unchanged by every `buildScreen()` call. Use a fixed-capacity array (e.g. `ListItem rows[MAX]`, as `OptionPopup` and `KOReaderSyncActivity`'s action rows do) when the count is small and bounded. Do not hold FUI `props` across renders — only the row storage they point into.
+- Everything stays allocation-free in steady state. A local `std::vector` inside `buildScreen()` is **not** allocation-free even with `reserve()` first: it starts at zero capacity on every call, `reserve()` allocates, and the destructor frees that storage before the call returns — real allocator work and fragmentation risk on every repaint (cursor move, tap flash, ...), not just on data changes. Build `ListItem` rows into activity-owned storage instead, reserved once when the underlying data loads (`onEnter()`/a `load*()` — see the skeleton above and `FileBrowserActivity::rebuildRowItems()`), and reused unchanged by every `buildScreen()` call. Use a fixed-capacity array (e.g. `ListItem rows[MAX]`, as `OptionPopup` does) when the count is small and bounded. Do not hold FUI `props` across renders — only the row storage they point into.
 
 ### Component inventory
 
@@ -92,7 +92,7 @@ All under `freeink-sdk/libs/ui/FreeInkUI/include/components/`:
 |---|---|
 | Controls | `button`, `checkbox`, `slider`, `progress-bar`, `header` |
 | Lists | `list` (virtualized), `table`, `dropdown`, `radio-group`, `setting-row`, `toggle-row`, `stepper-row` |
-| Keyboard | `keyboard` (Latin, Cyrillic and Hebrew layouts), `key-grid` |
+| Keyboard | `keyboard` (the SDK has Latin, Cyrillic and Hebrew layouts; Lexipoint uses English QWERTY only), `key-grid` |
 | Overlays | `popup`, `option-dialog`, `context-menu`, `message-panel`, `toast` |
 | Bars | `status-bar`, `tab-bar`, `reader-chrome`, `battery-indicator`, `gesture-bar`, `tap-zones` |
 | Media | `book-card`, `cover-grid`, `cover-carousel`, `metric-card` |
@@ -134,69 +134,7 @@ As with all input: never call the SDK `InputManager` or read GPIO directly. The 
 
 ---
 
-## Building and testing on non-Xteink devices
+## Other devices
 
-Lexipoint builds for the X4 Pro only (the repo's `docs/v0.1/standalone-repo.md`, D20); a touch device the SDK supports may be added later. Each MCU family is its own binary: X3/X4 are ESP32-C3, Sticky and LilyGo T5 are ESP32-S3, M5Paper v1.1 is a classic ESP32. Envs for other devices go in **`platformio.local.ini`**, a gitignored file that PlatformIO merges over `platformio.ini` (see `extra_configs`). Create it next to `platformio.ini`; personal envs, ports, and debug flags live there and never get committed.
-
-Both envs below extend the repo's `[base]`, so they build against the `freeink-sdk` submodule with all the normal deps and scripts.
-
-### M5Paper v1.1 (classic ESP32, IT8951 panel)
-
-```ini
-[env:m5paper_v11]
-extends = base
-board = esp32dev
-board_build.mcu = esp32
-board_build.flash_mode = qio
-; CP2104 UART bridge: 921600 drops out on macOS after the stub baud switch
-upload_speed = 460800
-build_unflags =
-  ${base.build_unflags}
-  ; classic ESP32 has UART serial, not USB CDC; Logging.h keys off these
-  -DARDUINO_USB_MODE=1
-  -DARDUINO_USB_CDC_ON_BOOT=1
-build_flags =
-  ${base.build_flags}
-  -DFREEINK_DEVICE_M5PAPER=1
-  ; the 63KB 540x960 framebuffer lives in PSRAM (FREEINK_FB_PSRAM auto-on)
-  -DBOARD_HAS_PSRAM
-  -DCROSSPOINT_VERSION=\"${crosspoint.version}-m5paper\"
-  -DENABLE_SERIAL_LOG
-  -DLOG_LEVEL=2
-  ; touch-first device: hide front-button hint labels
-  -DCROSSPOINT_SHOW_BUTTON_HINTS=0
-  ; archive-scan-order workaround: without these a full relink drops Wire's i2c symbols
-  -Wl,-u,i2cInit
-  -Wl,-u,i2cSlaveInit
-```
-
-### LilyGo T5 S3 (ESP32-S3, controller-less panel via LovyanGFX)
-
-```ini
-[env:lilygo_t5s3]
-extends = base
-board = esp32-s3-devkitc1-n16r8
-board_build.mcu = esp32s3
-build_flags =
-  ${base.build_flags}
-  -DFREEINK_DEVICE_LILYGO=1
-  ; board injects the parallel-bus pins + PMIC power hooks (BoardT5S3)
-  -DFREEINK_LGFX_EPD_CONFIG=lilygoT5S3LgfxConfig
-  -DCROSSPOINT_VERSION=\"${crosspoint.version}-lilygo\"
-  -DENABLE_SERIAL_LOG
-  -DLOG_LEVEL=2
-  -DCROSSPOINT_SHOW_BUTTON_HINTS=0
-lib_deps =
-  ${base.lib_deps}
-  ; LgfxEpdConfig for the T5 S3 (pins, PCA9535/TPS65185 power sequence)
-  BoardT5S3=symlink://freeink-sdk/libs/hardware/BoardT5S3
-  ; LovyanGFX Panel_EPD drives the controller-less ED047TC1 panel
-  m5stack/M5GFX @ 0.2.20
-```
-
-Then `pio run -e m5paper_v11 -t upload` (or `-e lilygo_t5s3`). Gotchas worth knowing:
-
-- **Flash mode matters.** The M5Paper is `qio`; the X4-family standalone envs need `dio`. A wrong flash-mode header boots into a `partition 0 invalid magic number 0xffff` loop even though esptool verified the write.
-- **One `FREEINK_DEVICE_*` flag per env** selects the board profile (pins, panel, touch controller) from the SDK's `BoardConfig`. See `freeink-sdk/platformio.sample.ini` for reference envs of every supported device.
-- **Serial logs:** `[base]` does not enable logging; without `-DENABLE_SERIAL_LOG` a non-default env prints nothing.
-- No touch hardware on your desk? The X4 build still exercises the same code paths through buttons; touch-specific behavior (tap zones, gestures) needs a real device.
+Lexipoint builds for the X4 Pro only (D20). v0.2 V8 removed every other board's code (`FirmwareBoardTag.cpp` stops a
+build for another board); it is in `main` before V8's landing (`05328117`), and adding a board means restoring it.

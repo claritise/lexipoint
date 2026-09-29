@@ -34,9 +34,8 @@ class XtcReaderActivity final : public ReaderActivity {
   void applyInitialOrientation() override;
 
  public:
-  explicit XtcReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
-                             bool allowFastInitialRefresh)
-      : ReaderActivity("XtcReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
+  explicit XtcReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath)
+      : ReaderActivity("XtcReader", renderer, mappedInput, std::move(bookPath)) {}
   ~XtcReaderActivity() override = default;
 
   bool pageTurn(bool isForward) override;

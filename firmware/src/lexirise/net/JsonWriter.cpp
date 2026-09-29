@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "JsonWriter.h"
 
 #include <cstdint>
@@ -149,5 +147,3 @@ JsonObject& JsonObject::add(const std::string_view key, const std::vector<std::s
 }
 
 }  // namespace lexipoint::net
-
-#endif  // LEXIRISE

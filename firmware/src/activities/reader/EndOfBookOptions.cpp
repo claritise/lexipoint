@@ -158,8 +158,8 @@ void EndOfBookOptions::listScreen(UiScreen& screen, void* user) {
 void EndOfBookOptions::buildListScreen(UiScreen& screen) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   // Same layout math as render(): the list band starts under the title/subtitle it
-  // draws, and stops above the button hints (the safe-area bottom edge).
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  // draws, and stops at the safe-area bottom edge.
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   const int titleY = safe.y + safe.height / 8;
   const int subtitleY = titleY + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing;
   const int listTop = subtitleY + renderer.getLineHeight(UI_10_FONT_ID) + metrics.verticalSpacing * 2;
@@ -190,12 +190,10 @@ void EndOfBookOptions::render(GfxRenderer& renderer, const MappedInputManager& i
     return;
   }
 
-  // Suggestion menu: title, list (+ Home entry) and button hints. The hints are drawn at
-  // the physical front buttons, which is a logical side/top edge in the rotated
-  // orientations — lay out inside the safe area so nothing hides behind them. Vertical
+  // Suggestion menu: title and list (+ Home entry), laid out inside the safe area. Vertical
   // positions derive from the safe-area height and font line heights so other panel
   // resolutions scale (review request on #2532).
-  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
+  const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   const int titleY = safe.y + safe.height / 8;
   const int subtitleY = titleY + renderer.getLineHeight(UI_12_FONT_ID) + metrics.verticalSpacing;
 
@@ -206,7 +204,4 @@ void EndOfBookOptions::render(GfxRenderer& renderer, const MappedInputManager& i
   // rects; renderUi re-derives the device context, picking up any rotation
   // since construction (reader menu rotate).
   renderUi();
-
-  const auto labels = input.mapLabels(tr(STR_BACK), tr(STR_OPEN), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }

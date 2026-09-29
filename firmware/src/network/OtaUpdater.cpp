@@ -17,18 +17,17 @@
 
 #include "FirmwareBoardTag.h"
 #include "FirmwareFlasher.h"
-#if LEXIRISE
-#include "lexirise/LexiriseConfig.h"      // LEXIPOINT
-#include "lexirise/ota/ReleaseVersion.h"  // LEXIPOINT
-#endif
+#include "lexirise/LexiriseConfig.h"
+#include "lexirise/ota/ReleaseAsset.h"
+#include "lexirise/ota/ReleaseVersion.h"
+
+// LEXIPOINT: the asset name the updater builds fits the parser's copy of it.
+static_assert(ReleaseJsonParser::kFirmwareAssetNameBytes >= lexipoint::config::kReleaseAssetNameBytes,
+              "ReleaseJsonParser would cut the release asset's name");
 
 namespace {
-#if LEXIRISE
 // LEXIPOINT: Lexipoint's releases (firmware-base.md §6): CrossPoint's would uninstall Lexipoint.
 constexpr const char* latestReleaseUrl = lexipoint::config::kReleasesLatestUrl;
-#else
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
-#endif
 }  // namespace
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
@@ -41,31 +40,22 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   // User-Agent (see HttpDownloader).
   ReleaseJsonParser releaseParser;
   releaseParser.setFirmwareAssetName("");
-  // Each board updates from crosspoint-<version>-<device>.bin. The combined
-  // C3 image uses x3-x4; other asset suffixes match their firmware board tag.
-  const bool isX4 = board_tag::boardNameLen() == 2 && memcmp(board_tag::boardName(), "x4", 2) == 0;
-  char assetSuffix[20] = "-x3-x4";
-  if (!isX4) {
-    snprintf(assetSuffix, sizeof(assetSuffix), "-%.*s", static_cast<int>(board_tag::boardNameLen()),
-             board_tag::boardName());
-  }
-  char assetName[48] = {};
-  bool assetNameSet = false;
+  // LEXIPOINT: the X4 Pro updates from lexipoint-<tag>-x4pro.bin (lexirise/ota/ReleaseAsset.h).
+  char assetName[lexipoint::config::kReleaseAssetNameBytes] = {};
+  bool assetNameTried = false;  // the tag came: named once, or refused (then no asset matches: no update)
   const bool ok = HttpDownloader::fetchUrl(latestReleaseUrl, [&](const uint8_t* data, size_t len) {
     size_t offset = 0;
-    while (!assetNameSet && offset < len) {
+    while (!assetNameTried && offset < len) {
       releaseParser.feed(reinterpret_cast<const char*>(data + offset), 1);
       offset++;
       if (releaseParser.foundTag()) {
-#if LEXIRISE
-        // LEXIPOINT: lexipoint-<tag>-x4pro.bin (LexiriseConfig.h kReleaseAssetPrefix).
-        snprintf(assetName, sizeof(assetName), "%s%s%s.bin", lexipoint::config::kReleaseAssetPrefix,
-                 releaseParser.getTagName(), assetSuffix);
-#else
-        snprintf(assetName, sizeof(assetName), "crosspoint-%s%s.bin", releaseParser.getTagName(), assetSuffix);
-#endif
-        releaseParser.setFirmwareAssetName(assetName);
-        assetNameSet = true;
+        assetNameTried = true;
+        if (lexipoint::ota::releaseAssetName(releaseParser.getTagName(), assetName, sizeof(assetName))) {
+          releaseParser.setFirmwareAssetName(assetName);
+        } else {
+          LOG_ERR("OTA", "Release tag too long for its asset name");
+          assetName[0] = '\0';  // the parser keeps looking for "": foundFirmware() stays false, NO_UPDATE below
+        }
       }
     }
     if (offset < len) releaseParser.feed(reinterpret_cast<const char*>(data + offset), len - offset);
@@ -104,48 +94,8 @@ bool OtaUpdater::isUpdateNewer() const {
   if (!updateAvailable || latestVersion.empty() || latestVersion == CROSSPOINT_VERSION) {
     return false;
   }
-#if LEXIRISE
   // LEXIPOINT: `<base>-lexi.<n>` versions: Lexipoint's next release is newer, CrossPoint's never is.
   return lexipoint::ota::isNewerRelease(latestVersion, CROSSPOINT_VERSION);
-#else
-
-  int currentMajor, currentMinor, currentPatch;
-  int latestMajor, latestMinor, latestPatch;
-
-  const auto currentVersion = CROSSPOINT_VERSION;
-
-  // semantic version check (only match on 3 segments)
-  sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);
-  sscanf(currentVersion, "%d.%d.%d", &currentMajor, &currentMinor, &currentPatch);
-
-  /*
-   * Compare major versions.
-   * If they differ, return true if latest major version greater than current major version
-   * otherwise return false.
-   */
-  if (latestMajor != currentMajor) return latestMajor > currentMajor;
-
-  /*
-   * Compare minor versions.
-   * If they differ, return true if latest minor version greater than current minor version
-   * otherwise return false.
-   */
-  if (latestMinor != currentMinor) return latestMinor > currentMinor;
-
-  /*
-   * Check patch versions.
-   */
-  if (latestPatch != currentPatch) return latestPatch > currentPatch;
-
-  // If we reach here, it means all segments are equal.
-  // One final check, if we're on an RC build (contains "-rc"), we should consider the latest version as newer even if
-  // the segments are equal, since RC builds are pre-release versions.
-  if (strstr(currentVersion, "-rc") != nullptr) {
-    return true;
-  }
-
-  return false;
-#endif
 }
 
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }

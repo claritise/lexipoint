@@ -16,24 +16,19 @@
 #include "XtcReaderActivity.h"
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
-                               std::string bookPath, const bool allowFastInitialRefresh)
-    : Activity(name, renderer, mappedInput), bookPath(std::move(bookPath)) {
-  if (allowFastInitialRefresh) {
-    const int refreshFrequency = SETTINGS.getRefreshFrequency();
-    pagesUntilFullRefresh = refreshFrequency > 1 ? refreshFrequency : 2;
-  }
-}
+                               std::string bookPath)
+    : Activity(name, renderer, mappedInput), bookPath(std::move(bookPath)) {}
 
 std::unique_ptr<ReaderActivity> ReaderActivity::create(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                                       std::string path, const bool allowFastInitialRefresh) {
+                                                       std::string path) {
   // ActivityManager requires heap ownership; each branch allocates exactly one screen-lifetime object.
   std::unique_ptr<ReaderActivity> activity;
   if (FsHelpers::hasXtcExtension(path)) {
-    activity = makeUniqueNoThrow<XtcReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
+    activity = makeUniqueNoThrow<XtcReaderActivity>(renderer, mappedInput, std::move(path));
   } else if (FsHelpers::hasTxtExtension(path) || FsHelpers::hasMarkdownExtension(path)) {
-    activity = makeUniqueNoThrow<TxtReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
+    activity = makeUniqueNoThrow<TxtReaderActivity>(renderer, mappedInput, std::move(path));
   } else {
-    activity = makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path), allowFastInitialRefresh);
+    activity = makeUniqueNoThrow<EpubReaderActivity>(renderer, mappedInput, std::move(path));
   }
 
   if (!activity) {
@@ -43,8 +38,6 @@ std::unique_ptr<ReaderActivity> ReaderActivity::create(GfxRenderer& renderer, Ma
 }
 
 void ReaderActivity::applyInitialOrientation() { ReaderUtils::applyOrientation(renderer, SETTINGS.orientation); }
-
-void ReaderActivity::disableFastInitialRefresh() { pagesUntilFullRefresh = 0; }
 
 void ReaderActivity::onEnter() {
   Activity::onEnter();
@@ -146,15 +139,14 @@ void ReaderActivity::loop() {
   if (handleBackNavigation()) return;
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
-  auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
+  auto [prevTriggered, nextTriggered] = ReaderUtils::detectPageTurn(mappedInput);
   prevTriggered = prevTriggered || touch.prev;
   nextTriggered = nextTriggered || touch.next;
   if (!prevTriggered && !nextTriggered) return;
   if (handleEndOfBookPageTurn(prevTriggered, nextTriggered)) return;
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
-  const bool skip =
-      !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs >= ReaderUtils::SKIP_HOLD_MS;
+  const bool skip = SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs >= ReaderUtils::SKIP_HOLD_MS;
 
   if (prevTriggered) {
     if (skip) {

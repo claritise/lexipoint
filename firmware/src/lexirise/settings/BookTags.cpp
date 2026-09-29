@@ -1,10 +1,9 @@
-#if LEXIRISE
-
 #include "BookTags.h"
 
 #include <Logging.h>
 
 #include <algorithm>
+#include <numeric>
 
 #include "lexirise/text/BookSlug.h"
 #include "lexirise/text/Utf8Prefix.h"
@@ -38,9 +37,9 @@ std::string lineTitle(const std::string_view title) {
 }
 
 size_t serializedSize(const BookTagList& list) {
-  size_t size = 0;
-  for (const auto& entry : list) size += entry.slug.size() + 1 + entry.title.size() + 1;
-  return size;
+  return std::accumulate(list.begin(), list.end(), size_t{0}, [](const size_t size, const auto& entry) {
+    return size + entry.slug.size() + 1 + entry.title.size() + 1;
+  });
 }
 
 // The book file's name without its extension: an untitled book's title in the record.
@@ -168,5 +167,3 @@ std::vector<std::string> bookSaveTags(const Settings& settings, const std::strin
 }
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

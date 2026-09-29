@@ -1,10 +1,8 @@
 #pragma once
 
-// Settings → System → Lexirise (settings.md §1), CrossPoint's own list screen as KOReaderSettingsActivity
-// uses it. The rows and the edits are settings_screen's (pure, tested); this draws them, runs the
-// keyboard for the key and the tags, and the connection test.
-
-#if LEXIRISE
+// Settings → System → Lexirise (settings.md §1), on CrossPoint's own list screen (UiListActivity). The rows and
+// the edits are settings_screen's (pure, tested); this draws them, runs the keyboard for the key and the tags, and
+// the connection test.
 
 #include <cstdint>
 #include <mutex>
@@ -59,11 +57,9 @@ class LexiriseSettingsActivity final : public UiListActivity {
   void setNotice(Notice notice);
   const char* noticeFor(settings_screen::Row row) const;  // nullptr: none on that row
 
-  // Fixed row storage, as KOReaderSettingsActivity: values are assigned into existing strings.
+  // Fixed row storage: values are assigned into existing strings.
   std::string rowValues_[settings_screen::kRowCount];
   freeink::ui::ListItem rowItems_[settings_screen::kRowCount]{};
 };
 
 }  // namespace lexipoint
-
-#endif  // LEXIRISE

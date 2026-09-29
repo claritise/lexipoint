@@ -55,8 +55,5 @@ void CrashActivity::render(RenderLock&&) {
     y += lineHeight;
   }
 
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
-
   renderer.displayBuffer();
 }

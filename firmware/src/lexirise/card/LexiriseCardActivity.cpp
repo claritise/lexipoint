@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LexiriseCardActivity.h"
 
 #include <FontCacheManager.h>
@@ -277,7 +275,11 @@ void LexiriseCardActivity::flushFiles(const bool closing) {
     LOG_INF(lookup::kCacheLogTag, "cache: %u answers %s in %lu ms%s", static_cast<unsigned>(done.lookups.answers),
             done.lookups.written ? "written" : "not written", done.lookupsMs, when);
   }
-  if (done.mirrorIo) LOG_INF(vocab::kLogTag, "mirror file read or written in %lu ms%s", done.mirrorMs, when);
+  if (done.mirrorFailed) {
+    LOG_ERR(vocab::kLogTag, "mirror file not written (write failed) in %lu ms%s", done.mirrorMs, when);
+  } else if (done.mirrorIo) {
+    LOG_INF(vocab::kLogTag, "mirror file read or written in %lu ms%s", done.mirrorMs, when);
+  }
 }
 
 void LexiriseCardActivity::logAnswer(const CardSession::Answer& answer) const {
@@ -409,9 +411,9 @@ void LexiriseCardActivity::logTapTargets(const std::vector<Hit>& hits) {
   LOG_INF("LXCARD", "targets %d", count);
   size_t start = 0;
   while (start < lines.size()) {
-    const size_t end = lines.find('\n', start);
-    LOG_INF("LXCARD", "%s", lines.substr(start, end - start).c_str());
-    start = end + 1;
+    const size_t lineEnd = lines.find('\n', start);
+    LOG_INF("LXCARD", "%s", lines.substr(start, lineEnd - start).c_str());
+    start = lineEnd + 1;
   }
 }
 #endif
@@ -442,5 +444,3 @@ void LexiriseCardActivity::render(RenderLock&&) {
 }
 
 }  // namespace lexipoint::card
-
-#endif  // LEXIRISE

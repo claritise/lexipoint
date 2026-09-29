@@ -43,6 +43,103 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
   void SetUp() override { parser.currentTextBlock = std::make_unique<ParsedText>(false); }
 };
 
+// V8 R5: a paragraph whose direction is rtl (dir="rtl", CSS direction: rtl) keeps its words in logical order, left to
+// right, placed as CrossPoint's MiniBidi placed a line with no Hebrew or Arabic: at the right margin (the default
+// alignment and Justify), or centred. The stub font is 8 px a byte with 4 px spaces; extra paragraph spacing keeps
+// the first line unindented.
+namespace {
+
+struct LaidLine {
+  std::vector<int> x;
+  std::vector<int> width;
+};
+
+std::vector<LaidLine> layOutRtl(const GfxRenderer& renderer, const std::vector<std::string>& words,
+                                const uint16_t viewport, const CssTextAlign alignment, const bool alignDefined,
+                                const int16_t textIndent = 0, const std::string& lastWordRuby = "") {
+  BlockStyle style;
+  style.isRtl = true;
+  style.directionDefined = true;
+  style.alignment = alignment;
+  style.textAlignDefined = alignDefined;
+  style.textIndent = textIndent;
+  style.textIndentDefined = textIndent != 0;
+  // Extra paragraph spacing drops a defined indent: without it, the indent is used.
+  ParsedText text(/*extraParagraphSpacing=*/textIndent == 0, false, false, style);
+  for (const std::string& w : words) text.addWord(w, EpdFontFamily::REGULAR);
+  if (!lastWordRuby.empty()) text.setRubyForWordAt(words.size() - 1, lastWordRuby);
+  std::vector<LaidLine> lines;
+  text.layoutAndExtractLines(renderer, 0, viewport, [&](std::unique_ptr<TextBlock> line, auto) {
+    LaidLine laid;
+    for (uint16_t i = 0; i < line->wordCount(); i++) {
+      laid.x.push_back(line->wordXpos(i));
+      laid.width.push_back(renderer.getTextAdvanceX(0, line->wordText(i), EpdFontFamily::REGULAR));
+    }
+    lines.push_back(laid);
+  });
+  return lines;
+}
+
+void expectLeftToRightEndingAt(const LaidLine& line, const int right) {
+  ASSERT_FALSE(line.x.empty());
+  for (size_t i = 1; i < line.x.size(); i++) EXPECT_GT(line.x[i], line.x[i - 1]) << "word " << i;
+  EXPECT_EQ(line.x.back() + line.width.back(), right);
+}
+
+}  // namespace
+
+TEST_F(ChapterHtmlSlimParserTest, AnRtlParagraphOfLatinWordsRunsLeftToRightToTheRightMargin) {
+  const auto lines = layOutRtl(renderer, {"aa", "bb", "cc"}, 200, CssTextAlign::Left, /*alignDefined=*/false);
+  ASSERT_EQ(lines.size(), 1u);
+  expectLeftToRightEndingAt(lines[0], 200);
+  EXPECT_EQ(lines[0].x, (std::vector<int>{144, 164, 184}));
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AnRtlParagraphOfCjkWordsRunsLeftToRightToTheRightMargin) {
+  const auto lines = layOutRtl(renderer, {"\xE6\x97\xA5\xE6\x9C\xAC", "\xE8\xAA\x9E"}, 200, CssTextAlign::Left, false);
+  ASSERT_EQ(lines.size(), 1u);
+  expectLeftToRightEndingAt(lines[0], 200);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AJustifiedRtlParagraphFillsItsLinesAndPushesTheLastRight) {
+  const auto lines =
+      layOutRtl(renderer, {"aaaa", "bbbb", "cccc", "dddd", "ee"}, 100, CssTextAlign::Justify, /*alignDefined=*/true);
+  ASSERT_EQ(lines.size(), 2u);
+  EXPECT_EQ(lines[0].x, (std::vector<int>{0, 68}));  // stretched from margin to margin
+  expectLeftToRightEndingAt(lines[0], 100);
+  EXPECT_EQ(lines[1].x, (std::vector<int>{12, 48, 84}));  // the last line isn't stretched: it sits at the right margin
+  expectLeftToRightEndingAt(lines[1], 100);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AnRtlParagraphWithAnExplicitLeftAlignmentStartsAtTheLeft) {
+  const auto lines = layOutRtl(renderer, {"aa", "bb", "cc"}, 200, CssTextAlign::Left, /*alignDefined=*/true);
+  ASSERT_EQ(lines.size(), 1u);
+  EXPECT_EQ(lines[0].x, (std::vector<int>{0, 20, 40}));
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AJustifiedRtlParagraphKeepsItsIndentAtTheRightEnd) {
+  const auto lines = layOutRtl(renderer, {"aaaa", "bbbb", "cccc", "dddd", "ee"}, 100, CssTextAlign::Justify,
+                               /*alignDefined=*/true, /*textIndent=*/12);
+  ASSERT_EQ(lines.size(), 2u);
+  EXPECT_EQ(lines[0].x, (std::vector<int>{0, 56}));  // stretched to 100 - 12: the indent is at the right end
+  expectLeftToRightEndingAt(lines[0], 88);
+  expectLeftToRightEndingAt(lines[1], 100);  // later lines: no indent
+}
+
+TEST_F(ChapterHtmlSlimParserTest, AnRtlParagraphWithRubyRunsLeftToRightInsideTheMargins) {
+  const auto lines = layOutRtl(renderer, {"aa", "bb", "cc"}, 200, CssTextAlign::Left, false, 0, "cccccc");
+  ASSERT_EQ(lines.size(), 1u);
+  for (size_t i = 1; i < lines[0].x.size(); i++) EXPECT_GT(lines[0].x[i], lines[0].x[i - 1]);
+  EXPECT_GE(lines[0].x.front(), 0);
+  EXPECT_LE(lines[0].x.back() + lines[0].width.back(), 200);
+}
+
+TEST_F(ChapterHtmlSlimParserTest, ACentredRtlParagraphIsCentredLeftToRight) {
+  const auto lines = layOutRtl(renderer, {"aa", "bb", "cc"}, 200, CssTextAlign::Center, /*alignDefined=*/true);
+  ASSERT_EQ(lines.size(), 1u);
+  EXPECT_EQ(lines[0].x, (std::vector<int>{72, 92, 112}));  // (200 - 56) / 2
+}
+
 TEST_F(ChapterHtmlSlimParserTest, RubySurvivesPartialParagraphExtraction) {
   ParsedText text(false);
   text.addWord("a", EpdFontFamily::REGULAR);

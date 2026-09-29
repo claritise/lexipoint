@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "JsonReader.h"
 
 #include <cstdint>
@@ -217,21 +215,21 @@ class Reader {
 
   bool hex4(uint32_t& out) {
     if (pos_ + 4 > doc_.size()) return false;
-    uint32_t value = 0;
+    uint32_t quad = 0;
     for (int i = 0; i < 4; i++) {
       const char c = doc_[pos_++];
-      value <<= 4;
+      quad <<= 4;
       if (c >= '0' && c <= '9') {
-        value |= static_cast<uint32_t>(c - '0');
+        quad |= static_cast<uint32_t>(c - '0');
       } else if (c >= 'a' && c <= 'f') {
-        value |= static_cast<uint32_t>(c - 'a' + 10);
+        quad |= static_cast<uint32_t>(c - 'a' + 10);
       } else if (c >= 'A' && c <= 'F') {
-        value |= static_cast<uint32_t>(c - 'A' + 10);
+        quad |= static_cast<uint32_t>(c - 'A' + 10);
       } else {
         return false;
       }
     }
-    out = value;
+    out = quad;
     return true;
   }
 
@@ -275,10 +273,10 @@ class Reader {
           uint32_t cp = 0;
           if (!hex4(cp)) return false;
           if (cp >= 0xD800 && cp <= 0xDBFF) {
-            uint32_t low = 0;
             if (doc_.substr(pos_, 2) == "\\u") {
               const size_t save = pos_;
               pos_ += 2;
+              uint32_t low = 0;
               if (!hex4(low)) return false;
               if (low >= 0xDC00 && low <= 0xDFFF) {
                 cp = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00);
@@ -313,5 +311,3 @@ class Reader {
 Result read(const std::string_view document, Visitor& visitor) { return Reader(document, visitor).run(); }
 
 }  // namespace lexipoint::json
-
-#endif  // LEXIRISE

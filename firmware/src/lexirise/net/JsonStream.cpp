@@ -1,6 +1,6 @@
-#if LEXIRISE
-
 #include "JsonStream.h"
+
+#include <algorithm>
 
 namespace lexipoint::json {
 namespace {
@@ -34,9 +34,7 @@ bool StreamReader::fail(const Result why) {
 }
 
 bool StreamReader::feed(const std::string_view bytes) {
-  for (const char c : bytes) {
-    if (!step(c)) return false;
-  }
+  if (!std::all_of(bytes.begin(), bytes.end(), [this](const char c) { return step(c); })) return false;
   return state_ != State::Failed;
 }
 
@@ -350,5 +348,3 @@ bool StreamReader::step(const char c) {
 }
 
 }  // namespace lexipoint::json
-
-#endif  // LEXIRISE

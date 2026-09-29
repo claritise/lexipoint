@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "Responses.h"
 
 #include <algorithm>
@@ -483,5 +481,3 @@ ParseStatus parseAnalyze(const std::string_view body, AnalyzeResult& out) {
 }
 
 }  // namespace lexipoint::api
-
-#endif  // LEXIRISE

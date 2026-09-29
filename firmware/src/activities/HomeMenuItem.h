@@ -7,10 +7,7 @@ enum class HomeMenuItem {
   NONE,
   FILE_BROWSER,
   LIBRARY,
-  OPDS_BROWSER,
   FILE_TRANSFER,
-#if LEXIRISE
   VOCAB_SYNC,  // LEXIPOINT: Sync Vocabulary (v0.2 V7b)
-#endif
   SETTINGS_MENU
 };

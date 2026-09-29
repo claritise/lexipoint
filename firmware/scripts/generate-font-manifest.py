@@ -3,7 +3,8 @@
 
 Scans the input directory (flat or nested by family) for .cpfont files, reads
 their binary headers to extract style metadata, and produces a JSON manifest
-suitable for device-initiated font downloads.
+for a font catalog. (Lexipoint's device doesn't download fonts since v0.2 V8: a
+family comes in over the web Fonts page or on the SD card.)
 
 Usage:
     python3 scripts/generate-font-manifest.py \

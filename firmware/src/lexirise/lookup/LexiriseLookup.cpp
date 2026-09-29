@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LexiriseLookup.h"
 
 #include <algorithm>
@@ -160,5 +158,3 @@ LookupReport lookupWithLexirise(api::LexiriseApi& api, const text::TapContext& t
 }
 
 }  // namespace lexipoint::lookup
-
-#endif  // LEXIRISE

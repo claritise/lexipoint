@@ -194,7 +194,7 @@ bool TextSettingsActivity::handleButtons() {
 
 void TextSettingsActivity::buildScreen(UiScreen& screen) {
   // Content sits below the preview pane (render() draws header + preview
-  // directly) and above the caption band + button hints.
+  // directly) and above the caption band.
   const int tabTop = afterHeader + previewHeight;
   const int captionHeight = renderer.getTextHeight(UI_10_FONT_ID) + metrics_.verticalSpacing;
   screen.setContentMarginFromScreen(
@@ -242,22 +242,6 @@ void TextSettingsActivity::buildScreen(UiScreen& screen) {
   screen.list(props);
 }
 
-const char* TextSettingsActivity::confirmLabelText() const {
-  if (ringPos() == 0) {
-    // Confirm on the tab bar advances to the next tab.
-    return I18N.get(TAB_NAME_IDS[(static_cast<int>(tab_) + 1) % static_cast<int>(Tab::Count)]);
-  }
-  switch (tab_) {
-    case Tab::Layout:
-      // Extra Paragraph Spacing toggles; the rest open a picker
-      return ringPos() - 1 == static_cast<int>(LayoutRow::ParaSpacing) ? tr(STR_TOGGLE) : tr(STR_SELECT);
-    case Tab::Style:
-      return tr(STR_TOGGLE);
-    default:
-      return tr(STR_SELECT);
-  }
-}
-
 void TextSettingsActivity::render(RenderLock&&) {
   if (optionPopup_.processRender(renderer, mappedInput)) return;  // picker draws over everything
 
@@ -284,9 +268,6 @@ void TextSettingsActivity::render(RenderLock&&) {
     const int capY = afterHeader + usableHeight - captionHeight + metrics_.verticalSpacing;
     renderer.drawText(UI_10_FONT_ID, metrics_.previewPadding, capY, tr(STR_NOT_IN_PREVIEW));
   }
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabelText(), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
-  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();
 }

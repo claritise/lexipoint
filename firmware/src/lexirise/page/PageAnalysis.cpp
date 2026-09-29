@@ -1,9 +1,8 @@
-#if LEXIRISE
-
 #include "PageAnalysis.h"
 
 #include <algorithm>
 #include <cstring>
+#include <iterator>
 
 #include "lexirise/api/JsonNumbers.h"
 #include "lexirise/util/ByteOrder.h"
@@ -332,7 +331,8 @@ PageAnalysis mergeWholeWords(const PageAnalysis& refined, const PageAnalysis& wo
   merged.occurrences.reserve(words.occurrences.size() + refined.occurrences.size());
   std::vector<uint32_t> ownEntries;  // the word-level answer's words: their saved state is its alone
   ownEntries.reserve(words.occurrences.size());
-  for (const Occ& word : words.occurrences) ownEntries.push_back(word.entryId);
+  std::transform(words.occurrences.begin(), words.occurrences.end(), std::back_inserter(ownEntries),
+                 [](const Occ& word) { return word.entryId; });
   std::sort(ownEntries.begin(), ownEntries.end());
   for (const Occ& word : words.occurrences) {
     // The refined occurrences exactly tiling [word.start, word.end), in order (lookup/WholeWords.cpp piecesOf).
@@ -544,5 +544,3 @@ bool parsePageFile(const std::string_view bytes, PageAnalysis& out) {
 }
 
 }  // namespace lexipoint::page
-
-#endif  // LEXIRISE

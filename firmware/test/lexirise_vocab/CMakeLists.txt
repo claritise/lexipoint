@@ -18,7 +18,6 @@ add_executable(LexiriseVocabTest
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
-target_compile_definitions(LexiriseVocabTest PRIVATE LEXIRISE=1)
 
 target_include_directories(LexiriseVocabTest PRIVATE
   ${REPO_ROOT}/src

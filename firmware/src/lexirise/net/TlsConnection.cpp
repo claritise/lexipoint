@@ -1,4 +1,4 @@
-#if LEXIRISE && defined(FREEINK_NET_WOLFSSL)
+#if defined(FREEINK_NET_WOLFSSL)
 
 #include "TlsConnection.h"
 
@@ -62,14 +62,14 @@ void releaseSession(void* session) { wolfSSL_SESSION_free(static_cast<WOLFSSL_SE
 // The handshake's error rejected the server's certificate (chain, signature, dates, host name): retrying won't help.
 bool certificateRejected(const int err) {
   switch (err) {
-    case ASN_NO_SIGNER_E:
-    case ASN_BEFORE_DATE_E:
-    case ASN_AFTER_DATE_E:
-    case ASN_SIG_CONFIRM_E:
-    case ASN_SIG_HASH_E:
-    case ASN_SIG_KEY_E:
-    case DOMAIN_NAME_MISMATCH:
-    case VERIFY_CERT_ERROR:
+    case ASN_NO_SIGNER_E:       // no pinned root (TrustAnchors.h) signed the chain
+    case ASN_BEFORE_DATE_E:     // a certificate not valid yet (or the clock is behind)
+    case ASN_AFTER_DATE_E:      // a certificate expired (or the clock is ahead)
+    case ASN_SIG_CONFIRM_E:     // a signature in the chain didn't verify
+    case ASN_SIG_HASH_E:        // a signature hash wolfSSL can't check
+    case ASN_SIG_KEY_E:         // a signing key wolfSSL can't use
+    case DOMAIN_NAME_MISMATCH:  // the certificate isn't for the host asked
+    case VERIFY_CERT_ERROR:     // the verify callback refused the chain
       return true;
     default:
       return false;
@@ -296,4 +296,4 @@ void TlsConnection::teardown() {
 
 }  // namespace lexipoint::net
 
-#endif  // LEXIRISE && FREEINK_NET_WOLFSSL
+#endif  // FREEINK_NET_WOLFSSL

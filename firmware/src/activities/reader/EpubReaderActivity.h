@@ -17,9 +17,7 @@
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
 #include "components/OptionPopup.h"
-#if LEXIRISE
-#include "lexirise/page/ReaderPages.h"  // LEXIPOINT
-#endif
+#include "lexirise/page/ReaderPages.h"
 
 class EpubReaderActivity final : public ReaderActivity {
   std::shared_ptr<Epub> epub;
@@ -39,7 +37,6 @@ class EpubReaderActivity final : public ReaderActivity {
   bool pendingPercentJump = false;
   float pendingSpineProgress = 0.0f;
   bool pendingScreenshot = false;
-  bool pendingSyncSaveError = false;
   uint8_t pageLoadRetryCount = 0;
   static constexpr uint8_t MAX_PAGE_LOAD_RETRIES = 3;
   bool skipNextButtonCheck = false;
@@ -87,11 +84,9 @@ class EpubReaderActivity final : public ReaderActivity {
   bool overlayPageStored = false;
   int autoTurnOption = 0;  // current auto page-turn rate index (More panel)
   std::vector<EpubReaderMenuActivity::MenuItem> moreItems;
-#if LEXIRISE
   lexipoint::BookLanguageRow moreBookLanguage{lexipoint::bookLanguageStore()};  // LEXIPOINT: the More panel's row
   lexipoint::page::ReaderPages lexiPages;  // LEXIPOINT: page analysis (C12, V7b): this page and the next, ahead
   std::atomic<uint64_t> lexiDrawn{0};      // LEXIPOINT: the page renderBook drew last, and when (page::packDrawn)
-#endif
 
   // Footnote support
   std::vector<FootnoteEntry> currentPageFootnotes;
@@ -166,12 +161,9 @@ class EpubReaderActivity final : public ReaderActivity {
   // current page when the caller has loaded it already.
   void openDictionaryWordSelect(int touchX = -1, int touchY = -1, std::unique_ptr<Page> page = nullptr);
   void wordSelectOrigin(int& left, int& top) const;  // LEXIPOINT: where word select draws the page (not gated)
-#if LEXIRISE
-  bool dictionaryLookupsAvailable() const;  // LEXIPOINT: StarDict set, or Lexirise usable
+  bool dictionaryLookupsAvailable() const;           // LEXIPOINT: StarDict set, or Lexirise usable
   // LEXIPOINT: the current page when a long-press at (x, y) is on one of its words; nullptr otherwise.
   std::unique_ptr<Page> pageWithWordAt(int x, int y);
-#endif
-  bool launchKOReaderSync();
   unsigned long confirmLongPressThreshold() const;
   void toggleAutoPageTurn(uint8_t selectedPageTurnOption);
   void loadCachedBookmarks();
@@ -200,9 +192,8 @@ class EpubReaderActivity final : public ReaderActivity {
   void onEndOfBookRendered() override;
 
  public:
-  explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath,
-                              bool allowFastInitialRefresh)
-      : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath), allowFastInitialRefresh) {}
+  explicit EpubReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string bookPath)
+      : ReaderActivity("EpubReader", renderer, mappedInput, std::move(bookPath)) {}
   ~EpubReaderActivity() override;
 
   void loop() override;

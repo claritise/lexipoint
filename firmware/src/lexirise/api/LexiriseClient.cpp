@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "LexiriseClient.h"
 
 #include "lexirise/LexiriseConfig.h"
@@ -207,5 +205,3 @@ LexiriseClient::Attempt LexiriseClient::attempt(const net::Request& request, con
 }
 
 }  // namespace lexipoint::api
-
-#endif  // LEXIRISE

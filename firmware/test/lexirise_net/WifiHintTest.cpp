@@ -64,7 +64,7 @@ TEST(WifiHint, TheLatestConnectionWinsAndAnUnusableOneIsIgnored) {
 }
 
 TEST(WifiHint, AConnectionIsNoticedOnceWhoeverMadeIt) {
-  // WifiSession::tick asks every loop pass: File Transfer's or KOSync's connection is remembered too.
+  // WifiSession::tick asks every loop pass: File Transfer's or OTA's connection is remembered too.
   ConnectionWatch watch;
   EXPECT_FALSE(watch.newlyConnected(false));
   EXPECT_TRUE(watch.newlyConnected(true));

@@ -166,8 +166,10 @@ class LiveSource final : public CardSource {
   bool mirrorFlushDue() const;
   // SD I/O on an idle card (CardSession::shouldFlushFiles) or as the card closes, outside RenderLock but for a close
   // without end() (sleep, the stack cleared: under the lock exitActivity holds, V7c R9): records, then
-  // `load`s this card's language (once per boot), then writes what changed. True: the file was read or written.
+  // `load`s this card's language (once per boot), then writes what changed. True: the file was read or written (or
+  // its write tried: lastFlushWriteFailed() says whether that failed).
   bool flushMirror(bool load);
+  bool lastFlushWriteFailed() const { return lastFlushWriteFailed_; }  // the last flushMirror()'s write failed
   // The lemma cache (C21, V7c; lookup/LookupCache.h): phase B reads it before its call (one bucket: a hit makes no
   // call); an answer the call brought is kept in memory (the newest config::kLookupPendingMax) and written by
   // flushLookups(), never before phase B is drawn. `cache` outlives the card; none: phase B always calls.
@@ -294,6 +296,7 @@ class LiveSource final : public CardSource {
   std::optional<Language> vocabLanguage_;           // the tapped sentence's: the mirror this card syncs
   unsigned vocabPages_ = 0;                         // pages this card fetched
   bool mirrorWriteFailed_ = false;                  // the mirror's file couldn't be written on this card
+  bool lastFlushWriteFailed_ = false;               // ...by the last flushMirror() (the log says so)
   std::vector<vocab::LiveState> mirrorUpdates_;     // apply()'s, until recordMirror()
   // Entries this card wrote (a save, a level, a removal): a later analysis's state for them may predate the write.
   std::vector<std::pair<Language, uint32_t>> writtenEntries_;

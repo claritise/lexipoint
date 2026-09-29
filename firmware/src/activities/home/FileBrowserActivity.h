@@ -46,10 +46,8 @@ class FileBrowserActivity final : public UiListActivity {
   // root), and Confirm activates on RELEASE (a hold is "delete").
   bool handleCustomInput() override;
   bool handleButtons() override;
-  // Header shows the current folder name (battery indicator via GUI.drawHeader);
-  // footer labels depend on path depth and picker mode.
+  // Header shows the current folder name (battery indicator via GUI.drawHeader).
   void drawChrome() override;
-  void drawFooter() override;
   // forceDelete routes the touch long-press to the delete branch; button
   // navigation leaves it false and relies on getHeldTime() instead.
   void activateSelected(bool forceDelete = false);

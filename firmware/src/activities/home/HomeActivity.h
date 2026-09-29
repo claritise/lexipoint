@@ -8,11 +8,9 @@
 #include "./HomeMenuIndex.h"
 #include "RecentBooksStore.h"
 #include "activities/Activity.h"
+#include "lexirise/vocab/HomeSync.h"
+#include "lexirise/vocab/ManualSync.h"
 #include "util/ButtonNavigator.h"
-#if LEXIRISE
-#include "lexirise/vocab/HomeSync.h"    // LEXIPOINT
-#include "lexirise/vocab/ManualSync.h"  // LEXIPOINT
-#endif
 
 struct Rect;
 
@@ -22,14 +20,11 @@ class HomeActivity final : public Activity {
   bool recentsLoading = false;
   bool recentsLoaded = false;
   bool firstRenderDone = false;
-  bool hasOpdsServers = false;
-#if LEXIRISE
   bool hasVocabSync = false;                              // LEXIPOINT: the Sync Vocabulary row (v0.2 V7b)
   std::unique_ptr<lexipoint::vocab::HomeSync> vocabSync;  // LEXIPOINT: a sync under way, or its result shown
   std::atomic<bool> vocabSyncDrawn{false};                // LEXIPOINT: its popup was drawn: the next step may run
   lexipoint::vocab::HomeSyncFlow vocabSyncFlow;           // LEXIPOINT: what input does to it (dismissed on release)
-  void loopVocabSync();                                   // LEXIPOINT
-#endif
+  void loopVocabSync();
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
@@ -46,18 +41,13 @@ class HomeActivity final : public Activity {
   const bool cleanInitialRefresh;
 
   // Menu index <-> item (onEnter, loop): home/HomeMenuIndex.h.
-  static int menuItemToIndex(HomeMenuItem item, bool hasOpdsUrl, bool hasVocabSync = false) {
-    return homeMenuIndexOf(item, hasOpdsUrl, hasVocabSync);
-  }
-  static HomeMenuItem indexToMenuItem(int idx, bool hasOpdsUrl, bool hasVocabSync = false) {
-    return homeMenuItemAt(idx, hasOpdsUrl, hasVocabSync);
-  }
+  static int menuItemToIndex(HomeMenuItem item, bool hasVocabSync) { return homeMenuIndexOf(item, hasVocabSync); }
+  static HomeMenuItem indexToMenuItem(int idx, bool hasVocabSync) { return homeMenuItemAt(idx, hasVocabSync); }
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onLibraryOpen();
   void onSettingsOpen();
   void onFileTransferOpen();
-  void onOpdsBrowserOpen();
 
   int getMenuItemCount() const;
   bool storeCoverBuffer();    // Store frame buffer for cover image
@@ -77,8 +67,6 @@ class HomeActivity final : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
   bool isHomeActivity() const override { return true; }
-#if LEXIRISE
   // LEXIPOINT: a Sync Vocabulary under way keeps the reader awake (a long first sync mustn't be cut by auto-sleep).
   bool preventAutoSleep() override { return vocabSync && vocabSync->running(); }
-#endif
 };

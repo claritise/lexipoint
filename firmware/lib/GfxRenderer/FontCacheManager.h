@@ -58,13 +58,9 @@ class FontCacheManager {
 
   // A render pass touches at most a handful of font ids. Codepoints are packed
   // with a compact font slot and resolved style, then grouped for prewarming.
-#if LEXIRISE
   // LEXIPOINT: the Lexirise card's expanded tabs draw with up to 7 fonts (the page, 3 UI and 3 reader
   // sizes); past the limit a font's glyphs load one by one from SD. 8 slots still pack above the style.
   static constexpr uint8_t MAX_SCAN_FONTS = 8;
-#else
-  static constexpr uint8_t MAX_SCAN_FONTS = 4;
-#endif
   static constexpr uint16_t MAX_SCAN_CODEPOINTS = 512;
   static constexpr uint8_t SCAN_STYLE_SHIFT = 21;
   static constexpr uint8_t SCAN_FONT_SHIFT = SCAN_STYLE_SHIFT + 2;

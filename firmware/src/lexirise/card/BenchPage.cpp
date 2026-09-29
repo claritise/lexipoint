@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "BenchPage.h"
 
 #include <Utf8.h>
@@ -154,5 +152,3 @@ CardState benchState(const BenchBook& book, const int word, const Scene& scene) 
 }
 
 }  // namespace lexipoint::card::bench
-
-#endif  // LEXIRISE

@@ -1,7 +1,7 @@
 #pragma once
 
 // The screen boxes of a page's selectable words, as word select lays them out and hits them. One rule for
-// DictionaryWordSelectActivity (extractWords / wordAt) and, with LEXIRISE, the reader's long-press check
+// DictionaryWordSelectActivity (extractWords / wordAt) and the reader's long-press check
 // (pressOnWord: a long-press is taken only on a word), so the two can't disagree. Pure: the caller measures.
 // Tests: test/lexirise_pagemodel/WordBoxesTest.cpp.
 

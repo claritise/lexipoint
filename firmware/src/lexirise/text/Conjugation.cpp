@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 // Written for Lexipoint from Japanese grammar (the textbook rules for each verb class), not from any other
 // project's rule tables. The verb lists below (which る verbs are godan or ichidan where the spelling doesn't
 // show it) are well-known words written down from grammar knowledge, not copied from any dictionary's or
@@ -667,8 +665,11 @@ std::optional<Conjugation> conjugationOf(const std::string_view surface, const s
   // (書け + な: 書けない; 見 + る: 見る): the analysis may have cut it short, and the shorter form's name would be
   // wrong.
   if (s.longerForm) return std::nullopt;
-  for (const std::string& form : dictionaryForms) {
-    if (s.extends(form)) return std::nullopt;
+  // The dictionary form itself (見 + る): a backstop, as no word is known where a step's form above doesn't start with
+  // it too (probed over the tests' verbs and adjectives, v0.2 V8), so no test can pin it.
+  if (std::any_of(dictionaryForms.begin(), dictionaryForms.end(),
+                  [&s](const std::string& form) { return s.extends(form); })) {
+    return std::nullopt;
   }
   const std::vector<Chain>& found = s.found;
   if (found.empty()) return std::nullopt;
@@ -676,8 +677,10 @@ std::optional<Conjugation> conjugationOf(const std::string_view surface, const s
   const auto shortest = std::min_element(
       found.begin(), found.end(), [](const Chain& a, const Chain& b) { return a.steps.size() < b.steps.size(); });
   const std::string name = nameOf(*shortest);
-  for (const Chain& other : found) {
-    if (nameOf(other) != name || splitOff(other.steps.back().second, next)) return std::nullopt;
+  if (std::any_of(found.begin(), found.end(), [&](const Chain& other) {
+        return nameOf(other) != name || splitOff(other.steps.back().second, next);
+      })) {
+    return std::nullopt;
   }
   Conjugation out;
   out.name = name;
@@ -688,5 +691,3 @@ std::optional<Conjugation> conjugationOf(const std::string_view surface, const s
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE

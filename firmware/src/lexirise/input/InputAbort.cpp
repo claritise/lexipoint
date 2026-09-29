@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "InputAbort.h"
 
 #include <HalGPIO.h>
@@ -28,5 +26,3 @@ void sampleIdle(const bool fingerDown) {
 bool inputCame() { return gpio.rawInputActive() || line().active(gpio.rawTouchLevel()); }
 
 }  // namespace lexipoint::input
-
-#endif  // LEXIRISE

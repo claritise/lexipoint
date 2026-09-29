@@ -3,18 +3,19 @@
 #include <FS.h>  // need to be included before SdFat.h for compatibility with FS.h's File class
 #include <Logging.h>
 #include <SDCardManager.h>
-#if FREEINK_CAP_USB_MSC
 #include <UsbMassStorage.h>
-#endif
 
 #include <cassert>
 
 #define SDCard SDCardManager::getInstance()
 
+// The #if this file had before V8, as a check (BoardConfig.h via SDCardManager.h): USB Drive exposes the SDMMC
+// block device.
+static_assert(FREEINK_CAP_USB_MSC, "USB Drive requires the build's FREEINK_CAP_USB_MSC=1");
+static_assert(FREEINK_SD_SDMMC, "USB Drive requires an SDMMC-backed storage profile");
+
 namespace {
-#if FREEINK_CAP_USB_MSC
 freeink::UsbMassStorage usbMassStorage;
-#endif
 }  // namespace
 
 HalStorage HalStorage::instance;
@@ -49,12 +50,7 @@ void HalStorage::prepareForDeepSleep() {
   SDCard.shutdown();
 }
 
-#if FREEINK_CAP_USB_MSC && !FREEINK_SD_SDMMC
-#error "USB Drive requires an SDMMC-backed storage profile"
-#endif
-
 bool HalStorage::beginUsbDrive() {
-#if FREEINK_CAP_USB_MSC
   StorageLock lock;
   auto* const blockDevice = SDCard.detachFilesystemForRawAccess();
   if (!blockDevice) {
@@ -70,38 +66,24 @@ bool HalStorage::beginUsbDrive() {
     return false;
   }
   return true;
-#else
-  return false;
-#endif
 }
 
 bool HalStorage::disconnectUsbDriveHost() {
-#if FREEINK_CAP_USB_MSC
   StorageLock lock;
   return usbMassStorage.disconnectHost();
-#else
-  return false;
-#endif
 }
 
 bool HalStorage::usbDriveHostSuspended() const {
-#if FREEINK_CAP_USB_MSC
   StorageLock lock;
   return usbMassStorage.hostSuspended();
-#else
-  return false;
-#endif
 }
 
 void HalStorage::endUsbDrive() {
-#if FREEINK_CAP_USB_MSC
   StorageLock lock;
   usbMassStorage.end();
-#endif
 }
 
 UsbDriveState HalStorage::usbDriveState() const {
-#if FREEINK_CAP_USB_MSC
   StorageLock lock;
   switch (usbMassStorage.state()) {
     case freeink::UsbMassStorageState::WaitingForHost:
@@ -118,7 +100,6 @@ UsbDriveState HalStorage::usbDriveState() const {
     case freeink::UsbMassStorageState::Idle:
       break;
   }
-#endif
   return UsbDriveState::Unsupported;
 }
 

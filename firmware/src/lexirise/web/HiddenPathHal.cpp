@@ -1,5 +1,4 @@
-// LEXIPOINT: HiddenPath.h's card lookup. Not LEXIRISE-gated (the file manager and WebDAV use it in
-// every build).
+// LEXIPOINT: HiddenPath.h's card lookup (the web file manager uses it).
 
 #include <HalStorage.h>
 

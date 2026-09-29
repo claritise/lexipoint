@@ -4,6 +4,7 @@
 // targets. Pure data: the device paints it with GfxRenderer (CardPainter), the host rasterizes it for the
 // conformance images (test/lexirise_card). Tests: test/lexirise_card.
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -72,10 +73,8 @@ struct Hit {
 
 // The first hit containing the point (hits are front-most first), or nullptr.
 inline const Hit* hitAt(const std::vector<Hit>& hits, const int x, const int y) {
-  for (const Hit& h : hits) {
-    if (h.rect.contains(x, y)) return &h;
-  }
-  return nullptr;
+  const auto it = std::find_if(hits.begin(), hits.end(), [x, y](const Hit& h) { return h.rect.contains(x, y); });
+  return it != hits.end() ? &*it : nullptr;
 }
 
 struct DisplayList {

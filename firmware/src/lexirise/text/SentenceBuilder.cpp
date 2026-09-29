@@ -1,10 +1,9 @@
-#if LEXIRISE
-
 #include "SentenceBuilder.h"
 
 #include <Utf8.h>
 
 #include <algorithm>
+#include <numeric>
 
 #include "CharClass.h"
 #include "Utf8Prefix.h"
@@ -84,8 +83,8 @@ class Builder {
     for (size_t i = 0; i < items_.size(); i++) {
       if (items_[i].token != token) continue;
       if (first < 0) first = static_cast<long>(i);
-      for (const uint32_t cp : items_[i].cps) {
-        if (!chars::isPunctuationLike(cp)) return static_cast<long>(i);
+      if (!std::all_of(items_[i].cps.begin(), items_[i].cps.end(), chars::isPunctuationLike)) {
+        return static_cast<long>(i);
       }
     }
     return first;
@@ -192,9 +191,9 @@ class Builder {
         if (j > 0) {
           const uint32_t end = cps[j - 1];
           const bool terminated = isTerminator(end) || (closed && Punctuation::isEllipsis(end));
-          const bool dotInWord = !closed && Punctuation::isDot(end) && chars::isAlnum(after);
+          const bool dotBetweenLetters = !closed && Punctuation::isDot(end) && chars::isAlnum(after);
           const bool nextStarts = Punctuation::isOpener(after, script_) || utf8IsCjkCodepoint(after);
-          cut = terminated && !dotInWord && (closed || nextStarts);
+          cut = terminated && !dotBetweenLetters && (closed || nextStarts);
           if (cut && (closed || Punctuation::isQuestionOrExclamation(end)) &&
               Punctuation::continuesQuote(cps.data() + k, cps.size() - k, script_)) {
             cut = false;
@@ -370,7 +369,8 @@ class Builder {
     size_t total = 0;
     forEachJoined(begin, end, [&](const size_t i, const Spacing spacing) {
       total += spacing == Spacing::None ? 0 : 1;
-      for (const uint32_t cp : items_[i].cps) total += utf16Units(cp);
+      total = std::accumulate(items_[i].cps.begin(), items_[i].cps.end(), total,
+                              [](const size_t n, const uint32_t cp) { return n + utf16Units(cp); });
     });
     return total;
   }
@@ -482,12 +482,11 @@ std::optional<BuiltSentence> buildPageText(const PageModel& page, const Script s
 std::optional<uint32_t> pageOffsetOf(const BuiltSentence& pageText, const BuiltSentence& sentence) {
   if (sentence.chars.empty()) return std::nullopt;
   const SentenceChar& first = sentence.chars.front();
-  for (const SentenceChar& c : pageText.chars) {
-    if (c.token.line == first.token.line && c.token.token == first.token.token && c.codepoint == first.codepoint) {
-      return c.start;
-    }
-  }
-  return std::nullopt;
+  const auto it = std::find_if(pageText.chars.begin(), pageText.chars.end(), [&first](const SentenceChar& c) {
+    return c.token.line == first.token.line && c.token.token == first.token.token && c.codepoint == first.codepoint;
+  });
+  if (it == pageText.chars.end()) return std::nullopt;
+  return it->start;
 }
 
 std::optional<BuiltSentence> buildSentence(const PageModel& page, const TokenRef tap, const Script script) {
@@ -498,5 +497,3 @@ std::optional<BuiltSentence> buildSentence(const PageModel& page, const TokenRef
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE

@@ -12,7 +12,6 @@ From `firmware/`:
 pio check -e x4pro --fail-on-defect low --fail-on-defect medium --fail-on-defect high
 pio run -e x4pro
 pio run -e x4pro-gh_release
-pio run -e x4pro-lexirise-off
 cmake -S test -B build/test && cmake --build build/test -j && ctest --test-dir build/test -j
 python3 -m unittest discover -s scripts/lexipoint -p 'test_*.py'
 python3 scripts/lexipoint/keyscan.py

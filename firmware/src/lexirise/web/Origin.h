@@ -6,6 +6,7 @@
 // cross-origin request; tools like curl and the dev harness send none. Pure, header-only; tests:
 // test/lexirise_net/OriginTest.cpp.
 
+#include <algorithm>
 #include <string_view>
 
 namespace lexipoint::web {
@@ -45,9 +46,7 @@ inline bool isTrustedHost(std::string_view host) {
   if (colon != std::string_view::npos) {
     const std::string_view port = host.substr(colon + 1);
     if (port.empty() || port.size() > 5) return false;
-    for (const char c : port) {
-      if (c < '0' || c > '9') return false;
-    }
+    if (!std::all_of(port.begin(), port.end(), [](const char c) { return c >= '0' && c <= '9'; })) return false;
     host = host.substr(0, colon);
   }
   if (host.empty()) return false;
@@ -78,9 +77,11 @@ inline bool isTrustedHost(std::string_view host) {
     if (c != kMdns[i]) return false;
   }
   const std::string_view name = host.substr(0, host.size() - kMdns.size());
-  for (const char c : name) {
-    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-';
-    if (!ok) return false;  // one label only: "evil.example.local" style names are refused too
+  // One label only: "evil.example.local" style names are refused too.
+  if (!std::all_of(name.begin(), name.end(), [](const char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-';
+      })) {
+    return false;
   }
   return name.front() != '-';
 }

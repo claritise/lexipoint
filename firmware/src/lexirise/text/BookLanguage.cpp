@@ -1,5 +1,3 @@
-#if LEXIRISE
-
 #include "BookLanguage.h"
 
 #include <Utf8.h>
@@ -114,5 +112,3 @@ const char* languageSourceName(const LanguageSource source) {
 }
 
 }  // namespace lexipoint::text
-
-#endif  // LEXIRISE
