@@ -228,7 +228,13 @@ writes; 時をかける少女, the first page of 理科教室の黒い影):
   showed `No longer ignored · Undo` (`off written`). 音 is left not ignored.
 - **Step 6, the cache's format 3: pass.** The first lookup read an old bucket: `unreadable: removed`, a miss; 音 then
   written (`1 answers written`) and looked up again: `cache hit in 6 ms` with its "also" readings.
-- Still owed: steps 5 and 7-17, and the parts of 1 and 3 above.
+- **Chinese, the same day** (活着, its English-edition preface): **step 2:** 了 reads `liǎo · also le, liào` (tone-marked
+  pinyin, as given); **the preview** on a sentence with “…” and 《…》: 了 (the one tapped) underlined; Shorter dropped the
+  first clause (to `《老黑奴》，`), then clauses from the end, one ， at a time; nothing saved; **step 1:** Home showed
+  `0 saved · 1 looked up` over `6 words in Chinese` (the count call ran once, idle). A Japanese book opened and closed
+  with nothing looked up earlier in that boot gave no box. The card's reading is the lookup's (liǎo, where the sentence
+  has le): C10, parked (V10).
+- Still owed: steps 5 and 7-17 (13's “…”“…” run not found on the page looked at), and the parts of 1 and 3 above.
 
 1. **The session summary:** open a book, look up three or four words (long-press, and a tap on another word under a
    card), step with the side buttons, save one word and Undo another's save, then Home → the Home screen shows the box
