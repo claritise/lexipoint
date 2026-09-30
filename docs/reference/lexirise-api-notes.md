@@ -320,8 +320,22 @@ kept in `research/study-test/`, gitignored, never committed):
 Body: `language`, `text` (≤ 1600 characters), **`charStart` / `charEnd` from `analyze/text`**, optional
 `question` (defaults to the word's meaning). Returns `meaning` (full), `conciseMeaning` (short) and
 `reading`, which is optional: returned "when the offsets match one token". "Only the answer uses a model."
-Works like the app's Context tab. Not tested from here yet: whether it gets 四月一日 → tsuitachi,
-一枚上手 → uwate, 长得 → zhǎng.
+Works like the app's Context tab. ~~Not tested from here yet: whether it gets 四月一日 → tsuitachi,
+一枚上手 → uwate, 长得 → zhǎng.~~ **Superseded 2026-09-30:** measured, below.
+
+#### analyze/context, measured (2026-09-30, dev key, read-only)
+
+`tools/lexirise/probe_v10.py`: nine sentences written for it (raw in `research/v10/`). Every answer had `meaning`,
+`conciseMeaning` and `reading`, in 2-6 s.
+
+- **The reading is wrong where it matters:** 一日 in 四月一日 → `ichinichi` (the lookup's default, `tsuitachi`, was
+  right); 上手 in 一枚上手 → `jouzudatta`; 长 in 长得 → `cháng`. Right on the easy ones (教室 `kyoushitsu`, 长 in 这条路很长
+  `cháng`, 银行 `yínháng`).
+- **The reading is the tapped token's, inflected:** 上手だった → `jouzudatta`, 気づいた → `kidzuita`, 一日中 →
+  `ichinichijuu`. Romaji or pinyin with the dev key.
+- **The short meaning fits the sentence:** 一日 in 四月一日 "the first day of the month", 上手 in 一枚上手 "had the upper
+  hand", 长 in 长得 "to grow; to be (of appearance)", 长 in 这条路很长 "long". The lookup's first sense for 长 is "grow,
+  develop" either way.
 
 ### `morphoPending` (documented 2026-09-25)
 

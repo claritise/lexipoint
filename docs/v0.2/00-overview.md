@@ -291,7 +291,10 @@ words.
 - **Live 2026-09-25, as `POST /v1/analyze/context`** (not `words/context`). Body: `language`, `text`
   (≤ 1600 characters), and the word's **`charStart` / `charEnd` from `analyze/text`**, plus an optional
   `question`. Returns `meaning` (full), `conciseMeaning` (short) and **`reading`**, which is returned
-  "when the offsets match one token". So the reading question is answered: **yes, usually**. Option 1
+  "when the offsets match one token". ~~So the reading question is answered: **yes, usually**.~~ **Superseded
+  2026-09-30, measured:** it returned a reading every time, but the wrong one on the hard words (四月一日 `ichinichi`,
+  一枚上手 `jouzudatta`, 长得 `cháng`) and the inflected form's; its short meaning fit the sentence
+  (`../reference/lexirise-api-notes.md`, "analyze/context, measured"). V10 parked by claritise. Option 1
   (C15) stays the fallback when no reading comes back. Only the answer uses a model.
 - **It takes offsets, not the word**, so it explains whatever span we send. If the first
   `analyze/text` answer split a word wrongly (とびら), send the span from the refined second call

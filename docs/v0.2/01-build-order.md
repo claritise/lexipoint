@@ -92,8 +92,8 @@ built (2026-09-26):
 | ~~V9b~~ | ~~Above-level marks, the chapter recap, look up later (A5, A10, A11)~~ (A5 dropped, the rest parked 2026-09-29 by claritise ("i think features are getting to complex"; `page-annotations.md` §2 "Maybe later")) | C6 | — |
 | ~~V9c~~ | ~~Adaptive furigana and pinyin, the page glossary (A6, A8)~~ (parked 2026-09-29 by claritise ("i think features are getting to complex"; `page-annotations.md` §2 "Maybe later")) | C6 | — |
 | ~~V9d~~ | ~~The chapter primer, hiding the publisher's ruby (A9, A7)~~ (parked 2026-09-29 by claritise ("i think features are getting to complex"; `page-annotations.md` §2 "Maybe later")) | C6 | — |
-| V10 | The sense and reading from the sentence | C10 (`analyze/context`) | V1; placement sign-off |
-| V11 | Grammar on the card | C19 | V1; placement sign-off |
+| ~~V10~~ | ~~The sense and reading from the sentence~~ (parked 2026-09-30 by claritise, after the measurement: `analyze/context`'s reading was wrong on the hard words, its short meaning right; `../reference/lexirise-api-notes.md`, "analyze/context, measured") | C10 (`analyze/context`) | V1; placement sign-off |
+| ~~V11~~ | ~~Grammar on the card~~ (parked 2026-09-30 by claritise: Lexirise's grammar pass misses common patterns, ～ことにした still open) | C19 | V1; placement sign-off |
 | V12 | Difficulty preview | C5 | V7 |
 | — | A release (milestone) | C24 | claritise |
 | v0.3 | Reviews on the device | C11 | — |
@@ -255,12 +255,14 @@ review loop and ledger row; each lands into `main` once its loop is clean, the n
 
 ## V10: The sense and reading from the sentence
 
-C10 with `POST /v1/analyze/context`, on V1's refined offsets. **Needs:** claritise's placement sign-off, their
-decision on Open #16 (the save uses the contextual reading), and Lexirise's answer to Open #7.
+~~C10 with `POST /v1/analyze/context`, on V1's refined offsets. **Needs:** claritise's placement sign-off, their
+decision on Open #16 (the save uses the contextual reading), and Lexirise's answer to Open #7.~~ (Parked 2026-09-30 by
+claritise, after `tools/lexirise/probe_v10.py`: the endpoint's reading was wrong on 一日 in 四月一日, 上手 in 一枚上手 and
+长 in 长得, and is the inflected form's; its short meaning fit the sentence; each call took 2-6 s.)
 
 ## V11: Grammar on the card
 
-C19's grammar part, once V1 has read a live `grammar[]` (its shape is in `../reference/lexirise-api-notes.md`). Map grammar to words by its `anchors` (character spans), not `indices`: V1's merge renumbers the occurrences. **Needs:** claritise's placement sign-off.
+~~C19's grammar part, once V1 has read a live `grammar[]` (its shape is in `../reference/lexirise-api-notes.md`). Map grammar to words by its `anchors` (character spans), not `indices`: V1's merge renumbers the occurrences. **Needs:** claritise's placement sign-off.~~ (Parked 2026-09-30 by claritise.)
 
 ## V12: Difficulty preview
 
@@ -288,6 +290,6 @@ C5, on V7's page analysis and mirror.
 | V9c | **parked** (2026-09-29, claritise, with V9b; no design) | — | — | — |
 | V9d | **parked** (2026-09-29, claritise, with V9b; no design) | — | — | — |
 | fix-dzu | **done (host); device check owed** (landed 2026-09-30 after 68 review rounds, the last two clean; from claritise's 2026-09-29 device session: the reading line's tap drew the same text both ways; device checks: `../v0.1/device-checks.md` "Fixes after the 2026-09-29 session") | merged into `main` (wip on `lexi/fix-dzu-wip-archive`, local) | 1455 host (`ctest --test-dir build/test`), 236 Python; card goldens unchanged (25 match); cppcheck clean; `x4pro`, `x4pro-gh_release` build | What and how: `../v0.1/languages.md` §3a (superseded 2026-09-29: kana answers read back as romaji, `dzu` → づ); the dev build's tap lines and `lxctl reading-smoke`: `../v0.1/dev-harness.md` §3. Review rounds: the landing commit's message. |
-| V10 | not started | — | — | — |
-| V11 | not started | — | — | — |
+| V10 | **parked** (2026-09-30, claritise; measured first: `tools/lexirise/probe_v10.py`) | — | — | — |
+| V11 | **parked** (2026-09-30, claritise) | — | — | — |
 | V12 | not started | — | — | — |
