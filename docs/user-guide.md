@@ -100,11 +100,21 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
   Examples, Context, Kanji or Characters, Form, ⋯). Swipe left or right on it to change tabs; swipe down to
   go back.
 - **Next and previous word:** the side page buttons step through the sentence while the card is open, and
-  on into the page's next sentence at its end.
+  on into the page's next sentence at its end. On a page with marks they step between the marked words only, and
+  stop after the page's last one. Settings → System → Lexirise → *Side buttons on a card* → *Every word* steps every
+  word.
 - **Readings:** tap the reading line (Japanese) to switch kana ⇄ romaji; it's remembered.
 - **Another word:** tap it (or long-press it) on the page while the card is open.
+- **Ignore a word:** in the detail view (see **More** above), the ⋯ tab → **Ignore this word** stops marking it on
+  the page. It stays on the reader only: nothing changes in your Lexirise account.
 - **Close:** ✕, Home, the Back swipe from the left edge, swipe down on the card, or tap the page away from
   the words. You're back on the page you were reading.
+
+**Marks on the page:** on a page Lexirise has analyzed, words you haven't saved are underlined solid, and tracked
+or learning words dotted. Pages are analyzed as you read, only while WiFi is already on (a lookup turned it on), and
+stay marked offline afterwards. **Sync Vocabulary** on the Home screen brings your Lexirise words over, so the marks
+know what you've saved elsewhere. Turn marks off for one book with the reader menu's **Page marks**, or everywhere
+with Settings → System → Lexirise → *Mark words on the page*.
 
 Languages: a book's `<dc:language>` decides; a book that doesn't say is read by its text (kana means
 Japanese; Han-only text uses **Language when a book doesn't say**, or, with Lexirise lookups on, the only
@@ -121,10 +131,12 @@ language** to that book's language; it's remembered for that book (Auto goes bac
 | Japanese | Lookups · Readings (kana / romaji) · Offline dictionary | |
 | Chinese (Simplified) | Lookups · Offline dictionary | |
 | General | Language when a book doesn't say (unless Lexirise is on with just one language on) · Tags · Tag with book title · Deck per book · Keep WiFi on after a lookup | |
+| On the page | Mark words on the page · Side buttons on a card (Marked words / Every word) | §5 |
 
 A language's rows hide while its Lookups are off (its Offline dictionary stays: it answers that language's
 taps then), and come back with their values. With Lexirise lookups off, the screen keeps the Account group,
-both Offline dictionaries and Language when a book doesn't say. **Tags** are added to
+both Offline dictionaries and Language when a book doesn't say. *Side buttons on a card* shows while *Mark words on
+the page* is on. **Tags** are added to
 every word you save (default `xteink`); Lexirise can't delete tags, so choose them with care. **Tag with book
 title** (on by default) also tags each word with its book, `book:` and the title in plain letters (a Japanese or
 Chinese title becomes a short code, like `book:h98593b64`), so you can find a book's words in Lexirise. **Deck per book** (on by default, shown while Tag with book title

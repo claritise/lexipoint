@@ -652,7 +652,9 @@ Do not run raw `clang-format` or probe it with `command -v`; use the wrapper eve
 
 Lexipoint's workflow is in the repo's `docs/v0.1/01-build-order.md` ("How to run"): one repo
 (`claritise/lexipoint`) holding `firmware/`, `docs/` and `tools/`; each phase on a `lexi/<phase-id>` branch,
-reviewed until clean, squashed and merged into `main` with its ledger row. Never push without the owner's OK.
+reviewed until clean, squashed and merged into `main` with its ledger row. ~~Never push without the owner's OK.~~
+**Superseded 2026-09-27** (the repo's `docs/v0.2/01-build-order.md`, "How to run this document"): `main` is pushed
+after each landing and docs commit; releases and tags need the owner's OK.
 The repo is public: never commit API keys, account IDs or raw API responses (`scripts/lexipoint/keyscan.py`
 checks every tracked file).
 

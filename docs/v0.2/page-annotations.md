@@ -479,7 +479,7 @@ keeps a copy of their vocabulary on the SD card, read-only from their account):
   Home press made and released during a page is likely lost** (unmeasured): the touch controller is only read by the
   loop's input update, which the page blocks, as the side buttons were before the cancel (`../v0.1/device-checks.md`);
   one still held when the page ends is seen after it.~~ (Superseded 2026-09-28 by V7b: a finger on the screen gives a
-  page up too, `HalGPIO::rawTouchActive` OR'd into the cancel, and the cancel is asked in every wait of the call, not
+  page up too, ~~`HalGPIO::rawTouchActive`~~ `HalGPIO::rawTouchLevel` via `input::TouchLine` (corrected 2026-09-30) OR'd into the cancel, and the cancel is asked in every wait of the call, not
   only as body bytes arrive: §1.1 "As built (V7b)"; whether a quick tap is always seen is a device check.) Not while reading without a card: a page blocks the loop (a few
   seconds: the device check times it), which a page turn mustn't wait on. No new setting.
 - **The file is read and written only on an idle card** (~~`CardSession::shouldFlushMirror`~~ `CardSession::shouldFlushFiles` since V7c, with the lemma cache's answers,
@@ -860,8 +860,8 @@ only if claritise asks, with a fresh design and sign-off. This is the list's one
 
 | Needs | For | Status |
 |---|---|---|
-| Page analysis (§1.1) | Everything | ~~Not built. v0.1 analyzes per sentence; V7b designed (§1.1 "V7b design", 2026-09-28)~~ V7b built on the host (2026-09-28; device checks owed) |
-| Vocab mirror (§1.2) | Offline marks, A4, A5, immediate updates after a save | ~~Not built~~ ~~V7a (in progress, 2026-09-28)~~ V7a done on the host (landed 2026-09-28; device check owed) |
+| Page analysis (§1.1) | Everything | ~~Not built. v0.1 analyzes per sentence; V7b designed (§1.1 "V7b design", 2026-09-28)~~ V7b built on the host (2026-09-28; ~~device checks owed~~ device check partly run 2026-09-29, `../v0.1/device-checks.md`; the rest owed) |
+| Vocab mirror (§1.2) | Offline marks, A4, A5, immediate updates after a save | ~~Not built~~ ~~V7a (in progress, 2026-09-28)~~ V7a done on the host (landed 2026-09-28; ~~device check owed~~ device check partly run 2026-09-29, `../v0.1/device-checks.md`; the rest owed) |
 | **Kana readings** | A6 for Japanese, A8 readings | ~~**Solved:** converted on the device~~ **Superseded 2026-09-29:** solved, kana either way: Lexirise's kana is kept, its romaji converted on the device (`../v0.1/languages.md` §3a). Chinese pinyin works as is |
 | `analyze/text` maximum text length | Page analysis in one request, and A9 | **No limit hit up to 20k chars** (tested). ~~~70 bytes of response per character, so ~20 KB per page~~ (Superseded 2026-09-28: ~200–310 B per UTF-16 unit, 76–93 KB a page, `../reference/lexirise-api-notes.md` "Page analysis (V7b), measured") |
 | Whether analyze bumps `seen_count` | Whether prefetching inflates your stats | **Tested: it doesn't.** Prefetching is safe |
@@ -871,18 +871,18 @@ only if claritise asks, with a fresh design and sign-off. This is the list's one
 
 1. **Page analysis + cache + prefetch.** Lookups get faster straight away. That alone is worth shipping.
 2. **Vocab mirror.**
-3. **A2 page stats** (no drawing, proves the data path).
-4. **A1 marks + A4 seen-again** (the overlay drawing path, span → glyph mapping).
+3. ~~**A2 page stats** (no drawing, proves the data path).~~ (Superseded 2026-09-29: A2 draws nothing, §2's A2 row and "V9a decisions"; the page's numbers left to C5 / V12)
+4. **A1 marks** ~~**+ A4 seen-again**~~ (A4 dropped 2026-09-29: §2's A4 row, "V9a decisions") (the overlay drawing path, span → glyph mapping).
 5. **A3 skip to unknown.**
-6. **A5 above-level.**
-7. **A10 recap, A11 look up later** (lists, no inline drawing).
-8. **A6 furigana**, then **A8 glossary**.
-9. **A9 primer**, then **A7 publisher-ruby hiding** (the most invasive).
+6. ~~**A5 above-level.**~~ (dropped/parked 2026-09-29, §2 'Maybe later')
+7. ~~**A10 recap, A11 look up later** (lists, no inline drawing).~~ (dropped/parked 2026-09-29, §2 'Maybe later')
+8. ~~**A6 furigana**, then **A8 glossary**.~~ (dropped/parked 2026-09-29, §2 'Maybe later')
+9. ~~**A9 primer**, then **A7 publisher-ruby hiding** (the most invasive).~~ (dropped/parked 2026-09-29, §2 'Maybe later')
 
 Each step gets a bench phase (a static page plus recorded analysis) before it touches the network,
 the same pattern as the v0.1 card.
 
-**V9 (2026-09-29):** steps 3–9 are built as V9a–V9d, in this order (`01-build-order.md` V9). ~~V9a's design (A1, A2, A3,
+**V9 (2026-09-29):** ~~steps 3–9 are built as V9a–V9d, in this order~~ (Superseded 2026-09-29: V9a built, V9b–V9d parked) (`01-build-order.md` V9). ~~V9a's design (A1, A2, A3,
 A4), with the changes to §2 it proposes (what counts as new, A4's meaning, where the settings live), awaits claritise's
 sign-off: `reference/v9a-annotations.html`. §2 changes only once they've signed off.~~ (Signed off 2026-09-29: §2
 "V9a decisions"; V9a is A1 and A3.) ~~V9b's design (A5 measured, A10 and A11 as one list) awaits claritise's sign-off: §2 "V9b

@@ -24,10 +24,10 @@ v0.2 V8, `../v0.2/slimming.md` §8; the pattern Lexirise copied stays.)
 
 | Piece | What it is |
 |---|---|
-| `LexiriseSettings` store (`src/lexirise/LexiriseSettings.{h,cpp}`) | Owns `/.lexirise/config.ini`. It loads at boot and saves **atomically** (write `config.ini.tmp`, then rename). It replaces the separate `LexiriseConfig` reader and `state.ini`: **one file holds everything**, including the kana/romaji choice |
+| ~~`LexiriseSettings` store (`src/lexirise/LexiriseSettings.{h,cpp}`)~~ `settings/Settings` + `settings/SettingsStore` (corrected 2026-09-30) | Owns `/.lexirise/config.ini`. It loads at boot and saves **atomically** (~~write `config.ini.tmp`, then rename~~ through `settings/SafeFile`: `config.ini.tmp` and `config.ini.bak`, `LexiriseConfig.h`, corrected 2026-09-30). It replaces the separate `LexiriseConfig` reader and `state.ini`: **one file holds everything**, including the kana/romaji choice |
 | Device entry | System tab → **`Lexirise`** row (`SettingType::ACTION`, new `SettingAction::Lexirise`) → `LexiriseSettingsActivity` (`UiListActivity`), same as ~~`KOReaderSync`~~ (superseded 2026-09-29: KOReader Sync went in v0.2 V8) the other System rows |
-| **Web page (revised 2026-09-24, claritise)** | **Its own page in the web UI menu: Home · Files · Fonts · Settings · Lexirise.** It's served by the same web server used to upload books (file transfer / network mode), and it's where the API key is pasted. It's modelled on the Fonts page (`FontsPage.html` + `/api/fonts*`): `LexirisePage.html` at `/lexirise`, plus `/api/lexirise` (GET: masked settings and status; POST: save) and `/api/lexirise/test` (POST: runs `/v1/me`). **Lexirise entries are not added to the generic Settings page**, so there's one place for them, and no `SettingsList.h` web entries |
-| Hooks in base files | `SettingsList.h` (the one ACTION row), `SettingsActivity.{h,cpp}` (the `SettingAction` value and its dispatch), `CrossPointWebServer.cpp` (register the `/lexirise` routes, delegating to `src/lexirise/LexiriseWeb.cpp`), **one `Lexirise` link in the menu of each of the 4 existing pages** (`HomePage`, `FilesPage`, `FontsPage`, `SettingsPage`), and `I18n` strings. All marked `// LEXIPOINT:` / `<!-- LEXIPOINT -->` (`firmware-base.md` §3) |
+| **Web page (revised 2026-09-24, claritise)** | **Its own page in the web UI menu: ~~Home · Files · Fonts · Settings · Lexirise~~ Home · File Manager · Settings · Fonts · Lexirise (corrected 2026-09-30).** It's served by the same web server used to upload books (file transfer / network mode), and it's where the API key is pasted. It's modelled on the Fonts page (`FontsPage.html` + `/api/fonts*`): `LexirisePage.html` at `/lexirise`, plus `/api/lexirise` (GET: masked settings and status; POST: save) and `/api/lexirise/test` (POST: runs `/v1/me`). **Lexirise entries are not added to the generic Settings page**, so there's one place for them, and no `SettingsList.h` web entries |
+| Hooks in base files | ~~`SettingsList.h` (the one ACTION row)~~ `SettingsList.h` (Long-press Menu without Dictionary; the `Lexirise` ACTION row is appended in `SettingsActivity.cpp`, `firmware-base.md` §3; corrected 2026-09-30), `SettingsActivity.{h,cpp}` (the `SettingAction` value and its dispatch), `CrossPointWebServer.cpp` (register the `/lexirise` routes, delegating to ~~`src/lexirise/LexiriseWeb.cpp`~~ `src/lexirise/web/LexiriseWeb.cpp` (corrected 2026-09-30)), ~~**one `Lexirise` link in the menu of each of the 4 existing pages**~~ **one `<script src="/lexirise/nav.js">` on each existing page, which adds the `Lexirise` link to its menu** (`web/LexiriseNav.js`, corrected 2026-09-30) (`HomePage`, `FilesPage`, `FontsPage`, `SettingsPage`), and `I18n` strings. All marked `// LEXIPOINT:` / `<!-- LEXIPOINT -->` (`firmware-base.md` §3) |
 
 ## 1. The settings (v0.1)
 
@@ -54,8 +54,10 @@ v0.2 V8, `../v0.2/slimming.md` §8; the pattern Lexirise copied stays.)
 **Grouping rule (claritise, 2026-09-24):** anything that belongs to one language goes in **that
 language's group**. A new language (e.g. Korean, or Traditional Chinese once H8 is picked up) adds
 its own group, with the same rows where they apply. Only settings that span languages go in
-**General**. On the web page the groups are sub-sections of **Lexirise** (categories
-`STR_LEXIRISE`, `STR_LEXIRISE_JA`, `STR_LEXIRISE_ZH`), in the same order.
+**General**. On the web page the groups are sub-sections of **Lexirise** (~~categories
+`STR_LEXIRISE`, `STR_LEXIRISE_JA`, `STR_LEXIRISE_ZH`~~ the page's own cards in `web/LexirisePage.html`; the
+device's headings are `STR_LEXI_SET_ACCOUNT`, `STR_LEXI_SET_JAPANESE`, `STR_LEXI_SET_CHINESE`, `STR_LEXI_SET_GENERAL`
+and `STR_LEXI_SET_ON_THE_PAGE`, corrected 2026-09-30), in the same order.
 
 **A language's rows only show while it's on (claritise, 2026-09-24).** When a language's
 **Lookups** is Off, its group collapses to that one toggle. Turning it back on brings its rows back,
@@ -91,9 +93,11 @@ take lookups away from the common case to protect a rare one that a book's Looku
 **Deliberately not settings:** anything about the card's look or layout (it's binding,
 `popup-ui.md`), the level saved by a tap (you pick it every time with T L F K), and timeouts.
 
-**Added later, hidden until built** (each ships with its feature, never as a dead toggle):
+~~**Added later, hidden until built** (each ships with its feature, never as a dead toggle):
 `Page marks` and the other annotation toggles
-(`../v0.2/page-annotations.md`), and `Skip to unknown words` (A3).
+(`../v0.2/page-annotations.md`), and `Skip to unknown words` (A3).~~ **Superseded 2026-09-29, V9a:** built as §1's
+*On the page* rows and the reader menu's **Page marks**; the other annotations are parked
+(`../v0.2/page-annotations.md` §2 'Maybe later').
 
 ## 1a. The web page (`/lexirise`)
 
@@ -101,7 +105,7 @@ Open it from any browser on the same WiFi, while the device is in file transfer 
 same URL shown for uploading books).
 
 ```
- Home · Files · Fonts · Settings · [Lexirise]
+ Home · File Manager · Settings · Fonts · [Lexirise]      (corrected 2026-09-30)
  ───────────────────────────────────────────────
  Lexirise                                  ● Connected as claritise (Pro)
  API key   [ Paste your lx_… key          ] [Save]
@@ -119,6 +123,9 @@ same URL shown for uploading books).
    Tag with book title       [on]
    Deck per book             [on]    (hidden while Tag with book title is off)
    Keep WiFi on after a lookup        5 min ▾
+ On the page                                            (added 2026-09-30, V9a)
+   Mark words on the page    [on]
+   Side buttons on a card    Marked words ▾   (hidden while Mark words on the page is off)
  Advanced ▸  Server  [ https://api.lexirise.app ]
 ```
 

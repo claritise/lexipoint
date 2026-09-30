@@ -29,7 +29,7 @@ One command per line on the USB serial port (115200), prefixed `LX:`. Replies ar
 | `LX:TAP x y` | Down → held (120 ms) → tap + release, over 3 frames | `LX:OK TAP` (queued, not yet delivered: use `SYNC`) |
 | `LX:LONG x y` | Down → held → long-press (800 ms) → **tap + release**, over 4 frames. Like the SDK, an unconsumed long-press taps on lift, and a screen that consumes it suppresses that tap | `LX:OK LONG` |
 | `LX:SWIPE x1 y1 x2 y2` | Down → held **at the end point, moved** (not a tap candidate, so no touch-down fires at the start) → swipe + release, over 3 frames | `LX:OK SWIPE` |
-| `LX:BTN LEFT\|RIGHT\|POWER [ms]` | Holds a page key (LEFT = previous, RIGHT = next) or Power for `ms` (default 150, clamped 120–5000, and at least 3 input updates) | `LX:OK BTN`, or `LX:ERR button busy` while a previous press is still held |
+| `LX:BTN LEFT\|RIGHT\|POWER [ms]` | Holds a page key (LEFT = previous, RIGHT = next; `PREV` and `NEXT` are taken too) or Power for `ms` (default 150, clamped 120–5000, and at least 3 input updates) | `LX:OK BTN`, or `LX:ERR button busy` while a previous press is still held |
 | `LX:HOME` / `LX:HOME HOLD` | Capacitive Home tap / long-press | `LX:OK HOME` |
 | `LX:SYNC` | Waits until queued input is delivered, buttons are released and no render has run for 3 polls | `LX:OK SYNC` (or `LX:ERR SYNC timeout` after 15 s) |
 | `LX:SHOT` | Raw framebuffer, read **under the render lock** (never torn) | `LX:SHOT <bytes> <w> <h> <crc32>`, then the raw bytes, a newline, then `LX:OK SHOT` (or `LX:ERR SHOT short write`) |
@@ -37,6 +37,11 @@ One command per line on the USB serial port (115200), prefixed `LX:`. Replies ar
 | `LX:SELFTEST` | Round-trips a grid of points through the real `tapToLogical()` | `LX:SELFTEST coords checked=… failed=…`, then OK/ERR |
 | `LX:AWAKE 0\|1\|2` | Keep-awake mode: 0 = off, 1 = always, **2 = lease (default)**: while **a USB host is on the line** (`HWCDC::isPlugged()`, false on battery or a charger) and has sent a command in the last **10 minutes** (the lease also starts at boot), the device skips power saving and auto-sleep. Log chatter doesn't renew it | `LX:OK AWAKE` |
 | `LX:REBOOT` | `ESP.restart()`, after waiting for any render to finish | `LX:OK REBOOT` |
+| `LX:LEXI ME` | (P1) Checks the key with `/v1/me`, blocking the loop | `LX:LEXI me <key state> <error> stack_free=…` (never the account's name or plan), then `LX:OK LEXI` |
+| `LX:LEXI ANALYZE ja\|zh` | (P1) One `analyze/text` call on a built-in sample sentence | `LX:LEXI analyze 0 <error> status=… occ=… parsed=… ms=… heap_free=… heap_maxalloc=… stack_free=…`, one `LX:LEXI occ …` line per occurrence, then `LX:OK LEXI` |
+| `LX:LEXI SOAK n [COLD]` | (P1) `n` Japanese analyze calls in a row (at most `config::kLexiSoakMax`); `COLD` gives WiFi back after each, so each pays a join and a new TLS session | one `LX:LEXI analyze <i> …` line per call, then `LX:OK LEXI` |
+| `LX:LEXI CARD ja\|zh [LOW] [KANA]` | (P4) Opens the card bench over the current screen (`firmware-base.md` §3's `DevHarness.cpp` row) | `LX:OK LEXI` |
+| `LX:LEXI SETTINGS` | (P7) Opens Settings → System → Lexirise over the current screen | `LX:OK LEXI` |
 
 - **Coordinates are logical screen pixels** (portrait 480×800 by default), the same space the UI
   draws in. They're converted to panel-native normalised coordinates by `DevCoords.h`, the exact
@@ -73,7 +78,9 @@ One command per line on the USB serial port (115200), prefixed `LX:`. Replies ar
 
 Needs `pyserial`. Examples: `lxctl.py ping`, `lxctl.py tap 240 400`, `lxctl.py swipe 240 600 240 200`,
 `lxctl.py btn next`, `lxctl.py home`, `lxctl.py shot out.png`, `lxctl.py log 10`,
-`lxctl.py wait "Entering activity: Home" 15`. ~~Opening the port leaves DTR/RTS low, since toggling them
+`lxctl.py wait "Entering activity: Home" 15`. `lxctl.py lexi me | analyze ja|zh | soak [n] [cold] | card ja|zh
+[low] | settings` sends the `LX:LEXI` commands (§1; `soak` also sums the calls up and fails on a heap that trends
+down). ~~Opening the port leaves DTR/RTS low, since toggling them
 resets the ESP32-S3.~~ **Superseded 2026-09-27** (`device-checks.md`, "2026-09-27, `main` @ `42bce33c`"): lxctl
 still sets DTR/RTS low before opening, but on claritise's Mac **opening the port resets the reader anyway** (the ROM
 prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
@@ -118,15 +125,16 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
 ## 4. Tests
 
 - `test/lexirise_dev_coords/`: every pixel, all four orientations, round-trips against a reference
-  copy of `tapToLogical()` (5 tests).
+  copy of `tapToLogical()` ~~(5 tests)~~ (corrected 2026-09-30: run by the host tests, `firmware-base.md` §2).
 - `test/lexirise_dev/`: the parser and line assembly (boundaries, malformed input, legacy command),
   gesture frame sequences and the all-or-nothing queue, the overlay (one-frame promotion, every query's
   mapping, the suppress latch, the held-time latch including suppressed releases, moved fingers), and
-  timing (the lease incl. no-host and millis() wrap, button presses incl. the min-samples floor and busy) (39 tests).
+  timing (the lease incl. no-host and millis() wrap, button presses incl. the min-samples floor and busy) ~~(39 tests)~~ (corrected 2026-09-30: run by the host
+  tests, `firmware-base.md` §2).
 - `scripts/lexipoint/test_lxctl.py` (`cd firmware && python3 -m unittest discover -s scripts/lexipoint`): PNG rotation,
   reply matching against a fake serial port (log noise, stale replies, errors, CRC mismatch, short write),
   and a **release guard** that follows `extends` and `build_src_flags`: no `*release*` env defines the
-  harness, a synthetic sneaky env is caught, and no built release binary contains it (11 tests).
+  harness, a synthetic sneaky env is caught, and no built release binary contains it ~~(11 tests)~~ (corrected 2026-09-30: the command above runs them).
 - `lxctl.py smoke`: an on-device end-to-end check using only theme-independent gestures: ping, selftest, mem,
   Home, a **top-edge swipe** into the frontlight panel, a **left-edge swipe** back, a page key. Screenshots
   after each step, exits non-zero on the first failure.

@@ -34,7 +34,8 @@ lexipoint/                   github.com/claritise/lexipoint (public)
     platformio.ini, src/, lib/, test/, scripts/, bin/, .githooks/, docs/ (CrossPoint's technical docs)
     freeink-sdk/             the SDK (submodule)
   docs/                      these docs
-  tools/                     tools that run on a computer (the manga converter, `../v0.2/manga.md`)
+  tools/                     tools that run on a computer: the manga converter (`../v0.2/manga.md`), Lexirise API
+                             probes, design mockups
   research/                  gitignored local workspace: leave it alone, never `git clean -x`
   sd-card/                   gitignored SD-card staging area
 ```
@@ -137,7 +138,8 @@ src/lexirise/
   ota/ReleaseVersion                  `<base>-lexi.<n>` versions, which release OTA offers (P8), pure
   lookup/StarDictChoice.h             each language's own offline dictionary (P7), pure
   settings/SafeFile                   crash-safe replace and recovery of a small SD file (config.ini, books.ini; P9;
-                                      book-tags.ini, V2; decks.ini, V3)
+                                      book-tags.ini, V2; decks.ini, V3; ignored.ini, V5; vocab-<lang>.bin, V7a;
+                                      pages/index.bin, V7b; marks-off.ini, V9a)
   settings/BookLanguages              each book's lookup language, books.ini, the reader menu's row (P9), pure + store
   settings/LanguageNames.h            a language's name on screen (settings groups, the menu row; P9)
   settings/LongPressMenu.h            Long-press Menu's choices without Dictionary (P10), pure
@@ -145,6 +147,29 @@ src/lexirise/
   settings/BookTags                   the tags a save carries, and each book tag's title, book-tags.ini (V2), pure + store
   deck/BookDeck                       a Lexirise deck per book: DeckFlow, findBookDeck, decks.ini (V3), pure + store
   text/Conjugation                    a Japanese form's name and steps from its dictionary form (V4, C16), pure
+  net/Wait.h                          blocking network waits on the main loop feed the task watchdog (P1)
+  text/CharClass.h                    character classes for the sentence builder and language detection (P2), pure
+  api/LexiriseApi.h                   the calls a lookup and the card's saves make, as an interface (P3)
+  card/BenchFixtures, BenchPage       the card bench's data and the page under it (P4), pure
+  card/CardOrientation.h              the orientation the card is drawn in (P4), pure
+  lookup/WholeWords                   whole words for a sentence Lexirise returned already refined (V1), pure
+  settings/IgnoredWords               the words the reader ignored, ignored.ini (V5, C17), pure + store
+  vocab/VocabMirror                   the vocab mirror: the user's Lexirise words on SD, vocab-<lang>.bin (V7a, C13)
+  api/VocabPage                       one page of GET /v1/vocabulary, read as it streams (V7a), pure
+  net/JsonStream                      a push JSON reader for bodies too large to hold (V7a), pure
+  api/JsonNumbers.h                   JSON numbers in Lexirise's answers, read strictly (V7b), pure
+  lookup/LookupCache                  the lemma cache: phase B's answers on SD (V7c, C21)
+  net/TlsSession.h                    TLS session resumption's policy, in RAM only (V7c, C21), pure
+  ota/ReleaseAsset.h                  the firmware asset's name in a release (V8), pure
+  settings/BookMarks                  each book's Page marks row, marks-off.ini (V9a), pure + store
+  page/PageMarks                      the page marks: which word gets which underline, and where (V9a, A1), pure
+  page/ReaderMarks                    the reader's side of the marks: the device's sources and the drawing (V9a, device)
+  page/MarkKeeper                     everything ReaderMarks does but drawing (V9a), host-compiled
+  page/MarkSlots                      the analyses kept for the pages around the one on screen (V9a), pure
+  page/MarkGate.h                     which kept page to read next, where a written page is kept (V9a), pure
+  page/MarkRule.h                     the one rule for a word's mark at its level, shared with A3 (V9a), pure
+  page/MarkVisibility.h               which books show marks, and A3's switch (V9a), pure
+  page/CardMarks.h                    the page under a card, marked once per what decides its marks (V9a), pure
 src/activities/reader/WordBoxes.h     (CrossPoint's folder, ours) word select's word boxes and hit rule, shared with the
                                       reader's long-press check (P9), pure
 test/lexirise_*/                host gtest suites
@@ -179,7 +204,7 @@ is history.
 | `src/activities/reader/ReaderUtils.h` | **Not gated:** `pageTurnZoneWidth(width)` (the outer thirds) pulled out of `detectTouchPageTurn`, so the long-press rule shares it. Same behaviour |
 | `src/activities/reader/EpubReaderActivity.{h,cpp}` | (P2) pass the book's `<dc:language>` to word select. (P3) touch long-press → word select at that point, before link taps, owning the centre third only when CrossPoint's hold action is on (`lookup::lookupOwnsLongPress`); word select opens without a StarDict dictionary when Lexirise is set up (P6: `lookup::lexiriseConfigured`, settings only, not a rate limit's back-off), or when a language has its own (P7: `lookup::anyStarDict`). (P9) a long-press is taken only on a word (`pageWithWordAt`, under the render lock; the page it loaded goes to word select), logged `[LXLP]` for `lxctl reader-longpress`; (P10) off the text in the lookup's zone it's consumed and dropped (`lookup::longPressUse` → `Ignore`, `consumes()`, logged `ignored`); the book language comes with the book's menu choice (`lookup::bookLanguageFor`); the More panel's Lookup language row (`moreBookLanguage`). (V2) word select also gets the book's title and path (`setBook`), for its book tag. **Not gated:** `openReaderMenu()` builds the menu before starting it (to give it the book), `wordSelectOrigin()` (CrossPoint's margin sum, shared), and `openDictionaryWordSelect()`'s optional `page`. (V7b) `loop()` calls `lexiPages.step(...)` (`page::ReaderPages`, a member) ~~after the idle prewarm~~ (V7c: after the partial build's start, so a build it starts is busy first), with the debounced touch state: this page's and the next page's analysis over WiFi already up; `renderBook()` records the page it drew (`lexiDrawn`); (R8) `buildTickDue()` is `skipLoopDelay()`'s predicate, shared with the page analysis (not gated); word select gets the section (`setSpine`) (V9a) `renderContents()` draws the page's marks over the black-and-white page (`page::readerMarks().draw`, after `page->render`, before the status bar); the list menu's result and the More panel's `PAGE_MARKS` row set `readerMarks().setBookOn`; `moreBookMarks` (V9a R2-R4) `loadBook()` opens the marks for the book (`readerMarks().open(path, dcLanguage)`, before the first page); the list menu's callback reopens them when the book's Lookup language changed (`lookupLanguageAtMenu`, kept as the menu opens) and sets the Page marks row (`setBookOn`); the More panel's `LOOKUP_LANGUAGE` reopens them and its `PAGE_MARKS` row sets `setBookOn`; `onReaderMenuConfirm`'s `case PAGE_MARKS` (handled in place, like Lookup language); word select is given the page's index (`setPageIndex`) |
 | `src/activities/settings/SettingsActivity.{h,cpp}` | (P7) `SettingAction::Lexirise`, the System tab's `Lexirise` row (the device-only ACTION rows are appended here, not in `SettingsList.h`), and its dispatch to `LexiriseSettingsActivity` |
-| `lib/I18n/translations/english.yaml` | **No marker (YAML):** the `STR_LEXI_*` keys, one block after `STR_DICT_LOW_MEMORY` (the notices, then `STR_LEXI_CARD_*` for every card word, P6). (P7) `STR_LEXIRISE` and `STR_LEXI_SET_*` for the settings screen. (P9) `STR_LEXI_CARD_NEXT_SENTENCE_FAILED`, `STR_LEXI_BOOK_LANGUAGE(_AUTO)`. (V2) `STR_LEXI_SET_TAG_BOOK`. (V3) `STR_LEXI_SET_DECK_PER_BOOK`. (M) `STR_LEXIPOINT` ("Lexipoint"); `STR_LEXI_SET_SAME_AS_CROSSPOINT` became `STR_LEXI_SET_SAME_AS_READER`, "Same as reader" (H13's default, until claritise signs it off). Other languages fall back to English. `scripts/lexipoint/test_card_strings.py` checks them against `CardStrings`; re-check when taking a CrossPoint change (gen_i18n.py rejects comments in the file). (V4) `STR_LEXI_CARD_DICTIONARY_FORM`. (V9a) `STR_LEXI_SET_ON_THE_PAGE`, `STR_LEXI_SET_MARK_WORDS`, `STR_LEXI_SET_STEP_MARKED`, `STR_LEXI_SET_MARKED_WORDS`, `STR_LEXI_SET_EVERY_WORD`, `STR_LEXI_PAGE_MARKS` |
+| `lib/I18n/translations/english.yaml` | **No marker (YAML):** the `STR_LEXI_*` keys, one block after `STR_DICT_LOW_MEMORY` (the notices, then `STR_LEXI_CARD_*` for every card word, P6). (P7) `STR_LEXIRISE` and `STR_LEXI_SET_*` for the settings screen. (P9) `STR_LEXI_CARD_NEXT_SENTENCE_FAILED`, `STR_LEXI_BOOK_LANGUAGE(_AUTO)`. (V2) `STR_LEXI_SET_TAG_BOOK`. (V3) `STR_LEXI_SET_DECK_PER_BOOK`. (M) `STR_LEXIPOINT` ("Lexipoint"); `STR_LEXI_SET_SAME_AS_CROSSPOINT` became `STR_LEXI_SET_SAME_AS_READER`, "Same as reader" (H13's default, until claritise signs it off). Other languages fall back to English. `scripts/lexipoint/test_card_strings.py` checks them against `CardStrings`; re-check when taking a CrossPoint change (gen_i18n.py rejects comments in the file). (V4) `STR_LEXI_CARD_DICTIONARY_FORM`. (V5) none: Ignore uses P6's `STR_LEXI_CARD_ACTIONS_1` and `STR_LEXI_CARD_ACTION_DONE_1`. (V7b) `STR_LEXI_SYNC_VOCABULARY`, `STR_LEXI_SYNCING_VOCABULARY`, `STR_LEXI_VOCABULARY_UP_TO_DATE`, `STR_LEXI_VOCABULARY_SYNCED(_ONE)`, `STR_LEXI_SYNC_NO_WIFI`, `STR_LEXI_SYNC_FAILED`, `STR_LEXI_SYNC_STOPPED`. (V9a) `STR_LEXI_SET_ON_THE_PAGE`, `STR_LEXI_SET_MARK_WORDS`, `STR_LEXI_SET_STEP_MARKED`, `STR_LEXI_SET_MARKED_WORDS`, `STR_LEXI_SET_EVERY_WORD`, `STR_LEXI_PAGE_MARKS` |
 | `src/activities/boot_sleep/BootActivity.cpp`, `SleepActivity.cpp` | (M) The boot screen and the default sleep screen draw `STR_LEXIPOINT` under the logo, where CrossPoint draws `STR_CROSSPOINT` (D22). CrossPoint's logo stays |
 | `src/activities/network/CrossPointWebServerActivity.cpp`, ~~`CalibreConnectActivity.cpp`~~ (removed in V8), `WifiSelectionActivity.cpp` | (M) The product's name on the network (D22): File Transfer's hotspot SSID is `config::kHotspotSsid` ("Lexipoint", CrossPoint's is "CrossPoint-Reader"), the mDNS hostname `config::kMdnsHostname` (`lexipoint.local`, CrossPoint's is `crosspoint.local`), and the name routers list, `config::kDhcpHostnamePrefix` + the MAC ("Lexipoint-AABBCCDDEEFF", CrossPoint's is "CrossPoint-Reader-…"). `test_rebrand.py` checks each file uses them. ~~The calibre plugin's name and its discovery reply are unchanged~~ (Superseded 2026-09-29: Calibre and its discovery reply removed in V8) |
 | `src/network/OtaUpdater.cpp` | (P8) OTA reads **Lexipoint's** releases (`config::kReleasesLatestUrl`) and `isUpdateNewer()` compares `<base>-lexi.<n>` versions (`ota::isNewerRelease`, §6). (M) The asset it looks for is `lexipoint-<tag>-x4pro.bin` (~~`config::kReleaseAssetPrefix`~~ (V8 R7) named by `lexirise/ota/ReleaseAsset.h`, `kReleaseAssetPrefix` + tag + `kReleaseAssetSuffix` in a `kReleaseAssetNameBytes` buffer; a tag too long for it means no update; CrossPoint's is `crosspoint-<tag>-x4pro.bin`) |

@@ -205,8 +205,8 @@ the tap lines).
 
 ## v0.2 V9a: still owed on the device
 
-V9a (the page marks and A3: `../v0.2/page-annotations.md` §2 "V9a decisions" and "As built (V9a)") is on `lexi/V9`,
-not yet run on the device. A Japanese and a Chinese book, a key, a vocabulary with a few saved words at each level.
+V9a (the page marks and A3: `../v0.2/page-annotations.md` §2 "V9a decisions" and "As built (V9a)") ~~is on `lexi/V9`,
+not yet run on the device.~~ is on `main`; partly run 2026-09-29 (the session above); still owed: A Japanese and a Chinese book, a key, a vocabulary with a few saved words at each level.
 
 - **Marks on an analyzed page:** open a card (WiFi up), close it, read on at a normal pace: the next page turns with its
   marks (no second refresh); solid under every unsaved word (particles too), dotted under tracked and learning words,
@@ -263,7 +263,7 @@ not yet run on the device. A Japanese and a Chinese book, a key, a vocabulary wi
 
 ## v0.2 V8: still owed on the device
 
-V8 (the slimming: `../v0.2/slimming.md` §8 "As built (V8)") is on `lexi/V8`, not yet run on the device. Flash the
+V8 (the slimming: `../v0.2/slimming.md` §8 "As built (V8)") ~~is on `lexi/V8`, not yet run on the device.~~ is on `main`; partly run 2026-09-29 (the session above); still owed: Flash the
 release build (`x4pro-gh_release`) over an SD card last used with the build before V8, so the upgrade is checked too.
 Record the free internal heap and PSRAM on the Home screen and with a book open (the P0 boot-log method) beside the
 numbers before V8 (slimming.md §5 gate 3: nothing may get worse).
@@ -328,8 +328,8 @@ numbers before V8 (slimming.md §5 gate 3: nothing may get worse).
 
 ## v0.2 V7c: still owed on the device
 
-V7c (the lemma cache and TLS session resumption: `../v0.2/00-overview.md` C21 "As built (V7c)") is on `lexi/V7`, not
-yet run on the device. Read-only from Lexirise. A dev build; the log's `[LXT] Verified <host> (<version>, <cipher>,
+V7c (the lemma cache and TLS session resumption: `../v0.2/00-overview.md` C21 "As built (V7c)") ~~is on `lexi/V7`, not
+yet run on the device.~~ is on `main`; partly run 2026-09-29 (the session above); still owed: Read-only from Lexirise. A dev build; the log's `[LXT] Verified <host> (<version>, <cipher>,
 resumed|full) in <ms> ms, free heap <n>` and `[LXLOOK] cache <hit|miss|stale> in <ms> ms (<h> of <n> hits this boot)`
 lines say what each check needs. **`lxctl.py cache-smoke [x1 y1 x2 y2]`** (V7c R3; a dev build, one held session,
 read-only, two words not looked up before) drives the first ones: a card on the first word (a miss, one
@@ -384,7 +384,7 @@ read, write and handshake times. Never run here.
 
 ## v0.2 V7b: still owed on the device
 
-V7b (page analysis: `../v0.2/page-annotations.md` §1.1 "As built (V7b)") is on `lexi/V7`, not yet run on the device.
+V7b (page analysis: `../v0.2/page-annotations.md` §1.1 "As built (V7b)") ~~is on `lexi/V7`, not yet run on the device.~~ is on `main`; partly run 2026-09-29 (the session above); still owed:
 Read-only from Lexirise. `lxctl.py page-smoke [x y]` (a dev build, one held session) drives the first checks below
 (WiFi up from a card, the dwell, a turn, fast turns, a card on an analyzed page) and records each step's time and
 heap. Each step logs `[LXPAGE] <this|next> page (...): <kind> in <ms> ms (<error>), ... calls; heap
@@ -483,8 +483,8 @@ no analyze/text for its sentences`.
 
 ## v0.2 V7a: still owed on the device
 
-V7a (the vocab mirror: `../v0.2/page-annotations.md` §1.2 "As built (V7a)") is on `lexi/V7`, not yet run on the
-device. Read-only from Lexirise: the log must show only `GET /v1/vocabulary?…` for the sync (and a card's usual calls).
+V7a (the vocab mirror: `../v0.2/page-annotations.md` §1.2 "As built (V7a)") ~~is on `lexi/V7`, not yet run on the
+device.~~ is on `main`; partly run 2026-09-29 (the session above); still owed: Read-only from Lexirise: the log must show only `GET /v1/vocabulary?…` for the sync (and a card's usual calls).
 A dev build logs each page: `[LXVOCAB] <full|incremental> <ja|zh> offset <n>: <items> items, mirror <words> words`,
 then `[LXVOCAB] page <items> items in <ms> ms (<error>[, given up for input]), applied in <ms> ms (file <written|not
 written|write failed>); heap

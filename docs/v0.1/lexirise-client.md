@@ -110,7 +110,7 @@ compiles the `esp_http_client` path out, and the SDK's `SecureClient` has no cer
 
 ### `POST /v1/analyze/text`
 
-Request: `{"text": <sentence>, "language": <lang>}`. The reference also documents **`fast: true`** ("fast batch analysis"). v0.1 sends the default (full) analysis, because it needs correct lemmas. **Tested 2026-09-24: `fast` drops lemmas and saves only ~0.3 s, so v0.1 always uses the default.**
+Request: `{"text": <sentence>, "language": <lang>}`. The reference also documents **`fast: true`** ("fast batch analysis"). v0.1 sends the default (full) analysis, because it needs correct lemmas. **Tested 2026-09-24: `fast` drops lemmas and saves only ~0.3 s, so ~~v0.1 always uses the default.~~** **Superseded 2026-09-26, v0.2 V1:** after a refined answer (`morphoPending: false`) the same text is sent once more with `fast: true`, whose word-level split rejoins over-split words (`lookup/WholeWords`); the page analysis does the same (`../v0.2/page-annotations.md` §1.1).
 
 Fields we keep (all others are skipped while streaming):
 

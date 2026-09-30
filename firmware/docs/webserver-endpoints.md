@@ -19,6 +19,8 @@ the IP address shown on the device screen.
 | `GET` | `/settings` | Web settings page |
 | `GET` | `/fonts` | SD-card font manager page |
 | `GET` | `/js/jszip.min.js` | JavaScript asset used by the file manager |
+| `GET` | `/lexirise` | Lexipoint's Lexirise settings page (`../../docs/v0.1/settings.md` §1a) |
+| `GET` | `/lexirise/nav.js` | Adds the Lexirise link to each page's menu (`../../docs/v0.1/settings.md` §0) |
 
 ## Device Status
 
@@ -367,6 +369,17 @@ curl -X POST \
   -d '{"index":0}' \
   http://lexipoint.local/api/wifi/delete
 ```
+
+## Lexirise API
+
+Registered by `src/lexirise/web/LexiriseWeb.cpp`. What each one takes and returns is documented in
+`../../docs/v0.1/settings.md` §1a and §2.
+
+| Method | Path |
+|--------|------|
+| `GET` | `/api/lexirise` |
+| `POST` | `/api/lexirise` |
+| `POST` | `/api/lexirise/test` |
 
 ## WebSocket Upload
 

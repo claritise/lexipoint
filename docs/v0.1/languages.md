@@ -36,7 +36,7 @@ book**, in this order:
    | `ja`, `ja-*` | `ja` |
    | `zh`, `zh-CN`, `zh-SG`, `zh-Hans`, `zh-Hans-*`, `cmn`, `cmn-Hans` | `zh` |
    | `zh-TW`, `zh-HK`, `zh-MO`, `zh-Hant`, `zh-Hant-*` | **Traditional**. Treat as `zh` only if H8 says Lexirise handles it. Otherwise it goes straight to StarDict |
-   | anything else | the provider is disabled for this book, so StarDict answers |
+   | anything else | ~~the provider is disabled for this book, so StarDict answers~~ **Superseded 2026-09-24 (P2):** falls through to the sentence (step 2); As built below. |
 2. **Missing or bogus metadata** (common in scanned or converted books, where `en` or `und` is
    stamped on a Japanese novel): scan the **current sentence**. **Any kana (hiragana/katakana letters; not `・` or `ー`) → `ja`.**
    Otherwise, if it's all Han with no kana → the config's `default_language`.

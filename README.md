@@ -8,7 +8,7 @@ Offline, the StarDict dictionaries on the SD card answer instead.
 **Device:** the Xteink X4 Pro is the only supported device. Other touchscreen e-readers the FreeInk SDK
 supports may follow; devices without touch won't (`docs/v0.1/standalone-repo.md`, D20).
 
-**Status:** v0.1 in development. No release yet.
+**Status:** v0.2 built, except V6 (design awaiting sign-off) and V8's font step (waits for S1). No release yet.
 
 ## Use it
 
@@ -35,7 +35,7 @@ firmware is built on. The checks every change passes are in
 |---|---|
 | `firmware/` | The firmware (PlatformIO). Lexipoint's own code is in `src/lexirise/`, `test/lexirise_*/` and `scripts/lexipoint/`; the rest is the base it's built on |
 | `docs/` | Design, decisions and the build ledger (`docs/v0.1/00-overview.md`, `docs/v0.1/01-build-order.md`) |
-| `tools/` | Tools that run on a computer (the manga converter, `docs/v0.2/manga.md`) |
+| `tools/` | Tools that run on a computer: the manga converter (`docs/v0.2/manga.md`), Lexirise API probes, design mockups |
 
 ## Credits
 

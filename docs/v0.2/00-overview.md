@@ -27,7 +27,7 @@
 | C2 | Auto-tags: book / chapter / session | **Yes, via the save payload** | v0.1.x | Tiny | D9 payload |
 | C3 | Sentence save | **Yes** | v0.1.x | Small | D5 sentence already built |
 | C4 | Deck per book | **Yes, as a dynamic tag deck** | v0.1.x | Tiny: 1 request per book, 0 per save | C2 tags |
-| C5 | Difficulty preview ("you know 73%") | **Yes** | v0.2 | Medium | Client, parser, match logic |
+| C5 | Difficulty preview ("you know 73%") | **Yes** | v0.2 (Parked 2026-09-30 by claritise as V12: `01-build-order.md`) | Medium | Client, parser, match logic |
 | C6 | Proficiency highlighting in the text | **Yes: now specced as `page-annotations.md`** (A1–A11; built: A1, A3 in V9a; the rest dropped or parked 2026-09-29, its §2 "Maybe later") | v0.2 | Large | Page analysis, vocab mirror |
 | C7 | Total vocab counter | **Yes** (`languageCount` is on the list response) | v0.1.x | Tiny: 1 request | Client |
 | C8 | Upload the book to Lexirise | **Park** | — | Medium | — |
@@ -39,9 +39,9 @@
 | C16 | Card: explain the conjugation (te-form, causative-passive…) | **Yes** | v0.1.x | Small | Surface + lemma, on-device rules |
 | C17 | Card: Undo save, Ignore word, Save sentence (actions) | **Yes** | v0.1.x | Small | `DELETE`, ~~`PATCH suspended`~~ (Superseded 2026-09-27: Ignore is a list on the reader, C17 "As built (V5, local)"), C3 |
 | C11 | SRS review app on the device | **Yes, with offline review** (claritise, 2026-09-25); the study-session API is live | v0.3 | Medium–large | Client, card UI |
-| C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/analyze/context`**, live 2026-09-25, returns a reading | v0.2 | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
+| C10 | Sense and reading chosen from the sentence | **Yes: the source is `POST /v1/analyze/context`**, live 2026-09-25, returns a reading | v0.2 (Parked 2026-09-30 by claritise as V10: `01-build-order.md`) | Medium: a third call and a card design pass | The sentence (D5), `multipleReadings` |
 | C20 | Deeper Lexirise library integration (library sync, server-side analysis and manga OCR downloaded to the device) | **Later: pitch only after v0.3** | Way down the line | Large, and needs new Lexirise endpoints | C8 uploads, C12–C13, C18 |
-| C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes: the grammar pass is live** (2026-09-25); the second call also refines the split | v0.2 | Medium: a second `analyze/text` and a card design pass | Client, the card |
+| C19 | Card: the grammar pattern the word is part of (～ことにした) | **Yes: the grammar pass is live** (2026-09-25); the second call also refines the split | v0.2 (Parked 2026-09-30 by claritise as V11: `01-build-order.md`) | Medium: a second `analyze/text` and a card design pass | Client, the card |
 | C21 | Faster lookups: on-device caches (entries by lemma, chapter analysis, text-keyed cache, warm TLS) | **Yes, no Lexirise changes needed** | v0.1.x–v0.2, with C12–C13 | Small–medium each | Client, C12–C13, SD |
 | C23 | Slim down to CJK-learning firmware (remove CrossPoint features we don't need) | **Yes, after M: specced as `slimming.md`** (list approved by claritise 2026-09-25, "yes to all") | After M | Medium; saves ≈ 2.5–2.7 MB of 5.57 MB | M's "Taken from CrossPoint" record |
 | C24 | Release and beta (tagged release, install guide, 5–10 testers) | **Yes** | After P10 / M | Small–medium | `user-guide.md` |
@@ -197,6 +197,8 @@ need a second deck made and kept, for no gain yet.
 
 ## C5. Difficulty preview
 
+(Parked 2026-09-30 by claritise as V12: `01-build-order.md`)
+
 **Why yes:** it helps you pick a book at your level, it's a small UI (one number on the book info
 screen), and it builds the pipeline C6 needs (bulk analyze + coverage math) without any renderer
 work.
@@ -267,6 +269,8 @@ be four requests and four refreshes.
 
 ## C10. Sense and reading chosen from the sentence
 
+(Parked 2026-09-30 by claritise as V10: `01-build-order.md`)
+
 **The gap:** the card shows the same senses in the same order for every sentence. Tested 2026-09-24:
 `analyze/text` doesn't disambiguate. 四月一日 comes back as `ichinichi`, 一枚上手 as `jouzu`, 长得 as
 `cháng`, and the part of speech is per entry (`../reference/lexirise-api-notes.md`).
@@ -311,6 +315,8 @@ words.
   a custom `translation` and `notes`, and nothing for the reading.
 
 ## C19. Grammar on the card
+
+(Parked 2026-09-30 by claritise as V11: `01-build-order.md`)
 
 **Added 2026-09-25.** `grammar[]` / `grammarStates` were always empty because the slower second pass
 behind `morphoPending: true` never started through the API. **Fixed and documented 2026-09-25:** "When
@@ -1181,4 +1187,4 @@ when it's settled.
 
 **Now a plan:** `01-build-order.md` (2026-09-26) sequences this, with the changes it explains.
 
-**Next (pulled forward, claritise 2026-09-25):** the `morphoPending` second call from C19, on its own (re-call `analyze/text`, take the refined word, refresh the card); grammar on the card waits for C19 proper. Then test the とびら sentence. **v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) → C10 and C19 (both unblocked 2026-09-25: `analyze/context` and the grammar pass are live) → C5. **v0.3:** C11 (unblocked 2026-09-25: the study API is live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.
+**Next (pulled forward, claritise 2026-09-25):** the `morphoPending` second call from C19, on its own (re-call `analyze/text`, take the refined word, refresh the card); grammar on the card waits for C19 proper. Then test the とびら sentence. **v0.1.x:** C1 → C2 → C4 → C7 → C9 → C14 → C15 → C16 → C17 → C10 option 1 → C3 → C12 → C13 (if Q2 comes back "yes") → C21 (with C12–C13). **After P10 / M:** C24 (release and beta). **After M:** C23 slimming, with C22. **v0.2:** `page-annotations.md` build order (§5) ~~→ C10 and C19 (both unblocked 2026-09-25: `analyze/context` and the grammar pass are live) → C5~~. (C10, C19 and C5 parked 2026-09-30 by claritise as V10 / V11 / V12: `01-build-order.md`.) **v0.3:** C11 (unblocked 2026-09-25: the study API is live). **C18 (manga):** the panel check any time (no firmware change); the device side after v0.1 and phase M, once the card orientation is decided (`manga.md` §7). **After v0.3:** pitch C20 to Lexirise. Until then, build what doesn't need Lexirise, and ask only for what's critical.

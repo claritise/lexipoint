@@ -66,7 +66,7 @@ opening the web interface.
 
 ## Web Interface
 
-The browser UI has four primary pages.
+The browser UI has four primary pages, plus Lexipoint's **Lexirise** page.
 
 ### Home
 
@@ -104,6 +104,12 @@ upload.
 
 Installed fonts appear in **Settings > Reader > Font Family** after the font
 registry refreshes.
+
+### Lexirise
+
+The Lexirise page (`/lexirise`) holds the Lexirise key and settings. Its routes (`/lexirise`,
+`/lexirise/nav.js`, `GET` and `POST /api/lexirise`, `POST /api/lexirise/test`) are listed in
+`webserver-endpoints.md`; the page itself is documented in `../../docs/v0.1/settings.md` §1a and §2.
 
 ## Command Line Use
 

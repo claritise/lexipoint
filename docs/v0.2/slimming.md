@@ -1,7 +1,7 @@
 # Slimming: Lexipoint as CJK-learning firmware
 
-**Status:** approved by claritise 2026-09-25 ("yes to all"), for v0.2. ~~Not started.~~ Building as phase V8 on
-`lexi/V8` (2026-09-29): what each step removed and saved is in "As built (V8)" (§8). It runs **after phase M**
+**Status:** approved by claritise 2026-09-25 ("yes to all"), for v0.2. ~~Not started.~~ ~~Building as phase V8 on
+`lexi/V8` (2026-09-29)~~ Landed as V8 on `main` 2026-09-29; step 6 waits for S1: what each step removed and saved is in "As built (V8)" (§8). It runs **after phase M**
 (`../v0.1/standalone-repo.md`), because deleting base code is only cheap once there are no rebases to keep
 working. This doc also absorbs M's planned follow-up cleanup, "M2" (`standalone-repo.md` §6), and C22 "One font
 for everything" (`00-overview.md`).
