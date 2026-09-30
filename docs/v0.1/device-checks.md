@@ -177,22 +177,29 @@ Still owed with a real finger (claritise): a tap during a download; how page tur
 ## Fixes after the 2026-09-29 session: still owed on the device
 
 The fix-dzu fixes (`languages.md` §3a, superseded 2026-09-29: kana answers read back as romaji, and `dzu`) are on
-`lexi/fix-dzu`, not yet run on the device. A Japanese book, a dev build (`x4pro`, for the tap lines).
+`main` (2b403c3d); ~~not yet run on the device~~ run 2026-09-30 (below). A Japanese book, a dev build (`x4pro`, for
+the tap lines).
 
 - **Every word switches** (the 2026-09-29 finding: kana in both modes, on any word): on an analyzed page, a card on
   教室 shows きょうしつ; tap the reading line: the toast says romaji and the line shows `kyoushitsu`; tap again: the
   toast says kana and the line is きょうしつ. The same on は (`ha`), after a side-button step, and on a word answered
   from the lemma cache. Record the `[LXCARD] tap … reading 0` line for each tap (a missing line or `dropped` is a
-  missed tap, not the reading).
+  missed tap, not the reading). **Done 2026-09-30** (the harness, `main` @ `38660166`, claritise's account, the saved
+  setting romaji): 教室 `kyoushitsu` → きょうしつ → `kyoushitsu`; は `ha` → は → `ha`; after a side-button step (教室 → の)
+  `no` → の → `no`; 教室 from the lemma cache (`cache hit in 5 ms`) `kyoushitsu` → きょうしつ → `kyoushitsu`; a katakana
+  word, トイレット, `toiretto` → トイレット → `toiretto`. Each tap logged `tap … reading 0`. The toast wasn't checked
+  (still owed, with a finger).
 - **What form the account's answers take** (`lxctl.py lexi analyze ja`, one read-only call with the device's key):
   **done 2026-09-29** (the harness, `main` @ `2f6b9b07`, claritise's account): **kana** (彼 かれ, 東京 とうきょう,
   行った いった, は は); recorded in `../reference/lexirise-api-notes.md`, "Japanese reading".
 - **A word with づ switches:** open a card on 気づく or 気づいた: the reading line shows きづく; tap it: the toast
   says romaji and the line shows `kidzuku`; tap again: back to kana. (On 続ける: つづける, then `tsudzukeru`.)
+  **Still owed:** no づ word on the three pages looked at, 2026-09-30.
 - **`lxctl.py reading-smoke [x y]`** (a dev build, a Japanese book open upright, one held session): long-presses
   the word at x y (one with a kanji), taps its reading line twice where the card logged it, and checks from the log
   two `tap … reading 0` lines and the line drawn in one form, the other, then the first again (kana, romaji, kana with the default setting) (`[LXCARD] reading line <text>`).
-  It covers "Every word switches" above on one word, except the toast and how the romaji looks.
+  It covers "Every word switches" above on one word, except the toast and how the romaji looks. **Passed
+  2026-09-30** (the harness, `main` @ `38660166`) on 教室, は and トイレット.
 - **Seen, not changed:** the toast ("Readings: romaji") is drawn at the top of the screen, over the page above a
   collapsed card (y≈105): where the approved card puts it (`popup-ui.md` §1.1's toast row, top 85), not a bug.
 
