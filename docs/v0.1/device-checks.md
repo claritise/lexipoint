@@ -205,9 +205,30 @@ the tap lines).
 
 ## v0.2 V6: still owed on the device
 
-V6 (the card additions signed off 2026-09-30: `../v0.2/00-overview.md` "V6 design", "As built (V6)") is on `lexi/V6`,
-not yet run on the device. Writes to Lexirise: a sentence card (step 3) saves to the account, then its Undo or a
-DELETE in the app takes it back; ask claritise first.
+V6 (the card additions signed off 2026-09-30: `../v0.2/00-overview.md` "V6 design", "As built (V6)") ~~is on `lexi/V6`,
+not yet run on the device.~~ **Superseded 2026-10-01:** is on `main` (c7580e81); partly run 2026-10-01 (below). Writes to
+Lexirise: a sentence card (step 3) saves to the account, then its Undo or a DELETE in the app takes it back; ask
+claritise first.
+
+**Run 2026-10-01** (the harness, `x4pro` dev build of `main` @ `c7580e81`, claritise's account, with their OK for the
+writes; 時をかける少女, the first page of 理科教室の黒い影):
+
+- **Step 1, the summary: pass.** 教室, 音 and 音 again looked up, one sentence card saved and saved again → Home showed
+  `1 saved · 3 looked up` over `73 words in Japanese` (`[LXSESSION] summary: 1 saved, 3 looked up, count 73`); the count
+  call ran once on an idle card (`word count 73 in 364 ms`); a tap cleared the box and left the cover as it was; the book
+  opened and closed with nothing looked up gave no box. Not run: offline, sleep, the file browser, the other routes home.
+- **Step 2, the "also" reading: pass.** 音: `oto · also on, ne, to, in`; a tap on the reading line switched all of them to
+  kana (`おと · also おん, ね, と, いん`) and the tap area grew to 226 px; 教室 (none) drew as before.
+- **Step 3, save the sentence: pass (part).** The preview matched the mockup (「」, 音 underlined, Shorter | Longer, the
+  row); Shorter on a one-clause sentence did nothing; Longer added the page's next sentence, Shorter took it back. Save
+  then Undo 1.9 s later: nothing sent. Save: `POST /v1/vocabulary -> 200` about 6 s later; the same sentence saved again:
+  `PATCH /v1/vocabulary/{id} -> 200`, no second card. Not checked: the card's level and tags in the Lexirise app. **The
+  test card (ときどきどこかの教室の…ひびく。) is still in the account: claritise to delete it in the app.**
+- **Step 4, Undo ignore: pass.** Ignore 音 (`ignore ja:… on written`); after the toast the row read `Undo ignore`; its tap
+  showed `No longer ignored · Undo` (`off written`). 音 is left not ignored.
+- **Step 6, the cache's format 3: pass.** The first lookup read an old bucket: `unreadable: removed`, a miss; 音 then
+  written (`1 answers written`) and looked up again: `cache hit in 6 ms` with its "also" readings.
+- Still owed: steps 5 and 7-17, and the parts of 1 and 3 above.
 
 1. **The session summary:** open a book, look up three or four words (long-press, and a tap on another word under a
    card), step with the side buttons, save one word and Undo another's save, then Home → the Home screen shows the box
