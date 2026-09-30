@@ -94,7 +94,7 @@ built (2026-09-26):
 | ~~V9d~~ | ~~The chapter primer, hiding the publisher's ruby (A9, A7)~~ (parked 2026-09-29 by claritise ("i think features are getting to complex"; `page-annotations.md` §2 "Maybe later")) | C6 | — |
 | ~~V10~~ | ~~The sense and reading from the sentence~~ (parked 2026-09-30 by claritise, after the measurement: `analyze/context`'s reading was wrong on the hard words, its short meaning right; `../reference/lexirise-api-notes.md`, "analyze/context, measured") | C10 (`analyze/context`) | V1; placement sign-off |
 | ~~V11~~ | ~~Grammar on the card~~ (parked 2026-09-30 by claritise: Lexirise's grammar pass misses common patterns, ～ことにした still open) | C19 | V1; placement sign-off |
-| V12 | Difficulty preview | C5 | V7 |
+| ~~V12~~ | ~~Difficulty preview~~ (parked 2026-09-30 by claritise) | C5 | V7 |
 | — | A release (milestone) | C24 | claritise |
 | v0.3 | Reviews on the device | C11 | — |
 
@@ -266,7 +266,7 @@ claritise, after `tools/lexirise/probe_v10.py`: the endpoint's reading was wrong
 
 ## V12: Difficulty preview
 
-C5, on V7's page analysis and mirror.
+~~C5, on V7's page analysis and mirror.~~ (Parked 2026-09-30 by claritise.)
 
 ## Status ledger
 
@@ -292,4 +292,4 @@ C5, on V7's page analysis and mirror.
 | fix-dzu | **done (host); device check owed** (landed 2026-09-30 after 68 review rounds, the last two clean; from claritise's 2026-09-29 device session: the reading line's tap drew the same text both ways; device checks: `../v0.1/device-checks.md` "Fixes after the 2026-09-29 session") | merged into `main` (wip on `lexi/fix-dzu-wip-archive`, local) | 1455 host (`ctest --test-dir build/test`), 236 Python; card goldens unchanged (25 match); cppcheck clean; `x4pro`, `x4pro-gh_release` build | What and how: `../v0.1/languages.md` §3a (superseded 2026-09-29: kana answers read back as romaji, `dzu` → づ); the dev build's tap lines and `lxctl reading-smoke`: `../v0.1/dev-harness.md` §3. Review rounds: the landing commit's message. |
 | V10 | **parked** (2026-09-30, claritise; measured first: `tools/lexirise/probe_v10.py`) | — | — | — |
 | V11 | **parked** (2026-09-30, claritise) | — | — | — |
-| V12 | not started | — | — | — |
+| V12 | **parked** (2026-09-30, claritise) | — | — | — |
