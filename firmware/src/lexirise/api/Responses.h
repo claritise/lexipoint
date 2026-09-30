@@ -80,6 +80,9 @@ struct LookupResult {
   uint32_t rank = 0;
   float frequency = 0;              // frequency_score, 0-1 (the card's bars); 0: unknown
   bool translationPending = false;  // translation_status isn't "ready" (a rare word's first lookup)
+  // multipleReadings.alternatives: the word's other readings in Lexirise's order (C15, V6), the first
+  // config::kMaxReadingAlternatives; romaji or kana (Japanese) or pinyin with tone marks (Chinese), as `reading`.
+  std::vector<std::string> alternatives;
 };
 ParseStatus parseLookup(std::string_view body, LookupResult& out);
 

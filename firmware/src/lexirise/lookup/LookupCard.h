@@ -19,6 +19,8 @@ struct LookupCard {
   std::string surfaceReading;  // its reading in context (tabesaserareta)
   std::string lemma;           // the dictionary form (食べる); empty: the surface is the headword
   std::string reading;         // the headword's reading (taberu); empty when unknown
+  // Phase B's multipleReadings.alternatives, as given (C15, V6).
+  std::vector<std::string> alternatives;
   std::string partOfSpeech;
   std::string level;  // JLPT-N5 / HSK-1 …, empty when on no list
   std::vector<api::Sense> senses;

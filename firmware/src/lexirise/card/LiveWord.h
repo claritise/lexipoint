@@ -73,6 +73,12 @@ std::optional<MetBefore> metBefore(const lookup::LookupCard& card, std::span<con
 // known limits: docs/v0.2/00-overview.md C14 "As built (V4)".
 bool sameSentence(std::string_view saved, const SentenceText& here);
 
+// The word's other readings for the reading line (C15, V6), in the order shown: phase B's alternatives in Lexirise's
+// order, each once and never the card's own (phase B's own transliteration is the card's reading already).
+// Japanese ones are converted as the card's reading is (text::japaneseReading: romaji or kana in, both out); an
+// alternative is the card's own, or one already listed, when its kana or its romaji is. Chinese pinyin as given.
+std::vector<AlsoReading> alsoReadings(const lookup::LookupCard& card, const CardWord& word);
+
 // Where the lookup is: A until phase B has run, then B, B′ while the server still translates, or
 // Unanswered when B failed (CardWord::noMeaning says why).
 Phase phaseOf(const lookup::LookupCard& card);

@@ -177,6 +177,13 @@ class LookupVisitor final : public json::Visitor {
       out_.translationPending = type == Type::String && text != "ready";
     } else if (path.matches({"system_tags", "[]"})) {
       takeLevel(type, text);
+    } else if (path.matches({"multipleReadings", "alternatives", "[]"})) {
+      // Strings only, none empty or over kMaxTokenBytes (a reading, never cut), the first kMaxReadingAlternatives.
+      if (type == Type::String && !text.empty() && text.size() <= config::kMaxTokenBytes &&
+          out_.alternatives.size() < config::kMaxReadingAlternatives) {
+        if (out_.alternatives.empty()) out_.alternatives.reserve(config::kMaxReadingAlternatives);
+        out_.alternatives.emplace_back(text);
+      }
     } else if (path.depth() >= 3 && path.keyIs(0, "translations") && path.isIndex(1)) {
       sense(path, type, text);
     }

@@ -23,8 +23,8 @@ using bytes::put32;
 
 constexpr char kMagic[4] = {'L', 'X', 'L', 'K'};
 // The header's and the record's fields: a build that keeps others bumps it (an old file is malformed: removed, a miss).
-// 2 (V8): the account.
-constexpr uint8_t kVersion = 2;
+// 2 (V8): the account. 3 (V6): the other readings.
+constexpr uint8_t kVersion = 3;
 constexpr size_t kAtVersion = 4;
 constexpr size_t kAtLanguage = 5;
 constexpr size_t kAtCount = 6;
@@ -33,7 +33,8 @@ constexpr size_t kAtCrc = 12;
 constexpr size_t kAtAccount = 16;
 constexpr size_t kHeaderBytes = 20;
 // A record: its length (u16), then the fetch time, rank and frequency (u32 each), the text, word, reading and level
-// (a u16 length and the bytes each), the sense count (u8) and each sense's translation and part of speech (as strings).
+// (a u16 length and the bytes each), the sense count (u8) and each sense's translation and part of speech (as strings),
+// the other readings' count (u8) and each reading (as a string).
 constexpr size_t kLengthBytes = 2;  // a u16 length before a record and before each string
 constexpr size_t kRecAtFetched = kLengthBytes;
 constexpr size_t kRecAtRank = kRecAtFetched + 4;
@@ -55,9 +56,11 @@ size_t stringBytes(const std::string_view s) { return kLengthBytes + s.size(); }
 size_t recordBytes(const std::string_view text, const api::LookupResult& e) {
   const size_t fixed =
       kRecordFixedBytes + stringBytes(text) + stringBytes(e.word) + stringBytes(e.reading) + stringBytes(e.level) + 1;
-  return std::accumulate(e.senses.begin(), e.senses.end(), fixed, [](const size_t n, const api::Sense& s) {
-    return n + stringBytes(s.translation) + stringBytes(s.partOfSpeech);
-  });
+  const size_t senses = std::accumulate(
+      e.senses.begin(), e.senses.end(), fixed,
+      [](const size_t n, const api::Sense& s) { return n + stringBytes(s.translation) + stringBytes(s.partOfSpeech); });
+  return std::accumulate(e.alternatives.begin(), e.alternatives.end(), senses + 1,
+                         [](const size_t n, const std::string& a) { return n + stringBytes(a); });
 }
 
 void putString(std::string& out, size_t& at, const std::string_view s) {
@@ -105,7 +108,9 @@ bool stale(const uint32_t fetchedS, const uint32_t nowS) {
 
 bool cacheable(const std::string_view text, const api::LookupResult& entry) {
   return !entry.translationPending && !entry.senses.empty() && !text.empty() &&
-         entry.senses.size() <= config::kMaxTranslations && recordBytes(text, entry) <= config::kLookupRecordMaxBytes;
+         entry.senses.size() <= config::kMaxTranslations &&
+         entry.alternatives.size() <= config::kMaxReadingAlternatives &&
+         recordBytes(text, entry) <= config::kLookupRecordMaxBytes;
 }
 
 const char* cacheOutcomeName(const CacheRead::Outcome outcome) {
@@ -161,6 +166,8 @@ std::string serializeBucket(const std::vector<CachedLookup>& records, const uint
       putString(out, at, s.translation);
       putString(out, at, s.partOfSpeech);
     }
+    out[at++] = static_cast<char>(r.entry.alternatives.size());
+    for (const std::string& a : r.entry.alternatives) putString(out, at, a);
   }
   put32(out, kAtCrc, bytes::crc32(std::string_view(out).substr(kHeaderBytes)));
   return out;
@@ -213,6 +220,13 @@ bool decodeRecord(const std::string_view bytes, size_t at, const size_t end, con
   r.entry.senses.resize(senses);
   for (api::Sense& s : r.entry.senses) {
     if (!getString(bytes, at, end, s.translation) || !getString(bytes, at, end, s.partOfSpeech)) return false;
+  }
+  if (at + 1 > end) return false;
+  const size_t alternatives = get8(bytes, at++);
+  if (alternatives > config::kMaxReadingAlternatives) return false;
+  r.entry.alternatives.resize(alternatives);
+  for (std::string& a : r.entry.alternatives) {
+    if (!getString(bytes, at, end, a)) return false;
   }
   return at == end;
 }

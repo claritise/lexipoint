@@ -284,9 +284,30 @@ int main(const int argc, char** argv) {
   const int word = std::atoi(argv[3]);
   if (word < 0 || word >= static_cast<int>(book.words.size())) return 2;
   const DeviceMetrics metrics;
+  // Then optional arguments: a level index to tap (the save toast), and +extra: error states (P6) the reference
+  // doesn't have (+unanswered: phase B brought no meaning, +save-failed, +rate-limited), and V6's signed-off states
+  // (docs/v0.2/reference/v6-card-additions.html): +also (the word's other readings), +sentence, +sentence-shorter,
+  // +sentence-saved (the ⋯ tab's preview), +ignored, +unignored, +sd-failed, +cant-ignore (Ignore and Undo ignore).
+  std::string extra;
+  std::vector<int> levels;
+  for (int i = 8; i < argc; i++) {
+    if (argv[i][0] == '+') {
+      extra = argv[i] + 1;
+    } else {
+      levels.push_back(std::atoi(argv[i]));
+    }
+  }
   // The state is reached through the controller's own inputs, as on the device: open, step to the word,
   // let the phases finish, then tap ▼, the tab, the reading line, a level.
   BenchSource source(book, std::strcmp(argv[6], "low") == 0);
+  if (extra == "also") {  // synthetic, as the fixtures are: 彼 (かれ) and 只能 (zhǐ néng) with other readings
+    if (book.language == lexipoint::Language::Japanese) {
+      source.setAlso(word, {{"かの", "kano"}, {"あれ", "are"}});
+    } else {
+      source.setAlso(word, {{"zhī néng", "zhī néng"}});
+    }
+  }
+  if (extra == "cant-ignore") source.dropIgnoreKeys();
   CardController c(source, ReadingMode::Kana);
   unsigned long now = 0;
   c.open(now);
@@ -300,17 +321,25 @@ int main(const int argc, char** argv) {
   if (std::strcmp(argv[4], "expanded") == 0) ok = ok && tapTarget(c, metrics, Target::RankRow, 0, now, taps);
   if (const int tab = std::atoi(argv[5]); tab != 0) ok = ok && tapTarget(c, metrics, Target::Tab, tab, now, taps);
   if (std::strcmp(argv[7], "romaji") == 0) ok = ok && tapTarget(c, metrics, Target::ReadingLine, 0, now, taps);
-  // Then optional arguments: a level index to tap (the save toast), and +extra error states (P6) the
-  // reference doesn't have: +unanswered (phase B brought no meaning), +save-failed, +rate-limited.
-  std::string extra;
-  for (int i = 8; i < argc; i++) {
-    if (argv[i][0] == '+') {
-      extra = argv[i] + 1;
-    } else {
-      ok = ok && tapTarget(c, metrics, Target::Level, std::atoi(argv[i]), now, taps);
-    }
-  }
-  if (extra == "unanswered") {
+  for (const int level : levels) ok = ok && tapTarget(c, metrics, Target::Level, level, now, taps);
+  const auto action = [&](const int id) { return tapTarget(c, metrics, Target::Action, id, now, taps); };
+  if (extra == "also" || extra.empty()) {
+    // nothing more: +also changed the word itself
+  } else if (extra == "sentence" || extra == "sentence-shorter" || extra == "sentence-saved") {
+    ok = ok && action(ActionId::SaveSentence);
+    if (extra == "sentence-shorter") ok = ok && action(ActionId::Shorter);
+    if (extra == "sentence-saved") ok = ok && action(ActionId::SaveSentenceNow);
+  } else if (extra == "ignored" || extra == "cant-ignore") {
+    ok = ok && action(ActionId::Ignore);
+  } else if (extra == "unignored") {  // ignored, its toast gone, then the row's Undo ignore
+    ok = ok && action(ActionId::Ignore);
+    now += lexipoint::config::kIgnoreToastMs;
+    c.tick(now);
+    ok = ok && action(ActionId::Ignore);
+  } else if (extra == "sd-failed") {  // the list's write failed (the activity's saveIgnores)
+    ok = ok && action(ActionId::Ignore);
+    c.ignoreFailed(c.word(), true, now);
+  } else if (extra == "unanswered") {
     source.unanswered();
     c.sourceChanged(0);
   } else if (extra == "save-failed") {

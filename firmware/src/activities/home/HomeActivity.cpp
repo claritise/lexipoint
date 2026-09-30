@@ -23,6 +23,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "lexirise/input/InputAbort.h"
+#include "lexirise/session/HomeSummary.h"
 #include "lexirise/vocab/ManualSync.h"
 
 int HomeActivity::getMenuItemCount() const {
@@ -115,6 +116,7 @@ void HomeActivity::onEnter() {
   Activity::onEnter();
 
   hasVocabSync = lexipoint::vocab::homeSyncRowShown();
+  sessionSummary = lexipoint::session::takeHomeSummary();  // LEXIPOINT (V6): a book just closed (C1, C7)
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
@@ -209,6 +211,18 @@ void HomeActivity::loopVocabSync() {
 }
 
 void HomeActivity::loop() {
+  if (!sessionSummary.empty()) {  // LEXIPOINT (V6): the summary goes at the next input, which is handled as usual
+    int x = 0;
+    int y = 0;
+    // A press, a touch going down, or one lifting (a quick tap or a swipe can be seen only as it lifts).
+    if (mappedInput.wasAnyPressed() || mappedInput.wasScreenTouchDown(x, y) || mappedInput.wasScreenTouchReleased()) {
+      {
+        RenderLock lock;  // the render task reads it
+        sessionSummary.clear();
+      }
+      requestUpdate();
+    }
+  }
   if (vocabSync) {
     loopVocabSync();
     return;
@@ -385,6 +399,7 @@ void HomeActivity::render(RenderLock&&) {
     vocabSync->draw(renderer);
     vocabSyncDrawn = true;
   }
+  lexipoint::session::drawHomeSummary(renderer, sessionSummary);  // LEXIPOINT (V6): the reading session's (C1, C7)
 
   renderer.displayBuffer(cleanInitialRefresh && !firstRenderDone ? HalDisplay::HALF_REFRESH : HalDisplay::FAST_REFRESH);
 

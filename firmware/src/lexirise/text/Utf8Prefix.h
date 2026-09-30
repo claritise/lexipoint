@@ -67,6 +67,20 @@ inline std::string_view utf8CharAtUtf16(std::string_view text, uint32_t units) {
   return utf8FirstChars(text, 1);
 }
 
+// The UTF-8 byte offset of `units` UTF-16 units (Lexirise's offsets) into `text`; at a character inside those units,
+// its start; past the end, the end.
+inline size_t utf8ByteAtUtf16(const std::string_view text, uint32_t units) {
+  size_t at = 0;
+  while (at < text.size() && units > 0) {
+    const std::string_view c = utf8FirstChars(text.substr(at), 1);
+    const uint32_t width = utf16Units(utf8FirstCodepoint(c));
+    if (width > units) break;
+    units -= width;
+    at += c.size();
+  }
+  return at;
+}
+
 // Without spaces or line breaks at either end (a paragraph's indent isn't part of its sentence).
 inline std::string_view trimmedSpaces(std::string_view s) {
   while (!s.empty() && chars::isSpaceOrBreak(utf8FirstCodepoint(s))) s.remove_prefix(utf8FirstChars(s, 1).size());

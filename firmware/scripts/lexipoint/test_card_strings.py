@@ -48,5 +48,31 @@ class CardStringsAreTranslatable(unittest.TestCase):
             self.assertIn(f"tr({key});", cpp, f"{key} not set in cardStringsFromI18n()")
 
 
+# The reading session's summary (C1, C7, V6): SummaryFormats' English defaults (host tests) against english.yaml.
+SUMMARY_KEYS = {"counts": "STR_LEXI_SESSION_COUNTS", "wordsJa": "STR_LEXI_SESSION_WORDS_JA",
+                "wordJa": "STR_LEXI_SESSION_WORDS_JA_ONE", "wordsZh": "STR_LEXI_SESSION_WORDS_ZH",
+                "wordZh": "STR_LEXI_SESSION_WORDS_ZH_ONE"}
+
+
+class SummaryStringsMatchTheYaml(unittest.TestCase):
+    def test_every_format_has_its_key_and_line(self):
+        header = read("src/lexirise/session/ReadingSession.h")
+        start = header.index("struct SummaryFormats {")
+        block = header[start:header.index("\n};", start)]
+        found = {}
+        for line in block.splitlines():
+            m = re.match(r'\s*const char\* (\w+) = "((?:[^"\\]|\\.)*)";', line)
+            if m:
+                found[m.group(1)] = bytes(m.group(2), "utf-8").decode("unicode_escape").encode("latin-1").decode("utf-8")
+        self.assertEqual(set(found), set(SUMMARY_KEYS))
+        yaml = read("lib/I18n/translations/english.yaml")
+        cpp = read("src/lexirise/session/HomeSummary.cpp")
+        for field, key in SUMMARY_KEYS.items():
+            m = re.search(rf'^{key}: "((?:[^"\\]|\\.)*)"$', yaml, re.M)
+            self.assertIsNotNone(m, f"{key} missing from english.yaml")
+            self.assertEqual(m.group(1), found[field], key)
+            self.assertIn(f"formats.{field} = tr({key});", cpp, f"{key} not set in takeHomeSummary()")
+
+
 if __name__ == "__main__":
     unittest.main()

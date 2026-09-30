@@ -78,6 +78,14 @@ std::optional<BuiltSentence> pageTextOf(const PageModel& page);
 // Where a sentence's first character sits in the page's text (UTF-16 units): nullopt when it isn't on this page.
 std::optional<uint32_t> pageOffsetOf(const BuiltSentence& pageText, const BuiltSentence& sentence);
 
+// What the page has between two sentences built from it, `after` right after `before` (the sentence preview joins them,
+// C3, V6): the page's text (pageTextOf) between `before`'s last character and `after`'s first, as the builder joined it
+// (nothing inside one laid-out token, as Chinese “好。”“走; a space where the page had a space or an nbsp: the builder
+// joins both as " "; the page's 　). Only whitespace of at most kMaxSeparatorBytes is kept; anything else, or a
+// sentence not on this page, is "".
+constexpr size_t kMaxSeparatorBytes = 6;
+std::string separatorBetween(const BuiltSentence& pageText, const BuiltSentence& before, const BuiltSentence& after);
+
 // UTF-16 code units in a UTF-8 string (a non-BMP character counts 2), the unit of Lexirise offsets.
 uint32_t utf16Length(std::string_view utf8);
 

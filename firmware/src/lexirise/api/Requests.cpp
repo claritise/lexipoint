@@ -80,6 +80,16 @@ net::Request saveRequest(const SaveWord& word) {
   return {net::Method::Post, kVocabularyPath, body.str()};  // not idempotent: an upsert that replaces
 }
 
+net::Request sentenceSaveRequest(const SaveSentence& sentence) {
+  net::JsonObject body;
+  body.add("language", languageCode(sentence.language))
+      .add("text", utf8Prefix(sentence.text, config::kMaxAnalyzeTextBytes))
+      .add("mode", "sentence")
+      .add("proficiency", sentence.proficiency)
+      .add("tags", sentence.tags);
+  return {net::Method::Post, kVocabularyPath, body.str()};  // not idempotent: an upsert that replaces
+}
+
 std::optional<net::Request> savedItemRequest(const std::string_view id) {
   return vocabularyItem(net::Method::Get, id, "");
 }
@@ -106,6 +116,10 @@ net::Request vocabularyPageRequest(const Language language, const uint32_t offse
   path += "&offset=" + std::to_string(offset);
   path += "&sortId=updated_at&sortDesc=true";
   return {net::Method::Get, std::move(path), ""};
+}
+
+net::Request vocabularyCountRequest(const Language language) {
+  return {net::Method::Get, std::string(kVocabularyPath) + "?language=" + languageCode(language) + "&limit=1", ""};
 }
 
 net::Request deckListRequest(const Language language) {

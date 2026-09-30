@@ -117,6 +117,11 @@ prints `rst:0x15` (USB_UART_CHIP_RESET) as the port opens). So:
   missed tap can be told from one that changed nothing; the card's target sets also list the reading line and ✕
   (`[LXCARD] target reading|close …`), so a set is logged again on each reading switch (the line's width changes).
   `lxctl.card_taps` and `tap_targets` read them (`test_lxctl.py`).
+- **V6's lines** (2026-09-30): dev builds log a card word's other readings whenever they change, `[LXCARD] reading also
+  <a, b, …>` (in the mode shown, before fitting; `-`: none); every build logs the reading session's word count after its
+  call, `[LXSESSION] word count <n|-> in <ms> ms (<error>)`, and its summary as the Home screen takes it, `[LXSESSION]
+  summary: <n> saved, <m> looked up, count <n|->` (`device-checks.md` "v0.2 V6"). The sentence preview's
+  targets are the ⋯ tab's (`[LXCARD] target action <4|5|6> …`: Shorter, Longer, its Save row).
 - **Never open the port in a loop** (a "wait until it answers" poll): each open resets the reader, and a poll that
   opened it every second or two kept it restarting until the poll was stopped (2026-09-27).
 - **Never open it from two processes at once:** the second read fails ("device reports readiness to read but

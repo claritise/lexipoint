@@ -209,17 +209,22 @@ TEST(CardController, TabsAndActions) {
   EXPECT_FALSE(c.state().toastUndo);
 }
 
-TEST(CardController, TheBenchsIgnorePlaysTheReferencesToast) {
-  // The bench keeps no ignore list (C17, V5): its ⋯ Ignore is the reference's toast, nothing more.
+TEST(CardController, TheBenchKeepsItsIgnoresInMemory) {
+  // The bench's list is in memory (C17, V6): Ignore, then the row's Undo ignore, as on a live card.
   BenchSource cSource(benchJapanese(), false);
   CardController c(cSource, ReadingMode::Kana);
   c.open(0);
   c.tick(config::kBenchPhaseBMs);
   const Hit ignoreRow = hit(Target::Action, ActionId::Ignore);
   const Outcome o = c.tap(&ignoreRow, 1000);
-  EXPECT_TRUE(o.ignores.empty());
-  EXPECT_EQ(c.state().toast, "Ignored: won't be marked again");
-  EXPECT_FALSE(c.state().toastUndo);
+  ASSERT_EQ(o.ignores.size(), 1u);
+  EXPECT_EQ(c.state().toast, "Ignored: won't be marked again  \xC2\xB7  Undo");
+  EXPECT_TRUE(c.state().ignored);
+  c.tick(1000 + config::kIgnoreToastMs);
+  c.tap(&ignoreRow, 7000);
+  EXPECT_EQ(c.state().toast, "No longer ignored  \xC2\xB7  Undo");
+  EXPECT_FALSE(c.state().ignored);
+  EXPECT_FALSE(cSource.ignored(c.word()));
 }
 
 namespace {

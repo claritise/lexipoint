@@ -203,6 +203,77 @@ the tap lines).
 - **Seen, not changed:** the toast ("Readings: romaji") is drawn at the top of the screen, over the page above a
   collapsed card (y≈105): where the approved card puts it (`popup-ui.md` §1.1's toast row, top 85), not a bug.
 
+## v0.2 V6: still owed on the device
+
+V6 (the card additions signed off 2026-09-30: `../v0.2/00-overview.md` "V6 design", "As built (V6)") is on `lexi/V6`,
+not yet run on the device. Writes to Lexirise: a sentence card (step 3) saves to the account, then its Undo or a
+DELETE in the app takes it back; ask claritise first.
+
+1. **The session summary:** open a book, look up three or four words (long-press, and a tap on another word under a
+   card), step with the side buttons, save one word and Undo another's save, then Home → the Home screen shows the box
+   under the status bar in the toast's frame, `<n> saved · <m> looked up` (steps not counted, the Undo taken back) and
+   `<count> words in Japanese`; the log shows `[LXSESSION] word count <n> in <ms> ms (…)` once, on an idle card (never
+   as a card closes), and `[LXSESSION] summary: …`. The box stays through the Home screen's own first redraws and goes
+   at the next tap or button press (and that input still does its job). Open the book again and close it without
+   looking anything up: no box. Close a book to the file browser or let it sleep: no box on the next Home screen.
+   Offline all session: one line only.
+2. **The "also" reading:** a word with other readings (Chinese 长 in 长得, 行, 得; Japanese 一日): the reading line
+   shows them after its reading, as many whole ones as fit, then `…`, in the reading's font and on its line; the dev
+   log's `[LXCARD] reading also <list>` gives the full list. Tap the reading line: kana ⇄ romaji switches them too, and
+   the tap area covers them (`[LXCARD] target reading …`'s width). A word with none draws as before. Note: phase B shows
+   the lookup's primary reading, so 一日 reads `ついたち · also いちにち…`.
+3. **Save the sentence as a card** (with claritise's OK: a write): ⋯ → the preview (the sentence, the word underlined,
+   Shorter | Longer, the row); Shorter and Longer a clause at a time, a tap with nothing to do changing nothing; the row
+   saves, `Sentence saved as a card · Undo` (2 s); in Lexirise the card is there at learning with the reader's tags.
+   Undo within 2 s: nothing sent (no POST in the log). Saving the same sentence again in the session: a PATCH, no second
+   card. Another tab, a step or ✕ while it's open: nothing saved.
+4. **Undo ignore:** ignore a word, wait for the toast to go, then the ⋯ row reads Undo ignore; its tap shows `No
+   longer ignored · Undo` (about 5 s) and `[LXCARD] ignore <key> off written`; Undo puts it back (`on written`).
+5. **A dialogue sentence** (`「…？」と言った。`) in the preview: Shorter leaves no stray 」 at a clause's start, and
+   the saved card's text has none either. The same sentence saved on two different cards in one session: a PATCH in
+   the log the second time, not a second POST. A step into the page's next sentence, then Home: the looked-up count
+   doesn't grow. A flick (a swipe) on the Home screen clears the summary, as a tap does.
+6. **The lemma cache's format 3:** after flashing, time the first lookups (the log's `[LXLOOK] cache …` lines): each
+   bucket from the old format is removed on its first read and is a miss once; then a word looked up again (a cache
+   hit) still shows its "also" readings.
+7. **The same sentence saved twice quickly, then Undo:** no POST on `/v1/vocabulary` in the log.
+8. **A status-bar tap on Home while the summary is up** (the control center opens without Home's loop seeing the
+   tap): note whether the box is still there on returning to Home.
+9. **A sentence save on a captive-portal WiFi** (a login page answers instead of Lexirise): "Save failed", and the
+   next save is a POST. **A sentence save left pending as the card closes offline:** word select's unsent-save notice
+   gives the reason (no WiFi).
+10. **An Ignore whose SD write fails on a sentence holding the word twice** (write-protected card, if it can be
+    arranged): step onto the word's other copy before the toast; the ⋯ row there reads "Ignore this word", not
+    "Undo ignore". **The home summary** drawn over the menu clears what's under it (no menu text shows through its
+    box). **Free heap as a card opens**, logged on a build from before V6 and on this one: the difference; and free
+    heap and the largest free block after the session's first save and as the book closes. **An Undo on a sentence
+    card deleted in the Lexirise app** (save, delete it in the app, then Undo): no "Save failed", and a new save of it
+    is a POST. **A sentence card deleted in the app, then saved again twice:** the summary counts 1 save. **A late
+    Undo with WiFi off:** "Save failed", the card kept.
+11. **Longer, then Save, twice within 2 s** (Longer between them): two distinct sentence cards in Lexirise. **Longer on
+    dialogue lines without 。** (「はい」 then 「そうか」 after the sentence): each Longer adds one line.
+12. **A sentence save's timing:** save a sentence and wait over 2 s: its POST is in the log; Undo within 2 s sends
+    nothing. **A home summary whose counts line is wider than its words line** (`12 saved · 140 looked up` over `5
+    words in Japanese`): the box fits the wider line. **Longer across a page with an English sentence or a heading:**
+    a space between English sentences, none next to Japanese; a heading joins the next line.
+13. **In a Chinese book, a dialogue run `“……。”“……。”`:** Longer then Save: no space between the lines in what's
+    saved (check the card in Lexirise). **The summary** after Home via the Home key and after Back out of the reader;
+    none after sleep, or after the reader's long-press menu to the file browser. **Undo tapped near the end of the 2 s
+    window** (the log shows no POST); **save, then close the card at once** (the POST is sent as it closes).
+14. **A Japanese novel page with `？　` or `！　` between sentences:** Longer, Save, and compare the saved text in
+    Lexirise with the page (the 　 kept, nothing added).
+15. **The preview on a full, dense CJK page** (WiFi and TLS up): log free heap, the largest free block and the ms from
+    the tap on ⋯ → Save the sentence to the preview on screen, against the same at the card's open. **A paragraph
+    break with a 　 indent** after the sentence: Longer, Save: the saved text has `。　` there.
+16. **The summary survives the gesture that opened Home:** close a book to Home by each route (the Back swipe, the
+    reader menu's Home, a status-bar tap) and check the box isn't erased by that gesture's own release. **A side button
+    inside a sentence save's 2 s window:** the save is sent once. **Undo a sent sentence card with WiFi dropped:**
+    "Save failed", the card kept in Lexirise; save it again, then Undo: it's deleted. **A retry that goes through:** save a
+    sentence with WiFi off ("Save failed"), turn WiFi on, save it again from the same row, then step through a few words:
+    "Save failed" doesn't come back.
+17. **The failure words:** with the SD card write-protected (if it can be arranged), Ignore says `Couldn't save to the SD
+   card` (about 6 s), the word not ignored.
+
 ## v0.2 V9a: still owed on the device
 
 V9a (the page marks and A3: `../v0.2/page-annotations.md` §2 "V9a decisions" and "As built (V9a)") ~~is on `lexi/V9`,
@@ -586,7 +657,8 @@ any step below (a saved word's Met before `GET /v1/vocabulary/{id}` is expected)
   says "… remove `ja:<id>` from /.lexirise/ignored.ini": the toast expired, or the Undo tap took nothing off; or it
   stops after the Ignore), the word is left ignored: take the SD card to the Mac and delete that line from
   `/.lexirise/ignored.ini` (the key is in the message or the log's `[LXCARD] ignore … on written` line), or pick
-  another word next time; the card itself has no un-ignore once the toast is gone.
+  another word next time; ~~the card itself has no un-ignore once the toast is gone~~ **Superseded 2026-09-30** (V6): or tap the ⋯
+  row's Undo ignore on that word's card.
 - **The log (dev build):** each change shows `[LXCARD] ignore ja:<id> on|off written|unchanged|failed` (unchanged:
   already so, nothing written), and no POST, PATCH or DELETE on `/v1/vocabulary`.
 - **A double tap** on "Ignore this word" keeps "· Undo" on the toast, and the Undo still works.
@@ -594,9 +666,11 @@ any step below (a saved word's Met before `GET /v1/vocabulary/{id}` is expected)
 - **Ignore, then Undo:** ⋯ "Ignore this word" on an unsaved word (a name): "Ignored: won't be marked again · Undo",
   the card otherwise unchanged ("not saved"); Undo clears the toast. `/.lexirise/ignored.ini` holds the word's line
   after the ignore (`ja:<id>`) and not after the Undo (read the SD card from the Mac, or `lxctl` if it lists files).
-- **It holds:** ignore a word, close the card, reboot; look the word up again: ⋯ Ignore says "Ignored: won't be
-  marked again" without Undo. A saved word ignored keeps its level on the card and in Lexirise.
-- **The SD card full or write-protected** (if it can be arranged): "Save failed", the word not ignored.
+- **It holds:** ignore a word, close the card, reboot; look the word up again: ~~⋯ Ignore says "Ignored: won't be
+  marked again" without Undo~~ **Superseded 2026-09-30** (V6): the ⋯ row reads Undo ignore ("v0.2 V6" above). A saved word
+  ignored keeps its level on the card and in Lexirise.
+- **The SD card full or write-protected** (if it can be arranged): ~~"Save failed"~~ **Superseded 2026-09-30** (V6): "Couldn't save to
+  the SD card", the word not ignored.
 - **Tap to toast:** how long from the tap on "Ignore this word" to the toast on screen (the SD write goes first).
 - **Heap on a full list:** put a 1000-id `ignored.ini` on the card (e.g. `ja:1` … `ja:1000`), then log free heap and
   the largest free block (dev build) as a card opens and after an ignore and its Undo, WiFi and TLS up.

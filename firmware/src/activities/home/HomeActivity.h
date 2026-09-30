@@ -2,6 +2,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "./FileBrowserActivity.h"
@@ -24,6 +25,7 @@ class HomeActivity final : public Activity {
   std::unique_ptr<lexipoint::vocab::HomeSync> vocabSync;  // LEXIPOINT: a sync under way, or its result shown
   std::atomic<bool> vocabSyncDrawn{false};                // LEXIPOINT: its popup was drawn: the next step may run
   lexipoint::vocab::HomeSyncFlow vocabSyncFlow;           // LEXIPOINT: what input does to it (dismissed on release)
+  std::vector<std::string> sessionSummary;  // LEXIPOINT (V6): the closed book's session, drawn until the next input
   void loopVocabSync();
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored

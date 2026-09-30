@@ -67,6 +67,14 @@ CardStrings cardStringsFromI18n() {
   s.actionDone[0] = tr(STR_LEXI_CARD_ACTION_DONE_0);
   s.actionDone[1] = tr(STR_LEXI_CARD_ACTION_DONE_1);
   s.actionDone[2] = tr(STR_LEXI_CARD_ACTION_DONE_2);
+  s.undoIgnore = tr(STR_LEXI_CARD_UNDO_IGNORE);
+  s.shorter = tr(STR_LEXI_CARD_SHORTER);
+  s.longer = tr(STR_LEXI_CARD_LONGER);
+  s.alsoReadings = tr(STR_LEXI_CARD_ALSO_READINGS);
+  s.alsoComma = tr(STR_LEXI_CARD_ALSO_COMMA);
+  s.noLongerIgnored = tr(STR_LEXI_CARD_NO_LONGER_IGNORED);
+  s.sdCardFailed = tr(STR_LEXI_CARD_SD_CARD_FAILED);
+  s.cantIgnore = tr(STR_LEXI_CARD_CANT_IGNORE);
   return s;
 }
 

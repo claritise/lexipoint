@@ -103,12 +103,27 @@ The first lookup in a new dictionary builds its index once (`Indexing dictionary
   on into the page's next sentence at its end. On a page with marks they step between the marked words only, and
   stop after the page's last one. Settings → System → Lexirise → *Side buttons on a card* → *Every word* steps every
   word.
-- **Readings:** tap the reading line (Japanese) to switch kana ⇄ romaji; it's remembered.
+- **Readings:** tap the reading line (Japanese) to switch kana ⇄ romaji; it's remembered. A word Lexirise knows
+  other readings for shows them after its own (`よむ · also どく, とく`, `cháng · also zhǎng`): as many as fit,
+  then `…`. The tap switches them too. The card shows Lexirise's reading and doesn't pick one from the sentence.
 - **Another word:** tap it (or long-press it) on the page while the card is open.
+- **Save the sentence as a card:** in the detail view, the ⋯ tab → **Save the sentence as a card** shows the sentence
+  with the word underlined. **Shorter** drops a clause (one before the word first, then from the end; the word's own
+  clause stays); **Longer** puts one back, or adds the next clause on the page (a line of dialogue ends one too). Tap **Save the sentence as a card**
+  again to save it to Lexirise as a sentence card, at *learning*; the toast offers **Undo** for 2 seconds. Another
+  tab, a side-button step or closing the card leaves it unsaved.
 - **Ignore a word:** in the detail view (see **More** above), the ⋯ tab → **Ignore this word** stops marking it on
-  the page. It stays on the reader only: nothing changes in your Lexirise account.
+  the page. It stays on the reader only: nothing changes in your Lexirise account. For an ignored word the row reads
+  **Undo ignore**, which marks it again. *Couldn't save to the SD card* means the reader couldn't write its list
+  (check the card); *Can't ignore this word* means Lexirise gave the word nothing to list it by.
 - **Close:** ✕, Home, the Back swipe from the left edge, swipe down on the card, or tap the page away from
   the words. You're back on the page you were reading.
+
+**After the book:** closing a book to the Home screen shows what you did since you opened it, `3 saved · 11
+looked up`, and under it how many words your Lexirise account holds in the language, `1,204 words in Japanese` (left
+out when Lexirise couldn't be reached). It goes at your next tap or button press. *Saved* counts words and sentence
+cards you saved and kept; *looked up* counts the cards you opened from the page (a side-button step isn't one). Going to sleep
+starts over with no summary.
 
 **Marks on the page:** on a page Lexirise has analyzed, words you haven't saved are underlined solid, and tracked
 or learning words dotted. Pages are analyzed as you read, only while WiFi is already on (a lookup turned it on), and

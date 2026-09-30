@@ -65,7 +65,8 @@ strip, shown when the card covers the word, is still the page line.)
 Same frame and header. Tab content in the middle. Then **the tab row**: Meaning · Examples · Context · Kanji/Chars · Form (Japanese only) · **`⋯`**, styled like T L F K
 (the active tab is filled black). `⋯` is an icon-width tab holding the **actions** (Undo save, once saved · Save the sentence as a card ·
 Ignore this word · Look up later: v0.2 C17; what the Ignore row does: `../v0.2/00-overview.md` C17 "As built (V5,
-local)"), so the word tabs keep room for their labels. Examples fall back to your own sentences (this one, and
+local)"; v0.2 V6, signed off 2026-09-30: for an ignored word the Ignore row reads `Undo ignore`, and Save the
+sentence as a card opens the sentence preview in the ⋯ body, §1.1), so the word tabs keep room for their labels. Examples fall back to your own sentences (this one, and
 "met before") when Lexirise has none, or only Traditional ones in a Simplified book, then the **same rank row,
 now pointing up, `▲`**, with ✕ at its end. Everything you tap stays in the bottom part of the screen.
 
@@ -87,7 +88,8 @@ size. Colours are **exactly black or white**, never grey (see the deviations bel
 | JLPT/HSK badge: text / frame / h-padding / line box / gap after word | 12 / 2 / 5 / 18 / 8 | **17 / 3 / 7 / 25 / 11** |
 | T L F K: cell width / v-padding / text / outer frame / inner dividers | 30 / 5 / 13 / 1.5 / 1 | **42 / 7 / 18 / 2 / 1** |
 | State text under T L F K ("not saved", "learning") / gap above | 11 / 4 | **16 / 6** |
-| Reading-line tap area (Japanese): the reading text plus padding, left of T L F K | text + 6 top, 8 each side | **text + 8 top, 11 each side** (no visible border) |
+| Reading-line tap area (Japanese): the reading text (v0.2 V6: and its "also" readings) plus padding, left of T L F K | text + 6 top, 8 each side | **text + 8 top, 11 each side** (no visible border) |
+| **"Also" readings** (v0.2 V6), after the reading on its line: ` · also `, then the other readings with `, ` between | — | the reading line's type and baseline: kana in the reader font (**17**), ` · also `, `, ` and `…` in the UI font (**17**); whole readings as fit in the header's left column (**226**: 412 − T L F K's 175 − the 11 gap), then `…`; none when not one fits |
 | Surface form + conjugation line | 12 | **17** |
 | POS pill: text / frame / corner radius / h-padding | 11 / 1 / 3 / 5 | **16 / 1 / 4 / 7** |
 | Meaning line on the card | 14 | **20** |
@@ -110,7 +112,10 @@ size. Colours are **exactly black or white**, never grey (see the deviations bel
 | Kanji/Chars tab: reading / character / gloss / gap | 11 / 28 / 14 / 14 | **16 / 40 / 20 / 20** |
 | Form tab: forms / labels, line-height 2 | 16 / 14 | **23 / 20** |
 | `⋯` action rows: frame / v-padding / h-padding / text / gap | 1.5 / 8 / 10 / 13 / 7 | **2 / 11 / 14 / 18 / 10** |
+| **Sentence preview** (v0.2 V6), the ⋯ body: the sentence / gap under it | — | the Examples tab's sentence (**21**, line-height 1.8, in 「」, the word underlined), as many lines as leave room for the rows below, then `…` / **14** |
+| Sentence preview: `Shorter` \| `Longer`, two half-width action rows side by side; then the Save row | — | each **(412 − 10) / 2** wide, **10** apart, the ⋯ rows' **2 / 11 / 14 / 18**, text centred, no ›; then **10**, and the `Save the sentence as a card` row as the ⋯ rows |
 | Toast ("Saved as learning · Undo"): frame / text / padding / top | 2 / 12 / 4·10 / 60 | **3 / 17 / 6·14 / 85** |
+| **Session summary** (v0.2 V6), on the home screen after a book closes: two lines in the toast's box | — | the toast's **3 / 17 / 6·14 / 85**, the text's own line height, each line centred |
 | Word highlight on the page and in the strip | inverted, 1 px side padding | **inverted, 1 px side padding** |
 
 **Typefaces:** Japanese and Chinese text (the word, the page, the strip, sentences and characters)
@@ -132,6 +137,10 @@ can't render an exact size, use the nearest size and **log it in the P4 ledger n
   the saved word's notes and book tag. **A change to the approved design, approved by claritise 2026-09-26** ("Ok
   sure to the met before"): "Met before" alone, without " · ", when there's no book title (a book saved on another
   device). Nothing moved.
+- **As built (v0.2 V6):** the five additions claritise signed off 2026-09-30 (`../v0.2/reference/v6-card-additions.html`:
+  "sounds good to all") are part of the binding design, measured in the rows marked v0.2 V6 above and drawn in
+  `reference/card-reference.html`'s V6 controls; what they do: `../v0.2/00-overview.md` "V6 design", "As built (V6)".
+  A word with no other readings, and every state the reference drew before, is unchanged.
 - **Reading on top, small; lemma large.** Same order as furigana. Show the reading as **kana**. If
   `transliteration` comes back in romaji (the brief's example has `"neko"`), convert it or show it
   as is. ~~P0 checks what `ja` actually returns.~~ **Superseded 2026-09-29:** it

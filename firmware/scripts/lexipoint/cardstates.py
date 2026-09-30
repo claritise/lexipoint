@@ -37,6 +37,19 @@ def states() -> list[dict]:
     add("ja-expanded-meaning-unanswered", "ja", 2, view="expanded", extra="unanswered")
     add("ja-card-save-failed", "ja", 0, extra="save-failed")
     add("ja-card-rate-limited", "ja", 0, extra="rate-limited")
+    # V6's signed-off states (docs/v0.2/reference/v6-card-additions.html, 2026-09-30): pinned here and in
+    # card-reference.html's own V6 controls, which cardshots doesn't replay.
+    add("ja-card-also", "ja", 3, extra="also")
+    add("ja-card-also-romaji", "ja", 3, reading="romaji", extra="also")
+    add("ja-expanded-also", "ja", 3, view="expanded", extra="also")
+    add("zh-card-also", "zh", 2, extra="also")
+    add("ja-expanded-sentence", "ja", 2, view="expanded", tab=5, extra="sentence")
+    add("ja-expanded-sentence-shorter", "ja", 2, view="expanded", tab=5, extra="sentence-shorter")
+    add("ja-expanded-sentence-saved", "ja", 2, view="expanded", tab=5, extra="sentence-saved")
+    add("ja-expanded-ignored", "ja", 2, view="expanded", tab=5, extra="ignored")
+    add("ja-expanded-unignored", "ja", 2, view="expanded", tab=5, extra="unignored")
+    add("ja-expanded-sd-failed", "ja", 2, view="expanded", tab=5, extra="sd-failed")
+    add("ja-expanded-cant-ignore", "ja", 2, view="expanded", tab=5, extra="cant-ignore")
     return out
 
 

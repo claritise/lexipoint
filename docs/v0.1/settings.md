@@ -355,14 +355,15 @@ base_url=https://api.lexirise.app
   `/.lexirise/lookups/<ja|zh>/<nn>.bin` (`<nn>`: the text's FNV-1a 32 modulo `config::kLookupBuckets`, 2 hex digits),
   `lookup/LookupCache`. **Binary**, little-endian: ~~a 16-byte header (`LXLK`, version 1 (u8), the language (u8), the count
   (u16), the records' bytes (u32), a CRC-32 of the records)~~ (superseded 2026-09-29, v0.2 V8: format 2) a 20-byte
-  header (`LXLK`, version 2 (u8), the language (u8), the count (u16), the records' bytes (u32), a CRC-32 of the
+  header (`LXLK`, version ~~2~~ **Superseded 2026-09-30** (v0.2 V6: format 3, the records' other readings): 3 (u8), the language (u8), the count (u16), the records' bytes (u32), a CRC-32 of the
   records, and the account's tag (u32: FNV-1a 32 of the API key, `lookup::accountTag`; the key itself is never
   written)), then each record: its length after the field (u16), when
   it was fetched (u32 s since the epoch), the rank (u32), the frequency's float bits (u32), then as u16-length strings
   the text looked up, the word, the reading and the level, the sense count (u8) and each sense's translation and part
-  of speech (strings). Oldest first, at most `config::kLookupBucketMax` records and `kLookupBucketMaxBytes`; a record
+  of speech (strings), then (format 3) the other readings' count (u8, at most `config::kMaxReadingAlternatives`) and
+  each reading (a string: `multipleReadings.alternatives`, the card's "also" readings, C15). Oldest first, at most `config::kLookupBucketMax` records and `kLookupBucketMaxBytes`; a record
   over `kLookupRecordMaxBytes` isn't kept. No saved state in it. Written plainly (regenerable); a file that doesn't
-  check out is removed (so is a format-1 file from before V8). A bucket written under another API key (another
+  check out is removed (so is a format-1 file from before V8, and a format-2 one from before V6). A bucket written under another API key (another
   account, whose translation target may differ) reads as empty, and its next write drops the other key's answers. An
   answer keeps the key it was fetched under until it's written (V8 R4): one fetched before the key changed (over the
   web page, with a card open) is dropped, not written as the new account's. Nothing in it is the user's own (it's all from Lexirise, asked again when missing or older than

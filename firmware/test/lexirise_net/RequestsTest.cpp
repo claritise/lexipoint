@@ -93,6 +93,44 @@ TEST(Requests, SaveIsTheD9PayloadAndNeverRetried) {
             R"({"language":"ja","text":"煩わしい","mode":"word","proficiency":2,"tags":[]})");
 }
 
+TEST(Requests, ASentenceCardIsSavedAtAnExplicitLevel) {
+  // C3 (V6): mode "sentence", proficiency always sent (a sentence left without one defaults to 2), the tags.
+  lexipoint::api::SaveSentence sentence;
+  sentence.language = Language::Chinese;
+  sentence.text = "几年不见，他长得很像他的父亲了。";
+  sentence.proficiency = 2;
+  sentence.tags = {"xteink", "book:x"};
+  const auto r = lexipoint::api::sentenceSaveRequest(sentence);
+  EXPECT_EQ(r.method, Method::Post);
+  EXPECT_EQ(r.path, "/v1/vocabulary");
+  EXPECT_EQ(r.body, R"({"language":"zh","text":"几年不见，他长得很像他的父亲了。","mode":"sentence","proficiency":2,)"
+                    R"("tags":["xteink","book:x"]})");
+  EXPECT_FALSE(r.retryable());  // an upsert that replaces
+}
+
+TEST(Requests, ASentenceCardsTextIsCappedAtACharacter) {
+  lexipoint::api::SaveSentence sentence;
+  std::string text;
+  while (text.size() < lexipoint::config::kMaxAnalyzeTextBytes + 10) text += "あ";
+  sentence.text = text;
+  const std::string body = lexipoint::api::sentenceSaveRequest(sentence).body;
+  const size_t from = body.find(R"("text":")") + 8;
+  const size_t to = body.find('"', from);
+  const std::string sent = body.substr(from, to - from);
+  EXPECT_LE(sent.size(), lexipoint::config::kMaxAnalyzeTextBytes);
+  EXPECT_GT(sent.size(), lexipoint::config::kMaxAnalyzeTextBytes - 3);
+  EXPECT_EQ(sent.size() % 3, 0u);  // whole characters
+}
+
+TEST(Requests, TheWordCountIsOneItemsPage) {
+  // C7 (V6): totalCount comes with any page; one item is the least.
+  const auto r = lexipoint::api::vocabularyCountRequest(Language::Japanese);
+  EXPECT_EQ(r.method, Method::Get);
+  EXPECT_EQ(r.path, "/v1/vocabulary?language=ja&limit=1");
+  EXPECT_TRUE(r.body.empty());
+  EXPECT_EQ(lexipoint::api::vocabularyCountRequest(Language::Chinese).path, "/v1/vocabulary?language=zh&limit=1");
+}
+
 TEST(Requests, VocabularyItemRequests) {
   const auto level = lexipoint::api::setProficiencyRequest("901", 3);
   ASSERT_TRUE(level);

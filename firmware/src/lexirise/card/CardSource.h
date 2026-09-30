@@ -9,6 +9,7 @@
 
 #include "CardModel.h"
 #include "DisplayList.h"
+#include "SentencePreview.h"
 
 namespace lexipoint::card {
 
@@ -45,14 +46,19 @@ class CardSource {
   virtual Phase phase(int index) const = 0;
   virtual std::string pendingText() const = 0;  // phase 0: the tapped character
   virtual int pageNumber() const = 0;           // "This book · p. 84"; 0: none
-  // The ⋯ tab's actions not built yet (save the sentence, look up later: C17, V6 and later), and Ignore where the
-  // source keeps no list (the bench): the bench plays the reference's toasts; a live card says they aren't there yet.
+  // The ⋯ tab's action not built yet (look up later, C17), and a sentence card without the network (the bench): the
+  // bench plays the reference's toasts; a live card says Look up later isn't there yet.
   virtual bool demoActions() const { return false; }
   // Whether the reader ignored the word (C17, V5: "stop marking it on the page", V9's A1 marks; a list on the reader,
   // never Lexirise), and setting it in the source's copy (memory only: the activity writes the list, outside
   // RenderLock). setIgnored is false where the source keeps no list, or the word has no key (IgnoredWords.h).
   virtual bool ignored(const int /*index*/) const { return false; }
   virtual bool setIgnored(const int /*index*/, const bool /*ignored*/) { return false; }
+  // Whether the source keeps an ignore list at all (without one an Ignore can't be written: "Couldn't save to the SD
+  // card", C17, V6).
+  virtual bool keepsIgnoreList() const { return false; }
+  // Word `index`'s sentence on the page, for the ⋯ tab's sentence preview (C3, V6); none: there's no preview.
+  virtual std::optional<SentenceForSave> sentenceForSave(const int /*index*/) const { return std::nullopt; }
   // A3 (V9a, page-annotations.md §2 "V9a decisions"): the side buttons step only between the words marked on the page
   // (page/PageMarks.h: not saved, level 0, tracked or learning), not every word: while the card's page carries marks
   // and the reader chose "Marked words". A word ignored on the reader or suspended in Lexirise is never marked.

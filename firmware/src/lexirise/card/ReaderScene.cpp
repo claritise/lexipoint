@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "CardMetrics.h"
+#include "lexirise/text/Utf8Prefix.h"
 #include "lexirise/text/Utf8Units.h"
 
 namespace lexipoint::card {
@@ -32,20 +33,6 @@ std::vector<Piece> piecesOf(const text::BuiltSentence& sentence, const uint32_t 
   return pieces;
 }
 
-// The UTF-8 byte offset of a UTF-16 offset in `text`.
-size_t byteAt(const std::string& text, const uint32_t units) {
-  uint32_t at = 0;
-  const auto* begin = reinterpret_cast<const unsigned char*>(text.c_str());
-  const auto* p = begin;
-  while (at < units) {
-    const auto* before = p;
-    const uint32_t cp = utf8NextCodepoint(&p);
-    if (cp == 0) return static_cast<size_t>(before - begin);
-    at += text::utf16Units(cp);
-  }
-  return static_cast<size_t>(p - begin);
-}
-
 }  // namespace
 
 std::vector<PieceBox> pieceBoxes(const ReaderPage& page, const text::BuiltSentence& sentence, const uint32_t start,
@@ -68,8 +55,8 @@ std::vector<PieceBox> pieceBoxes(const ReaderPage& page, const text::BuiltSenten
 PageScene readerScene(const ReaderPage& page, const text::BuiltSentence& sentence, const uint32_t start,
                       const uint32_t end, const bool highlight, const TextMetrics& metrics) {
   PageScene scene;
-  const size_t markStart = byteAt(sentence.text, start);
-  scene.sentence = {sentence.text, markStart, byteAt(sentence.text, end) - markStart};
+  const size_t markStart = text::utf8ByteAtUtf16(sentence.text, start);
+  scene.sentence = {sentence.text, markStart, text::utf8ByteAtUtf16(sentence.text, end) - markStart};
 
   bool first = true;
   for (const PieceBox& piece : pieceBoxes(page, sentence, start, end, metrics)) {

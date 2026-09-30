@@ -17,6 +17,7 @@ Outcome CardSession::handleInput(const unsigned long nowMs, TapsSeen* seen) {
   input_.clear();
   if (live_) {
     for (const LevelChange& change : outcome.changes) live_->queue(change);  // the bench has nothing to send
+    for (const SentenceChange& change : outcome.sentences) live_->queue(change);
   }
   return outcome;
 }
@@ -47,6 +48,12 @@ CardSession::Answer CardSession::apply(LiveSource::Fetched fetched, const unsign
     controller_.levelFailed(failed->back.word, failed->back.to, nowMs, callFailure(failed->error), failed->back.from,
                             failed->retryAfterS);
     answer.writeFailed = true;
+    answer.redraw = true;
+  }
+  if (live_->takeSentenceFailed()) {  // a sentence card Lexirise didn't take (C3, V6)
+    controller_.sentenceFailed(nowMs);
+    answer.writeFailed = true;
+    answer.sentenceFailed = true;
     answer.redraw = true;
   }
   return answer;
@@ -100,6 +107,17 @@ bool CardSession::shouldFetchDeck(const unsigned long nowMs, const bool renderin
   return deckAllowed_ && idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) && live_->hasDeckWork();
 }
 
+bool CardSession::shouldFetchCount(const unsigned long nowMs, const bool rendering, const bool touching,
+                                   const std::optional<unsigned long> cardDueMs) const {
+  return idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) && live_->hasCountWork();
+}
+
+void CardSession::applyCount(const LiveSource::CountCall& call, const unsigned long nowMs) {
+  if (!live_) return;
+  live_->applyCount(call);
+  lastActivityMs_ = nowMs;  // the next idle step waits its own idle time too
+}
+
 bool CardSession::shouldFlushFiles(const unsigned long nowMs, const bool rendering, const bool touching,
                                    const std::optional<unsigned long> cardDueMs) const {
   return idleFor(nowMs, rendering, touching, cardDueMs, config::kDeckIdleMs) &&
@@ -110,6 +128,7 @@ CardSession::IdleStep CardSession::nextIdleStep(const unsigned long nowMs, const
                                                 const std::optional<unsigned long> cardDueMs,
                                                 const uint32_t epochS) const {
   if (shouldFetchDeck(nowMs, rendering, touching, cardDueMs)) return IdleStep::Deck;
+  if (shouldFetchCount(nowMs, rendering, touching, cardDueMs)) return IdleStep::Count;
   if (shouldFlushFiles(nowMs, rendering, touching, cardDueMs)) return IdleStep::Flush;
   if (shouldProbeVocab(nowMs, rendering, touching, cardDueMs)) return IdleStep::Probe;
   if (shouldFetchVocab(nowMs, rendering, touching, cardDueMs, epochS)) return IdleStep::Vocab;

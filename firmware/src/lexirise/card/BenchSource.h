@@ -14,21 +14,32 @@ namespace lexipoint::card {
 
 class BenchSource final : public CardSource {
  public:
-  BenchSource(const BenchBook& book, bool low) : book_(book), low_(low) {}
+  BenchSource(const BenchBook& book, bool low)
+      : book_(book), low_(low), words_(book.words), ignored_(book.words.size(), false) {}
 
   const BenchBook& book() const { return book_; }
 
   int wordCount() const override { return static_cast<int>(book_.words.size()) * (repeated_ ? 2 : 1); }
   int startWord() const override { return book_.start; }
-  const CardWord& word(const int index) const override { return book_.words[fixture(index)]; }
+  const CardWord& word(const int index) const override { return words_[fixture(index)]; }
   Level savedLevel(const int index) const override { return book_.saved[fixture(index)]; }
   Phase phase(int) const override { return phase_; }  // the focused word's
   std::string pendingText() const override;
   int pageNumber() const override { return book_.pageNumber; }
   bool demoActions() const override { return true; }
+  // The reader's ignore list, in memory only (C17, V6: the ⋯ row's Ignore and Undo ignore play as on a live card).
+  bool ignored(int index) const override { return ignored_[fixture(index)]; }
+  bool setIgnored(int index, bool ignored) override;
+  bool keepsIgnoreList() const override { return true; }
+  // The word's sentence: the page's context lines to the full stop after the word, the rest of the page after it, a
+  // sentence at a time.
+  std::optional<SentenceForSave> sentenceForSave(int index) const override;
 
   // Phase B with no meaning (the offline row): for the P6 goldens and previews, not the bench's timer.
   void unanswered() { phase_ = Phase::Unanswered; }
+  // Word `index` with other readings (C15, V6), and every word without a key to ignore it by: for the V6 goldens.
+  void setAlso(const int index, std::vector<AlsoReading> also) { words_[fixture(index)].also = std::move(also); }
+  void dropIgnoreKeys() { keyless_ = true; }
 
   void open(unsigned long nowMs) override;
   void focus(int index, unsigned long nowMs) override;
@@ -42,6 +53,9 @@ class BenchSource final : public CardSource {
  private:
   const BenchBook& book_;
   bool low_;
+  std::vector<CardWord> words_;  // the book's, with the goldens' changes (setAlso)
+  std::vector<bool> ignored_;    // per fixture word
+  bool keyless_ = false;
   Phase phase_ = Phase::Pending;
   unsigned long phaseADueMs_ = 0;
   unsigned long phaseBDueMs_ = 0;

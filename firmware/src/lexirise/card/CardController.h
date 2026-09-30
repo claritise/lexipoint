@@ -11,6 +11,7 @@
 #include "CardModel.h"
 #include "CardSource.h"
 #include "DisplayList.h"
+#include "SentencePreview.h"
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/settings/IgnoredWords.h"
 
@@ -43,14 +44,24 @@ struct IgnoreChange {
   std::optional<IgnoredKey> restore;  // an Undo: the oldest key its ignore pushed out of a full list, put back
 };
 
+// A sentence card (C3, V6): the preview's sentence saved from word `word`'s card, or (`undo`) the last one taken back.
+// The source sends it once `readyAtMs` has come (its Undo toast's window, as a word's save).
+struct SentenceChange {
+  int word = 0;
+  std::string text;
+  bool undo = false;
+  unsigned long readyAtMs = 0;
+};
+
 struct Outcome {
   Outcome() = default;
   Outcome(const Effect e, const bool reading) : effect(e), readingChanged(reading) {}
 
   Effect effect = Effect::None;
-  bool readingChanged = false;        // persist the Japanese reading (settings.md: `reading`)
-  std::vector<LevelChange> changes;   // in the order they were made (a batch can hold T, then its Undo)
-  std::vector<IgnoreChange> ignores;  // likewise
+  bool readingChanged = false;            // persist the Japanese reading (settings.md: `reading`)
+  std::vector<LevelChange> changes;       // in the order they were made (a batch can hold T, then its Undo)
+  std::vector<IgnoreChange> ignores;      // likewise
+  std::vector<SentenceChange> sentences;  // likewise
   // Close: a tap or a long-press on the page outside the card, where the word is to be looked up next
   // (popup-ui.md §3.2; the caller drops it where the page isn't word select's: pagePressLooksUp).
   std::optional<PagePoint> lookUpAt;
@@ -98,8 +109,12 @@ class CardController {
   // the Lexirise app, V7b): it and the sentence's other occurrences of it take it, no toast. True: what's shown
   // changed.
   bool savedLevelChanged(int word);
-  // The ignore list couldn't be written (the SD card): the word goes back to `!wanted`, with "Save failed".
+  // The ignore list couldn't be written (the SD card): the word goes back to `!wanted`, with "Couldn't save to the SD
+  // card".
   void ignoreFailed(int word, bool wanted, unsigned long nowMs);
+  // A sentence card wasn't saved (Lexirise refused it or couldn't be reached): "Save failed" (no Retry: the preview's
+  // row is the retry).
+  void sentenceFailed(unsigned long nowMs);
   // The ignore of `word` pushed `evicted` out of a full list: its Undo (if still offered) puts that key back.
   void ignoreEvicted(int word, IgnoredKey evicted);
 
@@ -120,9 +135,16 @@ class CardController {
                  unsigned long durationMs = config::kToastMs);
   void clearToast();
   Outcome setLevel(Level level, const char* toastPrefix, bool undo, unsigned long nowMs);
-  // ⋯ Ignore this word: on the reader's list at once, "Ignored: won't be marked again · Undo"; a word already on it
-  // only says "Ignored: won't be marked again" (the approved card draws nothing else). Nothing goes to Lexirise.
+  // ⋯ Ignore this word: on the reader's list at once, "Ignored: won't be marked again · Undo"; for a word on it the row
+  // reads Undo ignore, which takes it off, "No longer ignored · Undo" (C17, V6). Nothing goes to Lexirise.
   Outcome ignore(unsigned long nowMs);
+  // The ⋯ tab's sentence preview (C3, V6): opened by the Save sentence row, changed by Shorter and Longer, saved by its
+  // own row; any other tab, the other view or a step closes it unsaved.
+  Outcome openPreview(unsigned long nowMs);
+  Outcome changePreview(bool longer);
+  Outcome saveSentence(unsigned long nowMs);
+  void closePreview();
+  void syncPreview();
   Outcome retry(unsigned long nowMs);           // the failed change again (the toast's Retry)
   bool syncWord(unsigned long nowMs);           // true: something shown changed
   void moveTo(int index, unsigned long nowMs);  // a step: the word, its lookup, a new frame's targets
@@ -143,7 +165,7 @@ class CardController {
   unsigned long toastUntilMs_ = 0;
   // What the toast's Undo reverts: that word back to that level (None: the save is removed).
   struct Undo {
-    enum class Kind : uint8_t { None, Level, Ignore } kind = Kind::None;
+    enum class Kind : uint8_t { None, Level, Ignore, Unignore, Sentence } kind = Kind::None;
     int word = -1;
     Level level = Level::None;          // Level: the word goes back to it (None: the save is removed)
     std::optional<IgnoredKey> evicted;  // Ignore: the key it pushed out of a full list, once written
@@ -158,6 +180,7 @@ class CardController {
   };
   std::vector<Failed> retries_;
   bool failureToast_ = false;                // the toast is a failure (levelFailed): a step doesn't clear it
+  std::optional<SentencePreview> preview_;   // the ⋯ tab's sentence preview, while it's open
   int pendingStep_ = -1;                     // the next sentence's first word, where the card goes once it's analyzed
   std::optional<unsigned long> jumpedAtMs_;  // when the card last went there
   int jumpedFrom_ = 0;                       // ... and the word it had waited on

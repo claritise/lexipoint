@@ -79,7 +79,8 @@ class CardSession {
   struct Answer {
     bool redraw = false;
     std::optional<LiveOutcome> ended;  // the card ends: nothing to show
-    bool writeFailed = false;          // a level change was put back (the error is live's error())
+    bool writeFailed = false;          // a level change was put back, or a sentence card failed (live's error())
+    bool sentenceFailed = false;       // ...a sentence card (C3, V6)
     bool clearFailed = false;          // a removal went through, its notes and tags weren't cleared
     std::string unreadable;            // a response we couldn't read: its start, for the log
   };
@@ -97,10 +98,9 @@ class CardSession {
   // written in the order they were made, each skipped when a later one in the batch is for the same word (an Ignore
   // and its Undo together write nothing) unless it carries back a pushed-out key, so the file stays newest last; dev
   // builds log each, `[LXCARD] ignore <key> on|off written|unchanged|failed`. One that can't be written is taken back
-  // ("Save failed"), under the lock: `withLock(f)` runs f holding it. `redraw`: that changed the card, so it must be
-  // drawn though the outcome didn't ask (a Close still closes: nothing to draw).
-  // An ignore that pushed the oldest key out of a full list hands that key to the controller (under the lock too),
-  // for its Undo to put back.
+  // ("Couldn't save to the SD card"), under the lock: `withLock(f)` runs f holding it. `redraw`: that changed the card,
+  // so it must be drawn though the outcome didn't ask (a Close still closes: nothing to draw). An ignore that pushed
+  // the oldest key out of a full list hands that key to the controller (under the lock too), for its Undo to put back.
   struct IgnoresSaved {
     bool failed = false;
     bool redraw = false;
@@ -178,9 +178,20 @@ class CardSession {
   // (LiveSource::takeMirrorChanges, CardController::savedLevelChanged). True: redraw.
   bool mirrorChanged(const std::vector<uint32_t>& changedEntries);
 
-  // An idle card's one blocking step now, in priority order: the book deck's (shouldFetchDeck), then the mirror's file
-  // (shouldFlushFiles), then the probe (shouldProbeVocab), then a mirror page (shouldFetchVocab); None: nothing yet.
-  enum class IdleStep : uint8_t { None, Deck, Flush, Probe, Vocab };
+  // The reading session's word count (C7, V6; LiveSource::hasCountWork): one call on a card idle config::kDeckIdleMs
+  // by the deck's rule, never as the card closes; it blocks the loop like a deck step (a side-button press gives it
+  // up, as a mirror page's).
+  bool shouldFetchCount(unsigned long nowMs, bool rendering, bool touching,
+                        std::optional<unsigned long> cardDueMs) const;
+  LiveSource::CountCall fetchCount(const api::VocabPageReader::Cancel cancel = nullptr) {
+    return live_ ? live_->fetchCount(cancel) : LiveSource::CountCall{};
+  }
+  void applyCount(const LiveSource::CountCall& call, unsigned long nowMs);
+
+  // An idle card's one blocking step now, in priority order: the book deck's (shouldFetchDeck), then the word count
+  // (shouldFetchCount), then the mirror's file (shouldFlushFiles), then the probe (shouldProbeVocab), then a mirror
+  // page (shouldFetchVocab); None: nothing yet.
+  enum class IdleStep : uint8_t { None, Deck, Count, Flush, Probe, Vocab };
   IdleStep nextIdleStep(unsigned long nowMs, bool rendering, bool touching, std::optional<unsigned long> cardDueMs,
                         uint32_t epochS) const;
   // `nowMs`: the idle time starts again after it (a write that failed is tried in the next idle window, not every

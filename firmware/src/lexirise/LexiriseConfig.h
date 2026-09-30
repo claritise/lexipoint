@@ -252,6 +252,8 @@ constexpr float kParagraphIndentEm = 0.5f;     // or this line is indented (and 
 constexpr size_t kMaxTranslations = 2;         // senses kept for the card (phase B)
 constexpr size_t kMaxTranslationBytes = 512;   // one sense's text; longer is cut at a character boundary
 constexpr size_t kStarDictMaxPrefixChars = 8;  // CJK longest-prefix probe for StarDict: 8, 7, … 1 characters
+// dictionary/lookup's multipleReadings.alternatives kept (C15, V6: the card's "also" reading; 一日 has five).
+constexpr size_t kMaxReadingAlternatives = 6;
 
 // The card's rank words (popup-ui.md §1, languages.md §6): below each threshold, that band; past the
 // last, "rare". Per language: Chinese ranks run higher for words as common (tuned in P5 on sampled ranks,
@@ -263,8 +265,8 @@ constexpr size_t kRankBands = std::size(kRankBandLimitsJa) + 1;  // + "rare"
 
 // The card (popup-ui.md §2, §3.2).
 constexpr unsigned long kToastMs = 2000;  // "Saved as learning · Undo"
-// "Ignored: won't be marked again · Undo" (C17, V5) stays longer: once it's gone an ignore can't be undone on the card
-// (until V6 adds an un-ignore); a save or a level keeps kToastMs (either can be changed again from the card).
+// "Ignored: won't be marked again · Undo" and "No longer ignored · Undo" (C17, V5, V6) stay longer: an ignore is only
+// taken back from the ⋯ row after that; a save or a level keeps kToastMs (either can be changed again from the card).
 constexpr unsigned long kIgnoreToastMs = 5000;
 constexpr unsigned long kFailureToastMs = 6000;  // "Save failed · Retry": it comes late, the eyes are elsewhere
 constexpr unsigned long kPhaseMergeMs = 300;     // phase B this soon after A: one refresh for both
@@ -302,6 +304,11 @@ constexpr size_t kMaxSavedTags = 16;  // a saved word's user_tags read (the book
 // Saved items ("Met before": GET /v1/vocabulary/{id}) a card first makes room for; each is asked once per card, only
 // for a saved word the card is on, so a card holds a handful.
 constexpr size_t kSavedItemsReserved = 4;
+// Sentence cards (C3, V6) a card first makes room for: its queued sentence writes, and the cards it saved (each a tap
+// on the preview's row: a handful).
+constexpr size_t kSentenceWritesReserved = 4;
+// The page's sentences after a word's, kept apart for the sentence preview's Longer (a page holds a few dozen at most).
+constexpr size_t kSentencesAfterReserved = 16;
 // "Met before" leaves out the sentence on the page itself: also a cut of the same long sentence (cut around another
 // tap), or a sentence inside the other, when the two share at least this share of the longer.
 constexpr size_t kSameSentenceOverlapPercent = 50;
@@ -348,6 +355,11 @@ constexpr unsigned long kDeckIdleMs = 3000;
 // A vocab mirror page (V7a) the same way, after any deck step, but only after longer idle: a page blocks the loop for
 // seconds (a side-button press gives it up, VocabPageReader's cancel). Its file is read and written after kDeckIdleMs.
 constexpr unsigned long kVocabIdleMs = 8000;
+
+// The reading session (C1, C7, V6; session/ReadingSession.h): the saves it remembers for their Undo (words and
+// sentence cards, by id; a sentence card by its text too, so the same sentence saved again is a PATCH).
+constexpr size_t kSessionSavesMax = 64;
+constexpr size_t kSessionSavesReserved = 8;  // the first block (grown up to kSessionSavesMax as saves come)
 
 // The longest one Lexirise call can block (WiFi join, NTP, TCP + handshake, the request). The web page
 // polls a queued key check for this long, and lxctl's LEXI wait is checked against it (test_lxctl).

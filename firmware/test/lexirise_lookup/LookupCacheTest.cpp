@@ -123,6 +123,49 @@ TEST_F(LookupCacheTest, AWrittenAnswerIsAHitWithEveryFieldTheCardKeeps) {
   EXPECT_EQ(cache.reads(), 1u);
 }
 
+TEST_F(LookupCacheTest, TheOtherReadingsAreKeptToo) {
+  // V6 (C15): multipleReadings.alternatives, so a hit shows the card's "also" reading as a call would.
+  CachedLookup r = record("一日");
+  r.entry.alternatives = {"ichinichi", "ichijitsu", "tsukitachi"};
+  ASSERT_TRUE(cache.write({r, record("灯台")}));
+  const CacheRead read = cache.read(Language::Japanese, "一日");
+  ASSERT_TRUE(read.entry.has_value());
+  EXPECT_EQ(read.entry->alternatives, r.entry.alternatives);
+  EXPECT_TRUE(cache.read(Language::Japanese, "灯台").entry->alternatives.empty());
+  std::vector<CachedLookup> out;
+  ASSERT_TRUE(parseBucket(serializeBucket({r}), Language::Japanese, out));
+  ASSERT_EQ(out.size(), 1u);
+  EXPECT_EQ(out[0].entry.alternatives, r.entry.alternatives);
+  r.entry.alternatives.resize(config::kMaxReadingAlternatives + 1, "x");
+  EXPECT_FALSE(cacheable(r.text, r.entry));  // more than an answer can hold: not kept
+}
+
+TEST_F(LookupCacheTest, ExactlyTheCapOfOtherReadingsIsKeptAndAHit) {
+  CachedLookup r = record("一日");
+  r.entry.alternatives.assign(config::kMaxReadingAlternatives, "x");
+  EXPECT_TRUE(cacheable(r.text, r.entry));
+  ASSERT_TRUE(cache.write({r}));
+  const CacheRead read = cache.read(Language::Japanese, "一日");
+  ASSERT_TRUE(read.entry.has_value());
+  EXPECT_EQ(read.entry->alternatives, r.entry.alternatives);
+}
+
+TEST_F(LookupCacheTest, ARecordWithTooManyOtherReadingsIsAMiss) {
+  CachedLookup r = record("一日");
+  r.entry.alternatives.assign(config::kMaxReadingAlternatives + 1, "x");  // written by hand: write() never keeps it
+  files.files[bucketPath(Language::Japanese, "一日")] = serializeBucket({r});
+  EXPECT_EQ(cache.read(Language::Japanese, "一日").outcome, CacheRead::Outcome::Miss);
+  EXPECT_EQ(files.files.count(bucketPath(Language::Japanese, "一日")), 0u);  // doesn't check out: removed
+}
+
+TEST_F(LookupCacheTest, ABucketFromBeforeTheOtherReadingsIsRemoved) {
+  std::string bytes = serializeBucket({record("猫")});
+  bytes[4] = 2;  // V8's version: no other readings in its records
+  files.files[bucketPath(Language::Japanese, "猫")] = bytes;
+  EXPECT_EQ(cache.read(Language::Japanese, "猫").outcome, CacheRead::Outcome::Miss);
+  EXPECT_EQ(files.files.count(bucketPath(Language::Japanese, "猫")), 0u);
+}
+
 TEST_F(LookupCacheTest, KeyedByLanguageAndExactText) {
   ASSERT_TRUE(cache.write({record("猫")}));
   EXPECT_EQ(cache.read(Language::Chinese, "猫").outcome, CacheRead::Outcome::Miss);

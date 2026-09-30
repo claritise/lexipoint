@@ -45,6 +45,7 @@
 #include "lexirise/lookup/PageTap.h"
 #include "lexirise/lookup/StarDictChoice.h"
 #include "lexirise/page/ReaderMarks.h"
+#include "lexirise/session/ReadingSession.h"
 #include "lexirise/settings/BookMarks.h"
 #include "lexirise/settings/SettingsStore.h"
 #include "util/BookmarkUtil.h"
@@ -235,6 +236,7 @@ bool EpubReaderActivity::loadBook() {
   loadCachedBookmarks();
   // LEXIPOINT (V9a): the marks' book, and what they read as the first page is drawn, loaded now.
   lexipoint::page::readerMarks().open(epub->getPath(), epub->getLanguage());
+  lexipoint::session::readingSession().bookOpened();  // LEXIPOINT (V6): the reading session's counts start (C1)
   return true;
 }
 

@@ -142,7 +142,7 @@ bool LiveSource::writeReady(const unsigned long nowMs, const bool closing) const
 
 bool LiveSource::hasWork(const unsigned long nowMs) const {
   return loadingSentence().has_value() || lookupDue(nowMs, false) >= 0 || itemDue(nowMs, false) >= 0 ||
-         writeReady(nowMs, false);
+         writeReady(nowMs, false) || sentenceReady(nowMs, false);
 }
 
 bool LiveSource::ours(const std::string& id) const {
@@ -591,6 +591,8 @@ LiveSource::Fetched LiveSource::fetch(const unsigned long nowMs, const bool clos
     const api::ApiResponse sent = send(writes_.front(), cards_[f.index], f.savedExpressionId, f.clearFailed);
     f.error = sent.error;
     f.retryAfterS = sent.retryAfterS;
+  } else if (sentenceReady(nowMs, closing)) {
+    return sendSentence(sentenceWrites_.front());
   }
   return f;
 }
@@ -655,6 +657,9 @@ LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs
       // RenderLock with this cut alone (which would lose a rename from the next cut).
       rebuild(fetched.index);
       return Advance::Changed;
+    case Fetched::Kind::Sentence:
+      applySentence(fetched);
+      return Advance::Idle;  // nothing on the card changes (its toast came with the tap)
     case Fetched::Kind::Item: {
       if (fetched.refused) {  // not kept, asked again once the block can be over (from now: the answer's time)
         itemRetryAtMs_ = api::retryAtMs(fetched.retryAfterS, nowMs);
@@ -710,7 +715,9 @@ LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs
         saved->userTags = tags_;
         createdIds_.push_back(fetched.savedExpressionId);
         savedWithBookTag(card.language);  // a new save (POST) carries the tags
+        if (session_) session_->saved(card.language, fetched.savedExpressionId, true);
       }
+      if (session_ && change.to == Level::None && card.saved) session_->removed(card.saved->savedExpressionId);
       const bool savedHere = saved && ours(saved->savedExpressionId);
       if (change.to == Level::None && savedHere) {
         saved.reset();  // removed and cleared: saving it again is a new save (the full D9 POST)
@@ -772,7 +779,10 @@ LiveSource::Advance LiveSource::addWords(Fetched& fetched) {
     if (w != fetched.renamed && sentenceOf_[w] >= chainFirst && sentenceOf_[w] < fetched.sentence) rebuild(w);
   }
   // The tapped sentence opens on the tapped word; a later one on its first (where the card steps to).
-  if (fetched.sentence == 0) start_ = focused_ = first + static_cast<int>(fetched.tapped);
+  if (fetched.sentence == 0) {
+    start_ = focused_ = first + static_cast<int>(fetched.tapped);
+    if (session_) session_->lookedUp(cards_[start_].language);  // a card opened by a tap (C1): steps aren't
+  }
   return Advance::Changed;
 }
 
@@ -790,6 +800,170 @@ LiveSource::Advance LiveSource::laterSentenceFailed(const Fetched& fetched) {
   pageEnded_ = noWord;
   extendFailure_ = noWord ? std::nullopt : std::optional<CallFailure>(callFailure(fetched.report.error));
   return Advance::Changed;
+}
+
+void LiveSource::queue(const SentenceChange& change) {
+  if (change.undo) {
+    // Still waiting (its Undo window): dropped, nothing sent. Sent already: deleted.
+    if (!sentenceWrites_.empty() && !sentenceWrites_.back().remove) {
+      sentenceWrites_.pop_back();
+    } else if (!lastSentenceId_.empty()) {
+      if (sentenceWrites_.capacity() == 0) sentenceWrites_.reserve(config::kSentenceWritesReserved);
+      sentenceWrites_.push_back({true, Language::Japanese, {}, std::exchange(lastSentenceId_, {}), change.readyAtMs});
+    }
+    return;
+  }
+  if (change.word < 0 || change.word >= wordCount() || change.text.empty()) return;
+  const Language language = cards_[change.word].language;
+  // The same sentence saved again while its save still waits (its Undo window): one save, in the new window, and last
+  // in the queue, so the toast's Undo takes back that one save and nothing is sent. One already sent is found as it's
+  // sent (knownSentence): a PATCH.
+  const auto waiting = std::find_if(sentenceWrites_.begin(), sentenceWrites_.end(), [&](const SentenceWrite& w) {
+    return !w.remove && w.language == language && w.text == change.text;
+  });
+  if (waiting != sentenceWrites_.end()) sentenceWrites_.erase(waiting);
+  if (sentenceWrites_.capacity() == 0) sentenceWrites_.reserve(config::kSentenceWritesReserved);
+  sentenceWrites_.push_back({false, language, change.text, {}, change.readyAtMs});
+}
+
+std::string LiveSource::knownSentence(const Language language, const std::string& text) const {
+  const auto here = std::find_if(sentenceCards_.begin(), sentenceCards_.end(),
+                                 [&](const SentenceCard& c) { return c.language == language && c.text == text; });
+  if (here != sentenceCards_.end()) return here->id;
+  return session_ ? session_->sentenceId(language, text).value_or(std::string()) : std::string();
+}
+
+void LiveSource::forgetSentenceCard(const std::string& id) {
+  sentenceCards_.erase(
+      std::remove_if(sentenceCards_.begin(), sentenceCards_.end(), [&id](const SentenceCard& c) { return c.id == id; }),
+      sentenceCards_.end());
+  if (session_) session_->removed(id);  // gone from Lexirise: no longer this session's save (uncounted, not found)
+}
+
+bool LiveSource::takeSentenceFailed() {
+  const bool failed = sentenceFailed_;
+  sentenceFailed_ = false;
+  return failed;
+}
+
+bool LiveSource::sentenceReady(const unsigned long nowMs, const bool closing) const {
+  return !sentenceWrites_.empty() && (closing || timing::reached(nowMs, sentenceWrites_.front().readyAtMs));
+}
+
+LiveSource::Fetched LiveSource::sendSentence(const SentenceWrite& write) const {
+  Fetched f;
+  f.kind = Fetched::Kind::Sentence;
+  const auto sendItem = [this](const std::optional<net::Request>& request) {
+    api::ApiResponse refused;
+    refused.error = api::ApiError::Malformed;  // an id that can't go into a path
+    return request ? api_.write(*request) : refused;
+  };
+  api::ApiResponse sent;
+  if (write.remove) {
+    sent = sendItem(api::removeRequest(write.id));
+    f.gone = sent.status == api::kHttpNotFound;  // deleted in the app already: as good as removed
+  } else if (const std::string known = knownSentence(write.language, write.text); !known.empty()) {
+    // Saved this session already: its level set again rather than the card replaced by a second POST.
+    sent = sendItem(api::setProficiencyRequest(known, proficiencyOf(Level::Learning)));
+    f.savedExpressionId = known;
+    f.patched = true;
+    f.gone = sent.status == api::kHttpNotFound;
+  } else {
+    api::SaveSentence save;
+    save.language = write.language;
+    save.text = write.text;
+    save.proficiency = proficiencyOf(Level::Learning);
+    save.tags = tags_;
+    sent = api_.write(api::sentenceSaveRequest(save));
+    api::SaveResult result;
+    if (sent.ok() && api::parseSave(sent.body, result) != api::ParseStatus::Ok) {
+      sent.error = api::ApiError::Malformed;
+      f.unreadable = lookup::bodyHead(sent.body);
+    }
+    if (sent.ok()) f.savedExpressionId = std::move(result.savedExpressionId);
+  }
+  f.error = sent.error;
+  f.retryAfterS = sent.retryAfterS;
+  return f;
+}
+
+void LiveSource::applySentence(const Fetched& fetched) {
+  if (sentenceWrites_.empty()) return;
+  const SentenceWrite write = std::move(sentenceWrites_.front());
+  sentenceWrites_.erase(sentenceWrites_.begin());
+  const bool goneAlready = write.remove && fetched.gone;  // a DELETE of a card deleted in the app: done
+  error_ = goneAlready ? api::ApiError::None : fetched.error;
+  if (error_ != api::ApiError::None) {
+    sentenceFailed_ = true;
+    // Deleted in the app (a PATCH's 404): forgotten and uncounted, so the next save is a POST, counted once.
+    if (fetched.gone) forgetSentenceCard(fetched.savedExpressionId);
+    return;
+  }
+  if (write.remove) {
+    forgetSentenceCard(write.id);
+    return;
+  }
+  lastSentenceId_ = fetched.savedExpressionId;
+  if (fetched.patched) return;  // the session's own card: counted when it was made
+  if (sentenceCards_.empty()) sentenceCards_.reserve(config::kSentenceWritesReserved);
+  sentenceCards_.push_back({write.language, write.text, fetched.savedExpressionId});
+  if (session_) {  // a new card
+    session_->saved(write.language, fetched.savedExpressionId, false);
+    session_->sentenceSaved(write.language, write.text, fetched.savedExpressionId);
+  }
+}
+
+bool LiveSource::hasCountWork() const {
+  // No write queued: CardSession::idleFor checks it too; kept here so the source never asks with one waiting,
+  // whoever calls (as hasVocabWork does). And not after a call that failed: the count would wait on it too.
+  return session_ && !countTried_ && session_->countWanted() && writes_.empty() && sentenceWrites_.empty() &&
+         wordCount() > 0 && error_ == api::ApiError::None;
+}
+
+LiveSource::CountCall LiveSource::fetchCount(const api::VocabPageReader::Cancel cancel) {
+  CountCall call;
+  if (!hasCountWork()) return call;
+  countTried_ = true;  // this card's one try, a press held before it included (the next card asks again)
+  call.language = *session_->countWanted();
+  if (cancel && cancel()) return call;  // a button already held: given up before the request, none sent
+  call.sent = true;
+  api::VocabPageReader reader(cancel);
+  const api::ApiResponse got = api_.vocabularyPage(api::vocabularyCountRequest(call.language), reader, cancel);
+  call.error = got.error;
+  api::VocabPage page;
+  if (got.ok() && !reader.cancelled() && reader.finish(page) == api::ParseStatus::Ok) call.totalCount = page.totalCount;
+  return call;
+}
+
+void LiveSource::applyCount(const CountCall& call) {
+  if (session_ && call.totalCount) session_->countFetched(call.language, *call.totalCount);
+}
+
+std::optional<SentenceForSave> LiveSource::sentenceForSave(const int index) const {
+  if (index < 0 || index >= wordCount()) return std::nullopt;
+  const auto& tap = sentences_[sentenceOf_[static_cast<size_t>(index)]].tap;
+  const text::BuiltSentence& sentence = *tap.sentence;
+  SentenceForSave out;
+  out.language = cards_[index].language;
+  out.text = sentence.text;
+  out.markStart = text::utf8ByteAtUtf16(sentence.text, cards_[index].charStart);
+  out.markLength = text::utf8ByteAtUtf16(sentence.text, cards_[index].charEnd) - out.markStart;
+  if (!next_) return out;
+  // The page's sentences after it, to the page's end (each call moves on along the page; the cap, as nextAskable's,
+  // only guards against a builder that stopped moving on).
+  const size_t limit = std::accumulate(page_.lines.begin(), page_.lines.end(), size_t{1},
+                                       [](const size_t n, const ReaderLine& line) { return n + line.tokens.size(); });
+  text::TapContext next = next_(tap);
+  if (next.sentence) out.after.reserve(config::kSentencesAfterReserved);
+  const std::optional<text::BuiltSentence> pageText = next.sentence && pageText_ ? pageText_() : std::nullopt;
+  text::TapContext before = tap;  // the sentence before `next`, for the page's separator between them
+  for (size_t i = 0; i < limit && next.sentence; i++) {
+    out.after.push_back(
+        {next.sentence->text, pageText ? text::separatorBetween(*pageText, *before.sentence, *next.sentence) : ""});
+    before = std::move(next);
+    next = next_(before);
+  }
+  return out;
 }
 
 std::vector<int> LiveSource::sameWord(const int index) const {

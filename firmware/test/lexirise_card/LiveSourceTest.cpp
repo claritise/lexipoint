@@ -187,13 +187,16 @@ struct Saving {
   unsigned long now = 0;
   // `mirror`: the vocab mirror the card is given (V7a), before its analysis.
   // `cache`: the lemma cache (V7c).
+  // `reading`: the reading session (V6), given before the card opens as word select does.
   explicit Saving(const bool complete = true, std::vector<std::string> tags = {"xteink"},
-                  lexipoint::vocab::VocabStore* mirror = nullptr, lexipoint::lookup::LookupCache* cache = nullptr)
+                  lexipoint::vocab::VocabStore* mirror = nullptr, lexipoint::lookup::LookupCache* cache = nullptr,
+                  lexipoint::session::ReadingSession* reading = nullptr)
       : source(rig.api, rig.tap(1, 0), rig.page, std::move(tags)),
         c(source, ReadingMode::Kana),
         session(c, targets, input, &source) {
     if (mirror) source.setVocabMirror(*mirror);
     if (cache) source.setLookupCache(*cache);
+    if (reading) source.setSession(*reading);
     rig.api.analyzeReplies = {apiOk(kAnalyze)};
     rig.api.lookupReplies = {apiOk(kLookupYomu)};
     c.open(now);
@@ -716,10 +719,25 @@ TEST(LiveSave, TheLaterActionsDontPretend) {
   Saving s;
   s.tap(Target::RankRow);                                // ▼: the detail view
   s.tap(Target::Tab, tabCount(Language::Japanese) - 1);  // ⋯
-  s.tap(Target::Action, 1);                              // Save the sentence as a card: v0.2
+  s.tap(Target::Action, ActionId::LookUpLater);          // not built yet
   EXPECT_EQ(s.c.state().toast, "Not in this version yet");
   s.drain();
   EXPECT_TRUE(s.rig.api.written.empty());
+}
+
+TEST(LiveSession, TheSessionsLanguageIsTheTappedCards) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Rig rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  TapContext tap = rig.tap(1, 0);
+  tap.language.language = Language::Chinese;
+  LiveSource source(rig.api, tap, rig.page);
+  source.setSession(reading);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  EXPECT_EQ(reading.countWanted(), Language::Chinese);
 }
 
 TEST(LiveSession, ASaveThenCloseInOneBatchIsStillSent) {
@@ -2815,19 +2833,35 @@ TEST(LiveIgnore, TheCardReadsItsLatestChangeBeforeTheWrite) {
   EXPECT_EQ(files.files.count(config::kIgnoredPath), 0u);  // nothing written yet: the card's changes alone
 }
 
-TEST(LiveIgnore, AWordAlreadyIgnoredOnlySaysSo) {
-  // On the list from an earlier card: the approved card shows nothing else (no row, no state word).
+TEST(LiveIgnore, AnIgnoredWordsRowTakesItOffTheList) {
+  // On the list from an earlier card (C17, V6): the row reads Undo ignore; its tap takes the word off, with an Undo.
   lexipoint::fakes::FakeFiles files;
   files.files[config::kIgnoredPath] = "ja:6\n";
   lexipoint::IgnoredWordStore store(files);
   Saving s;
   s.source.setIgnoredWords(store);
   EXPECT_TRUE(s.source.ignored(kYomuWord));
+  s.c.sourceChanged(s.now);  // the card reads it as its words come (here the list was given after them)
+  EXPECT_TRUE(s.c.state().ignored);
   const Outcome o = ignoreRow(s);
-  EXPECT_TRUE(o.ignores.empty());
-  EXPECT_EQ(s.c.state().toast, "Ignored: won't be marked again");
-  EXPECT_FALSE(s.c.state().toastUndo);
+  ASSERT_EQ(o.ignores.size(), 1u);
+  EXPECT_FALSE(o.ignores[0].ignored);
+  EXPECT_EQ(s.c.state().toast, "No longer ignored  \xC2\xB7  Undo");
+  EXPECT_TRUE(s.c.state().toastUndo);
+  EXPECT_FALSE(s.c.state().ignored);  // the row reads Ignore this word again
+  EXPECT_FALSE(s.source.ignored(kYomuWord));
+  EXPECT_FALSE(save(s, o, store).failed);
+  EXPECT_EQ(files.files[config::kIgnoredPath], "");
+  EXPECT_EQ(s.c.nextDueMs(), s.now - 1 + config::kIgnoreToastMs);  // as long as Ignore's (tapped a moment ago)
+  const Outcome back = s.tap(Target::ToastUndo);                   // its Undo: ignored again
+  ASSERT_EQ(back.ignores.size(), 1u);
+  EXPECT_TRUE(back.ignores[0].ignored);
+  EXPECT_FALSE(save(s, back, store).failed);
+  EXPECT_EQ(files.files[config::kIgnoredPath], "ja:6\n");
+  EXPECT_TRUE(s.c.state().ignored);
+  EXPECT_TRUE(s.c.state().toast.empty());
   EXPECT_FALSE(s.source.ignored(kHon));  // other words aren't
+  EXPECT_TRUE(s.rig.api.written.empty());
 }
 
 TEST(LiveIgnore, TheSameEntryElsewhereFollowsAndALevelChangeKeepsIt) {
@@ -2911,8 +2945,10 @@ TEST(LiveIgnore, AListThatCantBeWrittenTakesTheIgnoreBack) {
   EXPECT_TRUE(saved.failed);
   EXPECT_TRUE(saved.redraw);
   EXPECT_FALSE(s.source.ignored(kYomuWord));
-  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_EQ(s.c.state().toast, "Couldn't save to the SD card");
   EXPECT_FALSE(s.c.state().toastUndo);
+  EXPECT_EQ(s.c.nextDueMs(), s.now + config::kFailureToastMs);
+  EXPECT_FALSE(s.c.state().ignored);
   EXPECT_TRUE(s.rig.api.written.empty());
 }
 
@@ -2954,7 +2990,8 @@ TEST(LiveIgnore, AnUndoWhoseWriteFailsLeavesItIgnored) {
   EXPECT_TRUE(saved.failed);
   EXPECT_TRUE(s.source.ignored(kYomuWord));  // still on the list, as the file says
   EXPECT_TRUE(store.contains({Language::Japanese, 6, {}}));
-  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_TRUE(s.c.state().ignored);  // the row reads Undo ignore
+  EXPECT_EQ(s.c.state().toast, "Couldn't save to the SD card");
   EXPECT_FALSE(s.c.state().toastUndo);
 }
 
@@ -2973,12 +3010,15 @@ TEST(LiveIgnore, AFailureAsTheCardClosesNeedsNoRedraw) {
 }
 
 TEST(LiveIgnore, AWordWithNoUsableKeyCantBeIgnored) {
-  // No entry id and a form over kIgnoredTextMaxBytes (never cut): "Save failed", nothing to write.
+  // No entry id and a form over kIgnoredTextMaxBytes (never cut): "Can't ignore this word" (2 s), nothing to write.
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
   Rig rig;
   const std::string longWord(config::kIgnoredTextMaxBytes + 1, 'x');
   rig.api.analyzeReplies = {
       apiOk(R"({"occurrences":[{"word":")" + longWord + R"(","isWordLike":true,"charStart":0,"charEnd":1}]})")};
   LiveSource source(rig.api, rig.tap(0, 0), rig.page);
+  source.setIgnoredWords(store);
   CardController c(source, ReadingMode::Kana);
   c.open(0);
   source.advance(0);
@@ -2988,7 +3028,8 @@ TEST(LiveIgnore, AWordWithNoUsableKeyCantBeIgnored) {
   const Hit ignore{Target::Action, ActionId::Ignore, {}};
   const Outcome o = c.tap(&ignore, 1);
   EXPECT_TRUE(o.ignores.empty());
-  EXPECT_EQ(c.state().toast, "Save failed");
+  EXPECT_EQ(c.state().toast, "Can't ignore this word");
+  EXPECT_EQ(c.nextDueMs(), 1 + config::kToastMs);
   EXPECT_FALSE(source.ignored(0));
 }
 
@@ -3064,7 +3105,7 @@ TEST(LiveIgnore, TwoWordsInOneBatchWithOneWriteFailing) {
   EXPECT_TRUE(s.source.ignored(kHon));
   EXPECT_FALSE(s.source.ignored(kYomuWord));
   EXPECT_EQ(files.files[config::kIgnoredPath], "ja:3\n");
-  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_EQ(s.c.state().toast, "Couldn't save to the SD card");
   EXPECT_EQ(files.writes - writesBefore, 2);
 }
 
@@ -3075,9 +3116,9 @@ TEST(LiveIgnore, AFailedIgnoresToastSurvivesAStepInTheSameBatch) {
   s.source.setIgnoredWords(store);
   files.failWriteOf = config::kIgnoredTmpPath;
   save(s, ignoreRow(s), store);
-  ASSERT_EQ(s.c.state().toast, "Save failed");
+  ASSERT_EQ(s.c.state().toast, "Couldn't save to the SD card");
   s.step(-1);  // like a failed save's toast, it stays for its time
-  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_EQ(s.c.state().toast, "Couldn't save to the SD card");
 }
 
 TEST(LiveIgnore, WithoutAListTheCardCantIgnore) {
@@ -3085,7 +3126,8 @@ TEST(LiveIgnore, WithoutAListTheCardCantIgnore) {
   EXPECT_EQ(s.source.ignoredStore(), nullptr);
   const Outcome o = ignoreRow(s);
   EXPECT_TRUE(o.ignores.empty());
-  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_EQ(s.c.state().toast, "Couldn't save to the SD card");  // nowhere to keep it: 6 s, as a failed write
+  EXPECT_EQ(s.c.nextDueMs(), s.now - 1 + config::kFailureToastMs);
 }
 
 TEST(LiveIgnore, ADoubleTapKeepsTheUndo) {
@@ -3263,11 +3305,13 @@ TEST(LiveIgnore, TheIgnoresUndoLastsLongerThanASaves) {
   EXPECT_TRUE(s.c.state().toastUndo);
   s.c.tick(saved + config::kToastMs);
   EXPECT_TRUE(s.c.state().toast.empty());
-  // The plain already-ignored toast and "Save failed" aren't the Ignore's Undo: they keep their own times.
+  // Undo ignore's "No longer ignored · Undo" lasts as long as Ignore's (C17, V6).
   const unsigned long again = saved + config::kToastMs + 10;
   s.c.tap(&ignore, again);
-  EXPECT_EQ(s.c.state().toast, "Ignored: won't be marked again");
-  s.c.tick(again + config::kToastMs);
+  EXPECT_EQ(s.c.state().toast, "No longer ignored  \xC2\xB7  Undo");
+  s.c.tick(again + config::kIgnoreToastMs - 1);
+  EXPECT_TRUE(s.c.state().toastUndo);
+  s.c.tick(again + config::kIgnoreToastMs);
   EXPECT_TRUE(s.c.state().toast.empty());
 }
 
@@ -3310,13 +3354,16 @@ bool vocabPageDue(Saving& s, const unsigned long nowMs, const bool touching = fa
 }
 
 // The idle card's step as LexiriseCardActivity::idleStep takes it (CardSession::nextIdleStep's order).
-enum class Idle { Nothing, Deck, Flushed, Probe, Page };
+enum class Idle { Nothing, Deck, Count, Flushed, Probe, Page };
 Idle idleStep(Saving& s, const unsigned long nowMs) {
   s.c.tick(nowMs);
   switch (s.session.nextIdleStep(nowMs, false, false, s.c.nextDueMs(), Mirrored::kEpochS)) {
     case CardSession::IdleStep::Deck:
       s.session.applyDeck(s.session.fetchDeck(), nowMs);
       return Idle::Deck;
+    case CardSession::IdleStep::Count:  // the reading session's word count (V6): none here (no session given)
+      s.session.applyCount(s.session.fetchCount(), nowMs);
+      return Idle::Count;
     case CardSession::IdleStep::Flush:  // as LexiriseCardActivity::flushFiles
       s.session.flushFiles(/*closing=*/false, nowMs);
       return Idle::Flushed;
@@ -4549,4 +4596,965 @@ TEST(LiveReadingToggle, AWordSpelledWithDzuDrawsKanaThenRomaji) {
     EXPECT_EQ(readingLine(ReadingMode::Kana), reading) << word;
     EXPECT_EQ(readingLine(ReadingMode::Romaji), romaji) << word;
   }
+}
+
+// --- V6 (signed off 2026-09-30): the "also" reading (C15), a sentence card (C3), the reading session (C1, C7) ---
+
+namespace {
+
+constexpr const char* kLookupYomuAlso =
+    R"({"word":"読む","transliteration":"yomu","rank":350,"frequency_score":0.8,"system_tags":["JLPT-N5"],)"
+    R"("multipleReadings":{"primary":"yomu","alternatives":["doku","yomu","toku","どく"],"hasMultiple":true},)"
+    R"("translation_status":"ready","translations":[{"translation":"to read","part_of_speech":["verb"]}]})";
+
+constexpr const char* kSentence = "彼は本を読んだ。";  // the Rig's page, one sentence
+constexpr const char* kSentenceSaved = R"({"result":{"type":"sentence","status":"added","savedExpressionId":501}})";
+
+// The ⋯ tab, its Save sentence row (the preview), then the preview's own row (saved).
+void saveTheSentence(Saving& s) {
+  if (s.c.state().view != View::Expanded) s.tap(Target::RankRow);
+  if (!isActionsTab(Language::Japanese, s.c.state().tab)) s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  s.tap(Target::Action, ActionId::SaveSentence);
+  s.tap(Target::Action, ActionId::SaveSentenceNow);
+}
+
+// The card loop's count check at `nowMs`, as deckStepDue's.
+bool countStepDue(Saving& s, const unsigned long nowMs, const bool rendering = false, const bool touching = false) {
+  s.c.tick(nowMs);
+  if (touching) s.session.touched(nowMs);
+  return s.session.shouldFetchCount(nowMs, rendering, touching, s.c.nextDueMs());
+}
+
+}  // namespace
+
+TEST(LiveAlso, PhaseBsOtherReadingsInKanaAndRomajiNeverTheCardsOwn) {
+  Saving s(/*complete=*/false);
+  s.rig.api.lookupReplies = {apiOk(kLookupYomuAlso)};
+  s.fetchOne();  // B
+  const CardWord& w = s.c.currentWord();
+  ASSERT_EQ(w.reading, "よむ");
+  // yomu (the card's own) left out; どく given in kana is the same reading as doku: once.
+  EXPECT_EQ(w.also, (std::vector<AlsoReading>{{"どく", "doku"}, {"とく", "toku"}}));
+}
+
+TEST(LiveAlso, ANeutralTonePinyinIsntReadAsRomaji) {
+  lexipoint::lookup::LookupCard card;
+  card.language = Language::Chinese;
+  card.surface = "得";
+  card.reading = "dé";
+  card.alternatives = {"de", "děi"};
+  card.complete = true;
+  EXPECT_EQ(cardWord(card).also, (std::vector<AlsoReading>{{"de", "de"}, {"děi", "děi"}}));
+}
+
+TEST(LiveAlso, ChinesePinyinAsGiven) {
+  lexipoint::lookup::LookupCard card;
+  card.language = Language::Chinese;
+  card.surface = "长";
+  card.reading = "cháng";
+  card.alternatives = {"zhǎng", "cháng", "zhǎng"};
+  card.complete = true;
+  EXPECT_EQ(cardWord(card).also, (std::vector<AlsoReading>{{"zhǎng", "zhǎng"}}));
+  card.complete = false;  // before phase B: none
+  EXPECT_TRUE(cardWord(card).also.empty());
+}
+
+TEST(LiveAlso, AnAlternativeThatCantBeConvertedStaysAsGiven) {
+  lexipoint::lookup::LookupCard card;
+  card.language = Language::Japanese;
+  card.surface = "猫";
+  card.reading = "neko";
+  card.alternatives = {"x9"};
+  card.complete = true;
+  EXPECT_EQ(cardWord(card).also, (std::vector<AlsoReading>{{"x9", "x9"}}));
+}
+
+TEST(LiveSentence, SavedAsASentenceCardAtLearningWithTheTags) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+  saveTheSentence(s);
+  EXPECT_EQ(s.c.state().toast, "Sentence saved as a card  \xC2\xB7  Undo");
+  EXPECT_TRUE(s.rig.api.written.empty());  // not inside its Undo window
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 1u);
+  const auto& post = s.rig.api.written[0];
+  EXPECT_EQ(post.method, lexipoint::net::Method::Post);
+  EXPECT_EQ(post.path, "/v1/vocabulary");
+  EXPECT_EQ(post.body, R"({"language":"ja","text":"彼は本を読んだ。","mode":"sentence","proficiency":2,)"
+                       R"("tags":["xteink"]})");
+  EXPECT_EQ(s.c.state().level, Level::None);  // the word's own level is untouched
+}
+
+TEST(LiveSentence, AnUndoInItsWindowSendsNothing) {
+  Saving s;
+  saveTheSentence(s);
+  s.tap(Target::ToastUndo);
+  EXPECT_EQ(s.c.state().toast, "Removed from Lexirise");
+  s.drain();
+  EXPECT_TRUE(s.rig.api.written.empty());
+}
+
+TEST(LiveSentence, ShorterIsWhatsSaved) {
+  TwoSentences two;
+  two.api.analyzeReplies = {apiOk(kAnalyze)};
+  two.api.lookupReplies = {apiOk(kLookupYomu)};
+  two.api.writeReplies = {apiOk(kSentenceSaved)};
+  LiveSource source(two.api, two.tapped(4), two.page, {"xteink"}, two.next());
+  const auto sentence = [&] {
+    CardController c(source, ReadingMode::Kana);
+    openOnTheLastWord(source, c);
+    return source.sentenceForSave(c.word());
+  }();
+  ASSERT_TRUE(sentence);
+  EXPECT_EQ(sentence->text, kSentence);
+  EXPECT_EQ(sentence->text.substr(sentence->markStart, sentence->markLength), "読んだ");
+  EXPECT_EQ(sentence->after, (std::vector<LaterSentence>{{"雨が降る。", ""}}));  // the next sentence: Longer adds it
+}
+
+TEST(LiveSentence, AChineseCardsSentenceIsPostedAsChinese) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Rig rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  rig.api.writeReplies = {apiOk(kSentenceSaved)};
+  TapContext tap = rig.tap(1, 0);
+  tap.language.language = Language::Chinese;
+  LiveSource source(rig.api, tap, rig.page);
+  source.setSession(reading);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance();
+  source.queue(SentenceChange{c.word(), "你好。", false, 0});
+  for (int i = 0; i < 4 && source.hasPendingWrites(); i++) source.apply(source.fetch(10000, true), 10000);
+  ASSERT_EQ(rig.api.written.size(), 1u);
+  EXPECT_NE(rig.api.written[0].body.find(R"("language":"zh")"), std::string::npos);
+  EXPECT_TRUE(reading.sentenceId(Language::Chinese, "你好。").has_value());
+}
+
+TEST(LiveSentence, ARetryThatGoesThroughIsntAFailure) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  saveTheSentence(s);
+  s.now += config::kToastMs;
+  ASSERT_TRUE(s.fetchOne().sentenceFailed);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+  saveTheSentence(s);  // the row again
+  s.now += config::kToastMs;
+  const CardSession::Answer a = s.fetchOne();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_FALSE(a.writeFailed);
+  EXPECT_FALSE(a.sentenceFailed);
+  EXPECT_NE(s.c.state().toast, "Save failed");
+}
+
+TEST(LiveSentence, AFailureSaysSaveFailedAndTheRowIsTheRetry) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  saveTheSentence(s);
+  s.now += config::kToastMs;
+  const CardSession::Answer a = s.fetchOne();
+  EXPECT_TRUE(a.writeFailed);
+  EXPECT_TRUE(a.sentenceFailed);
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_FALSE(s.c.state().toastUndo);
+  EXPECT_FALSE(s.session.hasPendingWrites());
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+  saveTheSentence(s);  // the same row again
+  s.drain();
+  EXPECT_EQ(s.rig.api.written.size(), 2u);
+}
+
+TEST(LiveSentence, TheSameSentenceSavedAgainThisSessionIsAPatch) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk("{}")};
+  saveTheSentence(s);
+  s.drain();
+  saveTheSentence(s);  // again: never a second POST (it would replace the card's tags and level)
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Patch);
+  EXPECT_EQ(s.rig.api.written[1].path, "/v1/vocabulary/501");
+  EXPECT_EQ(s.rig.api.written[1].body, R"({"proficiency":2})");
+}
+
+TEST(LiveSentence, ClosingSendsItAtOnce) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+  saveTheSentence(s);
+  ASSERT_TRUE(s.session.hasPendingWrites());
+  while (s.session.hasPendingWrites()) s.session.applyClosing(s.session.fetch(s.now, /*closing=*/true), s.now);
+  EXPECT_EQ(s.rig.api.written.size(), 1u);
+  EXPECT_EQ(s.session.unsentSaves(), 0);
+}
+
+TEST(LiveSentence, ItsUndoAfterItWasSentDeletesTheCard) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk(R"({"success":true,"deleted":true})")};
+  saveTheSentence(s);
+  const SentenceChange undo{s.c.word(), {}, true, s.now};
+  s.drain();             // sent
+  s.source.queue(undo);  // (the toast's Undo is gone by then on the card; the source still takes a late one back)
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Delete);
+  EXPECT_EQ(s.rig.api.written[1].path, "/v1/vocabulary/501");
+}
+
+TEST(LiveSession, ACardOpenedByATapIsLookedUpAndStepsArent) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  {
+    Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+    s.step(-1);
+    s.step(-1);
+    s.drain();
+  }
+  {
+    Saving other(true, {"xteink"}, nullptr, nullptr, &reading);  // a tap on another word: a new card
+  }
+  reading.homeNext();
+  reading.bookClosed();
+  const auto summary = reading.takeSummary();
+  ASSERT_TRUE(summary);
+  EXPECT_EQ(summary->lookedUp, 2u);
+  EXPECT_EQ(summary->saved, 0u);
+}
+
+TEST(LiveSession, SavesKeptAreCountedAndAnUndoTakesOneBack) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})"), apiOk("{}"), apiOk(kSentenceSaved)};
+  s.level(1);  // 読む saved
+  s.drain();
+  s.level(3);  // a level change isn't another save
+  s.drain();
+  s.level(0);  // T, then Undo in its window: nothing sent, nothing counted
+  s.tap(Target::ToastUndo);
+  s.drain();
+  saveTheSentence(s);  // a sentence card is a save
+  s.drain();
+  s.tap(Target::RankRow);  // back to the card: Undo save for 読む (⋯ row) takes one back
+  s.tap(Target::RankRow);
+  s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  s.rig.api.writeReplies = {apiOk("{}"), apiOk("{}")};
+  s.tap(Target::Action, ActionId::UndoSave);
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 5u);  // POST, PATCH, the sentence's POST, then DELETE and its clear
+  EXPECT_EQ(s.rig.api.written[3].method, lexipoint::net::Method::Delete);
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 1u);  // the sentence card
+}
+
+TEST(LiveSession, AFailedSaveIsntCounted) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  s.level(1);
+  s.drain();
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 0u);
+}
+
+TEST(LiveCount, AskedOnceOnAnIdleCardAndCountedLocallyAfter) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.vocabReplies = {apiOk(R"({"items":[],"totalCount":1204,"languageCount":1300,"nextOffset":null})")};
+  EXPECT_FALSE(countStepDue(s, s.now));  // not idle yet
+  EXPECT_FALSE(countStepDue(s, s.now + config::kDeckIdleMs, /*rendering=*/true));
+  EXPECT_FALSE(countStepDue(s, s.now + config::kDeckIdleMs, false, /*touching=*/true));
+  s.now += 2 * config::kDeckIdleMs;
+  ASSERT_TRUE(countStepDue(s, s.now));
+  EXPECT_EQ(s.session.nextIdleStep(s.now, false, false, s.c.nextDueMs(), 0), CardSession::IdleStep::Count);
+  const LiveSource::CountCall call = s.session.fetchCount();
+  ASSERT_EQ(s.rig.api.vocabRequests.size(), 1u);
+  EXPECT_EQ(s.rig.api.vocabRequests[0].path, "/v1/vocabulary?language=ja&limit=1");
+  EXPECT_EQ(call.totalCount, 1204u);  // totalCount (words), not languageCount (sentence cards too)
+  s.session.applyCount(call, s.now);
+  EXPECT_FALSE(countStepDue(s, s.now + 10 * config::kDeckIdleMs));  // one per session
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  s.level(1);
+  s.drain();
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->words, 1205u);
+}
+
+TEST(LiveCount, NotWhileAWriteWaitsNorWithoutASession) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.level(1);  // a save in its Undo window
+  EXPECT_FALSE(countStepDue(s, s.now + 10 * config::kDeckIdleMs));
+  Saving none;  // no session given: never
+  EXPECT_FALSE(countStepDue(none, none.now + 10 * config::kDeckIdleMs));
+  EXPECT_FALSE(none.source.hasCountWork());
+}
+
+TEST(LiveCount, AFailedCallIsTriedOnceMorePerCard) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  {
+    Saving s(true, {"xteink"}, nullptr, nullptr, &reading);  // offline: no reply scripted
+    s.now += 2 * config::kDeckIdleMs;
+    ASSERT_TRUE(countStepDue(s, s.now));
+    const LiveSource::CountCall call = s.session.fetchCount();
+    EXPECT_FALSE(call.totalCount);
+    s.session.applyCount(call, s.now);
+    EXPECT_FALSE(countStepDue(s, s.now + 10 * config::kDeckIdleMs));  // not again on this card
+  }
+  EXPECT_TRUE(reading.countWanted());
+  Saving next(true, {"xteink"}, nullptr, nullptr, &reading);  // the next card asks again
+  next.now += 2 * config::kDeckIdleMs;
+  EXPECT_TRUE(countStepDue(next, next.now));
+  // The book closes with no count: the summary's second line is left out.
+  reading.homeNext();
+  reading.bookClosed();
+  const auto summary = reading.takeSummary();
+  ASSERT_TRUE(summary);
+  EXPECT_FALSE(summary->words);
+}
+
+TEST(LiveCount, NeverAsTheCardCloses) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  s.level(1);
+  while (s.session.hasPendingWrites()) s.session.applyClosing(s.session.fetch(s.now, /*closing=*/true), s.now);
+  EXPECT_TRUE(s.rig.api.vocabRequests.empty());  // the close sends the writes only
+}
+
+// --- V6 review R1-R2 ---
+
+TEST(LiveSentence, TheSameSentenceTwiceInItsUndoWindowIsOnePost) {
+  // R5: the second save merges into the first, still waiting (one save, in the new window); never a second POST.
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk("{}")};
+  saveTheSentence(s);
+  saveTheSentence(s);  // again before the first was sent
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 1u);
+  EXPECT_EQ(s.rig.api.written[0].method, lexipoint::net::Method::Post);
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 1u);
+}
+
+TEST(LiveSentence, WithoutASessionTheCardStillPatchesItsOwn) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk("{}")};
+  saveTheSentence(s);
+  s.drain();  // sent
+  saveTheSentence(s);
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Patch);
+}
+
+TEST(LiveSentence, APatchReSaveIsntCountedTwiceAndADeleteUncountsIt) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk("{}"), apiOk(R"({"success":true,"deleted":true})"),
+                            apiOk(kSentenceSaved)};
+  saveTheSentence(s);
+  s.drain();
+  saveTheSentence(s);  // a PATCH
+  s.drain();
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});  // taken back after it was sent: DELETE
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 3u);
+  EXPECT_EQ(s.rig.api.written[2].method, lexipoint::net::Method::Delete);
+  saveTheSentence(s);  // gone: a new POST again
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 4u);
+  EXPECT_EQ(s.rig.api.written[3].method, lexipoint::net::Method::Post);
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  s.rig.api.writeReplies = {apiOk(R"({"success":true,"deleted":true})")};
+  s.drain();
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 0u);
+}
+
+TEST(LiveSentence, AFailedSavesToastSurvivesSteps) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  saveTheSentence(s);
+  s.now += config::kToastMs;
+  s.fetchOne();
+  ASSERT_EQ(s.c.state().toast, "Save failed");
+  s.step(-1);
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  s.step(1);
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+}
+
+TEST(LiveSentence, TwoTapsOnTheSaveRowInOneBatchSaveOnce) {
+  Saving s;
+  s.tap(Target::RankRow);
+  s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  s.tap(Target::Action, ActionId::SaveSentence);
+  for (const Hit& h : s.targets.at(s.now)->hits) {
+    if (h.target == Target::Action && h.index == ActionId::SaveSentenceNow) {
+      s.input.tap(h.rect.x + 1, h.rect.y + 1, ++s.now);
+      s.input.tap(h.rect.x + 1, h.rect.y + 1, ++s.now);
+    }
+  }
+  const Outcome o = s.session.handleInput(s.now);
+  EXPECT_EQ(o.sentences.size(), 1u);
+}
+
+TEST(LiveAlso, AKatakanaAlternativeOfTheCardsReadingIsLeftOut) {
+  lexipoint::lookup::LookupCard card;
+  card.language = Language::Japanese;
+  card.surface = "読む";
+  card.reading = "yomu";
+  card.alternatives = {"ヨム", "doku"};
+  card.complete = true;
+  EXPECT_EQ(cardWord(card).also, (std::vector<AlsoReading>{{"どく", "doku"}}));
+}
+
+// --- V6 review R3-R4 ---
+
+TEST(LiveSentence, TheSameSentenceOnAnotherCardThisSessionIsAPatch) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  {
+    Saving first(true, {"xteink"}, nullptr, nullptr, &reading);
+    first.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+    saveTheSentence(first);
+    first.drain();
+    ASSERT_EQ(first.rig.api.written.size(), 1u);
+  }
+  Saving second(true, {"xteink"}, nullptr, nullptr, &reading);
+  second.rig.api.writeReplies = {apiOk("{}")};
+  saveTheSentence(second);
+  second.drain();
+  ASSERT_EQ(second.rig.api.written.size(), 1u);
+  EXPECT_EQ(second.rig.api.written[0].method, lexipoint::net::Method::Patch);
+  EXPECT_EQ(second.rig.api.written[0].path, "/v1/vocabulary/501");
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 1u);
+}
+
+TEST(LiveSentence, ACardDeletedInTheAppIsPostedAgainAfterItsPatch404s) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  lexipoint::api::ApiResponse notFound;
+  notFound.error = ApiError::Http;
+  notFound.status = lexipoint::api::kHttpNotFound;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), notFound, apiOk(kSentenceSaved)};
+  saveTheSentence(s);
+  s.drain();
+  saveTheSentence(s);  // a PATCH: the card was deleted in the app meanwhile
+  s.drain();
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  saveTheSentence(s);  // forgotten: a POST again
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 3u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Patch);
+  EXPECT_EQ(s.rig.api.written[2].method, lexipoint::net::Method::Post);
+  EXPECT_EQ(reading.sentenceId(Language::Japanese, kSentence), "501");  // the new card, from its POST
+}
+
+TEST(LiveSession, AStepIntoTheNextSentenceIsntALookUp) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  TwoSentences rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kAnalyzeRain)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu), apiOk(R"({"word":"雨"})")};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  source.setSession(reading);
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  c.step(+1, 1000);
+  ASSERT_EQ(source.advance(), LiveSource::Advance::Changed);
+  c.sourceChanged(1200);
+  ASSERT_EQ(c.word(), 5);
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->lookedUp, 1u);
+}
+
+TEST(LiveCount, NotAfterTheCardsLastCallFailed) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  s.level(1);
+  s.drain();
+  s.now += config::kFailureToastMs + 2 * config::kDeckIdleMs;
+  EXPECT_FALSE(countStepDue(s, s.now));
+}
+
+TEST(LiveSession, ALevelChangeOnASavedWordDoesntUncountIt) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})"), apiOk("{}")};
+  s.level(1);
+  s.drain();
+  s.level(3);
+  s.drain();
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 1u);
+}
+
+// --- V6 review R5-R6 ---
+
+TEST(LiveSentence, TwoSavesThenUndoInTheWindowSendNothing) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk("{}")};
+  saveTheSentence(s);
+  saveTheSentence(s);
+  s.tap(Target::ToastUndo);
+  EXPECT_EQ(s.c.state().toast, "Removed from Lexirise");
+  s.drain();
+  EXPECT_TRUE(s.rig.api.written.empty());
+}
+
+TEST(LiveSentence, AFailedPatchThatIsntA404KeepsTheCard) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiFailure(ApiError::NoWifi), apiOk("{}")};
+  saveTheSentence(s);
+  s.drain();
+  saveTheSentence(s);
+  s.drain();
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  saveTheSentence(s);
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 3u);
+  EXPECT_EQ(s.rig.api.written[2].method, lexipoint::net::Method::Patch);
+  EXPECT_EQ(reading.sentenceId(Language::Japanese, kSentence), "501");
+}
+
+TEST(LiveSentence, AnUndoAfterAPatchOnAnotherCardDeletesTheSessionsCard) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  {
+    Saving first(true, {"xteink"}, nullptr, nullptr, &reading);
+    first.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+    saveTheSentence(first);
+    first.drain();
+  }
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk("{}"), apiOk(R"({"success":true,"deleted":true})")};
+  saveTheSentence(s);
+  s.drain();
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Delete);
+  EXPECT_EQ(s.rig.api.written[1].path, "/v1/vocabulary/501");
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 0u);
+}
+
+TEST(LiveSentence, TwoUndoTapsInOneBatchUndoOnce) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+  saveTheSentence(s);
+  s.drain();  // sent
+  saveTheSentence(s);
+  for (const Hit& h : s.targets.at(s.now)->hits) {
+    if (h.target == Target::ToastUndo) {
+      s.input.tap(h.rect.x + 1, h.rect.y + 1, ++s.now);
+      s.input.tap(h.rect.x + 1, h.rect.y + 1, ++s.now);
+    }
+  }
+  s.session.handleInput(s.now);
+  s.show();
+  s.drain();
+  EXPECT_EQ(s.rig.api.written.size(), 1u);  // the first POST only: the second save undone, nothing deleted
+  EXPECT_EQ(s.c.state().toast, "Removed from Lexirise");
+}
+
+TEST(LiveSentence, ASecondLateUndoSendsNoSecondDelete) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk(R"({"success":true,"deleted":true})")};
+  saveTheSentence(s);
+  s.drain();
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  s.drain();
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  s.drain();
+  EXPECT_EQ(s.rig.api.written.size(), 2u);
+}
+
+TEST(LiveSentence, ThePageAfterTheSentenceIsEveryLaterSentence) {
+  TwoSentences rig;
+  rig.model.lines.push_back({{"晴れ", "た", "。"}, true});
+  rig.page.lines.push_back({180, {{"晴れ", 20, 52}, {"た", 72, 26}, {"。", 98, 26}}});
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const auto sentence = source.sentenceForSave(c.word());
+  ASSERT_TRUE(sentence);
+  EXPECT_EQ(sentence->after, (std::vector<LaterSentence>{{"雨が降る。", ""}, {"晴れた。", ""}}));
+  const TapContext rain = rig.next()(rig.tapped(4));
+  ASSERT_TRUE(rain.sentence);
+  EXPECT_EQ(rain.sentence->text, "雨が降る。");  // two sentences after it, not one
+}
+
+TEST(LiveCount, TheCountsCallStartsTheIdleTimeAgain) {
+  Saving s;
+  s.session.applyCount(LiveSource::CountCall{}, 777777);
+  EXPECT_EQ(s.session.idleSinceMs(), 777777u);
+}
+
+TEST(LiveCount, TheCountGoesBeforeTheFiles) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Cached k;
+  Saving s(true, {"xteink"}, nullptr, &k.cache, &reading);
+  s.now += 2 * config::kDeckIdleMs;
+  s.c.tick(s.now);
+  ASSERT_TRUE(s.session.shouldFlushFiles(s.now, false, false, s.c.nextDueMs()));
+  ASSERT_TRUE(s.session.shouldFetchCount(s.now, false, false, s.c.nextDueMs()));
+  EXPECT_EQ(s.session.nextIdleStep(s.now, false, false, s.c.nextDueMs(), 0), CardSession::IdleStep::Count);
+}
+
+// --- V6 review R7-R8 ---
+
+TEST(LiveSentence, ASentenceSavedAgainAfterAnotherIsLastSoTheUndoTakesItBack) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk("{}")};
+  const unsigned long ready = s.now + config::kToastMs;
+  s.source.queue(SentenceChange{s.c.word(), "彼は本を読んだ。", false, ready});
+  s.source.queue(SentenceChange{s.c.word(), "彼は本を", false, ready});
+  s.source.queue(SentenceChange{s.c.word(), "彼は本を読んだ。", false, ready});
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 1u);
+  EXPECT_NE(s.rig.api.written[0].body.find(R"("text":"彼は本を",)"), std::string::npos);
+}
+
+TEST(LiveSentence, AnUnreadableSaveAnswerIsAFailure) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk("<html>portal</html>"), apiOk(kSentenceSaved)};
+  saveTheSentence(s);
+  s.drain();
+  EXPECT_EQ(s.c.state().toast, "Save failed");
+  saveTheSentence(s);
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Post);
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 1u);
+}
+
+TEST(LiveSentence, AFailureAsTheCardClosesSaysWhy) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  saveTheSentence(s);
+  while (s.session.hasPendingWrites()) s.session.applyClosing(s.session.fetch(s.now, true), s.now);
+  EXPECT_EQ(s.session.unsentSaves(), 1);
+  EXPECT_EQ(s.session.unsentError(), ApiError::NoWifi);
+}
+
+TEST(LiveCount, TheDeckGoesBeforeTheCount) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  reading.lookedUp(Language::Japanese);
+  DeckBook book;
+  DeckSaving d(book);
+  d.s.source.setSession(reading);
+  d.s.rig.api.deckReplies = {apiOk(kNoBookDeck), apiOk(kCreated)};
+  d.save();
+  d.s.now += 2 * config::kDeckIdleMs;
+  ASSERT_TRUE(deckStepDue(d.s, d.s.now, false, false));
+  ASSERT_TRUE(d.s.session.shouldFetchCount(d.s.now, false, false, d.s.c.nextDueMs()));
+  EXPECT_EQ(d.s.session.nextIdleStep(d.s.now, false, false, d.s.c.nextDueMs(), 0), CardSession::IdleStep::Deck);
+}
+
+// --- V6 review R9-R10 ---
+
+TEST(LiveIgnore, AFailedWriteAfterASteppingOntoAnotherCopyShowsThatCopysState) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Rig rig;
+  TextLine line;
+  line.tokens = {"本", "と", "本", "。"};
+  line.startsParagraph = true;
+  rig.model.lines = {line};
+  rig.page.lines = {{100, {{"本", 20, 26}, {"と", 46, 26}, {"本", 72, 26}, {"。", 98, 26}}}};
+  rig.api.analyzeReplies = {
+      apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":0,"charEnd":1,"entryId":3,"lemmaEntryId":3},)"
+            R"({"word":"と","isWordLike":true,"charStart":1,"charEnd":2,"entryId":8},)"
+            R"({"word":"本","isWordLike":true,"charStart":2,"charEnd":3,"entryId":3,"lemmaEntryId":3}]})")};
+  rig.api.lookupReplies = {apiOk(R"({"word":"本","translations":[{"translation":"book"}]})")};
+  LiveSource source(rig.api, rig.tap(0, 0), rig.page);
+  source.setIgnoredWords(store);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance(1);
+  source.advance(2);
+  c.sourceChanged(2);
+  const Hit ignore{Target::Action, kIgnore, {}};
+  ASSERT_EQ(c.tap(&ignore, 3).ignores.size(), 1u);  // 本 (word 0), and with it word 2
+  c.step(1, 4);
+  c.step(1, 5);
+  ASSERT_EQ(c.word(), 2);
+  ASSERT_TRUE(c.state().ignored);
+  c.ignoreFailed(0, true, 6);  // the SD card didn't take it: every copy is back to not ignored
+  EXPECT_FALSE(source.ignored(c.word()));
+  EXPECT_EQ(c.state().ignored, source.ignored(c.word()));
+}
+
+TEST(LiveSentence, AnUnreadableSaveAnswerIsLogged) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk("<html>portal</html>")};
+  saveTheSentence(s);
+  s.now += config::kToastMs;
+  const CardSession::Answer a = s.fetchOne();
+  EXPECT_TRUE(a.sentenceFailed);
+  EXPECT_EQ(a.unreadable, "<html>portal</html>");
+}
+
+// --- V6 review R11-R12 ---
+
+TEST(LiveSentence, TwoDifferentSentencesQueuedAreEachSentOnceInOrder) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiOk(R"({"result":{"savedExpressionId":502}})")};
+  const unsigned long ready = s.now + config::kToastMs;
+  s.source.queue(SentenceChange{s.c.word(), "彼は本を", false, ready});
+  s.source.queue(SentenceChange{s.c.word(), "彼は本を読んだ。", false, ready});
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_NE(s.rig.api.written[0].body.find(R"("text":"彼は本を",)"), std::string::npos);
+  EXPECT_NE(s.rig.api.written[1].body.find(R"("text":"彼は本を読んだ。",)"), std::string::npos);
+}
+
+TEST(LiveSentence, ALevelChangeQueuedBeforeItIsSentFirst) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})"), apiOk(kSentenceSaved)};
+  s.level(1);
+  saveTheSentence(s);
+  while (s.session.hasPendingWrites()) s.session.applyClosing(s.session.fetch(s.now, /*closing=*/true), s.now);
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[0].body.find(R"("mode":"sentence")"), std::string::npos);
+  EXPECT_NE(s.rig.api.written[1].body.find(R"("mode":"sentence")"), std::string::npos);
+}
+
+TEST(LiveIgnore, AFailedUndoIgnoreAfterASteppingAwayShowsTheWordOnScreen) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::IgnoredWordStore store(files);
+  Rig rig;
+  TextLine line;
+  line.tokens = {"本", "と", "本", "。"};
+  line.startsParagraph = true;
+  rig.model.lines = {line};
+  rig.page.lines = {{100, {{"本", 20, 26}, {"と", 46, 26}, {"本", 72, 26}, {"。", 98, 26}}}};
+  rig.api.analyzeReplies = {
+      apiOk(R"({"occurrences":[{"word":"本","isWordLike":true,"charStart":0,"charEnd":1,"entryId":3,"lemmaEntryId":3},)"
+            R"({"word":"と","isWordLike":true,"charStart":1,"charEnd":2,"entryId":8},)"
+            R"({"word":"本","isWordLike":true,"charStart":2,"charEnd":3,"entryId":3,"lemmaEntryId":3}]})")};
+  rig.api.lookupReplies = {apiOk(R"({"word":"本","translations":[{"translation":"book"}]})")};
+  LiveSource source(rig.api, rig.tap(0, 0), rig.page);
+  source.setIgnoredWords(store);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance(1);
+  source.advance(2);
+  c.sourceChanged(2);
+  const Hit ignore{Target::Action, kIgnore, {}};
+  ASSERT_EQ(c.tap(&ignore, 3).ignores.size(), 1u);
+  c.tick(3 + config::kIgnoreToastMs + 1);
+  const Outcome undo = c.tap(&ignore, 3 + config::kIgnoreToastMs + 2);  // Undo ignore
+  ASSERT_EQ(undo.ignores.size(), 1u);
+  EXPECT_FALSE(undo.ignores[0].ignored);
+  c.step(1, 3 + config::kIgnoreToastMs + 3);
+  ASSERT_EQ(c.word(), 1);                                    // と
+  c.ignoreFailed(0, false, 3 + config::kIgnoreToastMs + 4);  // the Undo ignore didn't reach the SD card
+  EXPECT_TRUE(source.ignored(0));
+  EXPECT_FALSE(source.ignored(1));
+  EXPECT_FALSE(c.state().ignored);  // と, on screen, isn't ignored
+}
+
+TEST(LiveCount, AButtonAlreadyHeldSendsNothing) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.now += 2 * config::kDeckIdleMs;
+  ASSERT_TRUE(countStepDue(s, s.now));
+  const LiveSource::CountCall call = s.session.fetchCount([] { return true; });
+  EXPECT_FALSE(call.sent);
+  EXPECT_TRUE(s.rig.api.vocabRequests.empty());
+  EXPECT_FALSE(countStepDue(s, s.now + 10 * config::kDeckIdleMs));  // this card's try: the next card asks again
+}
+
+// --- V6 review R13-R14 ---
+
+TEST(LiveSentence, TheSaveWaitsForItsUndoWindow) {
+  Saving s;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved)};
+  saveTheSentence(s);
+  const unsigned long saved = s.now;
+  EXPECT_FALSE(s.session.hasWork(saved));
+  s.fetchOne();
+  EXPECT_TRUE(s.rig.api.written.empty());
+  EXPECT_TRUE(s.session.hasWork(saved + config::kToastMs));
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 1u);
+}
+
+// --- V6 review R15-R16 ---
+
+TEST(LiveSentence, ThePagesSeparatorBeforeEachLaterSentenceIsRecorded) {
+  TwoSentences rig;
+  rig.model.lines.push_back({{"He", "left!"}, true});  // (Japanese rules: ! ends a sentence, . doesn't)
+  rig.model.lines.push_back({{"She", "stayed!", "\xE3\x80\x80", "何", "だ", "。"}, false});
+  rig.page.lines.push_back({180, {{"He", 20, 30}, {"left!", 60, 50}}});
+  rig.page.lines.push_back({220, {{"She", 20, 40}, {"stayed!", 70, 70}}});
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {}, rig.next());
+  source.setPageText([&rig] { return lexipoint::text::pageTextOf(rig.model); });
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const auto sentence = source.sentenceForSave(c.word());
+  ASSERT_TRUE(sentence);
+  EXPECT_EQ(sentence->after,
+            (std::vector<LaterSentence>{
+                {"雨が降る。", ""}, {"He left!", ""}, {"She stayed!", " "}, {"何だ。", "\xE3\x80\x80"}}));
+  LiveSource plain(rig.api, rig.tapped(4), rig.page, {}, rig.next());  // no page text given: nothing between
+  CardController pc(plain, ReadingMode::Kana);
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  openOnTheLastWord(plain, pc);
+  EXPECT_EQ(plain.sentenceForSave(pc.word())->after[2].separator, "");
+}
+
+// --- V6 review R21-R22 ---
+
+TEST(LiveAlso, ABlankAlternativeIsLeftOut) {
+  lexipoint::lookup::LookupCard card;
+  card.language = Language::Chinese;
+  card.surface = "长";
+  card.reading = "cháng";
+  card.alternatives = {" ", "zhǎng"};
+  card.complete = true;
+  EXPECT_EQ(cardWord(card).also, (std::vector<AlsoReading>{{"zhǎng", "zhǎng"}}));
+}
+
+// --- V6 review R25-R26 ---
+
+TEST(LiveSentence, AnUndoOfACardDeletedInTheAppCountsAsRemoved) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  lexipoint::api::ApiResponse notFound;
+  notFound.error = ApiError::Http;
+  notFound.status = lexipoint::api::kHttpNotFound;
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), notFound, apiOk(R"({"result":{"savedExpressionId":502}})")};
+  saveTheSentence(s);
+  s.drain();                                                    // sent: 501
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});  // a late Undo
+  const CardSession::Answer a = s.fetchOne();                   // DELETE: 404
+  EXPECT_FALSE(a.sentenceFailed);
+  EXPECT_NE(s.c.state().toast, "Save failed");
+  EXPECT_FALSE(reading.sentenceId(Language::Japanese, kSentence));
+  saveTheSentence(s);  // a new card: a POST, no doomed PATCH first
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 3u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Delete);
+  EXPECT_EQ(s.rig.api.written[2].method, lexipoint::net::Method::Post);
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  s.rig.api.writeReplies = {apiOk(R"({"success":true,"deleted":true})")};
+  s.drain();
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 0u);
+}
+
+TEST(LiveSentence, AFailedSaveToastLastsTheFailureTime) {
+  Saving s;
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  saveTheSentence(s);
+  s.now += config::kToastMs;
+  const unsigned long applied = s.now + 1;
+  s.fetchOne();
+  ASSERT_EQ(s.c.state().toast, "Save failed");
+  EXPECT_EQ(s.c.nextDueMs(), applied + config::kFailureToastMs);
+}
+
+// --- V6 review R27-R28 ---
+
+namespace {
+lexipoint::api::ApiResponse notFound() {
+  lexipoint::api::ApiResponse r;
+  r.error = ApiError::Http;
+  r.status = lexipoint::api::kHttpNotFound;
+  return r;
+}
+}  // namespace
+
+TEST(LiveSentence, ACardDeletedInTheAppAndSavedAgainIsCountedOnce) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), notFound(), apiOk(R"({"result":{"savedExpressionId":502}})")};
+  saveTheSentence(s);
+  s.drain();
+  saveTheSentence(s);  // PATCH: 404
+  s.drain();
+  saveTheSentence(s);  // POST: a new card
+  s.drain();
+  ASSERT_EQ(s.rig.api.written.size(), 3u);
+  EXPECT_EQ(s.rig.api.written[2].method, lexipoint::net::Method::Post);
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 1u);
+}
+
+TEST(LiveSentence, ALateUndoThatFailsKeepsTheCard) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), apiFailure(ApiError::NoWifi)};
+  saveTheSentence(s);
+  s.drain();
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  const CardSession::Answer a = s.fetchOne();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  EXPECT_EQ(s.rig.api.written[1].method, lexipoint::net::Method::Delete);
+  EXPECT_TRUE(a.sentenceFailed);
+  EXPECT_EQ(reading.sentenceId(Language::Japanese, kSentence), "501");
+  reading.homeNext();
+  reading.bookClosed();
+  EXPECT_EQ(reading.takeSummary()->saved, 1u);
+}
+
+TEST(LiveSentence, AGoneDeleteLeavesNoErrorBehind) {
+  lexipoint::session::ReadingSession reading;
+  reading.bookOpened();
+  Saving s(true, {"xteink"}, nullptr, nullptr, &reading);
+  s.rig.api.writeReplies = {apiOk(kSentenceSaved), notFound()};
+  saveTheSentence(s);
+  s.drain();
+  s.source.queue(SentenceChange{s.c.word(), {}, true, s.now});
+  s.fetchOne();
+  ASSERT_EQ(s.rig.api.written.size(), 2u);
+  s.now += config::kFailureToastMs + 2 * config::kDeckIdleMs;
+  EXPECT_TRUE(countStepDue(s, s.now));  // the card's last call didn't fail: the word count may go
 }

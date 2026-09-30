@@ -62,6 +62,44 @@ std::optional<unsigned long> BenchSource::nextDueMs() const {
   return due;
 }
 
+bool BenchSource::setIgnored(const int index, const bool ignored) {
+  if (keyless_) return false;
+  ignored_[fixture(index)] = ignored;
+  return true;
+}
+
+std::optional<SentenceForSave> BenchSource::sentenceForSave(const int index) const {
+  constexpr std::string_view kFullStop = "\xE3\x80\x82";  // 。
+  const int fixtureWord = static_cast<int>(fixture(index));
+  std::string page;  // the context lines, then the rest of the page
+  SentenceForSave out;
+  out.language = book_.language;
+  bool found = false;
+  for (size_t li = static_cast<size_t>(book_.contextFirst); li < book_.lines.size(); li++) {
+    for (const BenchToken& t : book_.lines[li]) {
+      if (t.word == fixtureWord && !found) {
+        out.markStart = page.size();
+        out.markLength = t.text.size();
+        found = true;
+      }
+      page += t.text;
+    }
+  }
+  if (!found) return std::nullopt;
+  const size_t stop = page.find(kFullStop, out.markStart + out.markLength);
+  const size_t end = stop == std::string::npos ? page.size() : stop + kFullStop.size();
+  out.text = page.substr(0, end);
+  // The rest of the page, a sentence at a time (the bench splits at 。 only).
+  out.after.reserve(config::kSentencesAfterReserved);
+  for (size_t from = end; from < page.size();) {
+    const size_t next = page.find(kFullStop, from);
+    const size_t to = next == std::string::npos ? page.size() : next + kFullStop.size();
+    out.after.push_back({page.substr(from, to - from), ""});  // the bench's page has no separators
+    from = to;
+  }
+  return out;
+}
+
 PageScene BenchSource::scene(const int index, const bool highlight, const TextMetrics& metrics,
                              const int highlightCodepoints) const {
   return bench::layoutPage(book_, static_cast<int>(fixture(index)), low_, highlight, metrics, highlightCodepoints);

@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "lexirise/LexiriseConfig.h"
@@ -591,4 +592,113 @@ TEST(SentenceJa, ATokenMixingPunctuationAndLettersCentresOnItsLetters) {
   const auto s = buildSentence(page, {0, 2}, Script::Japanese);
   ASSERT_TRUE(s.has_value());
   EXPECT_EQ(s->text, "「彼は来た。");
+}
+
+// C3 (V6): the page's own separator between two sentences, for the sentence preview's joins (separatorBetween).
+namespace {
+
+// The separator between the sentence at `tapped` and the one after it, and that one's text.
+std::pair<std::string, std::string> separatorAfter(const PageModel& page, const std::string& tapped,
+                                                   const Script script) {
+  const BuiltSentence first = build(page, tapped, script);
+  const auto second = buildSentenceAfter(page, first, script);
+  const auto text = pageTextOf(page);
+  if (!second || !text) return {"<none>", ""};
+  return {separatorBetween(*text, first, *second), second->text};
+}
+
+TextLine tokens(std::vector<std::string> t, const bool startsParagraph = true) {
+  TextLine line;
+  line.tokens = std::move(t);
+  line.startsParagraph = startsParagraph;
+  return line;
+}
+
+}  // namespace
+
+TEST(SeparatorBetween, NoneInsideOneLaidOutToken) {
+  const PageModel quotes{{layout("“好。”“走吧。”", true)}};
+  EXPECT_EQ(separatorAfter(quotes, "好", Script::Chinese), std::make_pair(std::string(), std::string("“走吧。”")));
+  const PageModel digit{{layout("他说：“好。”3点走。", true)}};
+  EXPECT_EQ(separatorAfter(digit, "说", Script::Chinese), std::make_pair(std::string(), std::string("3点走。")));
+}
+
+TEST(SeparatorBetween, ThePagesOwnSpaces) {
+  const std::string ideographic = "\xE3\x80\x80";
+  const PageModel nandatte{{tokens({"何", "だ", "っ", "て！", ideographic, "も", "う", "一", "度", "言", "え。"})}};
+  EXPECT_EQ(separatorAfter(nandatte, "何", Script::Japanese).first, ideographic);
+  const PageModel honto{{tokens({"え", "っ！", ideographic, "本", "当？"})}};
+  EXPECT_EQ(separatorAfter(honto, "え", Script::Japanese), std::make_pair(ideographic, std::string("本当？")));
+  const PageModel zou{{tokens({"走。", " ", "Go."})}};
+  EXPECT_EQ(separatorAfter(zou, "走", Script::Chinese), std::make_pair(std::string(" "), std::string("Go.")));
+  const PageModel english{{layout("He left. “Go,” she said.", true)}};
+  EXPECT_EQ(separatorAfter(english, "He", Script::Latin).first, " ");
+  const PageModel kare{{layout("彼は言った。He left.", true)}};
+  EXPECT_EQ(separatorAfter(kare, "彼", Script::Japanese).first, "");  // after 。: CJK
+}
+
+TEST(SeparatorBetween, OneLineParagraphsApartOrNot) {
+  const PageModel yes{{tokens({"Yes."}), tokens({"No", "way."})}};
+  EXPECT_EQ(separatorAfter(yes, "Yes.", Script::Latin), std::make_pair(std::string(" "), std::string("No way.")));
+  const PageModel stop{{tokens({"Stop."}), tokens({"Go."})}};
+  EXPECT_EQ(separatorAfter(stop, "Stop.", Script::Latin), std::make_pair(std::string(" "), std::string("Go.")));
+}
+
+TEST(SeparatorBetween, AfterANonBmpCharacter) {
+  const PageModel emoji{{tokens({"Great", "\xF0\x9F\x98\x80"}), tokens({"Next."})}};
+  EXPECT_EQ(separatorAfter(emoji, "Great", Script::Latin), std::make_pair(std::string(" "), std::string("Next.")));
+}
+
+TEST(SeparatorBetween, AHyphenAtALineEndJoinsWithNothing) {
+  // Two pieces of one word across a line break (a sentence cut between them by the cap): the page's text has none.
+  const PageModel page{{tokens({"an", "exam-"}), tokens({"ple", "end."}, false)}};
+  const auto text = pageTextOf(page);
+  ASSERT_TRUE(text);
+  EXPECT_EQ(text->text, "an exam-ple end.");
+  BuiltSentence before;
+  before.text = "an exam-";
+  before.chars = {{0, 1, {0, 0}, 0}, {6, 1, {0, 1}, 4}};  // "a" … the "-" of exam-
+  BuiltSentence after;
+  after.text = "ple end.";
+  after.chars = {{0, 1, {1, 0}, 0}};  // the "p" of ple
+  EXPECT_EQ(separatorBetween(*text, before, after), "");
+  EXPECT_EQ(before.text + separatorBetween(*text, before, after) + after.text, "an exam-ple end.");
+}
+
+TEST(SeparatorBetween, NothingButShortWhitespaceAndNothingOffThePage) {
+  const PageModel page{{layout("He left. She stayed.", true)}};
+  const auto text = pageTextOf(page);
+  const BuiltSentence first = build(page, "He", Script::Latin);
+  BuiltSentence elsewhere;
+  elsewhere.text = "x";
+  elsewhere.chars = {{0, 1, {9, 9}, 0}};
+  EXPECT_EQ(separatorBetween(*text, first, elsewhere), "");
+  EXPECT_EQ(separatorBetween(*text, first, first), "");  // not after it
+  // Not the next sentence: what's between isn't only whitespace.
+  const PageModel abc{{layout("A. B. C.", true)}};
+  const auto abcText = pageTextOf(abc);
+  const BuiltSentence a = build(abc, "A.", Script::Latin);
+  const auto b = buildSentenceAfter(abc, a, Script::Latin);
+  ASSERT_TRUE(b);
+  const auto c = buildSentenceAfter(abc, *b, Script::Latin);
+  ASSERT_TRUE(c);
+  EXPECT_EQ(c->text, "C.");
+  EXPECT_EQ(separatorBetween(*abcText, a, *b), " ");
+  EXPECT_EQ(separatorBetween(*abcText, a, *c), "");
+}
+
+TEST(SentenceLatin, AnApostropheAttachesUnlessItStartsAWordOfItsOwn) {
+  // The D5 rule on pieces the layout kept apart (the preview's joins use the same one).
+  const auto joined = [](std::vector<std::string> tokens) {
+    TextLine line;
+    line.tokens = std::move(tokens);
+    line.startsParagraph = true;
+    const PageModel page{{line}};
+    const auto s = buildSentence(page, {0, 0}, Script::Latin);
+    return s ? s->text : std::string("<none>");
+  };
+  EXPECT_EQ(joined({"the", "boys", "’,", "he", "said."}), "the boys’, he said.");  // ’ then , : attaches
+  EXPECT_EQ(joined({"Dickens", "’s", "book."}), "Dickens’s book.");                // a contraction suffix
+  EXPECT_EQ(joined({"rock", "’n’", "roll."}), "rock ’n’ roll.");                   // a word of its own
+  EXPECT_EQ(joined({"he", "said", "’tis", "late."}), "he said ’tis late.");        // a longer word
 }

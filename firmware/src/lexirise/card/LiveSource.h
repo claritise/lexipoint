@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "CardController.h"
@@ -30,6 +31,7 @@
 #include "lexirise/lookup/LexiriseLookup.h"
 #include "lexirise/lookup/LookupCache.h"
 #include "lexirise/page/PageSentences.h"
+#include "lexirise/session/ReadingSession.h"
 #include "lexirise/settings/IgnoredWords.h"
 #include "lexirise/vocab/VocabMirror.h"
 
@@ -57,14 +59,14 @@ class LiveSource final : public CardSource {
   };
   // One answer from the network, not yet applied.
   struct Fetched {
-    enum class Kind : uint8_t { None, Analysis, Entry, Write, Item } kind = Kind::None;
+    enum class Kind : uint8_t { None, Analysis, Entry, Write, Item, Sentence } kind = Kind::None;
     lookup::LookupReport report;  // Analysis
     size_t tapped = 0;
     size_t sentence = 0;  // Analysis: which (0: the tapped one)
     int index = 0;        // Entry: the word, and its card with phase B filled in; Item: the word
     lookup::LookupCard card;
     api::ApiError error = api::ApiError::None;
-    // Write: a new save's id (empty for a level change or a removal); Item: the item's.
+    // Write, Sentence: a new save's id (empty for a level change or a removal); Item: the item's.
     std::string savedExpressionId;
     api::SavedItem item;  // Item: what came (empty when the call failed)
     // Item: refused (a 429 or a rejected key, usually by AccessPolicy without the network): not kept, asked again
@@ -72,6 +74,8 @@ class LiveSource final : public CardSource {
     bool refused = false;
     bool clearFailed = false;  // Write: removed (DELETE), but its notes and tags weren't cleared
     bool saveRetry = false;    // Entry: the lookup again, for a save, after it failed once
+    bool patched = false;      // Sentence: a card saved before, set to learning again (not a new one)
+    bool gone = false;         // Sentence: a PATCH's or DELETE's card Lexirise no longer has (404: deleted in the app)
     // Entry: the lemma cache's read before the call (V7c; Outcome::Off without a cache), and the answer to keep when
     // the call brought one it may keep.
     lookup::CacheReadLog cacheRead;
@@ -101,7 +105,15 @@ class LiveSource final : public CardSource {
   // (popup-ui.md §3.2): an item the user made in the app keeps what they wrote. A change to a word with
   // one still waiting merges into it (T then Undo in the window: nothing is sent at all).
   void queue(const LevelChange& change);
-  bool hasPendingWrites() const { return !writes_.empty(); }
+  bool hasPendingWrites() const { return !writes_.empty() || !sentenceWrites_.empty(); }
+  // A sentence card (C3, V6; CardController's SentenceChange), queued and sent as a level change is (a level change
+  // ready before it goes first): saved (POST `mode: "sentence"` at learning with the tags; a PATCH to learning instead
+  // for a sentence this card or this reading session saved already, asked as it's sent: ReadingSession::sentenceId), or
+  // taken back: a save still waiting is dropped (nothing sent), one sent is deleted (a sentence card's DELETE removes
+  // it).
+  void queue(const SentenceChange& change);
+  // A sentence card Lexirise refused or didn't answer (then cleared): the card says so (CardSession).
+  bool takeSentenceFailed();
   // A write Lexirise refused or didn't answer: the word goes back to `back.to` (FailedWrite), and its later
   // changes are dropped (they were built on it). Taken by CardSession after apply().
   std::optional<FailedWrite> takeFailedWrite();
@@ -119,6 +131,20 @@ class LiveSource final : public CardSource {
   // activity has written them to `store` outside the lock, and after (a failed write takes one back).
   void setIgnoredWords(IgnoredWordStore& store);
   IgnoredWordStore* ignoredStore() const { return ignoredStore_; }  // none: the card can't ignore (CardSession)
+  // The reading session (C1, C7, V6; session/ReadingSession.h), outliving the card: told of each card opened by a tap
+  // (the tapped sentence's words arrived), each save that went through and each save taken back; and the account's
+  // word count, asked on an idle card (CardSession::shouldFetchCount) while the session wants it: one call per card
+  // until one answers (GET /v1/vocabulary?limit=1's totalCount).
+  void setSession(session::ReadingSession& session) { session_ = &session; }
+  bool hasCountWork() const;
+  struct CountCall {
+    Language language = Language::Japanese;
+    std::optional<uint32_t> totalCount;  // none: no answer, or one without it
+    api::ApiError error = api::ApiError::None;
+    bool sent = false;  // a call was made
+  };
+  CountCall fetchCount(api::VocabPageReader::Cancel cancel = nullptr);  // network I/O, outside RenderLock
+  void applyCount(const CountCall& call);
   // Word `index`'s key in the ignore list (its language and entry key, lookup::entryKeyOf, else its dictionary form);
   // none when it has neither usable.
   std::optional<IgnoredKey> ignoreKey(int index) const;
@@ -140,6 +166,10 @@ class LiveSource final : public CardSource {
   // The page's analysis (C12, V7b): a sentence it holds is taken from it and request ① isn't sent (its states from
   // the mirror, page::PageSentences); none, or a sentence it can't give, asks ① as before.
   void setSentenceSource(std::unique_ptr<page::SentenceSource> source) { pageSentences_ = std::move(source); }
+  // The page's whole text (text::pageTextOf over word select's page), for the page's own separators between the
+  // sentences the sentence preview joins (C3, V6); none: they join with nothing between.
+  using PageText = std::function<std::optional<text::BuiltSentence>()>;
+  void setPageText(PageText pageText) { pageText_ = std::move(pageText); }
   // A3 (V9a): the book shows marks and the reader chose "Marked words" (page::stepsMarked); it applies once the page
   // is known analyzed (the sentence source found its file).
   void setStepsMarked(const bool on) { stepsMarked_ = on; }
@@ -216,6 +246,9 @@ class LiveSource final : public CardSource {
   Level savedLevel(int index) const override;
   bool ignored(int index) const override;  // on the reader's ignore list (never Lexirise's `suspended`)
   bool setIgnored(int index, bool ignored) override;
+  bool keepsIgnoreList() const override { return ignoredStore_ != nullptr; }
+  // The word's sentence (as analyzed) and the page's sentences after it (next_), for the sentence preview.
+  std::optional<SentenceForSave> sentenceForSave(int index) const override;
   Phase phase(int index) const override;
   std::string pendingText() const override;
   int pageNumber() const override { return page_.pageNumber; }
@@ -241,6 +274,7 @@ class LiveSource final : public CardSource {
   std::vector<Sentence> sentences_;  // [0] the tapped one, then each one extend() added, in page order
   ReaderPage page_;
   NextSentence next_;
+  PageText pageText_;
   bool pageEnded_ = false;  // no sentence after the last (the page ends, or it can't be sent to Lexirise)
   std::optional<CallFailure> extendFailure_;
   // A sentence with no word in it the card went past: a later extend() starts after it, not before it (a next
@@ -259,6 +293,33 @@ class LiveSource final : public CardSource {
   std::vector<std::string> tags_;
   std::deque<LevelChange> writes_;
   std::optional<FailedWrite> failedWrite_;
+  struct SentenceWrite {
+    bool remove = false;  // a sent card taken back (DELETE `id`); else a save
+    Language language = Language::Japanese;
+    std::string text;
+    std::string id;  // remove: the card's
+    unsigned long readyAtMs = 0;
+  };
+  // Oldest first; a vector: an empty one allocates nothing (a deque does, on every card), and it holds a handful.
+  std::vector<SentenceWrite> sentenceWrites_;
+  std::string lastSentenceId_;  // the sentence card this card saved last (its Undo's DELETE, once sent)
+  bool sentenceFailed_ = false;
+  // The sentence cards this card saved (a handful), by their text: saved again, a PATCH.
+  struct SentenceCard {
+    Language language;
+    std::string text;
+    std::string id;
+  };
+  std::vector<SentenceCard> sentenceCards_;
+  // A sentence card saved already, this card's first, else the reading session's; empty: none.
+  std::string knownSentence(Language language, const std::string& text) const;
+  // Not a sentence card any more (removed, or gone from Lexirise): forgotten here, and uncounted in the session.
+  void forgetSentenceCard(const std::string& id);
+  session::ReadingSession* session_ = nullptr;
+  bool countTried_ = false;  // this card asked for the word count (fetchCount)
+  bool sentenceReady(unsigned long nowMs, bool closing) const;
+  Fetched sendSentence(const SentenceWrite& write) const;
+  void applySentence(const Fetched& fetched);
   std::vector<std::string> createdIds_;  // items this card saved (their removal clears them too)
   std::vector<bool> saveRetried_;        // per word: its lookup was retried for a save
   // A saved word's item, asked once on this card whatever came: its sentence (the notes, else sentence_text) and tags;

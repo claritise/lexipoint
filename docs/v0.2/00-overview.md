@@ -53,9 +53,10 @@
 
 ## C1. Session counter
 
-**Why yes:** free. Count successful saves in RAM (and optionally `seen` lookups). Show
+**Why yes:** free. Count successful saves in RAM (and optionally `seen` lookups). ~~Show
 `3 saved · 11 looked up` on the card footer, and a one-line summary when the book is closed or at a
-chapter end. It needs no request and no API.
+chapter end.~~ **Superseded 2026-09-30 (V6, signed off):** a two-line summary on the home screen after the book
+closes, nothing on the card and nothing at a chapter end ("V6 design" 1, "As built (V6)"). It needs no request and no API.
 
 **Watch:** "session" means *since the book was opened*. It resets on close or sleep. It isn't
 persisted in v0.1.x.
@@ -113,11 +114,13 @@ stay unbuilt. The setting is "Tag with book title" (`tag_book`, on by default; `
 
 **Don't build drag-to-select.** Drag selection on e-ink is slow (every move is a refresh) and
 fiddly with a finger at 300 ppi. Instead:
-- The card gets a **second action: `⏎ word · ⏎⏎ sentence`** (long-press Confirm = save
-  sentence), or a `Sentence` target on touch.
-- If the auto-built sentence is wrong (truncated at the page edge, D5 rule 4), use
+- ~~The card gets a **second action: `⏎ word · ⏎⏎ sentence`** (long-press Confirm = save
+  sentence), or a `Sentence` target on touch.~~
+- ~~If the auto-built sentence is wrong (truncated at the page edge, D5 rule 4), use
   **Up/Down on the card to grow or shrink it by one clause** (split at `、` / `，`) before saving.
-  That's buttons only, with a partial refresh of one line.
+  That's buttons only, with a partial refresh of one line.~~
+- **Superseded 2026-09-30 (V6, signed off; the X4 Pro is touch-only):** the ⋯ tab's row opens a preview with
+  `Shorter` | `Longer`, a clause at a time, and the same row saves ("V6 design" 3, "As built (V6)").
 
 **Tested 2026-09-24: yes.** Lexirise translates a sentence the moment it's saved, so C3 is small. Send `proficiency` explicitly (sentences default to 2).
 
@@ -243,11 +246,15 @@ work, like the card.
 
 **Revised: yes.** `GET /v1/vocabulary?language=ja&limit=1` returns `totalCount` and
 `languageCount`. That's one request, with no paging. Add `proficiencyLabel=known` for "you know N
-words". Show it on the book-open screen, or next to the C1 session summary (`12 saved today · 1,204
-words in Japanese`). Cache it for the session and refresh it after a save.
+words". ~~Show it on the book-open screen, or next to the C1 session summary (`12 saved today · 1,204
+words in Japanese`). Cache it for the session and refresh it after a save.~~ **Superseded 2026-09-30 (V6, signed
+off):** the second line of C1's summary, `totalCount` asked once per session on an idle card, then counted locally
+("V6 design" 1, "As built (V6)").
 
-**Check:** what `languageCount` counts exactly (all saved items in the language, or
-something else) versus `totalCount` (the items matching the filter).
+~~**Check:** what `languageCount` counts exactly (all saved items in the language, or
+something else) versus `totalCount` (the items matching the filter).~~ **Answered 2026-09-28:** `languageCount`
+counts sentence cards too, `totalCount` words only (`../reference/lexirise-api-notes.md`, "Readings and counts for
+V6's card additions").
 
 ## C8. Upload the book to Lexirise
 
@@ -436,7 +443,8 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
     - the word is underlined at its first match in the note, which can be an earlier, unrelated one (食べ in 食べ物
       before the 食べ of 食べた): cosmetic.
 - **C15 Other readings:** `multipleReadings.alternatives` → `ichinichi · also tsuitachi`. It
-  doesn't disambiguate (C10 would), but it doesn't hide the right answer either.
+  doesn't disambiguate (C10 would), but it doesn't hide the right answer either. Built in V6 on the reading line
+  ("V6 design" 2, "As built (V6)").
 - **C16 Conjugation** (the card also gets a **Form** tab with the steps from dictionary form to page form): compare
   the surface form and the lemma with a small on-device rule table ~~(the KOReader Japanese plugin's deinflection
   rules are the reference)~~ (Superseded 2026-09-26: written clean-room from Japanese grammar, no other project's
@@ -557,22 +565,24 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
     the other's, and ignoring it again then adds a second key. Storing both passes' ids isn't done: a whole word the
     card shows (V1) keeps no refined lemma to take a second id from. A word with no entry id at all is kept by its
     dictionary form (the lemma, else the surface) instead, when that's one line of at most
-    `config::kIgnoredTextMaxBytes` (never cut: a cut form could be another word's); otherwise it can't be listed ("Save
-    failed"). **The ⋯ row** "Ignore this word" (`ActionId::Ignore`) marks the word ignored on the card at once (every
+    `config::kIgnoredTextMaxBytes` (never cut: a cut form could be another word's); otherwise it can't be listed (~~"Save
+    failed"~~ **Superseded 2026-09-30** (V6): "Can't ignore this word", "V6 design" 5). **The ⋯ row** "Ignore this word" (`ActionId::Ignore`) marks the word ignored on the card at once (every
     copy of the entry follows), with "Ignored: won't be marked again · Undo" (the reference's words and the save toast's
     Undo, existing strings; the "· Undo" is the one textual addition to the reference's toast, planned by V5's Build
     line); the Undo takes it back, and at a cap brings back the oldest key the ignore pushed out (the store reports it
     after the write, and the toast's Undo carries it back: `IgnoredWordStore::write`'s `evicted` and `restore`). A
     second tap on the row while that Undo is up does nothing (as a level's double tap), so a mis-tap keeps its Undo. No
     Undo window: nothing waits to be sent. **The toast lasts longer than a save's:** `config::kIgnoreToastMs` (5 s;
-    recommended to claritise when they asked about the 2 s window, 2026-09-27; no new UI), since once it's gone the card
-    has no way to undo an ignore (until V6's un-ignore); a save's and a level's keep `kToastMs` (2 s: either can be
-    changed again from the card), and so does the plain already-ignored toast; "Save failed" lasts `kFailureToastMs` (6 s) when the SD write failed, `kToastMs` when the word has no key or the card no list. The
+    recommended to claritise when they asked about the 2 s window, 2026-09-27; no new UI), ~~since once it's gone the card
+    has no way to undo an ignore (until V6's un-ignore)~~ **Superseded 2026-09-30** (V6): the ⋯ row's Undo ignore takes it back after that, with
+    its own 5 s toast; a save's and a level's keep `kToastMs` (2 s: either can be
+    changed again from the card) ~~and so does the plain already-ignored toast; "Save failed" lasts `kFailureToastMs` (6 s) when the SD write failed, `kToastMs` when the word has no key or the card no list~~. **Superseded 2026-09-30** (V6): the plain already-ignored toast is gone; "Couldn't save to the SD card" lasts `kFailureToastMs` (6 s) when the SD write failed or the card has no list, "Can't ignore this word" `kToastMs` when the word has no key ("V6 design" 5). The
     toast replaces any earlier one, a "Save failed · Retry" too (as a level tap's does), and belongs to its word (a step
     ends it). **Writing:** the activity writes each change to the SD card as the input is handled, outside RenderLock
     and before this outcome's redraw (the toast waits for the write; an earlier frame may still render: HalStorage
     serialises the SD card): `CardSession::saveIgnores`, to the store the card was given (a card given none can't
-    ignore: "Save failed"). A write that fails takes the change back with "Save failed" (an Ignore's or an Undo's), kept
+    ignore: ~~"Save failed"~~ **Superseded 2026-09-30** (V6): "Couldn't save to the SD card"). A write that fails takes the change back with ~~"Save
+    failed"~~ **Superseded 2026-09-30** (V6): "Couldn't save to the SD card" (an Ignore's, an Undo's, or an Undo ignore's), kept
     up through a step like a failed save's toast, and redrawn unless the card is closing. **Memory:** the store holds
     the list once (at its caps, ~8 KB of ids plus the forms); it's loaded as the card opens
     (`LiveSource::setIgnoredWords`), the card asks it from memory and keeps only its own changes on top; a change is
@@ -580,22 +590,25 @@ These are the foundations for `page-annotations.md` §1, and they also help v0.1
     buffer reserved at its exact size (a full list of ids, about 12 KB) for the write. An Ignore and its Undo handled in
     one batch write nothing: a batch's changes are written in the order they were made, each skipped when a later one is
     for the same word unless it carries back a pushed-out key (an Undo at the cap, then an Ignore again: the key comes
-    back, and the Ignore pushes it out again for its own Undo), so the file stays newest last. **A word already
+    back, and the Ignore pushes it out again for its own Undo), so the file stays newest last. ~~**A word already
     ignored:** the row only says "Ignored: won't be marked again" (no Undo, nothing written): the approved card draws
-    nothing else, so an ignored word otherwise looks like any other (no new UI; nothing to sign off). The state is
+    nothing else, so an ignored word otherwise looks like any other (no new UI; nothing to sign off).~~ **Superseded
+    2026-09-30 (V6, signed off):** for a word already ignored the row reads "Undo ignore", which takes it off the list
+    ("V6 design" 4, "As built (V6)"). The state is
     queryable for V9: `CardSource::ignored`, `IgnoredWordStore::contains` (a linear scan; V9, asking for every word on a
-    page, may want a sorted index). The bench keeps no list and plays the reference's toast. **Lexirise's own
+    page, may want a sorted index). ~~The bench keeps no list and plays the reference's toast.~~ **Superseded 2026-09-30** (V6): the bench keeps its list in memory. **Lexirise's own
     `suspended`** (a word suspended in the Lexirise app) isn't read on the card at all; **decided for V9:** a word
     suspended in Lexirise gets no A1 mark either, as `page-annotations.md` A1 says (the V7 vocab mirror carries
     `suspended`), while ⋯ Ignore only ever writes the local list. **Known limits:** the list keeps
     `config::kIgnoredIdsMax` words by id and `config::kIgnoredTextsMax` by form, the oldest forgotten past them (then
     marked again); it's per device (not synced); the key's per-pass difference above (pinned by
     `LiveIgnore.TheKeyIsPerPassAKnownLimit`); an ignore handled in the same batch as the card's close whose write fails
-    is only logged (the card is gone); in a batch ignoring two words where one write fails, "Save failed" replaces the
-    other word's Undo toast; and **once the toast is gone there's no way to un-ignore a word** except editing
+    is only logged (the card is gone); in a batch ignoring two words where one write fails, ~~"Save failed"~~ **Superseded 2026-09-30** (V6): "Couldn't save to the SD card" replaces the
+    other word's Undo toast; ~~and **once the toast is gone there's no way to un-ignore a word** except editing
     `ignored.ini`. **Open for claritise (V6's design batch, proposed in "V6 design" below):** how to un-ignore from the card (e.g. the ⋯ row reading
     "Undo ignore" for an ignored word), a change to the approved card; and whether "Save failed", reused for an ignore
-    the SD card didn't take and for a word with no key, should get words of its own.
+    the SD card didn't take and for a word with no key, should get words of its own.~~ **Superseded 2026-09-30:** both
+    signed off and built in V6 ("V6 design" 4 and 5).
 
 ## C18. Manga
 
@@ -1116,7 +1129,7 @@ gives the due count for the menu, so the vocab mirror isn't needed for it.
 **Scope note:** CrossPoint's `SCOPE.md` rules out "interactive apps". That never bound Lexipoint, and since
 phase M Lexipoint doesn't follow CrossPoint (D21), so it costs nothing.
 
-## V6 design (awaiting claritise's sign-off)
+## V6 design (~~awaiting claritise's sign-off~~ signed off 2026-09-30: claritise, "sounds good to all", the five recommendations below)
 
 **Proposed 2026-09-28** (`01-build-order.md` V6): mockups of each addition next to the approved state it changes, at
 the panel's 480×800 in the reference's style, with the options and a recommendation for each:
@@ -1136,6 +1149,92 @@ is quoted in V6's ledger row, and the build then updates `../v0.1/reference/card
    word under T L F K. Recommended: the row only (toast `No longer ignored · Undo`).
 5. **C17, Ignore's failure wording:** keep `Save failed`, one string, or two. Recommended: two,
    `Couldn't save to the SD card` (the write failed, or no list) and `Can't ignore this word` (no key).
+
+### As built (V6, 2026-09-30, on `lexi/V6`)
+
+The five recommendations, as signed off. The approved card's golden states are unchanged
+(`scripts/lexipoint/cardgolden.py`); the new states are goldens of their own (`scripts/lexipoint/cardstates.py`, the
+V6 block), and `../v0.1/reference/card-reference.html` and `../v0.1/popup-ui.md` §1.1 draw and measure them.
+
+1. **C1 / C7, the session summary.** `session/ReadingSession`, in RAM only. A session starts as the EPUB reader loads
+   its book and ends as the reader exits; the summary is kept only when the home screen comes next
+   (`ActivityManager::goHome` says so) and the session looked something up, so a book closed to any other screen, or
+   on the way to sleep, leaves none (deep sleep resets RAM anyway). **Looked up:** a live card whose tapped sentence
+   brought its words (a tap or long-press on the page; one on another word under a card is a new card); a step never.
+   **Saved:** a POST that went through (a word, or a sentence card), less one for each of this session's saves whose
+   DELETE went through (the toast's Undo once sent, or ⋯ Undo save) or that a PATCH found deleted in the app (3); an Undo inside the toast's window sends nothing,
+   so it counts nothing; a level change and a failed save count nothing. The first `config::kSessionSavesMax` saves are
+   remembered for their Undo. **The word count:** `GET /v1/vocabulary?language=…&limit=1` (`api::vocabularyCountRequest`,
+   read as it streams, its `totalCount`), an idle step of its own (`CardSession::IdleStep::Count`: after the deck's, by
+   the deck's rule, `config::kDeckIdleMs`; never as the card closes; a side-button press gives it up), for the session's
+   language (its first card's), one try per card until one answers (a button already held when it would start gives up that card's try); after it, each word saved this session adds one
+   and each taken back takes one off. **The home screen:** `HomeActivity` takes the lines as it opens
+   (`session::takeHomeSummary`: `STR_LEXI_SESSION_*`, numbers grouped as `1,204`, `1 word` in the singular) and draws
+   them over its menu on each frame (`card::layoutSummary`: the toast's frame, type, padding and top, one line per
+   line, each centred), until the next button press or touch (its press, or its lift: a quick tap or a swipe), which does what it always does and redraws the screen
+   without them. The home screen's own first frames (its second pass, its covers) keep the box: they come without
+   input. **Known limits:** a book with sentences in both languages counts the first card's language; the count's
+   local −1 assumes `totalCount` drops when a word is taken back (a dictionary word's DELETE keeps its item at level 0:
+   whether `totalCount` still counts it wasn't measured).
+2. **C15, the "also" reading.** Phase B keeps the lookup's `multipleReadings.alternatives`
+   (`api::LookupResult::alternatives`: strings only, the first `config::kMaxReadingAlternatives`; kept in the lemma
+   cache too, format 3); `card::alsoReadings` shows them in Lexirise's order, each once, never the card's own: Japanese ones through `text::japaneseReading` (romaji
+   or kana in, both out; a match in either form is the same reading), Chinese as given. The reading line draws them
+   after the reading, on its baseline, as one UI-font text (` · also ` and `, ` in `UiSmall`, kana set in `ReaderSmall`
+   by `TextRuns`), whole readings as fit in the header's left column (226 px), then `…`; nothing when not one fits, and
+   nothing before phase B. The reading line's tap area covers them; the kana ⇄ romaji tap switches them. **Found
+   building it:** since v0.1 phase B replaces the card's reading with the lookup's (`lookup::applyLookup`), so on the
+   device 一日 reads `ついたち · also いちにち…` (the lookup's primary first), not the mockup's `いちにち · also ついたち…`;
+   the signed-off "the lookup's own reading first when it isn't the card's" never applies, since the lookup's reading
+   is the card's whenever phase B brings one (so nothing is built for it). The card's reading wasn't changed.
+3. **C3, the sentence preview.** ⋯ Save the sentence as a card opens it in the ⋯ body (`CardController::openPreview`)
+   on `CardSource::sentenceForSave`: live, the word's analyzed sentence and the page's sentences after it, each kept
+   apart (as the sentence builder cut them); the bench, its context lines to the full stop, the rest of its page after,
+   a sentence at a time. `card/SentencePreview` splits each on its own, so every sentence's end ends a clause, marked or
+   not (a line of dialogue 「はい」, a line ending ……), clauses after ，；, and 、 in Japanese only (in Chinese it's the
+   list comma, 苹果、香蕉), and after 。！？ (`splitClauses`); later sentences are joined with the page's own separator
+   between them (`LaterSentence::separator`, from `text::separatorBetween`: the page's text, as the builder joined it
+   (`text::pageTextOf`), between one sentence's last character and the next one's first; only whitespace of at most
+   `text::kMaxSeparatorBytes` is kept): nothing inside one laid-out token (Chinese `“好。”“走吧。”`, `”3点`), a space
+   where the page had a space or an nbsp (`彼は言った。He left. “Go,” she said.`; an nbsp saves as a plain space), the page's 　 after ？ or ！ (`何だって！　もう一度言え。`),
+   nothing inside a word hyphenated at a line end; a heading runs straight into the next line,
+   `第一章　雪国境…`, each its own Longer step, and the preview shows exactly what's saved); a closing quote or bracket and a doubled mark stay with the mark before them
+   (`「本当か？」`, `本当！？`, `“你好！”`: `text::Punctuation::isCloser`, as the sentence builder keeps them), so no clause
+   starts with a stray 」; it plays Shorter and Longer as signed off; the text shown and saved has no
+   spaces at its ends. The layout: the sentence in `ReaderMedium` in 「」 on the Examples tab's line box (as its Met
+   before; the brackets are drawn only, never saved), the word underlined; `kContextGap`; Shorter
+   | Longer, each `(412 − 10) / 2` px wide with the ⋯ rows' frame, padding and type, text centred, no ›;
+   `kActionGap`; the Save row with its own id (`ActionId::SaveSentenceNow`, so a tap matched against the rows' frame
+   only opens the preview). The sentence gets the body's lines above the rows, a longer one cut with `…`; Longer has no
+   target while what it would show wouldn't fit uncut. **Saving** (`SentenceChange`, `LiveSource::queue`): after its
+   Undo window (`config::kToastMs`; a level change ready before it goes first), `POST /v1/vocabulary` with `mode:
+   "sentence"`, `proficiency` 2 and the card's tags (the book's tag too; no notes or translation; the book's word deck
+   isn't wanted for it). Toast `Sentence saved as a card · Undo` (2 s); the Undo in the window sends nothing (`Removed
+   from Lexirise`, as a word's Undo); one taken back after it was sent is deleted (a 404 there, the card already deleted in the Lexirise app, counts as
+   removed: no `Save failed`, forgotten, uncounted). The same sentence saved again while
+   its save still waits is that one save, moved to the new Undo window (so an Undo then sends nothing at all). An Undo
+   inside the window of a re-save (a sentence already sent, so a PATCH) drops that PATCH and leaves the card as it was;
+   the toast still reads `Removed from Lexirise` (the Undo toast every save shares; accepted 2026-10-01, R38).
+   **Checked first,** as it's sent: the card and the reading session remember
+   each sentence card they saved by its text, and the same sentence saved again this session is a `PATCH
+   {"proficiency": 2}` on that card, never a second POST, and isn't counted again; a PATCH that finds the card gone (404: deleted in the app) forgets and uncounts it, so the next save is
+   a POST. A sentence card saved before this
+   session can't be found read-only (the mirror keeps no sentence cards, and `GET /v1/vocabulary`'s `search` found
+   nothing by text, measured 2026-09-30: `../reference/lexirise-api-notes.md`), so saving it again replaces it (its tags
+   and level) rather than finding it. A failure: `Save failed` (`kFailureToastMs`, no Retry: the row is the
+   retry), kept through a step; as the card closes it's sent at once, and a failure then counts as an unsent save.
+   **Leaving:** a tap on any tab (⋯ too), a swipe to a tab or the other view, ▲/▼, Home or a step closes it unsaved.
+4. **C17, Undo ignore.** `CardState::ignored` (the source's, synced as the words come) makes the Ignore row read `Undo
+   ignore` (the same id); its tap takes the word off the list, `No longer ignored · Undo` (`kIgnoreToastMs`), and the
+   Undo puts it back; a second tap while either Undo is up does nothing. The plain `Ignored: won't be marked again` for
+   an ignored word is gone. The bench keeps its list in memory, so Ignore and Undo ignore play there as on a live card.
+5. **C17, the failure words.** `Couldn't save to the SD card` (`kFailureToastMs`) for a list write that failed (an
+   Ignore, its Undo, an Undo ignore) or a card given no list; `Can't ignore this word` (`kToastMs`) for a word with no
+   key.
+
+Dev builds log `[LXCARD] reading also <list>` (the word's other readings in the mode shown, before fitting); every build
+logs `[LXSESSION] word count …` after the count's call and `[LXSESSION] summary: …` as the home screen takes it. The
+device checks owed: `../v0.1/device-checks.md`, "v0.2 V6: still owed on the device".
 
 ## Open, to confirm
 

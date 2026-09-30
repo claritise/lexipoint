@@ -210,3 +210,39 @@ TEST(LookupParse, SaveResponse) {
     EXPECT_EQ(parseSave(bad, r), ParseStatus::Malformed) << bad;
   }
 }
+
+TEST(LookupParse, OtherReadings) {
+  // C15 (V6): multipleReadings.alternatives, as measured (lexirise-api-notes.md "Readings and counts for V6").
+  LookupResult r;
+  ASSERT_EQ(parseLookup(R"({"word":"一日","transliteration":"tsuitachi","multipleReadings":{"primary":"tsuitachi",)"
+                        R"("alternatives":["ichinichi","ichijitsu","tsukitachi","hitohi","ippi"],"hasMultiple":true}})",
+                        r),
+            ParseStatus::Ok);
+  EXPECT_EQ(r.reading, "tsuitachi");
+  EXPECT_EQ(r.alternatives, (std::vector<std::string>{"ichinichi", "ichijitsu", "tsukitachi", "hitohi", "ippi"}));
+  // Chinese: pinyin with tone marks and a frequency per alternative (not read).
+  ASSERT_EQ(parseLookup(R"({"word":"得","transliteration":"dé","multipleReadings":{"primary":"dé",)"
+                        R"("alternatives":["de","děi"],"frequencies":[5096,637],"hasMultiple":true}})",
+                        r),
+            ParseStatus::Ok);
+  EXPECT_EQ(r.alternatives, (std::vector<std::string>{"de", "děi"}));
+  // None, null, not strings, empty, too long, or past the cap: skipped quietly.
+  ASSERT_EQ(parseLookup(R"({"word":"猫","transliteration":"neko","multipleReadings":null})", r), ParseStatus::Ok);
+  EXPECT_TRUE(r.alternatives.empty());
+  const std::string tooLong(lexipoint::config::kMaxTokenBytes + 1, 'a');
+  std::string many;
+  for (size_t i = 0; i < lexipoint::config::kMaxReadingAlternatives + 2; i++) many += ",\"r" + std::to_string(i) + "\"";
+  ASSERT_EQ(
+      parseLookup(
+          R"({"word":"猫","multipleReadings":{"alternatives":[1,null,"",")" + tooLong + R"(")" + many + R"(]}})", r),
+      ParseStatus::Ok);
+  ASSERT_EQ(r.alternatives.size(), lexipoint::config::kMaxReadingAlternatives);
+  EXPECT_EQ(r.alternatives.front(), "r0");
+  const std::string atCap(lexipoint::config::kMaxTokenBytes, 'a');
+  ASSERT_EQ(parseLookup(R"({"word":"猫","multipleReadings":{"alternatives":[")" + atCap + R"("]}})", r),
+            ParseStatus::Ok);
+  EXPECT_EQ(r.alternatives, (std::vector<std::string>{atCap}));
+  // Only the lookup's own: an alternatives array elsewhere isn't it.
+  ASSERT_EQ(parseLookup(R"({"word":"猫","characterInfo":{"alternatives":["x"]}})", r), ParseStatus::Ok);
+  EXPECT_TRUE(r.alternatives.empty());
+}

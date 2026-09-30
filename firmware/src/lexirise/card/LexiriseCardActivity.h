@@ -71,8 +71,9 @@ class LexiriseCardActivity final : public Activity {
 #if LEXIPOINT_DEV_HARNESS
   void logTapTargets(const std::vector<Hit>& hits);  // render task: lxctl deck-, ignore- and reading-smoke's targets
   static void logTaps(const TapsSeen& taps);         // loop(): "[LXCARD] tap …", one line per tap
-  void logReadingLine();                             // render task: "[LXCARD] reading line <text>" when it changes
+  void logReadingLine();  // render task: "[LXCARD] reading line <text>" and "reading also <list>" when they change
   std::string loggedReading_;
+  std::string loggedAlso_;
   std::string loggedTargets_;
 #endif
 

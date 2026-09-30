@@ -143,6 +143,31 @@ std::optional<MetBefore> metBefore(const lookup::LookupCard& card, const std::sp
   return met;
 }
 
+std::vector<AlsoReading> alsoReadings(const lookup::LookupCard& card, const CardWord& word) {
+  std::vector<AlsoReading> out;
+  if (!card.complete || card.alternatives.empty()) return out;
+  const bool ja = card.language == Language::Japanese;
+  const auto same = [ja](const AlsoReading& a, const std::string& kana, const std::string& romaji) {
+    return a.kana == kana || (ja && a.romaji == romaji);
+  };
+  out.reserve(card.alternatives.size());
+  const auto add = [&](const std::string& given) {
+    if (text::trimmedSpaces(given).empty()) return;
+    AlsoReading a;
+    if (ja) {
+      text::JapaneseReading r = text::japaneseReading(word.word, given);
+      a = {std::move(r.kana), std::move(r.romaji)};
+    } else {
+      a = {given, given};
+    }
+    if (same(a, word.reading, word.romaji)) return;
+    if (std::any_of(out.begin(), out.end(), [&](const AlsoReading& o) { return same(a, o.kana, o.romaji); })) return;
+    out.push_back(std::move(a));
+  };
+  for (const std::string& alternative : card.alternatives) add(alternative);
+  return out;
+}
+
 CardWord cardWord(const lookup::LookupCard& card, const PageSentence& sentence, const BookTagList* titles,
                   const FormName* named) {
   CardWord w;
@@ -163,6 +188,7 @@ CardWord cardWord(const lookup::LookupCard& card, const PageSentence& sentence, 
   } else {
     w.reading = card.reading;  // pinyin with tone marks
   }
+  w.also = alsoReadings(card, w);
   w.badge = badgeFor(card.level);
   w.partOfSpeech = card.partOfSpeech;
   for (const api::Sense& sense : card.senses) w.senses.push_back(sense.translation);

@@ -44,3 +44,16 @@ TEST(Utf8Prefix, TheCharacterAtAUtf16Offset) {
   EXPECT_EQ(utf8CharAtUtf16("\xF0\x9F\x98\x80ば", 2), "ば");  // a non-BMP character counts 2
   EXPECT_EQ(utf8CharAtUtf16("\xF0\x9F\x98\x80ば", 1), "");    // inside it
 }
+
+TEST(Utf8Prefix, ByteAtUtf16) {
+  // あ (3 bytes, 1 unit), 𠮟 (4 bytes, 2 units: a surrogate pair), a (1 byte, 1 unit).
+  const std::string text =
+      "\xE3\x81\x82\xF0\xA0\xAE\x9F"
+      "a";
+  EXPECT_EQ(lexipoint::text::utf8ByteAtUtf16(text, 0), 0u);
+  EXPECT_EQ(lexipoint::text::utf8ByteAtUtf16(text, 1), 3u);
+  EXPECT_EQ(lexipoint::text::utf8ByteAtUtf16(text, 2), 3u);  // inside the pair: the character's start
+  EXPECT_EQ(lexipoint::text::utf8ByteAtUtf16(text, 3), 7u);
+  EXPECT_EQ(lexipoint::text::utf8ByteAtUtf16(text, 4), 8u);
+  EXPECT_EQ(lexipoint::text::utf8ByteAtUtf16(text, 99), 8u);  // past the end: the end
+}

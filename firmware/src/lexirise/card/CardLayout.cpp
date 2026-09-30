@@ -274,14 +274,19 @@ class Layout {
   void header(const int rowTop) {
     const int top = rowTop + m::kRowPadV;
     const int limit = headerLeftLimit();
-    // Reading (and, in Japanese, its tap area: kana ⇄ romaji).
+    // Reading, then its other readings as fit (C15, V6), and (Japanese) the tap area over both: kana ⇄ romaji.
     const Font rf = readingFont();
     const std::string reading = fitText(m_, rf, readingText(), limit - kContentX);
     if (!reading.empty()) {
       out_.text(rf, kContentX, top, reading);
+      const std::string also = alsoText(reading, limit - kContentX);
+      if (!also.empty()) {  // in the UI font, its kana in the reader's (TextRuns), on the reading's baseline
+        out_.text(Font::UiSmall, kContentX + tw(rf, reading), top + m_.ascender(rf) - m_.ascender(Font::UiSmall), also);
+      }
       if (ja_) {
-        out_.hit(Target::ReadingLine, {kContentX - m::kReadingTapPadH, top - m::kReadingTapPadTop,
-                                       tw(rf, reading) + 2 * m::kReadingTapPadH, lh(rf) + m::kReadingTapPadTop});
+        out_.hit(Target::ReadingLine,
+                 {kContentX - m::kReadingTapPadH, top - m::kReadingTapPadTop,
+                  tw(rf, reading) + tw(Font::UiSmall, also) + 2 * m::kReadingTapPadH, lh(rf) + m::kReadingTapPadTop});
       }
     }
     // The word (phase 0: the tapped character and …), then the level badge when there's room for it.
@@ -326,6 +331,26 @@ class Layout {
         out_.text(Font::UiSmall, pill.x + m::kPillFrame + m::kPillPadH, pill.y + m::kPillFrame, pos);
       }
     }
+  }
+
+  // " · also ついたち, いちじつ…" after the drawn `reading` (C15, V6): phase B's other readings in the reading's mode,
+  // whole ones only, as many as fit in `room` with the reading, then … when some were left out; empty when there are
+  // none, or not even one fits (the reading line is then as the approved card draws it).
+  std::string alsoText(const std::string& reading, const int room) const {
+    if (!translated() || w_.also.empty() || reading != readingText()) return {};
+    const bool romaji = ja_ && s_.reading == ReadingMode::Romaji;
+    const int left = room - tw(readingFont(), reading);
+    const size_t n = w_.also.size();
+    for (size_t shown = n; shown > 0; shown--) {
+      std::string tail = str_.alsoReadings;
+      for (size_t i = 0; i < shown; i++) {
+        if (i > 0) tail += str_.alsoComma;
+        tail += romaji ? w_.also[i].romaji : w_.also[i].kana;
+      }
+      if (shown < n) tail += kEllipsis;
+      if (tw(Font::UiSmall, tail) <= left) return tail;
+    }
+    return {};
   }
 
   void levels(const int top) {
@@ -617,12 +642,14 @@ class Layout {
     Flow(Layout& l, const Rect& body)
         : l_(l), x_(kContentX), y_(body.y + m::kBodyPadTop), bottom_(body.bottom() - m::kRowPadV) {}
     int y() const { return y_; }
+    int bottom() const { return bottom_; }
     void gap(const int g) { y_ += g; }
     bool room(const int h) const { return y_ + h <= bottom_; }
     // Wrapped text, each line in a line box of `lineBox` (0: the font's own), text centred in it.
-    // firstIndent: the first line starts that far in (the Meaning tab's "1.").
+    // firstIndent: the first line starts that far in (the Meaning tab's "1."). maxLines > 0: at most that many lines,
+    // the last cut with … when more follow (as at the body's end).
     void paragraph(const Font font, const std::string& text, const int lineBox = 0, const MarkedText* marked = nullptr,
-                   const bool invertMark = false, const int firstIndent = 0) {
+                   const bool invertMark = false, const int firstIndent = 0, const int maxLines = 0) {
       const int box = lineBox > 0 ? lineBox : l_.lh(font);
       std::vector<size_t> sourceBytes;
       const auto lines = wrapText(l_.m_, font, text, kContentW, 0, firstIndent, &sourceBytes);
@@ -630,7 +657,8 @@ class Layout {
       for (size_t i = 0; i < lines.size(); i++) {
         if (!room(box)) return;
         // The last line that fits, when more follow: cut with … (the body clips, popup-ui.md §1).
-        const bool cut = i + 1 < lines.size() && !room(2 * box);
+        const bool last = maxLines > 0 && static_cast<int>(i) + 1 == maxLines;
+        const bool cut = i + 1 < lines.size() && (!room(2 * box) || last);
         const int indent = i == 0 ? firstIndent : 0;
         const std::string line = cut ? withEllipsis(l_.m_, font, lines[i], kContentW - indent) : lines[i];
         const int top = centred(y_, box, l_.lh(font));
@@ -790,24 +818,68 @@ class Layout {
     }
   }
 
+  int actionRowHeight() const { return 2 * m::kActionFrame + 2 * m::kActionPadV + lh(Font::UiSmall); }
+
+  // One ⋯ action row at the flow's place: its frame, its words and › (§1.1), its target.
+  void actionRow(Flow& f, const std::string& label, const int id) {
+    const int h = actionRowHeight();
+    const Rect r{kContentX, f.y(), kContentW, h};
+    out_.frame(r, m::kActionFrame);
+    const int ty = r.y + m::kActionFrame + m::kActionPadV;
+    out_.text(Font::UiSmall, r.x + m::kActionFrame + m::kActionPadH, ty, label);
+    const int cw = pct(lh(Font::UiSmall), m::kChevronBoxPct);
+    out_.shape(Shape::Chevron, {r.right() - m::kActionFrame - m::kActionPadH - cw, ty, cw, lh(Font::UiSmall)});
+    out_.hit(Target::Action, r, id);
+    f.gap(h + m::kActionGap);
+  }
+
   void actions(Flow& f) {
+    if (s_.preview) return sentencePreview(f);
     std::vector<std::string> rows;
     if (s_.level != Level::None) rows.emplace_back(str_.actionUndo);
     rows.insert(rows.end(), std::begin(str_.actions), std::end(str_.actions));
-    const int h = 2 * m::kActionFrame + 2 * m::kActionPadV + lh(Font::UiSmall);
+    // An ignored word's Ignore row takes it back (C17, V6).
+    if (s_.ignored) rows[rows.size() - std::size(str_.actions) + actionIndex(ActionId::Ignore)] = str_.undoIgnore;
     for (size_t i = 0; i < rows.size(); i++) {
-      if (!f.room(h)) return;
-      const Rect r{kContentX, f.y(), kContentW, h};
-      out_.frame(r, m::kActionFrame);
-      const int ty = r.y + m::kActionFrame + m::kActionPadV;
-      out_.text(Font::UiSmall, r.x + m::kActionFrame + m::kActionPadH, ty, rows[i]);
-      const int cw = pct(lh(Font::UiSmall), m::kChevronBoxPct);
-      out_.shape(Shape::Chevron, {r.right() - m::kActionFrame - m::kActionPadH - cw, ty, cw, lh(Font::UiSmall)});
+      if (!f.room(actionRowHeight())) return;
       // Undo save is shown only when there's a save to undo; the others keep their ids (ActionId).
       const int id = s_.level != Level::None ? static_cast<int>(i) : static_cast<int>(i) + ActionId::SaveSentence;
-      out_.hit(Target::Action, r, id);
-      f.gap(h + m::kActionGap);
+      actionRow(f, rows[i], id);
     }
+  }
+
+  // The ⋯ tab's sentence preview (C3, V6): the sentence in 「」 as the Examples tab's Met before (the word underlined),
+  // then Shorter | Longer, two half-width action rows side by side (no ›), then the Save sentence row, which saves. The
+  // sentence gets the lines the body has left above the rows; one longer is cut there with …, and Longer has a target
+  // only while what it would show fits uncut.
+  void sentencePreview(Flow& f) {
+    const int box = pct(m::kSentenceText, m::kSentenceLineHeightPct);
+    const int rowH = actionRowHeight();
+    const int below = m::kContextGap + rowH + m::kActionGap + rowH;
+    const int maxLines = std::max(1, (f.bottom() - f.y() - below) / box);
+    const auto quoted = [](const std::string& text) { return kOpenQuote + text + kCloseQuote; };
+    MarkedText shown = *s_.preview;  // the brackets drawn only: the saved text is bare
+    shown.markStart += std::strlen(kOpenQuote);
+    f.paragraph(Font::ReaderMedium, quoted(s_.preview->text), box, &shown, false, 0, maxLines);
+    f.gap(m::kContextGap);
+    if (!f.room(rowH)) return;
+    const int cellW = (kContentW - m::kActionGap) / 2;
+    const Rect cells[] = {{kContentX, f.y(), cellW, rowH},
+                          {kContentX + cellW + m::kActionGap, f.y(), kContentW - cellW - m::kActionGap, rowH}};
+    const char* labels[] = {str_.shorter, str_.longer};
+    const bool longerFits =
+        s_.previewLonger &&
+        static_cast<int>(wrapText(m_, Font::ReaderMedium, quoted(s_.previewLonger->text), kContentW, 0).size()) <=
+            maxLines;
+    for (int i = 0; i < 2; i++) {
+      const Rect& r = cells[i];
+      out_.frame(r, m::kActionFrame);
+      out_.text(Font::UiSmall, r.x + (r.w - tw(Font::UiSmall, labels[i])) / 2, r.y + m::kActionFrame + m::kActionPadV,
+                labels[i]);
+      if (i == 0 || longerFits) out_.hit(Target::Action, r, i == 0 ? ActionId::Shorter : ActionId::Longer);
+    }
+    f.gap(rowH + m::kActionGap);
+    if (f.room(rowH)) actionRow(f, str_.actions[actionIndex(ActionId::SaveSentence)], ActionId::SaveSentenceNow);
   }
 
   // ---- toast ----
@@ -842,6 +914,32 @@ std::string readingLineText(const CardWord& word, const CardState& state) {
   if (state.phase == Phase::Pending) return {};
   const bool romaji = word.language == Language::Japanese && state.reading == ReadingMode::Romaji;
   return romaji ? word.romaji : word.reading;
+}
+
+DisplayList layoutSummary(const std::vector<std::string>& lines, const TextMetrics& metrics, const int screenWidth) {
+  DisplayList out;
+  if (lines.empty()) return out;
+  const int chrome = 2 * m::kToastFrame + 2 * m::kToastPadH;
+  std::vector<std::string> shown;
+  shown.reserve(lines.size());
+  int textW = 0;
+  for (const std::string& line : lines) {
+    shown.push_back(fitText(metrics, Font::UiSmall, line, screenWidth - 2 * m::kCardInset - chrome));
+    textW = std::max(textW, metrics.width(Font::UiSmall, shown.back()));
+  }
+  const int lineH = metrics.lineHeight(Font::UiSmall);
+  const int w = chrome + textW;
+  const Rect r{(screenWidth - w) / 2, m::kToastTop, w,
+               2 * m::kToastFrame + 2 * m::kToastPadV + static_cast<int>(shown.size()) * lineH};
+  out.fill(r, false);
+  out.frame(r, m::kToastFrame);
+  int y = r.y + m::kToastFrame + m::kToastPadV;
+  for (const std::string& line : shown) {
+    out.text(Font::UiSmall, r.x + (r.w - metrics.width(Font::UiSmall, line)) / 2, y, line);
+    y += lineH;
+  }
+  out.toast = r;
+  return out;
 }
 
 DisplayList layoutCard(const CardWord& word, const CardState& state, const TextMetrics& metrics,

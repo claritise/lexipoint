@@ -42,6 +42,11 @@ add_executable(LexiriseCardTest
   ${REPO_ROOT}/src/lexirise/card/CardLayout.cpp
   ${REPO_ROOT}/src/lexirise/card/BenchFixtures.cpp
   ${REPO_ROOT}/src/lexirise/card/BenchPage.cpp
+  ${REPO_ROOT}/src/lexirise/card/SentencePreview.cpp
+  ${REPO_ROOT}/src/lexirise/session/ReadingSession.cpp
+  SentencePreviewTest.cpp
+  CardAdditionsTest.cpp
+  ReadingSessionTest.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )
 
@@ -71,6 +76,8 @@ add_executable(LexiriseCardRender
   ${REPO_ROOT}/src/lexirise/card/CardFrame.cpp
   ${REPO_ROOT}/src/lexirise/card/BenchFixtures.cpp
   ${REPO_ROOT}/src/lexirise/card/BenchPage.cpp
+  ${REPO_ROOT}/src/lexirise/card/SentencePreview.cpp
+  ${REPO_ROOT}/src/lexirise/text/Punctuation.cpp
   ${REPO_ROOT}/lib/EpdFont/EpdFont.cpp
   ${REPO_ROOT}/lib/Utf8/Utf8.cpp
 )

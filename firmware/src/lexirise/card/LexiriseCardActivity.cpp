@@ -131,6 +131,18 @@ void LexiriseCardActivity::idleStep() {
     session_.applyDeck(session_.fetchDeck(), millis());  // blocking, like a write; no redraw: nothing shown changes
     return;
   }
+  if (next == CardSession::IdleStep::Count) {
+    // The reading session's word count (C7, V6): one small call, given up for input; nothing shown changes.
+    const unsigned long start = millis();
+    const LiveSource::CountCall count = session_.fetchCount(input::inputCame);
+    session_.applyCount(count, millis());
+    if (count.sent) {
+      LOG_INF("LXSESSION", "word count %s in %lu ms (%s)",
+              count.totalCount ? std::to_string(*count.totalCount).c_str() : "-", millis() - start,
+              api::apiErrorName(count.error));
+    }
+    return;
+  }
   if (next == CardSession::IdleStep::Flush) {
     flushFiles(/*closing=*/false);
     return;
@@ -293,7 +305,10 @@ void LexiriseCardActivity::flushFiles(const bool closing) {
 }
 
 void LexiriseCardActivity::logAnswer(const CardSession::Answer& answer) const {
-  if (answer.writeFailed) LOG_INF("LXCARD", "level change failed (%s)", api::apiErrorName(live_->error()));
+  if (answer.writeFailed) {
+    LOG_INF("LXCARD", "%s failed (%s)", answer.sentenceFailed ? "sentence card" : "level change",
+            api::apiErrorName(live_->error()));
+  }
   if (answer.clearFailed) LOG_INF("LXCARD", "removed, but its notes and tags weren't cleared");
   if (!answer.unreadable.empty()) LOG_INF("LXCARD", "unreadable response: %s", answer.unreadable.c_str());
 }
@@ -416,6 +431,20 @@ void LexiriseCardActivity::logTapTargets(const std::vector<Hit>& hits) {
 }
 
 void LexiriseCardActivity::logReadingLine() {
+  // The word's other readings in the mode shown (C15, V6; before fitting, so a device check can tell a list cut on
+  // screen from one that came short), when they change: "[LXCARD] reading also <a, b, …>" ("-": none).
+  const bool romaji =
+      controller_.currentWord().language == Language::Japanese && controller_.state().reading == ReadingMode::Romaji;
+  std::string also;
+  for (const AlsoReading& a : controller_.currentWord().also) {
+    if (!also.empty()) also += ", ";
+    also += romaji ? a.romaji : a.kana;
+  }
+  if (also.empty()) also = "-";
+  if (also != loggedAlso_) {
+    loggedAlso_ = also;
+    LOG_INF("LXCARD", "reading also %s", also.c_str());
+  }
   // lxctl reading-smoke: the Japanese reading line's text (kana, or romaji in the romaji mode: the tap or the setting;
   // before fitting), when it changes.
   if (controller_.currentWord().language != Language::Japanese) return;

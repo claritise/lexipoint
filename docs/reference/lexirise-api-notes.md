@@ -561,6 +561,13 @@ Dev key, from the Mac; raw in `research/v6/` (gitignored).
   proficiency overwritten). So a sentence save must check first, as a word's does. **A sentence card's `DELETE`**
   answers `deleted: true` and the item is gone (404), unlike a dictionary word's.
 
+- **Finding an item by its text** (measured 2026-09-30 by the coordinator, dev key, read-only): `GET /v1/vocabulary`
+  takes a `search` parameter (`text`, `q`, `query`, `word` and `expression` are ignored: the same answer as without
+  them), but `search` returned `totalCount` 0 for every value tried, even an item's exact `expression_text`, its first
+  character, its dictionary word, its meaning and its reading. So no read-only way to find an item by its text was
+  found: a sentence card saved in an earlier session can't be looked up before a save, and V6's sentence save replaces
+  it (`../v0.2/00-overview.md` "As built (V6)" 3).
+
 ## Levels for A5 (V9b), measured (2026-09-29, read-only)
 
 `tools/lexirise/probe_v9b.py` (dev key, from the Mac; raw in `research/v9b/`, gitignored; 237 calls), for

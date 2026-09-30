@@ -463,6 +463,31 @@ std::optional<BuiltSentence> buildSentenceFrom(const PageModel& page, const Sent
   return builder.buildFrom(static_cast<size_t>(piece));
 }
 
+std::string separatorBetween(const BuiltSentence& pageText, const BuiltSentence& before, const BuiltSentence& after) {
+  if (before.chars.empty() || after.chars.empty()) return {};
+  const auto place = [&pageText](const SentenceChar& c) {
+    return std::find_if(pageText.chars.begin(), pageText.chars.end(), [&c](const SentenceChar& p) {
+      return p.token.line == c.token.line && p.token.token == c.token.token && p.codepoint == c.codepoint;
+    });
+  };
+  const auto last = place(before.chars.back());
+  const auto first = place(after.chars.front());
+  if (last == pageText.chars.end() || first == pageText.chars.end()) return {};
+  const uint32_t from = last->start + last->units;
+  if (first->start <= from) return {};
+  const size_t fromByte = utf8ByteAtUtf16(pageText.text, from);
+  const std::string_view between =
+      std::string_view(pageText.text).substr(fromByte, utf8ByteAtUtf16(pageText.text, first->start) - fromByte);
+  if (between.size() > kMaxSeparatorBytes) return {};
+  for (std::string_view rest = between; !rest.empty();) {
+    const std::string_view c = utf8FirstChars(rest, 1);
+    const uint32_t cp = utf8FirstCodepoint(c);
+    if (!chars::isLatinSpace(cp) && cp != chars::kIdeographicSpace) return {};
+    rest.remove_prefix(c.size());
+  }
+  return std::string(between);
+}
+
 // Every character of the view counts (NUL too: its length decides, not a terminator); a run of stray continuation
 // bytes, a broken character, counts as one unit.
 uint32_t utf16Length(std::string_view utf8) {

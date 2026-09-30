@@ -5,6 +5,7 @@
 
 #include "lexirise/LexiriseConfig.h"
 #include "lexirise/page/MarkRule.h"
+#include "lexirise/text/Utf8Prefix.h"
 #include "lexirise/util/Timing.h"
 
 namespace lexipoint::card {
@@ -27,6 +28,7 @@ void CardController::open(const unsigned long nowMs) {
   state_.view = View::Card;
   state_.tab = 0;
   clearToast();
+  closePreview();
   pendingStep_ = -1;
   jumpedAtMs_.reset();
   syncWord(nowMs);
@@ -65,11 +67,12 @@ bool CardController::syncWord(const unsigned long nowMs) {
   // The tab stays across words, but a language with fewer tabs (⋯ is last) can't be left past its end.
   if (hasWord()) state_.tab = std::min(state_.tab, tabCount(currentWord().language) - 1);
   state_.level = hasWord() ? levels_[word_] : Level::None;
+  state_.ignored = hasWord() && source_.ignored(word_);
   state_.pendingText = source_.pendingText();
   state_.pageNumber = source_.pageNumber();
   return state_.phase != before.phase || state_.level != before.level || state_.pendingText != before.pendingText ||
          state_.pageNumber != before.pageNumber || state_.tab != before.tab || state_.toast != before.toast ||
-         word_ != wordBefore;
+         state_.ignored != before.ignored || word_ != wordBefore;
 }
 
 void CardController::nextSentenceFailed(const unsigned long nowMs) {
@@ -154,6 +157,7 @@ bool CardController::pressedBeforeJump(const std::optional<unsigned long> presse
 void CardController::moveTo(const int index, const unsigned long nowMs) {
   word_ = index;
   steps_++;
+  closePreview();  // the preview is this word's sentence: a step leaves it unsaved
   // A toast (and its Undo) belongs to the word it was about; a failure is about a save the user believes
   // made, and it came late: it stays for its time, Retry and all.
   if (!failureToast_) clearToast();
@@ -202,11 +206,20 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
     case Target::ToastUndo: {  // a new save is removed; a level change goes back (popup-ui.md §3.2)
       if (!retries_.empty()) return retry(nowMs);
       if (undo_.kind == Undo::Kind::None || undo_.word != word_) return {};
-      if (undo_.kind == Undo::Kind::Ignore) {  // off the list again; the toast goes (the card showed nothing else)
-        source_.setIgnored(word_, false);
+      if (undo_.kind == Undo::Kind::Ignore || undo_.kind == Undo::Kind::Unignore) {
+        // Back as it was; the toast goes (the ⋯ row's words follow).
+        const bool on = undo_.kind == Undo::Kind::Unignore;
+        source_.setIgnored(word_, on);
+        state_.ignored = on;
         Outcome o{Effect::Redraw, false};
-        o.ignores.push_back({word_, false, undo_.evicted});
+        o.ignores.push_back({word_, on, on ? std::nullopt : undo_.evicted});
         clearToast();
+        return o;
+      }
+      if (undo_.kind == Undo::Kind::Sentence) {  // the sentence card taken back (unsent while in its window)
+        Outcome o{Effect::Redraw, false};
+        o.sentences.push_back({word_, {}, true, nowMs});
+        showToast(strings_.removed, nowMs);
         return o;
       }
       const Level restored = undo_.level;
@@ -219,6 +232,7 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
     }
     case Target::RankRow:
       state_.view = state_.view == View::Card ? View::Expanded : View::Card;
+      closePreview();
       return {Effect::Redraw, false};
     case Target::Close:
       return {Effect::Close, false};
@@ -229,8 +243,9 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
           nowMs);
       return {Effect::Redraw, true};
     case Target::Tab:
-      if (state_.tab == hit->index) return {};
-      state_.tab = hit->index;
+      if (state_.tab == hit->index && !preview_) return {};
+      state_.tab = hit->index;  // the ⋯ tab again, or another: the preview closes unsaved
+      closePreview();
       return {Effect::Redraw, false};
     case Target::Action:
       if (!hasWord()) return {};
@@ -240,8 +255,13 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
         showToast(strings_.removed, nowMs);
         return o;
       }
-      if (hit->index == ActionId::Ignore && !source_.demoActions()) return ignore(nowMs);
-      if (hit->index >= ActionId::SaveSentence && hit->index <= ActionId::LookUpLater) {
+      if (hit->index == ActionId::SaveSentence) return openPreview(nowMs);
+      if (hit->index == ActionId::Shorter || hit->index == ActionId::Longer) {
+        return changePreview(hit->index == ActionId::Longer);
+      }
+      if (hit->index == ActionId::SaveSentenceNow) return saveSentence(nowMs);
+      if (hit->index == ActionId::Ignore) return ignore(nowMs);
+      if (hit->index == ActionId::LookUpLater) {
         showToast(source_.demoActions() ? strings_.actionDone[actionIndex(hit->index)] : strings_.notYet, nowMs);
       }
       return {Effect::Redraw, false};
@@ -253,22 +273,73 @@ Outcome CardController::tap(const Hit* hit, const unsigned long nowMs, const std
 }
 
 Outcome CardController::ignore(const unsigned long nowMs) {
-  const char* ignoredText = strings_.actionDone[actionIndex(ActionId::Ignore)];  // "Ignored: won't be marked again"
-  // A second tap while this ignore's Undo is up: nothing (as a level's double tap), so the Undo stays.
-  if (state_.toastUndo && undo_.kind == Undo::Kind::Ignore && undo_.word == word_) return {};
-  if (source_.ignored(word_)) {  // already: nothing to change or undo
-    showToast(ignoredText, nowMs);
+  // A second tap while this word's ignore (or un-ignore) Undo is up: nothing (as a level's double tap), so the Undo
+  // stays, and a tap matched against the frame before the first one's never undoes it.
+  const bool undoUp = undo_.kind == Undo::Kind::Ignore || undo_.kind == Undo::Kind::Unignore;
+  if (state_.toastUndo && undoUp && undo_.word == word_) return {};
+  if (!source_.keepsIgnoreList()) {  // nowhere to keep it
+    showToast(strings_.sdCardFailed, nowMs, false, config::kFailureToastMs);
     return {Effect::Redraw, false};
   }
-  if (!source_.setIgnored(word_, true)) {  // a word with no key (no entry id, no usable form): can't be listed
-    showToast(strings_.saveFailed, nowMs);
+  const bool on = !source_.ignored(word_);  // the row reads Undo ignore for an ignored word
+  if (!source_.setIgnored(word_, on)) {     // a word with no key (no entry id, no usable form): can't be listed
+    showToast(strings_.cantIgnore, nowMs);
     return {Effect::Redraw, false};
   }
+  state_.ignored = on;
   Outcome o{Effect::Redraw, false};
-  o.ignores.push_back({word_, true});
-  showToast(std::string(ignoredText) + strings_.undoSuffix, nowMs, true, config::kIgnoreToastMs);
-  undo_ = {Undo::Kind::Ignore, word_, Level::None, std::nullopt};
+  o.ignores.push_back({word_, on, std::nullopt});
+  const char* text = on ? strings_.actionDone[actionIndex(ActionId::Ignore)] : strings_.noLongerIgnored;
+  showToast(std::string(text) + strings_.undoSuffix, nowMs, true, config::kIgnoreToastMs);
+  undo_ = {on ? Undo::Kind::Ignore : Undo::Kind::Unignore, word_, Level::None, std::nullopt};
   return o;
+}
+
+Outcome CardController::openPreview(const unsigned long nowMs) {
+  if (preview_) return {};  // open already (a tap matched against the frame before it)
+  std::optional<SentenceForSave> sentence = source_.sentenceForSave(word_);
+  if (!sentence || text::trimmedSpaces(sentence->text).empty()) {  // no sentence to save (a source without one)
+    showToast(source_.demoActions() ? strings_.actionDone[actionIndex(ActionId::SaveSentence)] : strings_.notYet,
+              nowMs);
+    return {Effect::Redraw, false};
+  }
+  preview_.emplace(*sentence);
+  syncPreview();
+  return {Effect::Redraw, false};
+}
+
+Outcome CardController::changePreview(const bool longer) {
+  if (!preview_ || !(longer ? preview_->longer() : preview_->shorter())) return {};  // nothing to do: nothing changes
+  syncPreview();
+  return {Effect::Redraw, false};
+}
+
+Outcome CardController::saveSentence(const unsigned long nowMs) {
+  if (!preview_) return {};
+  std::string text = preview_->shown().text;
+  closePreview();  // back to the rows, with the save's toast
+  Outcome o{Effect::Redraw, false};
+  if (text.empty()) return o;
+  o.sentences.push_back({word_, std::move(text), false, nowMs + config::kToastMs});
+  showToast(std::string(strings_.actionDone[actionIndex(ActionId::SaveSentence)]) + strings_.undoSuffix, nowMs, true);
+  undo_ = {Undo::Kind::Sentence, word_, Level::None, std::nullopt};
+  return o;
+}
+
+void CardController::closePreview() {
+  preview_.reset();
+  state_.preview.reset();
+  state_.previewLonger.reset();
+}
+
+void CardController::syncPreview() {
+  state_.preview = preview_->shown();
+  state_.previewLonger = preview_->longerShown();
+}
+
+void CardController::sentenceFailed(const unsigned long nowMs) {
+  showToast(strings_.saveFailed, nowMs, false, config::kFailureToastMs);
+  failureToast_ = true;  // it came late: a step keeps it
 }
 
 void CardController::ignoreEvicted(const int word, IgnoredKey evicted) {
@@ -278,7 +349,8 @@ void CardController::ignoreEvicted(const int word, IgnoredKey evicted) {
 void CardController::ignoreFailed(const int word, const bool wanted, const unsigned long nowMs) {
   if (word < 0 || word >= source_.wordCount()) return;
   source_.setIgnored(word, !wanted);
-  showToast(strings_.saveFailed, nowMs, false, config::kFailureToastMs);
+  state_.ignored = hasWord() && source_.ignored(word_);  // the word shown may be another copy of that entry
+  showToast(strings_.sdCardFailed, nowMs, false, config::kFailureToastMs);
   failureToast_ = true;  // it came after the input: a step in the same batch, or a sentence failing, keeps it
 }
 
@@ -350,6 +422,7 @@ Outcome CardController::home() {
   pendingStep_ = -1;  // as for a tap: the card doesn't jump after it
   if (state_.view == View::Expanded) {
     state_.view = View::Card;
+    closePreview();
     return {Effect::Redraw, false};
   }
   return {Effect::Close, false};
@@ -365,6 +438,7 @@ Outcome CardController::swipe(const Swipe direction) {
     case Swipe::Up:
       if (expanded) return {};
       state_.view = View::Expanded;
+      closePreview();
       return {Effect::Redraw, false};
     case Swipe::Down:
       return home();
@@ -374,6 +448,7 @@ Outcome CardController::swipe(const Swipe direction) {
       const int tab = state_.tab + (direction == Swipe::Left ? 1 : -1);
       if (tab < 0 || tab >= tabCount(currentWord().language)) return {};
       state_.tab = tab;
+      closePreview();
       return {Effect::Redraw, false};
     }
   }

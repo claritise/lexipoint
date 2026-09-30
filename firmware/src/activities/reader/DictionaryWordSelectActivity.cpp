@@ -23,6 +23,7 @@
 #include "lexirise/lookup/StarDictChoice.h"
 #include "lexirise/page/PageSentences.h"
 #include "lexirise/page/ReaderMarks.h"
+#include "lexirise/session/ReadingSession.h"
 #include "lexirise/settings/BookTags.h"
 #include "lexirise/settings/IgnoredWords.h"
 #include "lexirise/vocab/VocabMirror.h"
@@ -475,8 +476,10 @@ bool DictionaryWordSelectActivity::openLexiriseCard(lexipoint::text::TapContext 
   auto tags = lexipoint::bookSaveTags(settings, bookTitle, bookPath, lexipoint::bookTagStore());
   auto source = std::make_unique<lexipoint::card::LiveSource>(lexipoint::service(), std::move(context), readerPage,
                                                               std::move(tags), std::move(next));
-  source->setBookTitles(lexipoint::bookTagStore());        // "Met before"'s book titles (C14)
-  source->setIgnoredWords(lexipoint::ignoredWordStore());  // the reader's ignored words (C17), read before it opens
+  source->setBookTitles(lexipoint::bookTagStore());                                // "Met before"'s book titles (C14)
+  source->setPageText([this] { return lexipoint::text::pageTextOf(pageModel); });  // the sentence preview's joins
+  source->setIgnoredWords(lexipoint::ignoredWordStore());    // the reader's ignored words (C17), read before it opens
+  source->setSession(lexipoint::session::readingSession());  // the reading session's counts (C1, C7)
   source->setVocabMirror(lexipoint::vocab::vocabStore());  // the vocab mirror (C13, V7a), loaded on the first idle card
   source->setLookupCache(lexipoint::lookup::lookupCache());  // the lemma cache (C21, V7c): phase B's answers on SD
   // The page's analysis, when the reader kept one for this page's very text (C12, V7b): no request ① for its sentences.

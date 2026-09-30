@@ -138,6 +138,7 @@ void applyLookup(LookupCard& card, api::LookupResult entry) {
   card.translationUnavailable = false;
   card.translationError = api::ApiError::None;
   if (!entry.reading.empty()) card.reading = entry.reading;
+  card.alternatives = std::move(entry.alternatives);
   card.senses = std::move(entry.senses);
   card.level = std::move(entry.level);
   if (entry.rank != 0) card.rank = entry.rank;

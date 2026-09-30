@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "CardMetrics.h"
 #include "CardModel.h"
 #include "DisplayList.h"
 
@@ -15,6 +16,12 @@ namespace lexipoint::card {
 
 DisplayList layoutCard(const CardWord& word, const CardState& state, const TextMetrics& metrics,
                        const CardStrings& strings = {});
+
+// The reading session's summary on the home screen (C1, C7, V6): its lines in one box in the toast's frame and type
+// (kToastFrame, kToastText, kToastPadV / H, kToastTop, the text's own line height), each line centred, the box centred
+// on a screen `screenWidth` wide. Lines too wide are cut with … as the toast's are.
+DisplayList layoutSummary(const std::vector<std::string>& lines, const TextMetrics& metrics,
+                          int screenWidth = metrics::kScreenWidth);
 
 // Greedy line breaking for the card's text: at spaces for Latin text, between any two characters for
 // CJK. With maxLines > 0, the last line is cut with … when the text doesn't fit.

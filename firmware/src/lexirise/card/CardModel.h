@@ -44,6 +44,14 @@ struct MarkedText {
   bool operator==(const MarkedText&) const = default;
 };
 
+// One of a word's other readings (C15, V6: the reading line's "also"): kana and romaji as the card's own reading
+// has them (Japanese), or pinyin in both (Chinese).
+struct AlsoReading {
+  std::string kana;
+  std::string romaji;
+  bool operator==(const AlsoReading&) const = default;
+};
+
 // Why phase B brought no meaning (offline-and-errors.md §1): the meaning row says it.
 enum class NoMeaning : uint8_t {
   Offline,      // Lexirise couldn't be reached: "offline"
@@ -54,11 +62,12 @@ enum class NoMeaning : uint8_t {
 
 struct CardWord {
   Language language = Language::Japanese;
-  std::string reading;  // kana (ja: converted, or as the API gave it; romaji when it can't be) or pinyin (zh)
-  std::string romaji;   // ja: the API's, or read back from its kana (Kana.h japaneseReading)
-  std::string word;     // the lemma
-  std::string badge;    // "N1" / "HSK 4"; empty: none
-  std::string surface;  // ja: the form in the sentence, when it isn't the lemma
+  std::string reading;            // kana (ja: converted, or as the API gave it; romaji when it can't be) or pinyin (zh)
+  std::string romaji;             // ja: the API's, or read back from its kana (Kana.h japaneseReading)
+  std::vector<AlsoReading> also;  // phase B's other readings, in the order shown, none the card's own (C15, V6)
+  std::string word;               // the lemma
+  std::string badge;              // "N1" / "HSK 4"; empty: none
+  std::string surface;            // ja: the form in the sentence, when it isn't the lemma
   std::string conjugation;
   std::string partOfSpeech;
   std::vector<std::string> senses;
@@ -116,6 +125,11 @@ struct CardState {
   StripLine strip;                 // the active word's page line
   MarkedText contextSentence;      // this book's sentence, the word marked
   int pageNumber = 0;              // "This book · p. 84"; 0: none
+  bool ignored = false;            // on the reader's ignore list: the ⋯ row reads "Undo ignore" (C17, V6)
+  // The ⋯ tab's sentence preview (C3, V6): the sentence to save, the word underlined; none: the rows.
+  std::optional<MarkedText> preview;
+  // What Longer would show (none: nothing to add): the layout gives Longer a target only when it fits uncut.
+  std::optional<MarkedText> previewLonger;
 };
 
 // The card's words; P6 fills them from I18n (popup-ui.md §4), the host keeps the English.
@@ -141,6 +155,11 @@ struct CardStrings {
   const char* dictionaryForm = "dictionary form";  // the Form tab's first row
   const char* actionUndo = "Undo save";
   const char* actions[3] = {"Save the sentence as a card", "Ignore this word", "Look up later"};
+  const char* undoIgnore = "Undo ignore";  // the Ignore row for an ignored word (C17, V6)
+  const char* shorter = "Shorter";         // the sentence preview (C3, V6)
+  const char* longer = "Longer";
+  const char* alsoReadings = " \xC2\xB7 also ";  // " · also ": the reading line's other readings (C15, V6)
+  const char* alsoComma = ", ";
   const char* line = "line";
   // Toasts (the reference's): "Saved as learning  ·  Undo", "Now fresh  ·  Undo", "Readings: romaji".
   const char* savedAs = "Saved as ";
@@ -162,13 +181,17 @@ struct CardStrings {
   const char* meaningUnavailable = "meaning unavailable";
   const char* notYet = "Not in this version yet";
   const char* actionDone[3] = {"Sentence saved as a card", "Ignored: won't be marked again", "Flagged for later"};
+  const char* noLongerIgnored = "No longer ignored";          // "… · Undo" (C17, V6)
+  const char* sdCardFailed = "Couldn't save to the SD card";  // the ignore list wasn't written, or there's none
+  const char* cantIgnore = "Can't ignore this word";          // the word has no key to list it by
 };
 
 // The ⋯ tab's rows as touch targets (Target::Action's index): Undo save (only while saved), then CardStrings::actions
 // in order, each keeping its id whether or not Undo save is shown. actions[] and actionDone[] are indexed by
-// id - SaveSentence (actionIndex).
+// id - SaveSentence (actionIndex). The sentence preview's (C3, V6): Shorter, Longer, and its save row (SaveSentenceNow:
+// its own id, so a tap on the rows' Save sentence matched against a frame before the preview only opens it).
 struct ActionId {
-  enum : int { UndoSave = 0, SaveSentence, Ignore, LookUpLater };
+  enum : int { UndoSave = 0, SaveSentence, Ignore, LookUpLater, Shorter, Longer, SaveSentenceNow };
 };
 constexpr int actionIndex(const int id) { return id - ActionId::SaveSentence; }
 static_assert(actionIndex(ActionId::LookUpLater) + 1 == static_cast<int>(std::size(CardStrings{}.actions)) &&
