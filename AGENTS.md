@@ -24,6 +24,27 @@ it before touching C++.
 
 The full list is "Global rules" in `docs/v0.1/01-build-order.md`.
 
+## How claritise works
+
+- **The card stays clean.** The approved card is one framed card: dividers only between real sections, the small
+  T L F K control at the top right, the rank row last with ✕ at its end, a bare ▼/▲ to open the detail view. When
+  changing it, subtract rather than add: reuse existing rows as touch targets, never add bars or labels for every
+  affordance. With a card open, the side buttons step through the sentence's words; closed, they turn pages.
+- **Autonomy within the rules.** Work through the phases one after another without asking; land and push `main` when
+  a phase is done. Ask only for the things listed above, few and plain, recommendation first.
+- **Measure, then document extensively:** why, how, what was found and what it means for the card.
+- **Quiet while waiting.** While agents or long jobs run, don't narrate their "still running" signals; report when
+  something actually finishes.
+
+## Notes and handoff
+
+All notes for this repo live in the repo, not in any tool's local memory:
+
+- **The rules:** this file (`CLAUDE.md` at the root points here, so Claude Code and Codex read the same thing).
+- **Where things stand:** `docs/handoff.md`. Update it at the end of every session and whenever the plan changes.
+- **Private notes:** `research/NOTES.md`, in the gitignored `research/` folder, which is its own private repo. Read
+  it, but never copy anything from it into this repo.
+
 ## How a piece of work runs
 
 One phase = one branch `lexi/<phase-id>` from `main` = one gate = one ledger row. The phase list, the ledger and the
@@ -99,6 +120,12 @@ processes. Flash with `pio run -e x4pro -t upload --upload-port <port>`, only wi
 
 ## Ending a session
 
-Before stopping or handing over: stop every agent you started, remove reviewer worktrees and their branches
-(`git worktree list`, `git worktree remove`, `git branch -D`, `git worktree prune`), close the serial connection,
-commit or write down any work in progress, and tell claritise where things stand.
+Before stopping, handing over, or a switch of account or machine:
+
+1. Stop every agent you started (builders and reviewers) and wait until they have stopped.
+2. Remove reviewer worktrees and their branches (`git worktree list`, `git worktree remove`, `git branch -D`,
+   `git worktree prune`).
+3. Stop background processes you started: the serial helper holding the reader's port, wait loops, headless
+   browsers.
+4. Commit any work in progress on its branch, or write it down in `docs/handoff.md`.
+5. Update `docs/handoff.md`, push, and tell claritise what was stopped and where things stand.
