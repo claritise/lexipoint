@@ -174,6 +174,21 @@ card's section cache was from before V8. Writes: none to Lexirise (one read-only
 
 Still owed with a real finger (claritise): a tap during a download; how page turns feel with marks on.
 
+## fix-marks: still owed on the device
+
+fix-marks (`../v0.2/page-annotations.md` "As built (V9a)", superseded 2026-10-01: the page under the card shows a level
+change on its next frame) is on `lexi/fix-marks`, not yet run on the device. A dev build (`x4pro`), a Japanese book on
+an analyzed page with marks on, and claritise's OK: K saves or changes a word in Lexirise (take it back with ⋯ Undo save
+or in the app afterwards).
+
+- **K, then a step:** long-press an unsaved (solid-underlined) word; tap K: on the K's own frame the word's underline
+  goes (T or L instead: dotted), and the `[LXPAGE] marks:` line logged for that frame counts fewer words for K (one
+  per time the word is on the page). Within 2 s press a side button: the step's frame keeps the new mark (no marks
+  line: the marks are reused). About 2 s later, when the write is sent, nothing on the screen changes.
+- **Undo in the window:** tap K, then the toast's Undo within 2 s: the solid underline is back on the Undo's frame
+  (a marks line logged with it), then a side button keeps it, and nothing is sent.
+- **A failed write** (WiFi off before tapping, if it can be arranged): after "Save failed" the word's old mark is back.
+
 ## Fixes after the 2026-09-29 session: still owed on the device
 
 The fix-dzu fixes (`languages.md` §3a, superseded 2026-09-29: kana answers read back as romaji, and `dzu`) are on

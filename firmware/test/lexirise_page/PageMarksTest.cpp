@@ -317,6 +317,57 @@ TEST(PageMarks, MirrorViewIsTheCardsRule) {
   EXPECT_EQ(view.says(0).verdict, MirrorSays::Verdict::Snapshot);
 }
 
+// fix-marks: the device's sources put the open card's unsent level over the mirror and the page's snapshot (its newest
+// choice), keep a suspension the mirror knows, and leave every other entry to MirrorView.
+TEST(PageMarks, TheCardsUnsentLevelComesFirst) {
+  lexipoint::fakes::FakeFiles files;
+  lexipoint::vocab::VocabStore store(files);
+  lexipoint::IgnoredWordStore ignored(files);
+  store.load(Language::Japanese);
+  lexipoint::vocab::LiveState saved;  // the mirror: 104 saved at level 1
+  saved.language = Language::Japanese;
+  saved.entryId = 104;
+  saved.saved = true;
+  saved.savedId = 8;
+  saved.proficiency = 1;
+  saved.own = true;
+  store.record({saved});
+  const StoreSources before(Language::Japanese, 0, store, ignored);
+  EXPECT_EQ(before.mirror(104).state.proficiency, 1);
+  EXPECT_EQ(before.mirror(105).verdict, MirrorSays::Verdict::Snapshot);
+  lexipoint::vocab::LiveState k = saved;
+  k.savedId = 0;
+  k.proficiency = 4;
+  lexipoint::vocab::LiveState t = k;
+  t.entryId = 105;
+  t.proficiency = 1;
+  lexipoint::vocab::LiveState removed = t;
+  removed.entryId = 106;
+  removed.saved = false;
+  store.setUnsent({k, t, removed});
+  const StoreSources sources(Language::Japanese, 0, store, ignored);
+  EXPECT_EQ(sources.mirror(104).verdict, MirrorSays::Verdict::Saved);
+  EXPECT_EQ(sources.mirror(104).state.proficiency, 4);  // over the mirror
+  EXPECT_EQ(sources.mirror(105).verdict, MirrorSays::Verdict::Saved);
+  EXPECT_EQ(sources.mirror(105).state.proficiency, 1);  // over the page's snapshot
+  EXPECT_EQ(sources.mirror(106).verdict, MirrorSays::Verdict::Unsaved);
+  EXPECT_EQ(sources.mirror(107).verdict, MirrorSays::Verdict::Snapshot);  // not the card's: MirrorView says
+  EXPECT_EQ(sources.mirror(0).verdict, MirrorSays::Verdict::Snapshot);
+  EXPECT_FALSE(sources.mirror(104).suspended);
+  // A suspension the mirror knows stays under the card's level (as the mirror keeps it once the write lands).
+  lexipoint::fakes::FakeFiles files2;
+  lexipoint::vocab::VocabStore suspendedStore(files2);
+  lexipoint::vocab::Mirror mirror;
+  mirror.put({104, 8, 0, 1, /*suspended=*/true, 0, false, 1, true});
+  files2.files[lexipoint::vocab::mirrorFile(Language::Japanese).path] =
+      lexipoint::vocab::serializeMirror(mirror, Language::Japanese);
+  suspendedStore.load(Language::Japanese);
+  suspendedStore.setUnsent({k});
+  const StoreSources held(Language::Japanese, 0, suspendedStore, ignored);
+  EXPECT_EQ(held.mirror(104).state.proficiency, 4);
+  EXPECT_TRUE(held.mirror(104).suspended);
+}
+
 // A word's characters are tokens of their own on the device (ParsedText's CJK breaks), so its pieces on one line
 // merge into one underline, the justification's gaps included (the signed-off mockup's one segment per word per line).
 TEST(PageMarks, AMultiCharacterWordIsOneUnderlinePerLine) {

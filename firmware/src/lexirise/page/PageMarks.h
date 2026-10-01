@@ -40,6 +40,24 @@ class MarkSources {
   virtual bool ignored(const IgnoredKey& /*key*/) const { return false; }
 };
 
+// The device's sources (page/ReaderMarks.cpp draws with them): the vocab mirror by the saved-state rule (MirrorView),
+// under the open card's level changes the mirror doesn't hold yet (VocabStore::unsentState: the reader's own newest
+// choice, so the page under the card shows a level on its next frame, its Undo too), and the reader's ignore list; all
+// asked from memory.
+class StoreSources final : public MarkSources {
+ public:
+  StoreSources(Language language, uint64_t analyzedMs, vocab::VocabStore& mirror, IgnoredWordStore& ignoredWords)
+      : language_(language), store_(mirror), view_(language, analyzedMs, mirror), ignoredWords_(ignoredWords) {}
+  MirrorSays mirror(uint32_t entryId) const override;
+  bool ignored(const IgnoredKey& key) const override { return ignoredWords_.contains(key); }
+
+ private:
+  Language language_;
+  vocab::VocabStore& store_;
+  MirrorView view_;
+  IgnoredWordStore& ignoredWords_;
+};
+
 // A word-like occurrence's span in the page's text (UTF-16 units) and its mark (Mark::None ones are left out).
 struct SpanMark {
   uint32_t start = 0;

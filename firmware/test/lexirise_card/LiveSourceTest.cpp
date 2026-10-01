@@ -22,6 +22,7 @@
 #include "lexirise/card/LiveSource.h"
 #include "lexirise/card/WordSelectFlow.h"
 #include "lexirise/lookup/Fallback.h"
+#include "lexirise/page/PageMarks.h"
 
 using namespace lexipoint::card;
 using lexipoint::Language;
@@ -3430,6 +3431,190 @@ TEST(LiveMirror, TheCardsSavesLevelsAndRemovalsUpdateItAtOnce) {
   EXPECT_EQ(again.find(Language::Japanese, 6)->proficiency, 0);
 }
 
+// fix-marks: what the page under the card says of the tapped word (page::StoreSources, as ReaderMarks draws it).
+lexipoint::page::MirrorSays pageSays(Mirrored& m, lexipoint::IgnoredWordStore& ignored, const uint32_t entry) {
+  return lexipoint::page::StoreSources(Language::Japanese, lexipoint::fakes::kSept2026Ms, m.store, ignored)
+      .mirror(entry);
+}
+using Verdict = lexipoint::page::MirrorSays::Verdict;
+
+// fix-marks (device, 2026-10-01: K, then a side button inside the Undo window left the old underline): the page's
+// marks show the card's level change on its next frame, before Lexirise has it, and the sent write leaves them so.
+TEST(LiveMirror, ThePagesMarksShowALevelChangeOnTheNextFrame) {
+  Mirrored m;
+  lexipoint::IgnoredWordStore ignored(m.files);
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  EXPECT_NE(pageSays(m, ignored, 6).verdict, Verdict::Saved);  // 読む: unsaved (the card's answer)
+  const uint32_t before = m.store.revision();
+  s.level(3);                             // K
+  EXPECT_NE(m.store.revision(), before);  // the page under the card is worked out again (CardMarks)
+  s.step(-1);                             // a side button inside the Undo window: its frame draws the page's marks
+  EXPECT_EQ(m.level(6), -1);              // not sent yet
+  ASSERT_EQ(pageSays(m, ignored, 6).verdict, Verdict::Saved);
+  EXPECT_EQ(pageSays(m, ignored, 6).state.proficiency, 4);
+  s.drain();  // the POST: the mirror has it, and the marks say the same
+  EXPECT_EQ(m.level(6), 4);
+  ASSERT_EQ(pageSays(m, ignored, 6).verdict, Verdict::Saved);
+  EXPECT_EQ(pageSays(m, ignored, 6).state.proficiency, 4);
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 6), std::nullopt);  // nothing of the card's left on top
+}
+
+// The K's own frame works the page's marks out again (the revision moves with the tap); a step after it reuses them.
+TEST(LiveMirror, TheLevelsOwnFrameWorksTheMarksOutAndAStepReusesThem) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  const uint32_t before = m.store.revision();
+  s.level(3);
+  const uint32_t afterK = m.store.revision();
+  EXPECT_NE(afterK, before);
+  s.step(-1);
+  EXPECT_EQ(m.store.revision(), afterK);
+}
+
+// A change queued after the word's write was sent (not yet in the mirror) is the newer: it's the one the marks read.
+TEST(LiveMirror, AQueuedChangeOutranksTheSentOneForTheSameWord) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  s.level(3);
+  s.now += lexipoint::config::kToastMs;
+  LiveSource::Fetched sent = s.session.fetch(s.now);
+  ASSERT_EQ(sent.kind, LiveSource::Fetched::Kind::Write);
+  s.session.apply(std::move(sent), s.now + 1);
+  s.level(0);
+  ASSERT_TRUE(m.store.unsentState(Language::Japanese, 6));
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 6)->proficiency, 1);
+}
+
+// The card's sentence in another language: its change is that language's.
+TEST(LiveMirror, TheUnsentChangeIsInTheWordsLanguage) {
+  Mirrored m;
+  Rig rig;
+  rig.api.analyzeReplies = {apiOk(kAnalyze)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  TapContext tap = rig.tap(1, 0);
+  tap.language.language = Language::Chinese;
+  LiveSource source(rig.api, tap, rig.page);
+  source.setVocabMirror(m.store);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance(0);
+  c.sourceChanged(0);
+  source.advance(0);
+  c.sourceChanged(0);
+  source.recordMirror();
+  const Hit known{Target::Level, 3, {}};
+  for (const LevelChange& ch : c.tap(&known, 1000).changes) source.queue(ch);  // K on 読んだ
+  ASSERT_TRUE(m.store.unsentState(Language::Chinese, 6));
+  EXPECT_EQ(m.store.unsentState(Language::Chinese, 6)->proficiency, 4);
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 6), std::nullopt);
+}
+
+// The card's analyses go to the mirror as answers, never onto the marks as the reader's own choice.
+TEST(LiveMirror, ALaterAnalysisStaysOffThePagesMarks) {
+  Mirrored m;
+  TwoSentences rig;
+  constexpr const char* kNext =
+      R"({"occurrences":[)"
+      R"({"word":"雨","isWordLike":true,"charStart":0,"charEnd":1,"entryId":11},)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":1,"charEnd":4,"entryId":5,"lemmaEntryId":6}]})";
+  rig.model.lines[1].tokens = {"雨", "読んだ", "。"};
+  rig.api.analyzeReplies = {apiOk(kAnalyze), apiOk(kNext)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tapped(4), rig.page, {"xteink"}, rig.next());
+  source.setVocabMirror(m.store);
+  CardController c(source, ReadingMode::Kana);
+  openOnTheLastWord(source, c);
+  const int yonda = c.word();
+  c.step(+1, 5000);
+  while (source.extending()) source.advance(6000);  // the next sentence's analysis, not recorded yet
+  LevelChange k;
+  k.word = yonda;
+  k.to = Level::Known;
+  k.readyAtMs = 99999;
+  source.queue(k);
+  ASSERT_TRUE(m.store.unsentState(Language::Japanese, 6));
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 11), std::nullopt);
+}
+
+TEST(LiveMirror, AnUndoInsideTheWindowPutsThePagesOldMarkBack) {
+  Mirrored m;
+  lexipoint::IgnoredWordStore ignored(m.files);
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  s.level(0);  // T
+  ASSERT_EQ(pageSays(m, ignored, 6).verdict, Verdict::Saved);
+  EXPECT_EQ(pageSays(m, ignored, 6).state.proficiency, 1);
+  s.tap(Target::ToastUndo);
+  EXPECT_NE(pageSays(m, ignored, 6).verdict, Verdict::Saved);
+  EXPECT_FALSE(s.session.hasPendingWrites());
+}
+
+TEST(LiveMirror, AFailedWritePutsThePagesOldMarkBack) {
+  Mirrored m;
+  lexipoint::IgnoredWordStore ignored(m.files);
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  s.rig.api.writeReplies = {apiFailure(ApiError::NoWifi)};
+  s.level(1);  // L
+  ASSERT_EQ(pageSays(m, ignored, 6).verdict, Verdict::Saved);
+  EXPECT_EQ(pageSays(m, ignored, 6).state.proficiency, 2);
+  const uint32_t before = m.store.revision();
+  s.drain();
+  EXPECT_NE(pageSays(m, ignored, 6).verdict, Verdict::Saved);
+  EXPECT_NE(m.store.revision(), before);  // the failure's frame works the page out again
+}
+
+TEST(LiveMirror, ALevelOnASavedWordAndItsRemovalShowAtOnceToo) {
+  Mirrored m;
+  lexipoint::IgnoredWordStore ignored(m.files);
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  s.step(-1);
+  s.step(-1);  // 本: saved as 77 at level 3
+  s.level(0);  // T: a PATCH
+  ASSERT_EQ(pageSays(m, ignored, 3).verdict, Verdict::Saved);
+  EXPECT_EQ(pageSays(m, ignored, 3).state.proficiency, 1);
+  s.drain();
+  s.tap(Target::RankRow);
+  s.tap(Target::Tab, tabCount(Language::Japanese) - 1);
+  s.tap(Target::Action, 0);  // ⋯ Undo save: Lexirise keeps the item at level 0, a solid underline
+  ASSERT_EQ(pageSays(m, ignored, 3).verdict, Verdict::Saved);
+  EXPECT_EQ(pageSays(m, ignored, 3).state.proficiency, 0);
+}
+
+// A sent write stays on the page's marks until the mirror takes it (recordMirror(), after the answer's lock), even with
+// another change queued in between.
+TEST(LiveMirror, ASentWriteStaysOnThePagesMarksUntilTheMirrorHasIt) {
+  Mirrored m;
+  Saving s(/*complete=*/true, {"xteink"}, &m.store);
+  s.rig.api.writeReplies = {apiOk(R"({"result":{"savedExpressionId":901}})")};
+  s.level(3);  // K on 読んだ
+  s.now += lexipoint::config::kToastMs;
+  LiveSource::Fetched sent = s.session.fetch(s.now);
+  ASSERT_EQ(sent.kind, LiveSource::Fetched::Kind::Write);
+  s.session.apply(std::move(sent), s.now + 1);  // the POST went through; the mirror isn't told yet
+  s.step(-1);
+  s.step(-1);
+  s.level(0);  // T on 本 meanwhile
+  ASSERT_TRUE(m.store.unsentState(Language::Japanese, 6));
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 6)->proficiency, 4);
+  EXPECT_EQ(m.level(6), -1);
+  s.session.recordMirror();
+  EXPECT_EQ(m.level(6), 4);
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 6), std::nullopt);
+  ASSERT_TRUE(m.store.unsentState(Language::Japanese, 3));
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 3)->proficiency, 1);
+}
+
+// A card that goes without sending (the stack cleared as the reader sleeps) leaves nothing on the page's marks.
+TEST(LiveMirror, ACardGoneLeavesNothingOnThePagesMarks) {
+  Mirrored m;
+  auto s = std::make_unique<Saving>(/*complete=*/true, std::vector<std::string>{"xteink"}, &m.store);
+  s->level(3);
+  ASSERT_TRUE(m.store.unsentState(Language::Japanese, 6));
+  s.reset();
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 6), std::nullopt);
+}
+
 TEST(LiveMirror, RemovingTheUsersOwnItemLeavesItAtLevelZero) {
   Mirrored m;
   Saving s(/*complete=*/true, {"xteink"}, &m.store);
@@ -3655,6 +3840,33 @@ TEST(LiveMirror, AWriteIsKeptUnderTheEntryItsSavedStateCameFrom) {
   source.recordMirror();
   EXPECT_EQ(m.level(5), 4);
   EXPECT_EQ(m.level(6), -1);
+}
+
+// fix-marks: the card's unsent change is under the entry its write goes to (the surface's, saved alone), not the
+// lemma's.
+TEST(LiveMirror, TheUnsentChangeIsUnderTheEntryItsWriteGoesTo) {
+  constexpr const char* kSurfaceSaved =
+      R"({"occurrences":[)"
+      R"({"word":"読んだ","lemma":"読む","isWordLike":true,"charStart":0,"charEnd":3,"entryId":5,"lemmaEntryId":6}],)"
+      R"("stateByEntryId":{"5":{"saved_expression_id":88,"proficiency":1}}})";
+  Mirrored m;
+  Rig rig;
+  rig.api.analyzeReplies = {apiOk(kSurfaceSaved)};
+  rig.api.lookupReplies = {apiOk(kLookupYomu)};
+  LiveSource source(rig.api, rig.tap(1, 0), rig.page);
+  source.setVocabMirror(m.store);
+  CardController c(source, ReadingMode::Kana);
+  c.open(0);
+  source.advance(0);
+  c.sourceChanged(0);
+  source.advance(0);
+  c.sourceChanged(0);
+  source.recordMirror();
+  const Hit known{Target::Level, 3, {}};
+  for (const LevelChange& ch : c.tap(&known, 1000).changes) source.queue(ch);
+  ASSERT_TRUE(m.store.unsentState(Language::Japanese, 5));
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 5)->proficiency, 4);
+  EXPECT_EQ(m.store.unsentState(Language::Japanese, 6), std::nullopt);
 }
 
 TEST(LiveMirror, AFailedWriteIsntTriedAgainOnEveryIdleWindow) {

@@ -15,6 +15,7 @@ add_executable(LexiriseCardTest
   ${REPO_ROOT}/src/lexirise/page/PageAnalysis.cpp
   ${REPO_ROOT}/src/lexirise/page/PageStore.cpp
   ${REPO_ROOT}/src/lexirise/page/PageSentences.cpp
+  ${REPO_ROOT}/src/lexirise/page/PageMarks.cpp
   ${REPO_ROOT}/src/lexirise/text/BookLanguage.cpp
   ${REPO_ROOT}/src/lexirise/vocab/VocabMirror.cpp
   ${REPO_ROOT}/src/lexirise/api/VocabPage.cpp

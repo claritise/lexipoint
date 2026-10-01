@@ -656,8 +656,18 @@ buttons on a card** (Marked words / Every word; Marked words), and one per-book 
   card draws them too, (R2) once per card page: the fills are kept and drawn again on the card's later frames (it draws
   the page twice a frame) ~~until the reader draws a page again~~ (R3, `page::CardMarks`) while the page object, the
   vocab mirror's and the ignore list's revisions (`VocabStore::revision`, `IgnoredWordStore::revision`) are the same:
-  a save or an ignore on the card shows on its next frame, and each card starts afresh (`dropCardMarks`, as word
-  select opens it). (R3) The prefetcher names the page it wrote (`PagePrefetcher::Step::key`), reloaded wherever it's
+  ~~a save or an ignore on the card shows on its next frame~~ **Superseded 2026-10-01 (fix-marks):** an ignore on the
+  card shows on its next frame, and so does a level change (a save from the level row, a level, ⋯ Undo save): the
+  device check found the mark changed only once the write was sent, after the toast's Undo window, and then no frame
+  drew it until the card moved again, so a side-button step right after K left the old underline. Now the marks read
+  the card's own unsent changes over the mirror and the page's snapshot (`LiveSource::syncUnsent` gives
+  `VocabStore::setUnsent` the queued writes and the sent ones the mirror hasn't recorded yet; `page::StoreSources`, the
+  device's sources, host-tested, asks `VocabStore::unsentState` first; a removal reads as level 0, as Lexirise keeps
+  it; a suspension the mirror knows stays). A change there moves the mirror's revision, so the card's next frame (the
+  K's own, which redraws the card) shows the new mark and a later step reuses it, an Undo in the window brings the old
+  one back on the Undo's frame, a failed write on its toast's redraw; the card's going
+  takes its set off. Once the write lands the mirror says the same, so nothing visible changes and no redraw is
+  needed. Each card starts afresh (`dropCardMarks`, as word select opens it). (R3) The prefetcher names the page it wrote (`PagePrefetcher::Step::key`), reloaded wherever it's
   kept; a Lookup language change reopens the marks with the new decision (`ReaderMarks::open`), and a page read as drawn
   counts only in one of the book's languages (`page::marksLanguages`); a page read as drawn and found not analyzed is
   known so in any language (`MarkSlots::have`). When pages read as drawn fill every slot, a new one takes the place of
@@ -669,7 +679,7 @@ buttons on a card** (Marked words / Every word; Marked words), and one per-book 
   that an analyzed page is always drawn marked~~, but for one drawing between the prefetcher rewriting the page on screen
   and the loop's next look at it~~ (R6: that window closed: a reload forgets that the page was read as drawn,
   `MarkSlots::reload`, so its next drawing reads it again). (R5) All of it but the drawing is `page/MarkKeeper` (host-compiled over `PageTexts`
-  and a `PageStore`), `ReaderMarks` only the device's sources and the drawing; the property test drives the real keeper
+  and a `PageStore`), `ReaderMarks` only the device's sources and the drawing (fix-marks: the sources are `page::StoreSources`, pure); the property test drives the real keeper
   over a fake book and a store on fake files (forward, back, fast, jump, redraw, a prefetch write, a reflow on the same
   index, a Lookup language change), and a steady turn reads at most one analysis file. (R6) Tests pin that each revision moves where it should
   (`VocabStore` at a load, a page applied and a live answer; `IgnoredWordStore` at the load and each write;

@@ -49,6 +49,7 @@ class LiveSource final : public CardSource {
   // every word saved from it (settings: tags). Without `next`, the card stops at the sentence's ends.
   LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage page, std::vector<std::string> tags = {},
              NextSentence next = nullptr);
+  ~LiveSource() override;  // takes this card's unsent level changes off the page marks (syncUnsent)
 
   enum class Advance {
     Idle,         // nothing to fetch
@@ -369,6 +370,11 @@ class LiveSource final : public CardSource {
   std::vector<std::pair<Language, uint32_t>> writtenEntries_;
   // Queues `state` for the mirror; `ownWrite`: from this card's write (later analyses don't override it).
   void toMirror(const vocab::LiveState& state, bool ownWrite);
+  // fix-marks: the page marks' copy of this card's level changes the mirror doesn't hold yet (VocabStore::setUnsent):
+  // its own writes recordMirror() hasn't taken, then the queued ones (newer). Given again whenever either changes.
+  void syncUnsent();
+  std::vector<vocab::LiveState> unsent_;  // syncUnsent()'s, its room kept for the next
+  bool unsentGiven_ = false;              // the store holds a set of this card's (taken off as the card goes)
   // cardWord with its sentence and the book titles; the form's name kept from the word as built so far.
   // `named`: its form's name worked out already (else the one shown now is reused when it's for the same form).
   CardWord wordFor(int index, const FormName* named = nullptr) const;
@@ -384,6 +390,9 @@ class LiveSource final : public CardSource {
   void savedWithBookTag(Language language);
   std::optional<DueDeck> deckDue() const;  // the book deck's next step, once no write is queued
 
+  // The entry a write for `card` is kept under in Lexirise: the one whose state the card had (the surface's when only
+  // it was saved), or for a new save the lemma's (the save sends the lemma).
+  static uint32_t writeEntryOf(const lookup::LookupCard& card);
   // Sends one write (a save, a level change, or a removal's two calls) for `card`.
   api::ApiResponse send(const LevelChange& change, const lookup::LookupCard& card, std::string& newId,
                         bool& clearFailed) const;

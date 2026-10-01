@@ -1450,6 +1450,41 @@ TEST(VocabRemoval, TheReadersOwnRemovalOfUnknownTimeStaysUntilAFullPassEnds) {
   EXPECT_FALSE(m.find(5));
 }
 
+// fix-marks: the open card's unsent level changes, for the page marks only: the newest per entry, a change moves the
+// revision (the page under the card is worked out again), the same set again doesn't, and none of it is the mirror's.
+TEST_F(Fixture, TheCardsUnsentLevelsAreKeptApartAndMoveTheRevision) {
+  VocabStore store(files);
+  store.load(Language::Japanese);
+  LiveState t;
+  t.language = Language::Japanese;
+  t.entryId = 6;
+  t.saved = true;
+  t.proficiency = 1;
+  t.own = true;
+  LiveState k = t;
+  k.proficiency = 4;
+  LiveState chinese = t;
+  chinese.language = Language::Chinese;
+  const uint32_t before = store.revision();
+  store.setUnsent({t, k});
+  const uint32_t given = store.revision();
+  EXPECT_NE(given, before);
+  ASSERT_TRUE(store.unsentState(Language::Japanese, 6));
+  EXPECT_EQ(store.unsentState(Language::Japanese, 6)->proficiency, 4);  // the newest
+  EXPECT_EQ(store.unsentState(Language::Chinese, 6), std::nullopt);
+  EXPECT_EQ(store.unsentState(Language::Japanese, 7), std::nullopt);
+  EXPECT_EQ(store.find(Language::Japanese, 6), std::nullopt);  // not the mirror's
+  EXPECT_FALSE(store.dirty());
+  store.setUnsent({t, k});
+  EXPECT_EQ(store.revision(), given);  // the same set: nothing to work out again
+  store.setUnsent({chinese});
+  EXPECT_NE(store.revision(), given);
+  EXPECT_EQ(store.unsentState(Language::Japanese, 6), std::nullopt);  // replaced whole
+  EXPECT_TRUE(store.unsentState(Language::Chinese, 6));
+  store.setUnsent({});
+  EXPECT_EQ(store.unsentState(Language::Chinese, 6), std::nullopt);
+}
+
 // V9a: the reader's marks follow the mirror by its revision (CardMarks, MarkKeeper): it moves at a language's
 // first load, at every page applied and at every live answer recorded.
 TEST_F(Fixture, ItsRevisionMovesAtTheLoadAPageAndALiveAnswer) {

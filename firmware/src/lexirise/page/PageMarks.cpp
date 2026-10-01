@@ -4,6 +4,7 @@
 #include <string>
 
 #include "lexirise/LexiriseConfig.h"
+#include "lexirise/vocab/VocabMirror.h"
 
 namespace lexipoint::page {
 
@@ -35,6 +36,23 @@ std::optional<WordState> savedOf(const PageAnalysis& page, const uint32_t id, co
 }
 
 }  // namespace
+
+MirrorSays StoreSources::mirror(const uint32_t entryId) const {
+  const MirrorSays says = view_.says(entryId);
+  const std::optional<vocab::LiveState> unsent = entryId != 0 ? store_.unsentState(language_, entryId) : std::nullopt;
+  if (!unsent) return says;
+  MirrorSays out;
+  if (!unsent->saved) {
+    out.verdict = MirrorSays::Verdict::Unsaved;
+    return out;
+  }
+  out.verdict = MirrorSays::Verdict::Saved;
+  out.state.proficiency = unsent->proficiency;
+  // A suspension the mirror knows stays: a level change keeps the item's, as the mirror does once the write lands
+  // (vocab::applyLive).
+  out.suspended = says.verdict == MirrorSays::Verdict::Saved && says.suspended;
+  return out;
+}
 
 WordState wordStateOf(const PageAnalysis& page, const Occ& occ, const MarkSources& sources) {
   const uint32_t key = occ.lemmaEntryId != 0 ? occ.lemmaEntryId : occ.entryId;  // lookup::entryKeyOf

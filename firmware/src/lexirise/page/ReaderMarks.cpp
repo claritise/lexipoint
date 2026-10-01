@@ -21,19 +21,6 @@ namespace {
 
 constexpr const char* kCjkEm = "\xE4\xB8\x80";  // 一: a full-width character, the page font's CJK em
 
-// The device's sources: the vocab mirror by the saved-state rule, and the reader's ignore list (both from memory:
-// loaded on the loop before a page is drawn with marks).
-class DeviceSources final : public MarkSources {
- public:
-  DeviceSources(const Language language, const uint64_t analyzedMs)
-      : view_(language, analyzedMs, vocab::vocabStore()) {}
-  MirrorSays mirror(const uint32_t entryId) const override { return view_.says(entryId); }
-  bool ignored(const IgnoredKey& key) const override { return ignoredWordStore().contains(key); }
-
- private:
-  MirrorView view_;
-};
-
 // The page's own width measure (Font::Page only: the marks measure nothing else).
 class PageMetrics final : public card::TextMetrics {
  public:
@@ -103,7 +90,7 @@ void ReaderMarks::draw(GfxRenderer& renderer, const int fontId, const Page& page
       keeper_.analysisLocked(key, text::utf16Length(built->text), textHash(built->text), spine, pageIndex);
   std::vector<card::Rect> fills;
   if (analysis) {
-    const DeviceSources sources(analysis->language, analysis->analyzedMs);
+    const StoreSources sources(analysis->language, analysis->analyzedMs, vocab::vocabStore(), ignoredWordStore());
     const std::vector<SpanMark> marks = pageMarks(*analysis, sources);
     const PageMetrics metrics(renderer, fontId);
     const card::ReaderPage readerPage = card::readerPageFor(renderer, fontId, page, marginLeft, marginTop);

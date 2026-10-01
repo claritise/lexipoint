@@ -58,6 +58,10 @@ LiveSource::LiveSource(api::LexiriseApi& api, text::TapContext tap, ReaderPage p
   sentences_.push_back({std::move(tap), false});
 }
 
+LiveSource::~LiveSource() {
+  if (vocab_ && unsentGiven_) vocab_->setUnsent({});  // a card gone without sending (the stack cleared as it sleeps)
+}
+
 std::optional<size_t> LiveSource::loadingSentence() const {
   for (size_t i = 0; i < sentences_.size(); i++) {
     if (!sentences_[i].analyzed) return i;
@@ -113,9 +117,11 @@ void LiveSource::queue(const LevelChange& change) {
     it->to = change.to;
     it->readyAtMs = change.readyAtMs;
     if (it->to == it->from) writes_.erase(it);  // back where it was: nothing to send
+    syncUnsent();
     return;
   }
   writes_.push_back(change);
+  syncUnsent();
 }
 
 bool LiveSource::needsLookupForSave(const int word) const {
@@ -382,6 +388,37 @@ void LiveSource::recordMirror() {
   if (!vocab_ || mirrorUpdates_.empty()) return;
   vocab_->record(mirrorUpdates_);
   mirrorUpdates_.clear();
+  syncUnsent();  // the mirror holds this card's sent writes now
+}
+
+void LiveSource::syncUnsent() {
+  if (!vocab_) return;
+  unsent_.clear();
+  for (const vocab::LiveState& state : mirrorUpdates_) {
+    if (!state.own) continue;
+    if (unsent_.capacity() == 0) unsent_.reserve(kMirrorReserved);
+    unsent_.push_back(state);
+  }
+  for (const LevelChange& change : writes_) {
+    const lookup::LookupCard& card = cards_[change.word];
+    vocab::LiveState state;
+    state.language = card.language;
+    state.entryId = writeEntryOf(card);
+    // Saved at its level, a removal at 0 (Lexirise keeps a removed word's item there: apply()); no saved id yet.
+    state.saved = true;
+    state.proficiency = static_cast<uint8_t>(proficiencyOf(change.to));
+    state.own = true;
+    if (state.entryId == 0) continue;
+    if (unsent_.capacity() == 0) unsent_.reserve(kMirrorReserved);
+    unsent_.push_back(state);
+  }
+  if (unsent_.empty() && !unsentGiven_) return;  // nothing of this card's on the marks, before or now
+  vocab_->setUnsent(unsent_);
+  unsentGiven_ = !unsent_.empty();
+}
+
+uint32_t LiveSource::writeEntryOf(const lookup::LookupCard& card) {
+  return card.saved && card.savedEntryId != 0 ? card.savedEntryId : card.lemmaEntryId;
 }
 
 bool LiveSource::mirrorFlushDue() const {
@@ -700,12 +737,11 @@ LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs
         back.from = change.to;
         back.to = change.from;
         failedWrite_ = FailedWrite{back, fetched.error, fetched.retryAfterS};
+        syncUnsent();  // the page's marks go back with the card (a sent one stays on them until recordMirror())
         return Advance::Idle;
       }
       std::optional<api::EntryState> saved = card.saved;
-      // The entry Lexirise keeps it under: the one whose state the card had (the surface's when only it was saved),
-      // or for a new save the lemma's (the save sends the lemma).
-      uint32_t savedEntry = card.saved && card.savedEntryId != 0 ? card.savedEntryId : card.lemmaEntryId;
+      uint32_t savedEntry = writeEntryOf(card);  // the entry Lexirise keeps it under
       if (!fetched.savedExpressionId.empty()) {
         savedEntry = card.lemmaEntryId;
         saved.emplace();
@@ -739,6 +775,7 @@ LiveSource::Advance LiveSource::apply(Fetched fetched, const unsigned long nowMs
         rebuild(w);  // its "Met before" follows (a copy analysed before the save landed too)
       }
       if (const auto state = vocab::liveStateOf(language, savedEntry, kept)) toMirror(*state, true);
+      syncUnsent();          // the write moved from the queue to the mirror's updates: the marks' copy follows
       return Advance::Idle;  // the card already shows the level; a copy on screen that changed: takeShownChanged()
     }
   }

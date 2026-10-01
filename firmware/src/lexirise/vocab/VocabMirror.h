@@ -166,6 +166,7 @@ struct LiveState {
   uint8_t proficiency = 0;
   uint32_t asOfS = 0;  // when it was known (0: now, as VocabStore::record takes it; still 0 with no clock)
   bool own = false;    // the reader's own write (a save, a level, a removal), not an answer
+  bool operator==(const LiveState&) const = default;
 };
 // The live state of an entry the card holds (its saved state, as api::EntryState); nullopt when it can't be kept (no
 // entry id, or a saved id that isn't a whole number: the mirror stores it as one).
@@ -286,6 +287,13 @@ class VocabStore {
   // The newest card answer or write waiting for `language` to load (record()), for the entry; nullopt: none (or it's
   // loaded: then find() says).
   std::optional<LiveState> pendingState(Language language, uint32_t entryId);
+  // The open card's level changes the mirror doesn't hold yet (queued in their Undo window, or sent and not yet
+  // record()ed), newest last: the reader's own newest choice for those entries, for the page marks only
+  // (page::StoreSources; never the file, never a card's sentences, never a sync). The card (LiveSource) gives the whole
+  // set each time it changes, and none as it goes. A change counts in revision() (the page under the card is worked out
+  // again on its next frame).
+  void setUnsent(const std::vector<LiveState>& states);
+  std::optional<LiveState> unsentState(Language language, uint32_t entryId);  // the newest; nullopt: none
   // An entry's saved state from the mirror, for V9 (nothing calls it yet; nullopt: not saved, or not loaded).
   std::optional<api::EntryState> savedState(Language language, uint32_t entryId);
   SyncState syncState(Language language);
@@ -316,6 +324,7 @@ class VocabStore {
   std::vector<unsigned long> manualTimes_;        // the home screen's sync's pages in the last hour
   std::optional<unsigned long> lastCardProbeMs_;  // the last card probe (takeCardProbe)
   std::vector<LiveState> pending_;                // record()s for a language not loaded yet
+  std::vector<LiveState> unsent_;                 // setUnsent()'s
 };
 
 // The device-wide store over the SD card (SettingsFilesHal.cpp; not linked into host tests).

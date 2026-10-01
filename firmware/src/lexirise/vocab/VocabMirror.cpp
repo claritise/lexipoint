@@ -787,6 +787,22 @@ std::optional<LiveState> VocabStore::pendingState(const Language language, const
   return *it;
 }
 
+void VocabStore::setUnsent(const std::vector<LiveState>& states) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (states == unsent_) return;
+  unsent_.assign(states.begin(), states.end());  // a handful: the vector's room is kept for the card's next change
+  ++revision_;
+}
+
+std::optional<LiveState> VocabStore::unsentState(const Language language, const uint32_t entryId) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto it = std::find_if(unsent_.rbegin(), unsent_.rend(), [language, entryId](const LiveState& u) {
+    return u.language == language && u.entryId == entryId;
+  });
+  if (it == unsent_.rend()) return std::nullopt;
+  return *it;
+}
+
 bool VocabStore::manualBudgetLeft(const unsigned long nowMs) {
   std::lock_guard<std::mutex> lock(mutex_);
   manualTimes_.erase(

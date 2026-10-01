@@ -9,10 +9,11 @@ in `v0.2/01-build-order.md`.
 - **`main`:** v0.2 is built apart from V8's font step (waits for claritise's font choice, S1). V6 (the card additions)
   landed this day after its review rounds, and passed its main device checks in Japanese and Chinese
   (`v0.1/device-checks.md` "v0.2 V6"); the rest of that list is still owed.
-- **In flight:** `lexi/fix-marks`: the page marks under an open card now show a level change at once (a level tapped,
+- ~~**In flight:** `lexi/fix-marks`: the page marks under an open card now show a level change at once (a level tapped,
   then a side-button step within the 2 s Undo window, left the old underline). Built and reviewed twice with no
-  behaviour bug; landing once its test gaps are closed. Its device check is owed (it writes to the account: ask
-  first).
+  behaviour bug; landing once its test gaps are closed.~~ **Superseded 2026-10-01:** fix-marks landed on `main` (a
+  level change shows in the page marks on the card's next frame). Its device check is owed (it writes to the account:
+  ask first).
 - **Next:** v0.3's on-device study (C11, `v0.2/00-overview.md`): draw its screens as mockups for claritise's sign-off
   before building anything.
 - **Waiting on claritise:** the font (S1); when to release (C24, `firmware/scripts/lexipoint/publish_release.py`);
