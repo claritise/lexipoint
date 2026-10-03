@@ -46,6 +46,7 @@
 | C23 | Slim down to CJK-learning firmware (remove CrossPoint features we don't need) | **Yes, after M: specced as `slimming.md`** (list approved by claritise 2026-09-25, "yes to all") | After M | Medium; saves ≈ 2.5–2.7 MB of 5.57 MB | M's "Taken from CrossPoint" record |
 | C24 | Release and beta (tagged release, install guide, 5–10 testers) | **Yes** | After P10 / M | Small–medium | `user-guide.md` |
 | C25 | A backend interface (`VocabProvider`) for a second service | **Park** | — | Small | `LexiriseClient` |
+| C26 | Offline: dictionary forms for the StarDict fallback (食べました → 食べる) | **Yes, a candidate** (claritise, 2026-10-04) | Not scheduled | Small | `lookup/StarDictCandidates.h`, `text/Conjugation.h` |
 | C22 | One font for everything: a single CJK + Latin family | **Yes, as part of the slimming after M** (claritise, 2026-09-25) | After M | Small–medium; the font choice needs claritise | `languages.md` §5.1, the card's type sizes |
 | C18 | Manga: tap a word in a speech bubble (sideways strips, OCR'd on the Mac) | **Yes: specced as `manga.md`; Mac pipeline built as a spike** | v0.2 | Medium: the device side; the card's orientation needs claritise | The card, lookup, saving, `analyze/text` (at conversion) |
 
@@ -981,6 +982,27 @@ Open: known rough edges to fix or flag first (e.g. USB silent after a flash, see
 LingQ possibly for more languages (neither checked recently). If a second backend is ever wanted, pull a
 `VocabProvider` interface out of `LexiriseClient` (analyze, lookup, save, key check). Also cheap insurance
 against depending on one vendor. Not planned.
+
+## C26. Offline: dictionary forms for the StarDict fallback
+
+**Noted 2026-10-04** (claritise: "sounds good"), after reading `matcha-reader`'s lookup code (a CrossPoint fork for
+Japanese, MIT, `github.com/eszter007/matcha-reader`, read 2026-10-04, not run).
+
+- **The gap:** when Lexirise doesn't answer, StarDict does (`../v0.1/lookup-flow.md` §4), with the longest run of
+  characters from the tap, then one shorter, down to one (`lookup/StarDictCandidates.h`). That finds a word as written,
+  never a conjugated one: 食べました tries 食べました, 食べまし, … and lands on 食べ or 食, or nothing. CrossPoint's
+  `util/Dictionary` strips English endings only.
+- **The idea:** for Japanese, also try dictionary forms of each candidate: undo the conjugation (ました, て, ない,
+  かった, chains of them) and look up the result. Pure and host-tested, beside the candidates code. Written from
+  Japanese grammar for Lexipoint, like `text/Conjugation.h` (which goes the other way, forward from the dictionary
+  form, and could check the result). Chinese doesn't conjugate; it stays as it is.
+- **How matcha does it (as a test list, no rule data taken):** a dictionary longest match (8 characters down to 1),
+  each window also deinflected by a chained rule table, and a deinflected form accepted only if the entry's word class
+  fits the rule (a godan rule must land on a godan verb: stops って → う). It also never starts a word on a small kana,
+  and won't let hiragana-only text match a kanji headword unless the entry is usually written in kana (ました → 真下).
+  StarDict entries carry no word class, so ours would lean on the second check, `Conjugation.h` and the order tried.
+- **Not a second segmenter.** Online, Lexirise still decides the word (D4); this only makes the offline answer find
+  the right headword.
 
 ## C11. SRS review app on the device
 
