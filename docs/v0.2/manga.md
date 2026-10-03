@@ -46,7 +46,9 @@ Full notes with sources: `../reference/manga-on-x4-research.md`.
   KOReader plugin) opens a bubble's text and has you drag across characters. **Nobody precomputes word
   boxes with lemmas**, on any device.
 - **Closest prior art:** `matcha-reader`, a CrossPoint fork for Japanese books and manga with its own
-  panel-by-panel format. Not yet inspected. Look before building the device side.
+  panel-by-panel format. ~~Not yet inspected. Look before building the device side.~~ **Superseded 2026-10-04:** inspected
+  (`../reference/matcha-reader.md` §3): it already has lookup in speech bubbles, from line boxes and an on-device
+  dictionary match; it stores no word boxes.
 
 ## 2. The pipeline
 
@@ -216,7 +218,8 @@ Findings that changed the design:
 
 1. **Panel check (no firmware change):** copy one XTCH and one XTC to the SD card, read a chapter
    sideways. Judge text size, furigana, screentone, page-turn time and ghosting on the UC8279 panel.
-2. **Inspect `matcha-reader`** (its panel format and any lookup), before building the device side.
+2. ~~**Inspect `matcha-reader`** (its panel format and any lookup), before building the device side.~~ **Superseded 2026-10-04:** done,
+   `../reference/matcha-reader.md`.
 3. **Q1 answered**, then the device side (§5) as its own phase, with the sidecar's binary format and
    host tests (hit-test, stepping, reading the file).
 4. **Converter polish:** chapters in the XTC (from the CBZ's folders), a text-free tail folded away,

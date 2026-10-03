@@ -618,8 +618,8 @@ Hold the reader sideways; each page is 2–4 landscape strips in an XTCH. The Ma
 (mokuro), splits the text into words with `analyze/text` (one call per page), cuts strips around the
 text boxes and writes a sidecar of word boxes, so a long-press on a word in a bubble opens the normal
 card. The pipeline (`tools/manga/`) ran on one 184-page volume: 613 strips, 10,364 words, all but 9
-shown whole on some strip. Owed: a panel check of the strips, a look at `matcha-reader`, and
-claritise's call on the card's orientation on a sideways strip (`manga.md` §6).
+shown whole on some strip. Owed: a panel check of the strips, ~~a look at `matcha-reader`,~~ (**Superseded 2026-10-04:** done,
+`../reference/matcha-reader.md`) and claritise's call on the card's orientation on a sideways strip (`manga.md` §6).
 
 **The format as an open spec (2026-09-25, for later).** Once the device side works and the format has
 stopped moving, write it up as its own doc (e.g. `manga-format.md`): the strip layout, the XTCH use,
@@ -986,7 +986,7 @@ against depending on one vendor. Not planned.
 ## C26. Offline: dictionary forms for the StarDict fallback
 
 **Noted 2026-10-04** (claritise: "sounds good"), after reading `matcha-reader`'s lookup code (a CrossPoint fork for
-Japanese, MIT, `github.com/eszter007/matcha-reader`, read 2026-10-04, not run).
+Japanese, MIT, `github.com/eszter007/matcha-reader`, read 2026-10-04, not run; `../reference/matcha-reader.md`).
 
 - **The gap:** when Lexirise doesn't answer, StarDict does (`../v0.1/lookup-flow.md` §4), with the longest run of
   characters from the tap, then one shorter, down to one (`lookup/StarDictCandidates.h`). That finds a word as written,

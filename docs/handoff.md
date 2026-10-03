@@ -4,6 +4,15 @@ The living status for whoever picks the work up next (a person or an agent). New
 once it's on `main` (supersede in place, as everywhere). The rules are in `../AGENTS.md`; the phases and the ledger are
 in `v0.2/01-build-order.md`.
 
+## 2026-10-04
+
+- **`main`:** unchanged in code. Read `matcha-reader` (the closest prior art, a CrossPoint fork for Japanese):
+  `reference/matcha-reader.md`. It finds words on the device by dictionary longest match and already has lookup in
+  manga speech bubbles, so the "first" claim in `reference/manga-on-x4-research.md` is struck. Lexirise stays the
+  segmenter online; dictionary forms for the offline StarDict fallback are a new candidate, C26
+  (`v0.2/00-overview.md`), not scheduled.
+- **Next, waiting on claritise, parked:** as on 2026-10-01 below.
+
 ## 2026-10-01
 
 - **`main`:** v0.2 is built apart from V8's font step (waits for claritise's font choice, S1). V6 (the card additions)
