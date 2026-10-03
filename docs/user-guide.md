@@ -38,7 +38,13 @@ font download, the front-button remap, the tilt page turn and the UI themes but 
 ## 2. A font that has Japanese and Chinese
 
 The reader's built-in fonts have no CJK characters, so Japanese and Chinese books (and the card) show boxes
-until you add one. What works (tested on an X4 Pro):
+until you add one.
+
+**The quick way (from 2026-10-04):** download **`lexipoint-font-NotoSerifCJK.zip`** from the same release as the
+firmware (its licence, the SIL Open Font License, is inside). Unzip it, copy the `fonts` folder to the root of the
+SD card (**eject before unplugging**), then do step 4 below. It's the font steps 1–3 make, already converted.
+
+**Or make it yourself** (tested on an X4 Pro):
 
 1. Get **`NotoSerifCJKjp-Regular.otf`** from `github.com/notofonts/noto-cjk` (`Serif/OTF/Japanese/`). It
    holds every CJK ideograph, with Japanese letterforms that read fine in Chinese books too. (For mainland
