@@ -8,7 +8,7 @@ Offline, the StarDict dictionaries on the SD card answer instead.
 **Device:** the Xteink X4 Pro is the only supported device. Other touchscreen e-readers the FreeInk SDK
 supports may follow; devices without touch won't (`docs/v0.1/standalone-repo.md`, D20).
 
-**Status:** ~~v0.2 built, except V6 (design awaiting sign-off) and V8's font step (waits for S1).~~ **Superseded 2026-10-01:** v0.2 built, except V8's font step (waits for S1). No release yet.
+**Status:** ~~v0.2 built, except V6 (design awaiting sign-off) and V8's font step (waits for S1).~~ **Superseded 2026-10-01:** v0.2 built, except V8's font step (waits for S1). ~~No release yet.~~ **Superseded 2026-10-04:** a first beta, `1.6.5-lexi.1-rc` (a prerelease: download it from Releases; *Check for updates* doesn't offer it).
 
 ## Use it
 

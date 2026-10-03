@@ -966,7 +966,8 @@ Each removal gets a line in the "Taken from CrossPoint" record M sets up, so wha
 
 **Added 2026-09-25.** People in the Lexirise community are already asking about buying an X4 Pro for this.
 Before anyone outside can use it:
-- **A tagged release** with a prebuilt firmware file (no release exists yet; since M, releases go on `claritise/lexipoint` as `lexipoint-<tag>-x4pro.bin`).
+- **A tagged release** with a prebuilt firmware file (~~no release exists yet;~~ **Superseded 2026-10-04:** the first beta,
+  `1.6.5-lexi.1-rc`, a prerelease, published by claritise's OK at `668af456`, for a tester from the Discord; since M, releases go on `claritise/lexipoint` as `lexipoint-<tag>-x4pro.bin`).
 - **Flashing steps and a "what you need" section** in `../user-guide.md`: the X4 Pro specifically (not the
   X4 / X3), a Lexirise Pro key, WiFi, and for manga a Mac (C18).
 - **5–10 beta testers from the Discord.** Watch where setup fails and whether they still read with it

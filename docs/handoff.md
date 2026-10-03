@@ -11,6 +11,9 @@ in `v0.2/01-build-order.md`.
   manga speech bubbles, so the "first" claim in `reference/manga-on-x4-research.md` is struck. Lexirise stays the
   segmenter online; dictionary forms for the offline StarDict fallback are a new candidate, C26
   (`v0.2/00-overview.md`), not scheduled.
+- **Released:** the first beta, `1.6.5-lexi.1-rc` (prerelease, built from `668af456` by `publish_release.py`, with
+  claritise's OK), for a tester from the Discord. *Check for updates* doesn't offer a prerelease. A full release still
+  waits on claritise (C24), and so do the owed device checks.
 - **Next, waiting on claritise, parked:** as on 2026-10-01 below.
 
 ## 2026-10-01

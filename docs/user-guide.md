@@ -18,7 +18,8 @@ font download, the front-button remap, the tilt page turn and the UI themes but 
 ## 1. Install
 
 1. Download `lexipoint-<version>-x4pro.bin` (for example `lexipoint-1.6.5-lexi.1-x4pro.bin`) from the
-   **Releases** page of `github.com/claritise/lexipoint`. (There's no release yet.)
+   **Releases** page of `github.com/claritise/lexipoint`. ~~(There's no release yet.)~~ **Superseded 2026-10-04:** the first is a beta, `lexipoint-1.6.5-lexi.1-rc-x4pro.bin`. A
+   beta is a prerelease: download it from the page; *Check for updates* only offers full releases.
 2. Flash it with CrossPoint's web installer (`crosspointreader.com/#flash-tools`, **Custom .bin**), or
    `esptool.py --chip esp32s3 ... write_flash 0x10000 <file>.bin`.
    Read the *USB-locked devices* warning in CrossPoint's README (`github.com/crosspoint-reader/crosspoint-reader`)
