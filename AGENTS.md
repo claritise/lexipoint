@@ -26,6 +26,10 @@ The full list is "Global rules" in `docs/v0.1/01-build-order.md`.
 
 ## How claritise works
 
+- **Design defaults** *(added 2026-11-03, claritise: "im happy to just start using the repo for all apps that
+  require gui or tui design significantly now")*: designing anything claritise will see, read
+  `../annas-design-notes/GATEWAY.md` first and load the slices it names; this repo's own decisions (D-rows) win
+  where they differ.
 - **The card stays clean.** The approved card is one framed card: dividers only between real sections, the small
   T L F K control at the top right, the rank row last with ✕ at its end, a bare ▼/▲ to open the detail view. When
   changing it, subtract rather than add: reuse existing rows as touch targets, never add bars or labels for every
